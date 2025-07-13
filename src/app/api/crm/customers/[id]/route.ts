@@ -1,15 +1,16 @@
 // src/app/api/crm/customers/[id]/route.ts
 import { supabase } from '@/lib/supabaseAdmin'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
+// The second argument's type is simplified here
 export async function PUT(
-  req: Request,
-  { params }: { params: { id: string } | Promise<{ id: string }> }
+  req: NextRequest,
+  { params }: { params: { id: string } } 
 ) {
-  // 🔑 await params
-  const { id } = await params
+  // 'params' is a simple object, no 'await' needed
+  const { id } = params;
 
-  const updates = await req.json()
+  const updates = await req.json();
 
   const { data, error } = await supabase
     .from('customers')
@@ -23,23 +24,29 @@ export async function PUT(
       tags: updates.tags
     })
     .eq('id', id)
+    .select() // Return the updated row
 
-  if (error) return NextResponse.json({ error }, { status: 500 })
-  return NextResponse.json(data)
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json(data);
 }
 
+// The second argument's type is also simplified here
 export async function DELETE(
-  req: Request,
-  { params }: { params: { id: string } | Promise<{ id: string }> }
+  req: NextRequest,
+  { params }: { params: { id: string } }
 ) {
-  // 🔑 await params here as well
-  const { id } = await params
+  // 'params' is a simple object, no 'await' needed
+  const { id } = params;
 
   const { error } = await supabase
     .from('customers')
     .delete()
-    .eq('id', id)
+    .eq('id', id);
 
-  if (error) return NextResponse.json({ error }, { status: 500 })
-  return NextResponse.json({ message: 'Deleted' }, { status: 200 })
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ message: 'Deleted' }, { status: 200 });
 }

@@ -2,13 +2,13 @@
 import { supabase } from '@/lib/supabaseAdmin'
 import { NextRequest, NextResponse } from 'next/server'
 
-// The second argument's type is simplified here
+// The second argument is now a 'context' object
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } } 
+  context: { params: { id: string } } 
 ) {
-  // 'params' is a simple object, no 'await' needed
-  const { id } = params;
+  // We get the 'id' from the context object inside the function
+  const id = context.params.id;
 
   const updates = await req.json();
 
@@ -32,13 +32,13 @@ export async function PUT(
   return NextResponse.json(data);
 }
 
-// The second argument's type is also simplified here
+// The second argument is also changed to a 'context' object here
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
-  // 'params' is a simple object, no 'await' needed
-  const { id } = params;
+  // We get the 'id' from the context object inside the function
+  const id = context.params.id;
 
   const { error } = await supabase
     .from('customers')

@@ -10,21 +10,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
     }
 
-    // Define the expected user type
-    type UserWithRole = {
-      id: number;
-      email: string;
-      password: string;
-      role_id: number;
-      role: { name: string }[] | { name: string } | null;
-    };
-
     // Step 1: Fetch the user and their role name
     const { data: user, error: fetchError } = await supabase
       .from('users')
       .select('id, email, password, role_id, role:roles(name)')
       .eq('email', email)
-      .single<UserWithRole>();
+      .single();
 
     if (fetchError || !user) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
@@ -50,19 +41,13 @@ export async function POST(req: Request) {
     }
 
     // Step 4: Prepare the final user object for the client
-    const { /* role_id, */ ...userWithoutPassword } = user;
+    const { password: _, role_id, ...userWithoutPassword } = user;
     
     const finalUser = {
         ...userWithoutPassword,
-        role: Array.isArray(user.role) ? user.role[0]?.name || 'Unknown Role' : user.role?.name || 'Unknown Role',
+        role: user.role?.name || 'Unknown Role',
         // Create a simple array of permission names (e.g., ['dashboard:read', 'user:manage'])
-        permissions: permissions
-            ? permissions
-                  .map((p: { permission: { name: string }[] }) =>
-                      Array.isArray(p.permission) && p.permission.length > 0 ? p.permission[0].name : null
-                  )
-                  .filter((name: string | null): name is string => !!name)
-            : []
+        permissions: permissions ? permissions.map(p => p.permission.name) : [] 
     };
 
     return NextResponse.json(finalUser);

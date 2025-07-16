@@ -1,61 +1,145 @@
 // app/api/products/route.ts
-
-import { supabase } from '@/lib/supabaseAdmin'
+import { supabase as adminSupabase } from '@/lib/supabaseAdmin'
 import { NextRequest, NextResponse } from 'next/server'
 
-export async function GET() {
-  // read from our view
-  const { data, error } = await supabase
-    .from('inventory_product_view')
-    .select('*')
-    .order('updated_at', { ascending: false })
+/**
+ * A helper function to find the correct profit margin for a given product
+ * based on the hierarchy: Product > Subcategory > Category > Global.
+ * @param productId - The ID of the product. Can be null if the product is new.
+ * @param category - The product's category.
+ * @param subcategory - The product's subcategory.
+ * @returns The applicable margin percentage.
+ */
+async function getMarginForProduct(productId: string | null, category?: string, subcategory?: string): Promise<number> {
+    // Fetch all rules and the global setting once for efficiency.
+    const [
+        { data: marginRules },
+        { data: settingData }
+    ] = await Promise.all([
+        adminSupabase.from('profit_margins').select('*'),
+        adminSupabase.from('settings').select('value').eq('key', 'global_profit_margin').single()
+    ]);
 
-  if (error) {
-    console.error('GET /api/products error', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-  return NextResponse.json(data)
+    const globalMargin = parseFloat(settingData?.value || '20'); // Default to 20%
+
+    if (!marginRules) return globalMargin;
+
+    // Create Maps for fast lookups
+    const productMargins = new Map(marginRules.filter(r => r.product_id).map(r => [r.product_id, parseFloat(r.margin_percentage)]));
+    const subcategoryMargins = new Map(marginRules.filter(r => r.subcategory).map(r => [r.subcategory, parseFloat(r.margin_percentage)]));
+    const categoryMargins = new Map(marginRules.filter(r => r.category && !r.subcategory).map(r => [r.category, parseFloat(r.margin_percentage)]));
+
+    // Apply the hierarchy
+    const margin =
+      (productId ? productMargins.get(productId) : undefined) ??
+      (subcategory ? subcategoryMargins.get(subcategory) : undefined) ??
+      (category ? categoryMargins.get(category) : undefined) ??
+      globalMargin;
+    
+    return margin;
 }
 
-// create a new product
+// POST: Create a new product with a calculated price
 export async function POST(req: NextRequest) {
-  const { name, sku, description, category, price, image_url } = await req.json()
-  const { data, error } = await supabase
+  const { name, sku, description, category, cost, image_url } = await req.json();
+
+  if (cost === undefined || cost === null) {
+      return NextResponse.json({ error: 'Cost is a required field.' }, { status: 400 });
+  }
+
+  // 1. Determine the margin to apply (product ID is null as it doesn't exist yet)
+  const margin = await getMarginForProduct(null, category);
+  
+  // 2. Calculate the price
+  const calculatedPrice = cost + (cost * (margin / 100));
+
+  // 3. Insert the new product with both cost and the calculated price
+  const { data, error } = await adminSupabase
     .from('products')
-    .insert([{ name, sku, description, category, price, image_url }])
+    .insert([{ 
+        name, 
+        sku, 
+        description, 
+        category, 
+        cost, 
+        image_url, 
+        price: parseFloat(calculatedPrice.toFixed(2)) 
+    }])
     .select()
-    .single()
+    .single();
 
   if (error) {
-    console.error('POST /api/products error', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error('POST /api/products insert error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json(data, { status: 201 })
+  
+  return NextResponse.json(data, { status: 201 });
 }
 
+// GET: Fetch all products (now simplified)
+export async function GET() {
+  // The price is stored in the DB, so we just fetch it.
+  const { data: products, error } = await adminSupabase
+    .from('inventory_product_view')
+    .select('*'); // The view should contain cost and price from the products table.
+
+  if (error) {
+    console.error('GET /api/products error', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // For display only, calculate the margin that was applied.
+  const productsWithMargin = products.map(p => {
+      const cost = p.cost;
+      const price = p.price;
+      let applied_margin = 0;
+
+      if (cost && price && cost > 0) {
+          applied_margin = ((price / cost) - 1) * 100;
+      }
+      
+      return { ...p, applied_margin: applied_margin.toFixed(1) };
+  });
+
+  return NextResponse.json(productsWithMargin);
+}
+
+// PUT: Update a product and recalculate price if cost changes
 export async function PUT(req: NextRequest) {
-  const { id, ...updates } = await req.json()
-  if (!id) {
-    return NextResponse.json({ error: 'Missing id' }, { status: 400 })
-  }
-  const { error } = await supabase.from('products').update(updates).eq('id', id)
-  if (error) {
-    console.error('PUT /api/products error', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-  return NextResponse.json({ success: true })
+    const { id, ...updates } = await req.json();
+    if (!id) {
+        return NextResponse.json({ error: 'Missing id' }, { status: 400 });
+    }
+
+    // If the cost is being updated, we must recalculate the price.
+    if (updates.cost !== undefined) {
+        const { data: product } = await adminSupabase.from('products').select('category, subcategory').eq('id', id).single();
+        if (product) {
+            const margin = await getMarginForProduct(id, product.category, product.subcategory);
+            const newPrice = updates.cost + (updates.cost * (margin / 100));
+            updates.price = parseFloat(newPrice.toFixed(2));
+        }
+    }
+
+    const { error } = await adminSupabase.from('products').update(updates).eq('id', id);
+    if (error) {
+        console.error('PUT /api/products error', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ success: true });
 }
 
+// DELETE remains the same
 export async function DELETE(req: NextRequest) {
-  const { searchParams } = new URL(req.url)
-  const id = searchParams.get('id')
-  if (!id) {
-    return NextResponse.json({ error: 'Missing id' }, { status: 400 })
-  }
-  const { error } = await supabase.from('products').delete().eq('id', id)
-  if (error) {
-    console.error('DELETE /api/products error', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-  return NextResponse.json({ success: true })
+  const { searchParams } = new URL(req.url)
+  const id = searchParams.get('id')
+  if (!id) {
+    return NextResponse.json({ error: 'Missing id' }, { status: 400 })
+  }
+  const { error } = await adminSupabase.from('products').delete().eq('id', id)
+  if (error) {
+    console.error('DELETE /api/products error', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+  return NextResponse.json({ success: true })
 }

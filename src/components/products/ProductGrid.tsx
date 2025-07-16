@@ -72,7 +72,7 @@ export default function ProductGrid({ products, addToCart, onCustomize }: Props)
                   </p>
                 )}
 
-                <p className="font-bold text-primary">₹ {p.product_price?.toFixed(2)}</p>
+                <p className="font-bold text-primary">₹ {p.price?.toFixed(2)}</p>
                 <p
                   className={p.quantity > 0 ? "text-green-600" : "text-red-600"}
                 >
@@ -113,7 +113,7 @@ export default function ProductGrid({ products, addToCart, onCustomize }: Props)
 
             </div>
             <p className="text-sm font-bold text-yellow-600">
-              ₹ {p.product_price?.toFixed(2)}
+              ₹ {p.price?.toFixed(2)}
             </p>
             <p
               className={`text-[10px] ${

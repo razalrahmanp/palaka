@@ -305,10 +305,11 @@ export interface ProductWithInventory {
   price?: number | null;
   product_name: string;
   product_description?: string | null;
-  product_price?: number | null;
   product_category?: string | null;
   product_image_url?: string | null;
   sku?: string | null;
+  applied_margin: number;
+  cost: number;
 }
 
 export interface CartItem {

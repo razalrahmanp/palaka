@@ -39,28 +39,6 @@ export default function ProductsSalesPage() {
       .then((data: Supplier[]) => setSuppliers(data));
   }, []);
 
-  // function addToCart(p: ProductWithInventory) {
-  //   setCartItems((prev) => {
-  //     const exist = prev.find((i) => i.id === p.product_id && !i.isCustom);
-  //     if (exist) {
-  //       return prev.map((i) =>
-  //         i.id === p.product_id && !i.isCustom ? { ...i, qty: i.qty + 1 } : i
-  //       );
-  //     }
-  //     return [
-  //       ...prev,
-  //       {
-  //         id: p.product_id,
-  //         name: p.product_name,
-  //         price: p.product_price || 0,
-  //         qty: 1,
-  //         isCustom: false,
-  //         product_id: p.product_id,
-  //       },
-  //     ];
-  //   });
-  // }
-
   function addToCart(p: ProductWithInventory) {
   const availableStock = p.quantity ?? 0;
 
@@ -76,7 +54,7 @@ export default function ProductsSalesPage() {
             {
               id: `${p.product_id}-custom-${Date.now()}`,
               name: p.product_name,
-              price: p.product_price ?? 0,
+              price: p.price ?? 0,
               qty: 1,
               isCustom: true,
               product_id: null,
@@ -101,7 +79,7 @@ if (remainingStock === 1) {
       {
         id: p.product_id,
         name: p.product_name,
-        price: p.product_price ?? 0,
+        price: p.price ?? 0,
         qty: 1,
         isCustom: false,
         product_id: p.product_id,
@@ -122,7 +100,7 @@ if (remainingStock === 1) {
             {
               id: p.product_id,
               name: p.product_name,
-              price: p.product_price || 0,
+              price: p.price || 0,
               qty: remainingStock,
               isCustom: false,
               product_id: p.product_id,
@@ -134,7 +112,7 @@ if (remainingStock === 1) {
         {
           id: `${p.product_id}-custom-${Date.now()}`,
           name: p.product_name,
-          price: p.product_price ?? 0,
+          price: p.price ?? 0,
           qty: 1,
           isCustom: true,
           product_id: null,
@@ -154,7 +132,7 @@ if (remainingStock === 1) {
           {
             id: p.product_id,
             name: p.product_name,
-            price: p.product_price || 0,
+            price: p.price || 0,
             qty: 1,
             isCustom: false,
             product_id: p.product_id,
@@ -284,7 +262,7 @@ function updateQty(id: string, delta: number) {
             setProductToCustomize({
               product_id: item.product_id || "", // fallback
               product_name: item.name,
-              product_price: item.price,
+              price: item.price,
               quantity: 0,
               category: null,
               subcategory: null,
@@ -293,6 +271,8 @@ function updateQty(id: string, delta: number) {
               reorder_point: 0,
               updated_at: "",
               inventory_id: "",
+              applied_margin: 0,
+              cost: 0,
             });
             setIsCustomizeOpen(true);
           }}

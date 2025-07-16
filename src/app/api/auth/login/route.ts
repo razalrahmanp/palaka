@@ -2,6 +2,18 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabaseAdmin';
 import bcrypt from 'bcryptjs';
 
+type UserWithRole = {
+  id: number;
+  email: string;
+  password: string;
+  role_id: number;
+  role: { name: string } | { name: string }[];
+};
+
+type RolePermission = {
+  permission: { name: string } | { name: string }[];
+};
+
 export async function POST(req: Request) {
   try {
     const { email, password } = await req.json();
@@ -15,7 +27,7 @@ export async function POST(req: Request) {
       .from('users')
       .select('id, email, password, role_id, role:roles(name)')
       .eq('email', email)
-      .single();
+      .single<UserWithRole>();
 
     if (fetchError || !user) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
@@ -28,27 +40,35 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
     }
 
-    // --- This is the new, crucial step ---
     // Step 3: Fetch all permissions associated with the user's role
     const { data: permissions, error: permsError } = await supabase
-        .from('role_permissions')
-        .select('permission:permissions(name)')
-        .eq('role_id', user.role_id);
+      .from('role_permissions')
+      .select('permission:permissions(name)')
+      .eq('role_id', user.role_id) as { data: RolePermission[]; error: Error | null };
 
     if (permsError) {
-        // If there's an error fetching permissions, it's a server-side issue.
-        throw permsError;
+      throw permsError;
     }
 
     // Step 4: Prepare the final user object for the client
-    const { password: _, role_id, ...userWithoutPassword } = user;
-    
-const finalUser = {
-  ...userWithoutPassword,
-  role: Array.isArray(user.role) ? user.role[0]?.name || 'Unknown Role' : user.role?.name || 'Unknown Role',
-  permissions: permissions ? permissions.map(p => p.permission.name) : [],
-};
+    const { password: _, ...userWithoutPassword } = user;
 
+    const roleName = Array.isArray(user.role)
+      ? user.role[0]?.name || 'Unknown Role'
+      : user.role?.name || 'Unknown Role';
+
+    const permissionNames =
+      permissions?.map((p) =>
+        Array.isArray(p.permission)
+          ? p.permission[0]?.name
+          : p.permission?.name
+      ).filter(Boolean) || [];
+
+    const finalUser = {
+      ...userWithoutPassword,
+      role: roleName,
+      permissions: permissionNames,
+    };
 
     return NextResponse.json(finalUser);
 

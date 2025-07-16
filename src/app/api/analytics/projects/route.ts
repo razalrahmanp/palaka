@@ -19,7 +19,7 @@ export async function GET() {
         if (error) throw new Error(`Work Orders Error: ${error.message}`);
         
         // Calculate progress dynamically. This is a simplification.
-        const calculateProgress = (p) => {
+        const calculateProgress = (p: { status: string; start_date?: string; due_date?: string; }) => {
             if (p.status === 'completed') return 100;
             if (p.status === 'planned') return 0;
             if (!p.start_date || !p.due_date) return 50; // Default for items without dates

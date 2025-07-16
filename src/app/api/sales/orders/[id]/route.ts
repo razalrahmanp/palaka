@@ -1,8 +1,9 @@
 import { supabase } from '@/lib/supabaseAdmin';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
-export async function PUT(req: Request, { params }: { params: { id: string } }) {
-  const { id } = params;
+export async function PUT(req: NextRequest) {
+  const url = new URL(req.url);
+  const id = url.pathname.split("/").at(-2); // Extracts [id] from /api/sales/orders/[id]
 
   if (!id) {
     return NextResponse.json({ error: 'Missing order ID' }, { status: 400 });
@@ -93,13 +94,11 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     if (!deliveryExists) {
       const { error: createDeliveryError } = await supabase
         .from('deliveries')
-        .insert([
-          {
-            sales_order_id: id,
-            status: 'pending',
-            created_at: new Date().toISOString(),
-          },
-        ]);
+        .insert([{
+          sales_order_id: id,
+          status: 'pending',
+          created_at: new Date().toISOString(),
+        }]);
 
       if (createDeliveryError) {
         console.error('Error creating delivery:', createDeliveryError);

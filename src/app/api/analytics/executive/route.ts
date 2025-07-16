@@ -63,10 +63,10 @@ export async function GET() {
     const { data: monthlyBreakdown, error: breakdownError } = await supabaseAdmin.rpc('get_monthly_financial_breakdown');
     if (breakdownError) throw new Error(`Financial Breakdown RPC Error: ${breakdownError.message}`);
 
-    const profitVsExpensesData = monthlyBreakdown.map(item => ({
+    const profitVsExpensesData = monthlyBreakdown.map((item: { month: string; total_revenue: string | number; total_expenses: string | number }) => ({
         name: item.month,
-        profit: (parseFloat(item.total_revenue) || 0) - (parseFloat(item.total_expenses) || 0),
-        expenses: parseFloat(item.total_expenses) || 0,
+        profit: (parseFloat(item.total_revenue as string) || 0) - (parseFloat(item.total_expenses as string) || 0),
+        expenses: parseFloat(item.total_expenses as string) || 0,
     }));
 
     const responseData = {
@@ -77,8 +77,8 @@ export async function GET() {
         ordersFulfilled: ordersFulfilled ?? 0,
       },
       profitVsExpenses: profitVsExpensesData, // Replaced mock data with real data
-      salesTrends: monthlySales.map(s => ({ name: s.month, sales: s.total_sales })),
-      topPerformers: topPerformers.map(p => ({ name: p.product_name, value: p.total_sales })),
+      salesTrends: monthlySales.map((s: { month: string; total_sales: number }) => ({ name: s.month, sales: s.total_sales })),
+      topPerformers: topPerformers.map((p: { product_name: string; total_sales: number }) => ({ name: p.product_name, value: p.total_sales })),
     };
 
     return NextResponse.json(responseData);

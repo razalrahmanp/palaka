@@ -27,14 +27,17 @@ export async function GET() {
         if(slowMovingError) throw new Error(`Slow Moving RPC Error: ${slowMovingError.message}`);
 
         const responseData = {
-            stockLevels: stockLevels.map(p => ({ name: p.products ? p.products.name : 'Unknown Product', level: p.quantity })),
+            stockLevels: stockLevels.map(p => ({
+                name: Array.isArray(p.products) && p.products.length > 0 ? p.products[0].name : 'Unknown Product',
+                level: p.quantity
+            })),
             inventoryTurnover: [ // This is complex and best calculated in a dedicated view/RPC
                 { month: 'Jan', rate: 3.5 },
                 { month: 'Feb', rate: 3.8 },
                 { month: 'Mar', rate: 4.1 },
             ],
-            fastMoving: fastMoving.map(p => ({ name: p.product_name, units: p.total_quantity })),
-            slowMoving: slowMoving.map(p => ({ name: p.product_name, units: p.total_quantity })),
+            fastMoving: fastMoving.map((p: { product_name: string; total_quantity: number }) => ({ name: p.product_name, units: p.total_quantity })),
+            slowMoving: slowMoving.map((p: { product_name: string; total_quantity: number }) => ({ name: p.product_name, units: p.total_quantity })),
         };
 
         return NextResponse.json(responseData);

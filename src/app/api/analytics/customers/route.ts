@@ -8,6 +8,11 @@ const supabaseAdmin = createClient(
 
 export const revalidate = 0;
 
+type AcquisitionItem = {
+    month: string;
+    new_customers: number;
+};
+
 export async function GET() {
     try {
         const { data: acquisition, error: acqError } = await supabaseAdmin.rpc('get_monthly_customer_acquisition');
@@ -17,13 +22,15 @@ export async function GET() {
         const { data: cltv, error: cltvError } = await supabaseAdmin.rpc('get_customer_lifetime_value', { limit_count: 5 });
         if (cltvError) throw new Error(`CLTV RPC Error: ${cltvError.message}`);
 
+        type CltvItem = { customer_name: string; total_spend: number };
+
         const responseData = {
-            acquisitionAndChurn: acquisition.map(a => ({
+            acquisitionAndChurn: (acquisition as AcquisitionItem[]).map((a: AcquisitionItem) => ({
                 month: a.month,
                 acquired: a.new_customers,
                 churned: Math.floor(a.new_customers * 0.2) // Mocking churn as 20% of acquisition
             })),
-            cltv: cltv.map(c => ({ segment: c.customer_name, value: c.total_spend })),
+            cltv: (cltv as CltvItem[]).map((c: CltvItem) => ({ segment: c.customer_name, value: c.total_spend })),
         };
 
         return NextResponse.json(responseData);

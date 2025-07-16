@@ -37,7 +37,12 @@ const addEmployee = async (newEmployee: Omit<Employee, 'id' | 'created_at'>): Pr
 };
 
 // --- Employee Form Component (for adding/editing) ---
-const EmployeeForm = ({ onSubmit, onCancel }) => {
+interface EmployeeFormProps {
+    onSubmit: (formData: { name: string; email: string; position: string; salary: number }) => void;
+    onCancel: () => void;
+}
+
+const EmployeeForm: React.FC<EmployeeFormProps> = ({ onSubmit, onCancel }) => {
     const [formData, setFormData] = useState({ name: '', email: '', position: '', salary: '' });
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {

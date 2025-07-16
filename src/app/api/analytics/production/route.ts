@@ -21,8 +21,14 @@ export async function GET() {
             { date: '2023-06-03', rate: 1.5 },
         ];
 
+        type OutputVsTargetItem = {
+            product_name: string;
+            total_output: number;
+            total_target: number;
+        };
+
         const responseData = {
-            outputVsTarget: outputVsTarget.map(p => ({
+            outputVsTarget: (outputVsTarget as OutputVsTargetItem[]).map((p: OutputVsTargetItem) => ({
                 product: p.product_name,
                 output: p.total_output,
                 target: p.total_target

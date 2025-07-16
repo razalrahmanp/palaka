@@ -35,7 +35,7 @@ export async function GET() {
                 { name: 'Development', tasks: 150 },
             ];
         } else {
-            productivityData = departmentProductivity.map(d => ({ name: d.department, tasks: d.completed_tasks }));
+            productivityData = departmentProductivity.map((d: { department: string; completed_tasks: number }) => ({ name: d.department, tasks: d.completed_tasks }));
         }
 
         const responseData = {

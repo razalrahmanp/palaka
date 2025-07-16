@@ -18,13 +18,13 @@ export async function GET() {
         if (alertsError) throw new Error(`Alerts Error: ${alertsError.message}`);
 
         // Process the data in code to group by type
-        const incidentsByType = alerts.reduce((acc, alert) => {
+        const incidentsByType = alerts.reduce<Record<string, number>>((acc, alert) => {
             acc[alert.type] = (acc[alert.type] || 0) + 1;
             return acc;
         }, {});
 
         // Process the data in code to group by priority (as a proxy for severity)
-        const openIncidentsBySeverity = alerts.reduce((acc, alert) => {
+        const openIncidentsBySeverity = alerts.reduce<Record<string, number>>((acc, alert) => {
             acc[alert.priority] = (acc[alert.priority] || 0) + 1;
             return acc;
         }, {});

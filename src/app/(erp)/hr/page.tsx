@@ -1,11 +1,19 @@
 'use client';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Users, UserCheck, UserX, Star } from 'lucide-react';
+import { Users, UserCheck, Star } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 
 // Mock StatCard component for demonstration
-const StatCard = ({ title, value, icon: Icon, description, href }) => (
+type StatCardProps = {
+    title: string;
+    value: number;
+    icon: React.ComponentType<{ className?: string }>;
+    description: string;
+    href: string;
+};
+
+const StatCard = ({ title, value, icon: Icon, description, href }: StatCardProps) => (
     <Link href={href} className="block hover:bg-gray-50 transition-colors">
         <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

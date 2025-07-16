@@ -13,13 +13,19 @@ export async function GET() {
         const { data: monthlyBreakdown, error: breakdownError } = await supabaseAdmin.rpc('get_monthly_financial_breakdown');
         if (breakdownError) throw new Error(`Financial Breakdown RPC Error: ${breakdownError.message}`);
 
+        type MonthlyBreakdownItem = {
+            month: string;
+            total_revenue: number;
+            total_expenses: number;
+        };
+
         const responseData = {
-            monthlyBreakdown: monthlyBreakdown.map(item => ({
+            monthlyBreakdown: (monthlyBreakdown as MonthlyBreakdownItem[]).map((item: MonthlyBreakdownItem) => ({
                 month: item.month,
                 revenue: item.total_revenue,
                 expenses: item.total_expenses
             })),
-            plTrends: monthlyBreakdown.map(item => ({ // Profit/Loss from the same data
+            plTrends: (monthlyBreakdown as MonthlyBreakdownItem[]).map((item: MonthlyBreakdownItem) => ({ // Profit/Loss from the same data
                 month: item.month,
                 profit: Math.max(0, item.total_revenue - item.total_expenses),
                 loss: Math.max(0, item.total_expenses - item.total_revenue)

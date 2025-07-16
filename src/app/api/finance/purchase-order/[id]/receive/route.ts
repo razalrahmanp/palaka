@@ -1,12 +1,11 @@
 // app/api/finance/purchase-orders/[id]/receive/route.ts
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseAdmin";
 
-export async function PATCH(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
-  const id = params.id;
+export async function PATCH(req: NextRequest) {
+  const url = new URL(req.url);
+  const segments = url.pathname.split("/");
+  const id = segments[segments.length - 2]; // extract the [id] from URL
 
   // 1. Fetch the PO with related data
   const { data: po, error: poErr } = await supabase
@@ -47,21 +46,21 @@ export async function PATCH(
   }
 
   // 3. Increment inventory
-await supabase.rpc("increment_inventory", {
-  prod_id: po.product_id, // already fetched separately
-  qty: quantity,
-});
+  await supabase.rpc("increment_inventory", {
+    prod_id: po.product_id,
+    qty: quantity,
+  });
 
   // 4. Create expense
   await supabase.from("expenses").insert([
     {
       date: new Date().toISOString().slice(0, 10),
-      category: "Manufacturing", // Adjust if dynamic
+      category: "Manufacturing",
       type: "Direct",
       description: `PO ${id} - ${product[0]?.name}`,
       amount: total,
       payment_method: "Bank",
-      subcategory: "Furniture", // or match subcategory from product if available
+      subcategory: "Furniture",
     },
   ]);
 

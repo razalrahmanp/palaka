@@ -4,7 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Badge } from '@/components/ui/badge';
 import { Star, PlusCircle } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
@@ -48,7 +47,12 @@ const addReview = async (newReview: Omit<PerformanceReview, 'id'>): Promise<Perf
 };
 
 // --- Review Form Component ---
-const ReviewForm = ({ employees, onSubmit, onCancel }) => {
+interface ReviewFormProps {
+    employees: Employee[];
+    onSubmit: (review: Omit<PerformanceReview, 'id'>) => void;
+    onCancel: () => void;
+}
+const ReviewForm: React.FC<ReviewFormProps> = ({ employees, onSubmit, onCancel }) => {
     const [formData, setFormData] = useState({ employee_id: '', score: '', feedback: '', review_date: '' });
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -65,12 +69,30 @@ const ReviewForm = ({ employees, onSubmit, onCancel }) => {
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
-            <select name="employee_id" value={formData.employee_id} onChange={handleChange} className="w-full p-2 border rounded" required>
+            <label htmlFor="employee_id" className="sr-only">Employee</label>
+            <select
+                id="employee_id"
+                name="employee_id"
+                value={formData.employee_id}
+                onChange={handleChange}
+                className="w-full p-2 border rounded"
+                required
+                title="Select Employee"
+            >
                 <option value="">Select Employee</option>
                 {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
             </select>
             <input name="score" type="number" min="1" max="5" value={formData.score} onChange={handleChange} placeholder="Score (1-5)" className="w-full p-2 border rounded" required />
-            <input name="review_date" type="date" value={formData.review_date} onChange={handleChange} className="w-full p-2 border rounded" required />
+            <input
+                name="review_date"
+                type="date"
+                value={formData.review_date}
+                onChange={handleChange}
+                className="w-full p-2 border rounded"
+                required
+                title="Review Date"
+                placeholder="Select review date"
+            />
             <textarea name="feedback" value={formData.feedback} onChange={handleChange} placeholder="Feedback" className="w-full p-2 border rounded" required />
             <div className="flex justify-end gap-2">
                 <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>

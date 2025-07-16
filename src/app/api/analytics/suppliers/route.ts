@@ -18,8 +18,8 @@ export async function GET() {
         if(deliveryPerfError) throw new Error(`Delivery Perf RPC Error: ${deliveryPerfError.message}`);
 
         const responseData = {
-            topSuppliersBySpend: topSuppliers.map(s => ({ name: s.supplier_name, spend: s.total_spend })),
-            onTimeDelivery: deliveryPerf.map(s => ({ name: s.supplier_name, performance: s.on_time_percentage })),
+            topSuppliersBySpend: topSuppliers.map((s: { supplier_name: string; total_spend: number }) => ({ name: s.supplier_name, spend: s.total_spend })),
+            onTimeDelivery: deliveryPerf.map((s: { supplier_name: string; on_time_percentage: number }) => ({ name: s.supplier_name, performance: s.on_time_percentage })),
         };
 
         return NextResponse.json(responseData);

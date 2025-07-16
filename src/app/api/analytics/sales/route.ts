@@ -19,10 +19,14 @@ export async function GET() {
         const { data: salesChannelBreakdown, error: channelError } = await supabaseAdmin.rpc('get_sales_by_channel');
         if (channelError) throw new Error(`Channel RPC Error: ${channelError.message}`);
 
+        type TopProduct = { product_name: string; total_sales: number };
+        type SalesOverTime = { month: string; total_sales: number };
+        type SalesChannel = { channel: string; total_sales: number };
+
         const responseData = {
-            topProducts: topProducts.map(p => ({ name: p.product_name, sales: p.total_sales })),
-            salesOverTime: salesOverTime.map(s => ({ date: s.month, sales: s.total_sales })),
-            salesChannelBreakdown: salesChannelBreakdown.map(c => ({ name: c.channel, value: c.total_sales })),
+            topProducts: (topProducts as TopProduct[]).map((p: TopProduct) => ({ name: p.product_name, sales: p.total_sales })),
+            salesOverTime: (salesOverTime as SalesOverTime[]).map((s: SalesOverTime) => ({ date: s.month, sales: s.total_sales })),
+            salesChannelBreakdown: (salesChannelBreakdown as SalesChannel[]).map((c: SalesChannel) => ({ name: c.channel, value: c.total_sales })),
             conversionRate: 0.031, // Mocked
             averageOrderValue: 132.75, // Mocked
         };

@@ -6,11 +6,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 const COLORS = ['#FFBB28', '#FF8042', '#0088FE'];
 
-const ChartContainer = ({ title, children }) => (
+type ChartContainerProps = {
+    title: React.ReactNode;
+    children: React.ReactNode;
+};
+
+const ChartContainer = ({ title, children }: ChartContainerProps) => (
     <Card>
         <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
         <CardContent>
-            <ResponsiveContainer width="100%" height={300}>{children}</ResponsiveContainer>
+            <ResponsiveContainer width="100%" height={300}>
+                {React.isValidElement(children) ? children : <></>}
+            </ResponsiveContainer>
         </CardContent>
     </Card>
 );
@@ -48,7 +55,7 @@ export default function RiskAnalytics() {
             <ChartContainer title="Open Incidents by Severity">
                 <PieChart>
                     <Pie data={data.openIncidentsBySeverity} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} label>
-                         {data.openIncidentsBySeverity.map((entry, index) => (
+                         {data.openIncidentsBySeverity.map((_: { name: string; value: number }, index: number) => (
                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                     </Pie>

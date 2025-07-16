@@ -3,8 +3,29 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { MOCK_ALERTS } from '@/lib/mockData';
 import { Alert } from '@/types';
+
+// Example mock alerts data
+const MOCK_ALERTS: Alert[] = [
+    {
+        id: '1',
+        type: 'Production',
+        message: 'Server CPU usage is high.',
+        priority: 'high',
+    },
+    {
+        id: '2',
+        type: 'Inventory',
+        message: 'Stock for item #1234 is below threshold.',
+        priority: 'medium',
+    },
+    {
+        id: '3',
+        type: 'Procurement',
+        message: 'New user registration pending approval.',
+        priority: 'low',
+    },
+];
 
 export default function AlertsPage() {
     const getPriorityBadge = (priority: Alert['priority']) => {

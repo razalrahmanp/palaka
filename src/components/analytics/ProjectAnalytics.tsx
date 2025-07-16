@@ -3,12 +3,18 @@ import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+type ChartContainerProps = {
+    title: React.ReactNode;
+    children: React.ReactNode;
+};
 
-const ChartContainer = ({ title, children }) => (
+const ChartContainer = ({ title, children }: ChartContainerProps) => (
     <Card>
         <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
         <CardContent>
-            <ResponsiveContainer width="100%" height={300}>{children}</ResponsiveContainer>
+            <ResponsiveContainer width="100%" height={300}>
+                {React.isValidElement(children) ? children : <></>}
+            </ResponsiveContainer>
         </CardContent>
     </Card>
 );

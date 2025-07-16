@@ -33,7 +33,6 @@ type OrderItemInput = {
 };
 
 export async function GET() {
-  // Fetch orders
   const { data: ordersRaw, error: ordersError } = await supabase
     .from("sales_orders")
     .select(`
@@ -42,43 +41,52 @@ export async function GET() {
       customer_id,
       status,
       created_at,
-      customer:customers(name)
+      customers(name)
     `);
 
   if (ordersError) {
-    console.error("Error fetching orders:", ordersError);
     return NextResponse.json({ error: ordersError.message }, { status: 500 });
   }
 
-  const orders = (ordersRaw ?? []) as OrderRow[];
+  const orders: OrderRow[] = (ordersRaw ?? []).map((o: any) => ({
+    id: o.id,
+    quote_id: o.quote_id,
+    customer_id: o.customer_id,
+    status: o.status,
+    created_at: o.created_at,
+    customer: o.customers ? { name: o.customers.name } : null,
+  }));
 
-  // Fetch order items with supplier join
   const { data: itemsRaw, error: itemsError } = await supabase
     .from("sales_order_items")
     .select(`
       order_id,
       quantity,
       unit_price,
-      product:products(
-        name,
-        price,
-        supplier:suppliers(name)
-      ),
-      custom_product:custom_products(
-        name,
-        price,
-        supplier:suppliers(name)
-      )
+      product:products(name, price, suppliers(name)),
+      custom_product:custom_products(name, price, suppliers(name))
     `);
 
   if (itemsError) {
-    console.error("Error fetching order items:", itemsError);
     return NextResponse.json({ error: itemsError.message }, { status: 500 });
   }
 
-  const items = (itemsRaw ?? []) as ItemRow[];
+  const items: ItemRow[] = (itemsRaw ?? []).map((i: any) => ({
+    order_id: i.order_id,
+    quantity: i.quantity,
+    unit_price: i.unit_price,
+    product: i.product ? {
+      name: i.product.name,
+      price: i.product.price,
+      supplier: i.product.suppliers || null,
+    } : null,
+    custom_product: i.custom_product ? {
+      name: i.custom_product.name,
+      price: i.custom_product.price,
+      supplier: i.custom_product.suppliers || null,
+    } : null,
+  }));
 
-  // Combine orders with their items
   const grouped = orders.map((order) => {
     const orderItems = items
       .filter((i) => i.order_id === order.id)
@@ -89,7 +97,7 @@ export async function GET() {
         supplier_name:
           i.product?.supplier?.name ??
           i.custom_product?.supplier?.name ??
-          "N/A"
+          "N/A",
       }));
 
     const total = orderItems.reduce(
@@ -111,6 +119,7 @@ export async function GET() {
 
   return NextResponse.json(grouped);
 }
+
 
 export async function POST(req: Request) {
   const body = await req.json();

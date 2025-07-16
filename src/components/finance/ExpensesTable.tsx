@@ -45,7 +45,7 @@ interface BankAccount {
 
 export function ExpensesTable() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [loading, setLoading] = useState(false);
+  // const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<Partial<Expense>>({});
   const [filters, setFilters] = useState({
@@ -64,11 +64,9 @@ useEffect(() => {
 }, []);
 
   const fetchExpenses = async () => {
-    setLoading(true);
     const res = await fetch("/api/finance/expenses");
     const { data } = await res.json();
     setExpenses(data);
-    setLoading(false);
   };
 
   useEffect(() => {

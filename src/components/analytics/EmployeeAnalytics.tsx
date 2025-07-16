@@ -6,11 +6,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
 
-const ChartContainer = ({ title, children }) => (
+type ChartContainerProps = {
+    title: React.ReactNode;
+    children: React.ReactElement;
+};
+
+const ChartContainer = ({ title, children }: ChartContainerProps) => (
     <Card>
         <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
         <CardContent>
-            <ResponsiveContainer width="100%" height={300}>{children}</ResponsiveContainer>
+            <ResponsiveContainer width="100%" height={300}>
+                {children}
+            </ResponsiveContainer>
         </CardContent>
     </Card>
 );
@@ -48,7 +55,7 @@ export default function EmployeeAnalytics() {
             <ChartContainer title="Productivity by Position (Tasks Completed)">
                 <PieChart>
                     <Pie data={data.departmentProductivity} dataKey="tasks" nameKey="name" cx="50%" cy="50%" outerRadius={100} label>
-                         {data.departmentProductivity.map((entry, index) => (
+                         {data.departmentProductivity.map((index: number) => (
                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                     </Pie>

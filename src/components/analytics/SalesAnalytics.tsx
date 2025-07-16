@@ -6,15 +6,21 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
 
-const ChartContainer = ({ title, children }) => (
+type ChartContainerProps = {
+    title: React.ReactNode;
+    children: React.ReactNode;
+};
+
+const ChartContainer = ({ title, children }: ChartContainerProps) => (
     <Card>
         <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
         <CardContent>
-            <ResponsiveContainer width="100%" height={300}>{children}</ResponsiveContainer>
+            <ResponsiveContainer width="100%" height={300}>
+                {React.isValidElement(children) ? children : <></>}
+            </ResponsiveContainer>
         </CardContent>
     </Card>
 );
-
 const fetchSalesData = async () => {
     const res = await fetch('/api/analytics/sales');
     if (!res.ok) throw new Error('Failed to fetch sales data');
@@ -55,7 +61,7 @@ export default function SalesAnalytics() {
             <ChartContainer title="Sales Channel Breakdown">
                  <PieChart>
                     <Pie data={data.salesChannelBreakdown} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} fill="#8884d8" label>
-                        {data.salesChannelBreakdown.map((entry, index) => (
+                        {data.salesChannelBreakdown.map(( index: number) => (
                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                     </Pie>

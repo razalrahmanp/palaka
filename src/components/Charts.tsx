@@ -3,7 +3,17 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
 
-export const Charts = ({ profitVsExpenses, salesTrends, topPerformers }) => {
+type ProfitVsExpensesItem = { name: string; profit: number; expenses: number };
+type SalesTrendsItem = { name: string; sales: number };
+type TopPerformersItem = { name: string; value: number };
+
+interface ChartsProps {
+  profitVsExpenses: ProfitVsExpensesItem[];
+  salesTrends: SalesTrendsItem[];
+  topPerformers: TopPerformersItem[];
+}
+
+export const Charts: React.FC<ChartsProps> = ({ profitVsExpenses, salesTrends, topPerformers }) => {
   return (
     <div className="space-y-6">
       <Card>

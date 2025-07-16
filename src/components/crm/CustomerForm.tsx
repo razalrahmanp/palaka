@@ -6,7 +6,28 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-export const CustomerForm = ({ initialData, onSubmit, onCancel }) => {
+interface CustomerFormProps {
+    initialData?: {
+        name?: string;
+        email?: string;
+        phone?: string;
+        status?: string;
+        source?: string;
+        tags?: string[];
+    };
+   onSubmit: (data: {
+    name: string;
+    email?: string;
+    phone?: string;
+    company?: string;
+    status: "Lead" | "Active" | "Churned";
+    source: "Website" | "Referral" | "Trade Show";
+    tags: string[];
+    }) => void;
+    onCancel: () => void;
+}
+
+export const CustomerForm: React.FC<CustomerFormProps> = ({ initialData, onSubmit, onCancel }) => {
     const [formData, setFormData] = useState({
         name: '', email: '', phone: '', status: 'Lead', source: 'Website', tags: ''
     });
@@ -26,13 +47,15 @@ export const CustomerForm = ({ initialData, onSubmit, onCancel }) => {
         }
     }, [initialData]);
 
-    const handleChange = (e) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    const handleSelectChange = (name, value) => setFormData(prev => ({ ...prev, [name]: value }));
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    const handleSelectChange = (name: string, value: string) => setFormData(prev => ({ ...prev, [name]: value }));
     
-    const handleSubmit = (e) => {
+    const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         onSubmit({
             ...formData,
+            status: formData.status as "Lead" | "Active" | "Churned",
+            source: formData.source as "Website" | "Referral" | "Trade Show",
             tags: formData.tags.split(',').map(tag => tag.trim()).filter(Boolean),
         });
     };

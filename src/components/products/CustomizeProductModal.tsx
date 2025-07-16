@@ -32,7 +32,7 @@ export default function CustomizeProductModal({
   useEffect(() => {
     if (product) {
       setQty(1);
-      setPrice(product.product_price || 0);
+      setPrice((product.price ?? 0));
       setMaterial("");
       setColor("");
       setDimensions("");

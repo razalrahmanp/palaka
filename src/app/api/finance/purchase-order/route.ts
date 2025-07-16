@@ -5,20 +5,6 @@ import { supabase } from "@/lib/supabaseClient";
 import { FinPurchaseOrder } from "@/types";
 import { getCurrentUser } from "@/lib/auth";
 
-interface RawPurchaseOrder {
-  id: string;
-  status: "pending" | "approved" | "received";
-  quantity: number | null;
-  total: number | null;
-  created_at: string | null;
-  due_date?: string | null;
-  payment_status?: "unpaid" | "paid" | "partially_paid";
-  paid_amount?: number | null;
-  suppliers?: { id: string; name: string } | null;
-  product?: { price: number | null; name?: string | null } | null;
-  product_id?: string | null;
-}
-
 export async function GET() {
   try {
     const { data, error } = await supabase
@@ -48,36 +34,53 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const typedData = data as RawPurchaseOrder[];
 
-    const mapped: FinPurchaseOrder[] = typedData.map((row) => ({
+    type PurchaseOrderRow = {
+      id: string;
+      status: string;
+      quantity: number;
+      total: number;
+      due_date: string;
+      payment_status: string;
+      paid_amount: number;
+      created_at: string;
+      suppliers: { id: string; name: string }[] | null;
+      product: { price: number; name: string }[] | null;
+      product_id?: string;
+    };
+
+    const mapped: FinPurchaseOrder[] = (data ?? []).map((row: PurchaseOrderRow) => ({
       id: row.id,
       date: row.created_at ? row.created_at.split("T")[0] : "",
-      status: row.status,
+      status: (["pending", "approved", "received"].includes(row.status)
+        ? row.status
+        : "pending") as "pending" | "approved" | "received",
       total: row.total ?? 0,
       due_date: row.due_date ?? "",
-      payment_status: row.payment_status ?? "unpaid",
+      payment_status: (row.payment_status === "paid" || row.payment_status === "unpaid" || row.payment_status === "partially_paid")
+        ? row.payment_status
+        : "unpaid",
       paid_amount: row.paid_amount ?? 0,
-      supplier: row.suppliers
-        ? { id: row.suppliers.id, name: row.suppliers.name }
+      supplier: Array.isArray(row.suppliers) && row.suppliers.length > 0
+        ? { id: row.suppliers[0].id, name: row.suppliers[0].name }
         : undefined,
-      products: row.product
+      products: Array.isArray(row.product) && row.product.length > 0
         ? [
             {
               id: row.product_id ?? "",
-              name: row.product?.name ?? "",
+              name: row.product[0].name ?? "",
               quantity: row.quantity ?? 0,
-              price: row.product?.price ?? 0,
+              price: row.product[0].price ?? 0,
             },
           ]
         : [],
-      products_id: row.product
+      products_id: Array.isArray(row.product) && row.product.length > 0
         ? [
             {
               id: row.product_id ?? "",
-              name: row.product?.name ?? "",
+              name: row.product[0].name ?? "",
               quantity: row.quantity ?? 0,
-              price: row.product?.price ?? 0,
+              price: row.product[0].price ?? 0,
             },
           ]
         : [],
@@ -106,7 +109,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  const { error, data } = await supabase.from("purchase_orders").insert([
+  const { error } = await supabase.from("purchase_orders").insert([
     {
       supplier_id,
       product_id: product_id ?? null,

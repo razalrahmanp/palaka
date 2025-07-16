@@ -1,6 +1,5 @@
 // hooks/useNextId.ts
 import { useState, useEffect } from 'react'
-import { nextId } from '@/lib/idGenerator'
 
 export function useNextId(
   table: string,
@@ -10,20 +9,24 @@ export function useNextId(
   const [id, setId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
-
   useEffect(() => {
     let canceled = false
     setLoading(true)
-    nextId(table, idColumn, name)
-      .then(newId => {
-        if (!canceled) setId(newId)
-      })
-      .catch(err => {
-        if (!canceled) setError(err)
-      })
-      .finally(() => {
+    const fetchNextId = async () => {
+      try {
+        const response = await fetch(`/api/${table}/next-id?column=${idColumn}&name=${name}`)
+        if (!response.ok) {
+          throw new Error('Failed to fetch next ID')
+        }
+        const data = await response.json()
+        if (!canceled) setId(data.nextId)
+      } catch (err) {
+        if (!canceled) setError(err as Error)
+      } finally {
         if (!canceled) setLoading(false)
-      })
+      }
+    }
+    fetchNextId()
 
     return () => {
       canceled = true
@@ -32,3 +35,6 @@ export function useNextId(
 
   return { id, loading, error }
 }
+
+
+

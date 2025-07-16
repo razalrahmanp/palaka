@@ -5,7 +5,6 @@
 
 import React, { createContext, useContext, useMemo, ReactNode } from 'react';
 // Corrected import paths from alias to relative
-import { MOCK_CURRENT_USER } from './mockData';
 import { User } from '../types';
 
 // --- 1. Define Permissions for each Role ---
@@ -46,8 +45,7 @@ const RBACContext = createContext<RBACContextType | null>(null);
 // This component will wrap the authenticated parts of the app.
 // It determines the current user's permissions and makes them available
 // to all child components via the context.
-export const RBACProvider = ({ children }: { children: ReactNode }) => {
-  const user = MOCK_CURRENT_USER; // In a real app, this would come from an auth session.
+export const RBACProvider = ({ user, children }: { user: User; children: ReactNode }) => {
   const userRoles = useMemo(() => {
     // Ensure userRoles is always an array, even if user.role is undefined
     return user.role ? [user.role] : [];

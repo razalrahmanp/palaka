@@ -12,7 +12,7 @@ export async function POST(req: Request) {
     }
 
     // Check if user already exists
-    const { data: existingUser, error: fetchError } = await supabase
+    const { data: existingUser } = await supabase
       .from('users')
       .select('id')
       .eq('email', email)

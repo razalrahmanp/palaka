@@ -87,26 +87,28 @@ export default function CrmPage() {
 
   if (!currentUser) return null;
 
-  const handleAddInteraction = async (data: Omit<Interaction, 'id' | 'customer_id' | 'created_at'>) => {
+  const handleAddInteraction = (formData: { type: string; notes: string }) => {
     if (!selectedCustomer) return;
-    await fetch('/api/crm/interactions', {
+    fetch('/api/crm/interactions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        ...data,
+        ...formData,
+        interaction_date: new Date().toISOString(),
         customer_id: selectedCustomer.id,
         created_by: currentUser.id,
       }),
+    }).then(() => {
+      qc.invalidateQueries({ queryKey: ['interactions'] });
+      setInteractionModalOpen(false);
     });
-    qc.invalidateQueries({ queryKey: ['interactions'] });
-    setInteractionModalOpen(false);
   };
 
-  const handleSaveCustomer = async (data: Omit<Customer, 'id'> | Customer) => {
+  const handleSaveCustomer = async (data: { name: string; email?: string; phone?: string; company?: string; status: Customer['status']; source: Customer['source']; tags: string[] }) => {
     const isEdit = !!(selectedCustomer && selectedCustomer.id);
     const url = isEdit ? `/api/crm/customers/${selectedCustomer!.id}` : '/api/crm/customers';
     const method = isEdit ? 'PUT' : 'POST';
-
+  
     await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
@@ -254,8 +256,8 @@ export default function CrmPage() {
             <DialogTitle>{selectedCustomer ? 'Edit Customer' : 'New Customer'}</DialogTitle>
           </DialogHeader>
           <CustomerForm
-            initialData={selectedCustomer}
-            onSubmit={(data: Omit<Customer, 'id'> | Customer) => handleSaveCustomer(data)}
+            initialData={selectedCustomer ?? undefined}
+            onSubmit={handleSaveCustomer}
             onCancel={() => setCustomerModalOpen(false)}
           />
         </DialogContent>

@@ -4,7 +4,16 @@ import React from 'react';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-export const CustomerFilters = ({ filterStatus, onFilterStatusChange, filterSource, onFilterSourceChange }) => {
+import { Customer } from '@/types';
+
+type CustomerFiltersProps = {
+    filterStatus: 'all' | Customer['status'];
+    onFilterStatusChange: (value: 'all' | Customer['status']) => void;
+    filterSource: 'all' | Customer['source'];
+    onFilterSourceChange: (value: 'all' | Customer['source']) => void;
+};
+
+export const CustomerFilters: React.FC<CustomerFiltersProps> = ({ filterStatus, onFilterStatusChange, filterSource, onFilterSourceChange }) => {
     return (
         <div className="flex space-x-4 mb-4">
             <div className="w-full md:w-1/4">

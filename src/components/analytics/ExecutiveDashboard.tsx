@@ -8,7 +8,14 @@ import { IndianRupeeIcon, ShoppingCart, TrendingUp, UserCheck } from 'lucide-rea
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
 
-const KpiCard = ({ title, value, icon: Icon, format = 'currency' }) => (
+type KpiCardProps = {
+  title: string;
+  value: number;
+  icon: React.ElementType;
+  format?: 'currency' | 'percent' | 'number';
+};
+
+const KpiCard: React.FC<KpiCardProps> = ({ title, value, icon: Icon, format = 'currency' }) => (
   <Card>
     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
       <CardTitle className="text-sm font-medium">{title}</CardTitle>
@@ -24,7 +31,12 @@ const KpiCard = ({ title, value, icon: Icon, format = 'currency' }) => (
   </Card>
 );
 
-const ChartContainer = ({ title, children }) => (
+type ChartContainerProps = {
+    title: string;
+    children: React.ReactElement;
+};
+
+const ChartContainer: React.FC<ChartContainerProps> = ({ title, children }) => (
     <Card>
         <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
         <CardContent>
@@ -87,7 +99,7 @@ export default function ExecutiveDashboard() {
         <ChartContainer title="Top Performers (by unit)">
             <PieChart>
                 <Pie data={data.topPerformers} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill="#8884d8" label>
-                    {data.topPerformers.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                    {data.topPerformers.map(( index: number) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                 </Pie>
                 <Tooltip /> <Legend />
             </PieChart>

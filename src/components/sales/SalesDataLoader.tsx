@@ -27,7 +27,7 @@ export function useSalesData() {
                 id: p.product_id,
                 name: p.product_name,
                 price: p.product_price ?? 0,
-                supplier: p.supplier_name ?? '',
+                supplier_name: p.supplier_name ?? '',
               })
             )
           );

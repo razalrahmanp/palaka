@@ -43,12 +43,12 @@ export async function POST(req: Request) {
     // Step 4: Prepare the final user object for the client
     const { password: _, role_id, ...userWithoutPassword } = user;
     
-    const finalUser = {
-        ...userWithoutPassword,
-        role: user.role?.name || 'Unknown Role',
-        // Create a simple array of permission names (e.g., ['dashboard:read', 'user:manage'])
-        permissions: permissions ? permissions.map(p => p.permission.name) : [] 
-    };
+const finalUser = {
+  ...userWithoutPassword,
+  role: Array.isArray(user.role) ? user.role[0]?.name || 'Unknown Role' : user.role?.name || 'Unknown Role',
+  permissions: permissions ? permissions.map(p => p.permission.name) : [],
+};
+
 
     return NextResponse.json(finalUser);
 

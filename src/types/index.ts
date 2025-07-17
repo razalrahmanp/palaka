@@ -370,3 +370,58 @@ export const subcategoryMap = {
   "Internet": { category: "Utilities", type: "Fixed" },
   "Utilities": { category: "Utilities", type: "Fixed" },
 };
+
+
+
+// Define types for better type safety
+export type ProductCost = {
+  id: string;
+  cost: string;
+};
+
+export type SalesOrderItem = {
+  product_id: string;
+  unit_price: string;
+  quantity: number;
+};
+
+export type Expense = {
+  amount: string;
+};
+
+export type MonthlyBreakdownItem = {
+  month: string;
+  total_revenue: string | number;
+  total_expenses: string | number;
+};
+
+export type TopPerformer = {
+  product_name: string;
+  total_sales: number;
+};
+
+export type TopVendor = {
+  vendor_name: string;
+  total_spent: number;
+};
+
+export type TopSalesperson = {
+  salesperson_name: string;
+  total_sales: number;
+};
+
+export type DailySale = {
+  day: string;
+  total_sales: number;
+};
+
+export type WeeklySale = {
+  week: string;
+  total_sales: number;
+};
+
+export type MonthlySale = {
+  month: string;
+  total_sales: number;
+};
+

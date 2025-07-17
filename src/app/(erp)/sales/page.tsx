@@ -61,7 +61,18 @@ export default function SalesPage() {
   );
 
   // 🆕 Handle PO creation from custom order
-  async function handleCreatePO(order: any) {
+  async function handleCreatePO(order: {
+    orderId: string;
+    customerName: string;
+    orderDate: string | Date;
+    totalPrice: number;
+    items: Array<{
+      productName: string;
+      quantity: number;
+      unitPrice: number;
+      supplierName?: string;
+    }>;
+  }) {
     if (!currentUser?.id) return;
 
     const groupedBySupplier = new Map<
@@ -129,16 +140,19 @@ toast.success("Purchase orders created successfully.");
 setCustomOrdersRefetch(() => () => refresh()); // Update refetch function
 refresh();
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      toast.error(err.message || "Failed to create purchase orders.");
+      if (err instanceof Error) {
+        toast.error(err.message || "Failed to create purchase orders.");
+      } else {
+        toast.error("Failed to create purchase orders.");
+      }
     }
   }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4">
       <QuoteSection
-        quotes={quotes}
         quoteSearch={quoteSearch}
         setQuoteSearch={setQuoteSearch}
         quoteDate={quoteDate}
@@ -156,7 +170,6 @@ refresh();
 
       {canViewOrders && (
         <OrderSection
-          orders={orders}
           orderSearch={orderSearch}
           setOrderSearch={setOrderSearch}
           orderDate={orderDate}
@@ -179,7 +192,7 @@ refresh();
           setSelectedOrder({
             id: order.orderId,
             customer: order.customerName,
-            date: order.orderDate,
+            date: typeof order.orderDate === 'string' ? order.orderDate : order.orderDate?.toISOString(),
             total: order.totalPrice,
             status: "confirmed",
             items: order.items.map((i) => ({

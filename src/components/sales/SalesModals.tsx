@@ -25,7 +25,7 @@ type Props = {
   customers: Customer[];
   products: Product[];
   currentUser: User | null;
-handleSaveQuote: (q: QuoteFormData, i: OrderItem[]) => void;
+handleSaveQuote: (q: QuoteFormData, i: OrderItem[]) => Promise<void>;
   refresh: () => void;
 };
 
@@ -66,8 +66,19 @@ export function SalesModals({
             }
             availableCustomers={customers}
             availableProducts={products}
-            userRole={currentUser?.role}
-            onSubmit={handleSaveQuote}
+            userRole={currentUser?.role ?? 'Sales Representative'} 
+            onSubmit={async (quote, items) => {
+              // Ensure status is one of the allowed types
+              const validStatuses = ['Draft', 'Pending', 'Approved', 'Rejected'] as const;
+              const status =
+                validStatuses.includes(quote.status as QuoteFormData['status'])
+                  ? (quote.status as QuoteFormData['status'])
+                  : 'Draft';
+              await handleSaveQuote(
+                { ...quote, status },
+                items
+              );
+            }}
             onCancel={() => setIsQuoteModalOpen(false)}
           />
         </DialogContent>

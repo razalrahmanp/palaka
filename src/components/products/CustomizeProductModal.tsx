@@ -52,7 +52,7 @@ export default function CustomizeProductModal({
       isCustom: true,
       product_id: product.product_id,
       custom_supplier_id: supplierId,   // 🟢 pass supplier
-       custom_supplier_name: suppliers.find(s => s.id === supplierId)?.name || null,
+      custom_supplier_name: suppliers.find(s => s.id === supplierId)?.name || null,
     });
 
     onClose();
@@ -60,7 +60,7 @@ export default function CustomizeProductModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-w-md w-full p-6">
         <DialogHeader>
           <DialogTitle>Customize Product</DialogTitle>
           <DialogDescription>
@@ -68,26 +68,57 @@ export default function CustomizeProductModal({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <Input type="number" value={qty} onChange={(e) => setQty(Number(e.target.value))} placeholder="Quantity" />
-          <Input type="number" value={price} onChange={(e) => setPrice(Number(e.target.value))} placeholder="Price per unit" />
-          <Input value={material} onChange={(e) => setMaterial(e.target.value)} placeholder="Material" />
-          <Input value={color} onChange={(e) => setColor(e.target.value)} placeholder="Color" />
-          <Input value={dimensions} onChange={(e) => setDimensions(e.target.value)} placeholder="Dimensions" />
+          <Input
+            type="number"
+            value={qty}
+            onChange={(e) => setQty(Number(e.target.value))}
+            placeholder="Quantity"
+            className="w-full"
+          />
+          <Input
+            type="number"
+            value={price}
+            onChange={(e) => setPrice(Number(e.target.value))}
+            placeholder="Price per unit"
+            className="w-full"
+          />
+          <Input
+            value={material}
+            onChange={(e) => setMaterial(e.target.value)}
+            placeholder="Material"
+            className="w-full"
+          />
+          <Input
+            value={color}
+            onChange={(e) => setColor(e.target.value)}
+            placeholder="Color"
+            className="w-full"
+          />
+          <Input
+            value={dimensions}
+            onChange={(e) => setDimensions(e.target.value)}
+            placeholder="Dimensions"
+            className="w-full"
+          />
            
-            <Select value={supplierId ?? ""} onValueChange={setSupplierId}>
-              <SelectTrigger className="w-full">Select Supplier</SelectTrigger>
-              <SelectContent>
-                {suppliers.map(s => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
+          <Select
+            value={supplierId ?? ""}
+            onValueChange={(value) => setSupplierId(value)}
+          >
+            <SelectTrigger className="w-full">Select Supplier</SelectTrigger>
+            <SelectContent>
+              {suppliers.map(s => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <DialogFooter>
-          <Button onClick={handleSubmit}>Add to Cart</Button>
+          <Button onClick={handleSubmit} className="w-full sm:w-auto">
+            Add to Cart
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

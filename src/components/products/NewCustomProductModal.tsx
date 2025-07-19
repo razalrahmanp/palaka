@@ -21,6 +21,7 @@ export default function NewCustomProductModal({ isOpen, onClose, onSave, supplie
   const [qty, setQty] = useState(1);
   const [config, setConfig] = useState("");
   const [supplierId, setSupplierId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false); // To disable button after submit
 
   useEffect(() => {
     if (isOpen) {
@@ -33,6 +34,8 @@ export default function NewCustomProductModal({ isOpen, onClose, onSave, supplie
   }, [isOpen]);
 
   const handleSubmit = () => {
+    if (isSubmitting) return; // Prevent double clicks
+    setIsSubmitting(true); // Disable button during submission
     onSave({
       id: crypto.randomUUID(),
       name,
@@ -45,11 +48,12 @@ export default function NewCustomProductModal({ isOpen, onClose, onSave, supplie
       custom_supplier_name: suppliers.find(s => s.id === supplierId)?.name || null,
     });
     onClose();
+    setIsSubmitting(false); // Re-enable button after process finishes
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-w-md mx-auto p-6 space-y-4">
         <DialogHeader>
           <DialogTitle>Add Custom Product</DialogTitle>
           <DialogDescription>
@@ -57,12 +61,37 @@ export default function NewCustomProductModal({ isOpen, onClose, onSave, supplie
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Product Name" />
-          <Input type="number" value={qty} onChange={(e) => setQty(Number(e.target.value))} placeholder="Quantity" />
-          <Input type="number" value={price} onChange={(e) => setPrice(Number(e.target.value))} placeholder="Price" />
-          <Textarea value={config} onChange={(e) => setConfig(e.target.value)} placeholder="Configuration / Notes" />
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Product Name"
+            className="w-full"
+          />
+          <Input
+            type="number"
+            value={qty}
+            onChange={(e) => setQty(Number(e.target.value))}
+            placeholder="Quantity"
+            className="w-full"
+          />
+          <Input
+            type="number"
+            value={price}
+            onChange={(e) => setPrice(Number(e.target.value))}
+            placeholder="Price"
+            className="w-full"
+          />
+          <Textarea
+            value={config}
+            onChange={(e) => setConfig(e.target.value)}
+            placeholder="Configuration / Notes"
+            className="w-full"
+          />
 
-          <Select value={supplierId ?? ""} onValueChange={setSupplierId}>
+          <Select
+            value={supplierId ?? ""}
+            onValueChange={(value) => setSupplierId(value)}
+          >
             <SelectTrigger className="w-full">Select Supplier</SelectTrigger>
             <SelectContent>
               {suppliers.map(s => (
@@ -72,10 +101,15 @@ export default function NewCustomProductModal({ isOpen, onClose, onSave, supplie
               ))}
             </SelectContent>
           </Select>
-
         </div>
         <DialogFooter>
-          <Button onClick={handleSubmit}>Add to Cart</Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={isSubmitting || !name || !price || !qty || !supplierId}
+            className="w-full sm:w-auto"
+          >
+            {isSubmitting ? "Adding..." : "Add to Cart"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

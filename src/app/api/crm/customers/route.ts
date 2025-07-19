@@ -1,4 +1,4 @@
-// GET all customers, POST create customer
+//src/app/api/crm/customers/route.ts
 import { supabase } from '@/lib/supabaseAdmin'
 import { NextResponse } from 'next/server'
 

@@ -1,4 +1,3 @@
-// components/inventory/InventoryTable.tsx
 'use client'
 import React from 'react'
 import {
@@ -16,10 +15,11 @@ type Props = {
   items: ProductWithInventory[],
   onAdjustClick: (item: ProductWithInventory) => void,
   onAddItem: () => void,
-  onManageMargins: () => void
+  onManageMargins: () => void,
+  onAddSupplier: () => void // Accept onAddSupplier as a prop
 }
 
-export const InventoryTable: React.FC<Props> = ({ items, onAdjustClick, onAddItem, onManageMargins }) => {
+export const InventoryTable: React.FC<Props> = ({ items, onAdjustClick, onAddItem, onManageMargins, onAddSupplier }) => {
   return (
     <Card>
       <CardHeader className="flex flex-row justify-between items-center">
@@ -34,13 +34,17 @@ export const InventoryTable: React.FC<Props> = ({ items, onAdjustClick, onAddIte
             <Settings className="mr-2 h-4 w-4" /> Manage Margins
           </Button>
           <Button onClick={onAddItem}>Add New Item</Button>
+          {/* Updated Add Supplier button */}
+          <Button onClick={onAddSupplier} >
+            Add Supplier
+          </Button>
         </div>
       </CardHeader>
       <CardContent>
         <Table>
           <TableHeader>
             <TableRow>
-              {['Product','Supplier','Category','Subcat','Material','Location','Cost','MRP','Margin','Stock','Reorder','Actions'].map(h => (
+              {['Product', 'Supplier', 'Category', 'Subcat', 'Material', 'Location', 'Cost', 'MRP', 'Margin', 'Stock', 'Reorder', 'Actions'].map(h => (
                 <TableHead key={h}>{h}</TableHead>
               ))}
             </TableRow>

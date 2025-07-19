@@ -1,32 +1,33 @@
-// File: src/app/(erp)/layout.tsx
-'use client' 
+'use client';
 
-import React, { useEffect } from 'react'
-import { useRouter } from 'next/navigation'               // ✅ new
-import { getCurrentUser } from '@/lib/auth'               // ✅ new
-import { Header } from '@/components/Header'
-import { Sidebar } from '@/components/Sidebar'
+import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { getCurrentUser } from '@/lib/auth';
+import { Header } from '@/components/Header';
+import { Sidebar } from '@/components/Sidebar';
 
 export default function ErpLayout({ children }: { children: React.ReactNode }) {
-  const router = useRouter()
+  const router = useRouter();
+  const [sidebarOpen, setSidebarOpen] = useState(false); // State for mobile sidebar toggle
 
-  // ✅ new: on mount, if no user in localStorage, replace to /login
+  // Check for user and redirect to login if not authenticated
   useEffect(() => {
-    const user = getCurrentUser()
+    const user = getCurrentUser();
     if (!user) {
-      router.replace('/login')
+      router.replace('/login');
     }
-  }, [router])
+  }, [router]);
 
   return (
     <div className="flex h-screen bg-gray-100 font-sans">
-      <Sidebar />
+      {/* Sidebar - Mobile view toggles with sidebarOpen */}
+      <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
+      
+      {/* Main content */}
       <div className="flex flex-col flex-1">
-        <Header />
-        <main className="flex-1 p-6 overflow-y-auto">
-          {children}
-        </main>
+        <Header onSidebarToggle={() => setSidebarOpen(!sidebarOpen)} />
+        <main className="flex-1 p-6 overflow-y-auto">{children}</main>
       </div>
     </div>
-  )
+  );
 }

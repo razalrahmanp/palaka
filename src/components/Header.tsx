@@ -7,7 +7,7 @@ import { getCurrentUser, logout } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { NotificationDropdown } from './NotificationDropdown'; // Import the new component
 
-export const Header = () => {
+export const Header = ({ onSidebarToggle }: { onSidebarToggle: () => void }) => {
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [notificationDropdownOpen, setNotificationDropdownOpen] = useState(false);
   const user = getCurrentUser();
@@ -35,7 +35,17 @@ export const Header = () => {
   }, []);
 
   return (
-    <header className="flex items-center justify-end p-4 bg-white border-b relative z-10">
+    <header className="flex items-center justify-between p-4 bg-white border-b relative z-10">
+      {/* Mobile Sidebar Toggle Button */}
+      <button onClick={onSidebarToggle} className="md:hidden text-amber-800">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+
+      {/* Center content can be added here if needed */}
+      <div className="flex-grow"></div>  {/* This takes up the space between the left and right items */}
+
       <div className="flex items-center space-x-4">
         {/* Bell Icon with Dropdown */}
         <div className="relative" ref={notificationRef}>
@@ -44,7 +54,6 @@ export const Header = () => {
             className="p-2 rounded-full hover:bg-gray-100 relative"
           >
             <Bell className="h-6 w-6 text-gray-500" />
-            {/* You can add a notification badge here if needed */}
           </button>
           {notificationDropdownOpen && <NotificationDropdown />}
         </div>

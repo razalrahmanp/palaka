@@ -1,3 +1,4 @@
+//src/app/api/sku/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { generateSku } from '@/lib/skuGenerator';
 

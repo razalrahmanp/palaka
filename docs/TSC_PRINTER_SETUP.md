@@ -7,20 +7,67 @@ The ProductLabels component has been enhanced to support TSC thermal barcode pri
 ## Features
 
 ### Supported Label Sizes
-- **4" x 3" (Large)** - Full information display with large QR codes
-- **4" x 2" (Medium)** - Standard size for most products
-- **3" x 2" (Standard)** - Compact size, most common for inventory
-- **2" x 1" (Small)** - Minimal information, for small items
+- **100mm x 50mm (4" x 2")** - Large labels for detailed information
+- **75mm x 50mm (3" x 2")** - Standard medium labels *(Default)*
+- **75mm x 25mm (3" x 1")** - Narrow labels for shelf edges
+- **50mm x 25mm (2" x 1")** - Small labels for compact items
+
+### QR Code Specifications
+- **100mm x 50mm**: 35mm QR code with proper spacing
+- **75mm x 50mm**: 30mm QR code with optimal sizing
+- **75mm x 25mm**: 20mm QR code for narrow labels
+- **50mm x 25mm**: 18mm QR code for small labels
 
 ### Label Contents
 Each label includes:
-- Product name (truncated to fit)
-- SKU (auto-generated or custom)
-- Category and Material (abbreviated)
-- Location and Stock quantity
-- QR code containing product ID
-- Supplier information
-- Company footer
+- Product name (main title, truncated to fit)
+- SKU (from products table, left-aligned)
+- QR code containing product ID (right side)
+- Company footer (supplier information)
+
+## Critical TSC Printer Calibration (QR Code Splitting Fix)
+
+### Problem: QR codes split across multiple labels
+**Cause:** Misalignment between software label dimensions and physical printer settings.
+
+### Solution Steps:
+
+1. **Exact Physical Measurements:**
+   - Measure your actual labels with a ruler (width × height in mm)
+   - Ensure ERP label size selection matches physical labels exactly
+
+2. **TSC Driver Settings:**
+   ```
+   Printer Properties → Page Setup:
+   - Paper Size: Custom/User Defined
+   - Width: [Exact width in mm, e.g., 75mm]
+   - Height: [Exact height in mm, e.g., 50mm]
+   - Margins: 0mm (all sides)
+   - Scaling: 100% (never fit-to-page)
+   ```
+
+3. **Gap Sensor Calibration:**
+   ```
+   TSC Printer Utility → Tools:
+   - Run "Gap Sensor Calibration"
+   - Run "Print Position Calibration"  
+   - Set gap size to 2-3mm (measure actual gap)
+   ```
+
+4. **Browser Print Settings:**
+   ```
+   Chrome/Edge Print Dialog:
+   - Paper size: Match label dimensions exactly
+   - Scale: 100% (critical!)
+   - Margins: None
+   - Background graphics: Enabled
+   ```
+
+### Updated Label Specifications:
+All measurements now use **millimeters (mm)** for precise TSC printer compatibility:
+- QR codes are sized relative to label dimensions to prevent overflow
+- Font sizes optimized for each label size
+- Proper margin calculations to ensure content fits within label boundaries
 
 ## Usage Instructions
 
@@ -59,25 +106,25 @@ Each label includes:
 - **Dimensions**: 4 inches wide × 3 inches tall
 - **QR Code**: 100×100 pixels
 - **Font Sizes**: Title 18px, Body 14px, Footer 10px
-- **Best for**: Detailed product information
+- **Best for**: Large format with detailed material information
 
 ### 4" x 2" Labels  
 - **Dimensions**: 4 inches wide × 2 inches tall
 - **QR Code**: 80×80 pixels
 - **Font Sizes**: Title 16px, Body 12px, Footer 9px
-- **Best for**: Standard inventory items
+- **Best for**: Standard inventory items with clear readability
 
 ### 3" x 2" Labels (Recommended)
 - **Dimensions**: 3 inches wide × 2 inches tall
 - **QR Code**: 70×70 pixels  
 - **Font Sizes**: Title 14px, Body 11px, Footer 8px
-- **Best for**: Most inventory applications
+- **Best for**: Most furniture inventory applications
 
 ### 2" x 1" Labels
 - **Dimensions**: 2 inches wide × 1 inch tall
 - **QR Code**: 40×40 pixels
 - **Font Sizes**: Title 12px, Body 9px, Footer 7px
-- **Best for**: Small items, price tags
+- **Best for**: Small items, compact labeling
 
 ## QR Code Information
 

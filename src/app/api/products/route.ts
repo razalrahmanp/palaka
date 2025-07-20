@@ -78,27 +78,68 @@ export async function POST(req: NextRequest) {
 
 // GET: Fetch all products (now simplified)
 export async function GET() {
-  // The price is stored in the DB, so we just fetch it.
+  // Join inventory_items with products to ensure we get all product fields including SKU
   const { data: products, error } = await adminSupabase
-    .from('inventory_product_view')
-    .select('*'); // The view should contain cost and price from the products table.
+    .from('inventory_items')
+    .select(`
+      *,
+      products!inner(
+        id,
+        name,
+        sku,
+        description,
+        category,
+        image_url,
+        cost,
+        price,
+        created_at,
+        updated_at,
+        supplier_id
+      ),
+      suppliers(
+        id,
+        name
+      )
+    `);
 
   if (error) {
     console.error('GET /api/products error', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // For display only, calculate the margin that was applied.
-  const productsWithMargin = products.map(p => {
-      const cost = p.cost;
-      const price = p.price;
+  // Transform the data to match ProductWithInventory interface
+  const productsWithMargin = products.map(item => {
+      const product = item.products;
+      const supplier = item.suppliers;
+      const cost = product?.cost || 0;
+      const price = product?.price || 0;
       let applied_margin = 0;
 
       if (cost && price && cost > 0) {
           applied_margin = ((price / cost) - 1) * 100;
       }
       
-      return { ...p, applied_margin: applied_margin.toFixed(1) };
+      return {
+        inventory_id: item.id,
+        product_id: product.id,
+        category: item.category,
+        subcategory: item.subcategory,
+        material: item.material,
+        location: item.location,
+        quantity: item.quantity,
+        reorder_point: item.reorder_point,
+        updated_at: item.updated_at,
+        supplier_name: supplier?.name || null,
+        supplier_id: item.supplier_id,
+        price: product.price,
+        product_name: product.name,
+        product_description: product.description,
+        product_category: product.category,
+        product_image_url: product.image_url,
+        sku: product.sku, // Just fetch the SKU directly from products table
+        cost: product.cost,
+        applied_margin: applied_margin.toFixed(1)
+      };
   });
 
   return NextResponse.json(productsWithMargin);

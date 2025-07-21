@@ -7,16 +7,20 @@ The ProductLabels component has been enhanced to support TSC thermal barcode pri
 ## Features
 
 ### Supported Label Sizes
+- **40mm x 35mm (1.57" x 1.38")** - Current Standard Size *(Default)*
 - **100mm x 50mm (4" x 2")** - Large labels for detailed information
-- **75mm x 50mm (3" x 2")** - Standard medium labels *(Default)*
+- **75mm x 50mm (3" x 2")** - Standard medium labels
 - **75mm x 25mm (3" x 1")** - Narrow labels for shelf edges
 - **50mm x 25mm (2" x 1")** - Small labels for compact items
+- **38mm x 22mm (Legacy)** - Previous size (deprecated)
 
 ### QR Code Specifications
+- **40mm x 35mm**: 25mm QR code with optimal sizing *(Current)*
 - **100mm x 50mm**: 35mm QR code with proper spacing
 - **75mm x 50mm**: 30mm QR code with optimal sizing
 - **75mm x 25mm**: 20mm QR code for narrow labels
 - **50mm x 25mm**: 18mm QR code for small labels
+- **38mm x 22mm**: 18mm QR code (legacy size)
 
 ### Label Contents
 Each label includes:

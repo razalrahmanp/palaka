@@ -1,34 +1,34 @@
-# TSC Custom Printer Setup (38mm x 25mm)
+# TSC Custom Printer Setup (40mm x 35mm)
 
 ## Your Specific Printer Configuration
 
 ### Physical Specifications
-- **Sheet Width**: 8.3 cm (83mm)
-- **Sticker Width**: 3.8 cm (38mm)
-- **Sticker Height**: 2.5 cm (25mm)
-- **Gap**: 0.3 mm
+- **Sheet Width**: 4.0 cm (40mm)
+- **Sticker Width**: 4.0 cm (40mm)
+- **Sticker Height**: 3.5 cm (35mm)
+- **Gap**: 1.3 mm
 
 ## Label Configuration
-The ProductLabels component includes your custom TSC size: **TSC 38mm x 25mm (Custom)**
+The ProductLabels component includes your custom TSC size: **TSC 40mm x 35mm (Current)**
 
 ### Optimized Dimensions
-- **Width**: 38mm (matches your sticker width exactly)
-- **Height**: 25mm (matches your sticker height exactly)
-- **QR Code**: 18mm x 18mm (optimal for small format)
-- **Gap Setting**: 0.3mm (as specified)
+- **Width**: 40mm (matches your sticker width exactly)
+- **Height**: 35mm (matches your sticker height exactly)
+- **QR Code**: 25mm x 25mm (optimal for this format)
+- **Gap Setting**: 1.3mm (as specified)
 
-### Font Sizes (Optimized for 38mm width)
-- **Title**: 7px (product name)
-- **Body**: 5px (SKU text)
-- **Small**: 4px (product ID under QR code)
+### Font Sizes (Optimized for 40mm width)
+- **Title**: 11px (product name)
+- **Body**: 9px (SKU text)
+- **Small**: 7px (product ID under QR code)
 
 ## TSC Printer Driver Configuration
 
 ### Page Setup (Critical Settings)
 ```
 Paper Size: User Defined/Custom
-Width: 38mm
-Height: 25mm
+Width: 40mm
+Height: 35mm
 Orientation: Portrait
 Margins: 0mm (all sides)
 Print Area: Full page
@@ -37,8 +37,8 @@ Scaling: 100% (never use fit-to-page)
 
 ### TSC Command Configuration
 ```
-SIZE 38 mm, 25 mm
-GAP 0.3 mm, 0 mm  
+SIZE 40 mm, 35 mm
+GAP 1.3 mm, 0 mm  
 DIRECTION 0
 REFERENCE 0, 0
 OFFSET 0 mm

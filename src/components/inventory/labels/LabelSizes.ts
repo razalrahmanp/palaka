@@ -12,13 +12,14 @@ export type LabelSize = {
 }
 
 export const LABEL_SIZES: Record<string, LabelSize> = {
-  'tsc-38x25': {
-    name: 'TSC 38mm x 25mm (Custom)',
-    width: '38mm',
-    height: '25mm',
-    qrSize: 20,
-    fontSize: { title: '7px', body: '5px', small: '4px' }
+  'tsc-40x35': {
+    name: 'TSC 40mm x 35mm (Current)',
+    width: '40mm',
+    height: '35mm',
+    qrSize: 28,
+    fontSize: { title: '12px', body: '10px', small: '9px' }
   },
+  
   '50x25': {
     name: '50mm x 25mm (2" x 1")',
     width: '50mm',
@@ -49,4 +50,4 @@ export const LABEL_SIZES: Record<string, LabelSize> = {
   }
 }
 
-export const DEFAULT_LABEL_SIZE = 'tsc-38x25'
+export const DEFAULT_LABEL_SIZE = 'tsc-40x35'

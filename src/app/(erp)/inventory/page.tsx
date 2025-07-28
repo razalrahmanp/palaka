@@ -174,9 +174,14 @@ export default function InventoryPage() {
                 .filter(i => i.quantity <= i.reorder_point)
                 .map(i => ({
                   id: i.inventory_id,
-                  type: 'Inventory' as const,
+                  type: 'inventory' as const,
+                  title: 'Low Stock Alert',
                   message: `${i.product_name} at or below reorder point`,
-                  priority: 'high' as const
+                  priority: 'high' as const,
+                  status: 'new' as const,
+                  source: 'inventory_system',
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString()
                 }))} />
           </TabsContent>
 

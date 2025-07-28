@@ -10,7 +10,7 @@ interface Props {
 }
 
 export const InventoryAlerts: React.FC<Props> = ({ alerts }) => {
-  const invAlerts = alerts.filter(a => a.type === 'Inventory');
+  const invAlerts = alerts.filter(a => a.type === 'inventory');
 
   return (
     <Card>

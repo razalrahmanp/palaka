@@ -284,9 +284,16 @@ export interface DeliveryProof {
 
 export interface Alert {
   id: string;
-  type: 'Inventory' | 'Procurement' | 'Production';
+  type: 'inventory' | 'production' | 'sales' | 'system' | 'hr' | 'finance' | 'procurement';
+  title: string;
   message: string;
-  priority: 'high' | 'medium' | 'low';
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  status: 'new' | 'unread' | 'read' | 'acknowledged' | 'resolved' | 'archived';
+  source: string;
+  assigned_to?: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
 }
 
 // Represents a single row from inventory_product_view:
@@ -424,4 +431,49 @@ export type MonthlySale = {
   month: string;
   total_sales: number;
 };
+
+// HR Management Types
+export interface Employee {
+  id: string;
+  employee_id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  position: string;
+  department: string;
+  hire_date: string;
+  salary?: number;
+  status: 'Active' | 'Inactive' | 'On Leave';
+  employment_status: 'active' | 'inactive' | 'terminated';
+  employment_type: 'Full-time' | 'Part-time' | 'Contract' | 'Intern';
+  address?: string;
+  date_of_birth?: string;
+  emergency_contact?: string;
+  emergency_contact_name?: string;
+  emergency_phone?: string;
+  emergency_contact_phone?: string;
+  manager_id?: string;
+  manager?: {
+    name: string;
+    employee_id: string;
+  };
+  user?: {
+    name: string;
+    email: string;
+  };
+  created_at: string;
+  updated_at: string;
+}
+
+// System Settings Types
+export interface SystemSetting {
+  id: string;
+  key: string;
+  value: string;
+  category: string;
+  description?: string;
+  data_type: 'string' | 'number' | 'boolean' | 'json';
+  created_at: string;
+  updated_at: string;
+}
 

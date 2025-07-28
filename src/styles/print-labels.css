@@ -1,99 +1,92 @@
 /* Simple TSC Printer Labels - 40x35mm */
 
 @media print {
-  /* Reset and base styles */
-  * {
-    margin: 0 !important;
-    padding: 0 !important;
-    box-sizing: border-box !important;
-  }
-  
-  body {
-    font-family: Arial, sans-serif !important;
-    background: white !important;
-    color: black !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-  
-  /* Hide everything except labels */
-  body > *:not(.print-label) {
-    display: none !important;
-  }
-  
-  /* Main label container - 40x35mm */
-  .print-label {
-    width: 40mm !important;
-    height: 35mm !important;
-    margin: 0 !important;
-    padding: 1mm !important;
-    display: flex !important;
-    flex-direction: row !important;
-    align-items: center !important;
-    background: white !important;
-    page-break-after: always !important;
-    border: none !important;
-    font-family: Arial, sans-serif !important;
-    box-sizing: border-box !important;
-  }
-
-  .print-label:last-child {
-    page-break-after: avoid !important;
-  }
-
-  /* QR Code section */
-  .qr-section {
-    width: 28mm !important;
-    height: 28mm !important;
-    margin-right: 2mm !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    flex-shrink: 0 !important;
-  }
-
-  .qr-section img {
-    width: 28mm !important;
-    height: 28mm !important;
-    display: block !important;
-  }
-
-  /* Text section */
-  .text-section {
-    flex: 1 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: center !important;
-    text-align: center !important;
-    overflow: hidden !important;
-  }
-
-  /* Product name */
-  .product-name {
-    font-size: 8pt !important;
-    font-weight: bold !important;
-    color: black !important;
-    margin: 1mm 0 !important;
-    line-height: 1.2 !important;
-    word-wrap: break-word !important;
-    display: block !important;
-    visibility: visible !important;
-  }
-
-  /* SKU text */
-  .sku-text {
-    font-size: 7pt !important;
-    font-weight: bold !important;
-    color: black !important;
-    margin: 1mm 0 !important;
-    line-height: 1.2 !important;
-    display: block !important;
-    visibility: visible !important;
-  }
+    /* Reset and base styles */
+    * {
+        margin: 0 !important;
+        padding: 0 !important;
+        box-sizing: border-box !important;
+    }
+    body {
+        font-family: Arial, sans-serif !important;
+        background: white !important;
+        color: black !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    /* Hide everything except labels */
+    body>*:not(.print-label) {
+        display: none !important;
+    }
+    /* Main label container - 40x35mm */
+    .print-label {
+        width: 40mm !important;
+        height: 35mm !important;
+        margin: 0 !important;
+        padding: 1mm !important;
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        background: white !important;
+        page-break-after: always !important;
+        border: none !important;
+        font-family: Arial, sans-serif !important;
+        box-sizing: border-box !important;
+    }
+    .print-label:last-child {
+        page-break-after: avoid !important;
+    }
+    /* QR Code section */
+    .qr-section {
+        width: 28mm !important;
+        height: 28mm !important;
+        margin-right: 2mm !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        flex-shrink: 0 !important;
+    }
+    .qr-section img {
+        width: 28mm !important;
+        height: 28mm !important;
+        display: block !important;
+    }
+    /* Text section */
+    .text-section {
+        flex: 1 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: center !important;
+        text-align: center !important;
+        overflow: hidden !important;
+    }
+    /* Product name */
+    .product-name {
+        font-size: 8pt !important;
+        font-weight: bold !important;
+        color: black !important;
+        margin: 1mm 0 !important;
+        line-height: 1.2 !important;
+        word-wrap: break-word !important;
+        display: block !important;
+        visibility: visible !important;
+    }
+    /* SKU text */
+    .sku-text {
+        font-size: 7pt !important;
+        font-weight: bold !important;
+        color: black !important;
+        margin: 1mm 0 !important;
+        line-height: 1.2 !important;
+        display: block !important;
+        visibility: visible !important;
+    }
 }
 
+
 /* Page setup for 40x35mm labels */
+
 @page {
-  size: 40mm 35mm;
-  margin: 0;
+    size: 40mm 35mm;
+    margin: 0;
 }

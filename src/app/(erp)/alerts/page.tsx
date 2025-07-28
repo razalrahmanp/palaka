@@ -1,305 +1,231 @@
-'use client'
-import React, { useState, useEffect } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { 
-  Bell, 
-  AlertTriangle, 
-  CheckCircle, 
-  Clock, 
-  Search,
-  RefreshCw,
-  Package,
-  TrendingDown,
-  Calendar,
-  AlertCircle,
-  Users,
-  DollarSign
-} from 'lucide-react'
-import { hasPermission } from '@/lib/auth'
+'use client';
 
-interface Alert {
-  id: string
-  type: 'inventory' | 'production' | 'sales' | 'system' | 'hr' | 'finance'
-  title: string
-  message: string
-  priority: 'low' | 'medium' | 'high' | 'critical'
-  status: 'new' | 'acknowledged' | 'resolved'
-  timestamp: Date
-  assignedTo?: string
-  source: string
-}
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertCircle, AlertTriangle, Info, CheckCircle, Bell, Search, Filter, Eye, Clock } from 'lucide-react';
+import { format } from 'date-fns';
+import { toast } from 'sonner';
+import { Alert } from '@/types';
 
-const AlertsPage = () => {
-  const [alerts, setAlerts] = useState<Alert[]>([])
-  const [filteredAlerts, setFilteredAlerts] = useState<Alert[]>([])
-  const [activeTab, setActiveTab] = useState('all')
-  const [searchTerm, setSearchTerm] = useState('')
-  const [filterPriority, setFilterPriority] = useState<string>('all')
-  const [filterStatus, setFilterStatus] = useState<string>('all')
-  const [loading, setLoading] = useState(true)
+// Priority icons mapping
+const getPriorityIcon = (priority: string) => {
+  switch (priority) {
+    case 'high':
+      return <AlertTriangle className="h-4 w-4 text-red-500" />;
+    case 'medium':
+      return <AlertCircle className="h-4 w-4 text-yellow-500" />;
+    case 'low':
+      return <Info className="h-4 w-4 text-blue-500" />;
+    default:
+      return <Bell className="h-4 w-4 text-gray-500" />;
+  }
+};
 
-  // Mock alerts data - in real app, this would come from API
-  useEffect(() => {
-    const mockAlerts: Alert[] = [
-      {
-        id: '1',
-        type: 'inventory',
-        title: 'Low Stock Alert',
-        message: 'Office Chair - Model ABC123 stock is below reorder point (5 units remaining)',
-        priority: 'high',
-        status: 'new',
-        timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-        source: 'Inventory Management',
-      },
-      {
-        id: '2',
-        type: 'production',
-        title: 'Production Delay',
-        message: 'Work Order #WO-2024-001 is behind schedule by 2 days',
-        priority: 'medium',
-        status: 'acknowledged',
-        timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000),
-        source: 'Manufacturing',
-        assignedTo: 'Production Manager'
-      },
-      {
-        id: '3',
-        type: 'sales',
-        title: 'High Value Order',
-        message: 'New sales order from ABC Corp worth $50,000 requires approval',
-        priority: 'high',
-        status: 'new',
-        timestamp: new Date(Date.now() - 1 * 60 * 60 * 1000),
-        source: 'Sales Management',
-      },
-      {
-        id: '4',
-        type: 'system',
-        title: 'Database Backup Complete',
-        message: 'Daily database backup completed successfully',
-        priority: 'low',
-        status: 'resolved',
-        timestamp: new Date(Date.now() - 6 * 60 * 60 * 1000),
-        source: 'System',
-      },
-      {
-        id: '5',
-        type: 'hr',
-        title: 'Performance Review Due',
-        message: '5 employee performance reviews are due this week',
-        priority: 'medium',
-        status: 'new',
-        timestamp: new Date(Date.now() - 8 * 60 * 60 * 1000),
-        source: 'Human Resources',
-      },
-      {
-        id: '6',
-        type: 'finance',
-        title: 'Invoice Overdue',
-        message: 'Invoice INV-2024-0123 is 15 days overdue ($15,230)',
-        priority: 'critical',
-        status: 'new',
-        timestamp: new Date(Date.now() - 30 * 60 * 1000),
-        source: 'Finance',
+// Status badge styles
+const getStatusBadge = (status: string) => {
+  switch (status) {
+    case 'unread':
+      return <Badge variant="destructive">Unread</Badge>;
+    case 'read':
+      return <Badge variant="secondary">Read</Badge>;
+    case 'resolved':
+      return <Badge variant="outline" className="border-green-500 text-green-500">Resolved</Badge>;
+    case 'archived':
+      return <Badge variant="outline">Archived</Badge>;
+    default:
+      return <Badge variant="outline">{status}</Badge>;
+  }
+};
+
+// Type badge styles
+const getTypeBadge = (type: string) => {
+  const colors = {
+    inventory: 'bg-blue-100 text-blue-800',
+    sales: 'bg-green-100 text-green-800',
+    procurement: 'bg-purple-100 text-purple-800',
+    hr: 'bg-orange-100 text-orange-800',
+    finance: 'bg-red-100 text-red-800',
+    system: 'bg-gray-100 text-gray-800',
+    manufacturing: 'bg-indigo-100 text-indigo-800',
+  };
+  
+  return (
+    <Badge variant="outline" className={colors[type as keyof typeof colors] || 'bg-gray-100 text-gray-800'}>
+      {type.charAt(0).toUpperCase() + type.slice(1)}
+    </Badge>
+  );
+};
+
+export default function AlertsPage() {
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedPriority, setSelectedPriority] = useState('all');
+  const [selectedStatus, setSelectedStatus] = useState('all');
+  const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
+
+  // Fetch alerts from API
+  const fetchAlerts = async (filters: { type?: string; priority?: string; status?: string } = {}) => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams();
+      
+      if (filters.type && filters.type !== 'all') params.append('type', filters.type);
+      if (filters.priority && filters.priority !== 'all') params.append('priority', filters.priority);
+      if (filters.status && filters.status !== 'all') params.append('status', filters.status);
+      
+      const response = await fetch(`/api/alerts?${params.toString()}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch alerts');
       }
-    ]
-    setAlerts(mockAlerts)
-    setLoading(false)
-  }, [])
+      
+      const data = await response.json();
+      setAlerts(data);
+    } catch (error) {
+      console.error('Error fetching alerts:', error);
+      toast.error('Failed to fetch alerts');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  // Filter alerts based on search, priority, and status
+  // Initial fetch
   useEffect(() => {
-    let filtered = alerts
+    fetchAlerts();
+  }, []);
 
-    if (activeTab !== 'all') {
-      filtered = filtered.filter(alert => alert.type === activeTab)
+  // Handle tab change
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    fetchAlerts({ 
+      type: value === 'all' ? undefined : value,
+      priority: selectedPriority === 'all' ? undefined : selectedPriority,
+      status: selectedStatus === 'all' ? undefined : selectedStatus
+    });
+  };
+
+  // Handle filter change
+  const handleFilterChange = () => {
+    fetchAlerts({
+      type: activeTab === 'all' ? undefined : activeTab,
+      priority: selectedPriority === 'all' ? undefined : selectedPriority,
+      status: selectedStatus === 'all' ? undefined : selectedStatus
+    });
+  };
+
+  // Mark alert as read
+  const markAsRead = async (alertId: string) => {
+    try {
+      const response = await fetch(`/api/alerts/${alertId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: 'read' }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update alert');
+      }
+
+      // Update local state
+      setAlerts(prev => prev.map(alert => 
+        alert.id === alertId ? { ...alert, status: 'read' } : alert
+      ));
+      
+      toast.success('Alert marked as read');
+    } catch (error) {
+      console.error('Error updating alert:', error);
+      toast.error('Failed to update alert');
     }
+  };
 
-    if (searchTerm) {
-      filtered = filtered.filter(alert => 
-        alert.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        alert.message.toLowerCase().includes(searchTerm.toLowerCase())
-      )
+  // Mark alert as resolved
+  const markAsResolved = async (alertId: string) => {
+    try {
+      const response = await fetch(`/api/alerts/${alertId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: 'resolved' }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update alert');
+      }
+
+      // Update local state
+      setAlerts(prev => prev.map(alert => 
+        alert.id === alertId ? { ...alert, status: 'resolved' } : alert
+      ));
+      
+      toast.success('Alert marked as resolved');
+    } catch (error) {
+      console.error('Error updating alert:', error);
+      toast.error('Failed to update alert');
     }
+  };
 
-    if (filterPriority !== 'all') {
-      filtered = filtered.filter(alert => alert.priority === filterPriority)
-    }
+  // Filter alerts based on search term
+  const filteredAlerts = alerts.filter(alert =>
+    alert.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    alert.message.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
-    if (filterStatus !== 'all') {
-      filtered = filtered.filter(alert => alert.status === filterStatus)
-    }
+  // Get alert counts by type for tabs
+  const getAlertCounts = () => {
+    const counts = {
+      all: alerts.length,
+      inventory: alerts.filter(a => a.type === 'inventory').length,
+      sales: alerts.filter(a => a.type === 'sales').length,
+      procurement: alerts.filter(a => a.type === 'procurement').length,
+      hr: alerts.filter(a => a.type === 'hr').length,
+      finance: alerts.filter(a => a.type === 'finance').length,
+      system: alerts.filter(a => a.type === 'system').length,
+    };
+    return counts;
+  };
 
-    setFilteredAlerts(filtered)
-  }, [alerts, activeTab, searchTerm, filterPriority, filterStatus])
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'critical': return 'bg-red-100 text-red-800 border-red-200'
-      case 'high': return 'bg-orange-100 text-orange-800 border-orange-200'
-      case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
-      case 'low': return 'bg-green-100 text-green-800 border-green-200'
-      default: return 'bg-gray-100 text-gray-800 border-gray-200'
-    }
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'new': return 'bg-blue-100 text-blue-800 border-blue-200'
-      case 'acknowledged': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
-      case 'resolved': return 'bg-green-100 text-green-800 border-green-200'
-      default: return 'bg-gray-100 text-gray-800 border-gray-200'
-    }
-  }
-
-  const getTypeIcon = (type: string) => {
-    switch (type) {
-      case 'inventory': return <Package className="h-4 w-4" />
-      case 'production': return <TrendingDown className="h-4 w-4" />
-      case 'sales': return <DollarSign className="h-4 w-4" />
-      case 'system': return <AlertCircle className="h-4 w-4" />
-      case 'hr': return <Users className="h-4 w-4" />
-      case 'finance': return <DollarSign className="h-4 w-4" />
-      default: return <Bell className="h-4 w-4" />
-    }
-  }
-
-  const formatTime = (date: Date) => {
-    const now = new Date()
-    const diff = now.getTime() - date.getTime()
-    const minutes = Math.floor(diff / (1000 * 60))
-    const hours = Math.floor(diff / (1000 * 60 * 60))
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-
-    if (days > 0) return `${days}d ago`
-    if (hours > 0) return `${hours}h ago`
-    if (minutes > 0) return `${minutes}m ago`
-    return 'Just now'
-  }
-
-  const handleStatusChange = (alertId: string, newStatus: 'acknowledged' | 'resolved') => {
-    setAlerts(prev => prev.map(alert => 
-      alert.id === alertId ? { ...alert, status: newStatus } : alert
-    ))
-  }
-
-  const alertCounts = {
-    all: alerts.length,
-    inventory: alerts.filter(a => a.type === 'inventory').length,
-    production: alerts.filter(a => a.type === 'production').length,
-    sales: alerts.filter(a => a.type === 'sales').length,
-    system: alerts.filter(a => a.type === 'system').length,
-    hr: alerts.filter(a => a.type === 'hr').length,
-    finance: alerts.filter(a => a.type === 'finance').length,
-  }
-
-  const newAlertsCount = alerts.filter(a => a.status === 'new').length
-  const criticalAlertsCount = alerts.filter(a => a.priority === 'critical').length
-
-  if (!hasPermission('analytics:read')) {
-    return (
-      <div className="space-y-6">
-        <Card>
-          <CardContent className="text-center py-12">
-            <Bell className="mx-auto h-16 w-16 mb-4 opacity-50 text-red-500" />
-            <h3 className="text-lg font-medium mb-2">Access Denied</h3>
-            <p className="text-gray-600">You don&apos;t have permission to view system alerts</p>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
+  const alertCounts = getAlertCounts();
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="p-6 space-y-6">
+      {/* Page Header */}
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">System Alerts</h1>
-          <p className="text-gray-600">Monitor and manage system notifications</p>
+          <h1 className="text-3xl font-bold tracking-tight">Alerts</h1>
+          <p className="text-muted-foreground">
+            Monitor and manage system alerts and notifications
+          </p>
         </div>
-        <div className="flex items-center gap-4">
-          {criticalAlertsCount > 0 && (
-            <Badge variant="destructive" className="px-3 py-1">
-              <AlertTriangle className="h-4 w-4 mr-2" />
-              {criticalAlertsCount} Critical
-            </Badge>
-          )}
-          <Badge variant="outline" className="px-3 py-1">
-            <Bell className="h-4 w-4 mr-2" />
-            {newAlertsCount} New
-          </Badge>
-        </div>
-      </div>
-
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Bell className="h-5 w-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Total Alerts</p>
-                <p className="text-2xl font-bold">{alerts.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-red-100 rounded-lg">
-                <AlertTriangle className="h-5 w-5 text-red-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Critical</p>
-                <p className="text-2xl font-bold">{criticalAlertsCount}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-yellow-100 rounded-lg">
-                <Clock className="h-5 w-5 text-yellow-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Pending</p>
-                <p className="text-2xl font-bold">{newAlertsCount}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Resolved</p>
-                <p className="text-2xl font-bold">{alerts.filter(a => a.status === 'resolved').length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <Button onClick={() => fetchAlerts()}>
+          <Bell className="mr-2 h-4 w-4" />
+          Refresh
+        </Button>
       </div>
 
       {/* Filters */}
       <Card>
-        <CardContent className="p-4">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Filters
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                 <Input
                   placeholder="Search alerts..."
                   value={searchTerm}
@@ -308,27 +234,33 @@ const AlertsPage = () => {
                 />
               </div>
             </div>
-            <Select value={filterPriority} onValueChange={setFilterPriority}>
-              <SelectTrigger className="w-40">
+            <Select value={selectedPriority} onValueChange={(value) => {
+              setSelectedPriority(value);
+              setTimeout(handleFilterChange, 0);
+            }}>
+              <SelectTrigger className="w-[150px]">
                 <SelectValue placeholder="Priority" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Priorities</SelectItem>
-                <SelectItem value="critical">Critical</SelectItem>
                 <SelectItem value="high">High</SelectItem>
                 <SelectItem value="medium">Medium</SelectItem>
                 <SelectItem value="low">Low</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-40">
+            <Select value={selectedStatus} onValueChange={(value) => {
+              setSelectedStatus(value);
+              setTimeout(handleFilterChange, 0);
+            }}>
+              <SelectTrigger className="w-[150px]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="new">New</SelectItem>
-                <SelectItem value="acknowledged">Acknowledged</SelectItem>
+                <SelectItem value="unread">Unread</SelectItem>
+                <SelectItem value="read">Read</SelectItem>
                 <SelectItem value="resolved">Resolved</SelectItem>
+                <SelectItem value="archived">Archived</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -336,80 +268,150 @@ const AlertsPage = () => {
       </Card>
 
       {/* Alert Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="all">All ({alertCounts.all})</TabsTrigger>
           <TabsTrigger value="inventory">Inventory ({alertCounts.inventory})</TabsTrigger>
-          <TabsTrigger value="production">Production ({alertCounts.production})</TabsTrigger>
           <TabsTrigger value="sales">Sales ({alertCounts.sales})</TabsTrigger>
+          <TabsTrigger value="procurement">Procurement ({alertCounts.procurement})</TabsTrigger>
           <TabsTrigger value="hr">HR ({alertCounts.hr})</TabsTrigger>
           <TabsTrigger value="finance">Finance ({alertCounts.finance})</TabsTrigger>
           <TabsTrigger value="system">System ({alertCounts.system})</TabsTrigger>
         </TabsList>
 
-        <TabsContent value={activeTab} className="space-y-4">
+        {/* Alert List */}
+        <TabsContent value={activeTab} className="mt-6">
           {loading ? (
-            <Card>
-              <CardContent className="text-center py-12">
-                <RefreshCw className="mx-auto h-8 w-8 animate-spin text-gray-400" />
-                <p className="mt-4 text-gray-600">Loading alerts...</p>
-              </CardContent>
-            </Card>
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
           ) : filteredAlerts.length === 0 ? (
             <Card>
-              <CardContent className="text-center py-12">
-                <Bell className="mx-auto h-16 w-16 mb-4 opacity-50 text-gray-400" />
-                <h3 className="text-lg font-medium mb-2">No alerts found</h3>
-                <p className="text-gray-600">No alerts match your current filters</p>
+              <CardContent className="flex flex-col items-center justify-center py-8">
+                <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No Alerts</h3>
+                <p className="text-muted-foreground text-center">
+                  {searchTerm ? 'No alerts match your search criteria.' : 'All clear! No alerts at this time.'}
+                </p>
               </CardContent>
             </Card>
           ) : (
             <div className="space-y-4">
               {filteredAlerts.map((alert) => (
-                <Card key={alert.id} className={`${alert.priority === 'critical' ? 'border-red-200 bg-red-50' : ''}`}>
+                <Card key={alert.id} className={`transition-all hover:shadow-md ${
+                  alert.status === 'unread' ? 'border-l-4 border-l-primary' : ''
+                }`}>
                   <CardContent className="p-6">
                     <div className="flex items-start justify-between">
-                      <div className="flex items-start gap-4">
-                        <div className="p-2 bg-gray-100 rounded-lg">
-                          {getTypeIcon(alert.type)}
+                      <div className="flex items-start space-x-4 flex-1">
+                        <div className="flex-shrink-0 mt-1">
+                          {getPriorityIcon(alert.priority)}
                         </div>
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-2">
-                            <h3 className="font-semibold text-lg">{alert.title}</h3>
-                            <Badge className={getPriorityColor(alert.priority)}>
-                              {alert.priority.toUpperCase()}
-                            </Badge>
-                            <Badge className={getStatusColor(alert.status)}>
-                              {alert.status.toUpperCase()}
-                            </Badge>
+                            <h3 className="text-lg font-semibold">{alert.title}</h3>
+                            {getTypeBadge(alert.type)}
+                            {getStatusBadge(alert.status)}
                           </div>
-                          <p className="text-gray-700 mb-3">{alert.message}</p>
-                          <div className="flex items-center gap-4 text-sm text-gray-500">
-                            <div className="flex items-center gap-1">
-                              <Calendar className="h-4 w-4" />
-                              {formatTime(alert.timestamp)}
-                            </div>
-                            <div>Source: {alert.source}</div>
-                            {alert.assignedTo && <div>Assigned: {alert.assignedTo}</div>}
+                          <p className="text-gray-600 mb-3">{alert.message}</p>
+                          <div className="flex items-center text-sm text-gray-500">
+                            <Clock className="h-4 w-4 mr-1" />
+                            {format(new Date(alert.created_at), 'PPpp')}
+                            {alert.source && (
+                              <span className="ml-4">Source: {alert.source}</span>
+                            )}
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {alert.status === 'new' && (
-                          <Button
+                      <div className="flex items-center space-x-2 ml-4">
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button variant="outline" size="sm" onClick={() => setSelectedAlert(alert)}>
+                              <Eye className="h-4 w-4 mr-1" />
+                              View
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-2xl">
+                            <DialogHeader>
+                              <DialogTitle className="flex items-center gap-2">
+                                {getPriorityIcon(alert.priority)}
+                                {alert.title}
+                              </DialogTitle>
+                              <DialogDescription>
+                                Alert Details and Actions
+                              </DialogDescription>
+                            </DialogHeader>
+                            {selectedAlert && (
+                              <div className="space-y-6">
+                                <div className="flex gap-2">
+                                  {getTypeBadge(selectedAlert.type)}
+                                  {getStatusBadge(selectedAlert.status)}
+                                  <Badge variant="outline">{selectedAlert.priority} priority</Badge>
+                                </div>
+                                
+                                <div>
+                                  <h4 className="font-semibold mb-2">Message</h4>
+                                  <p className="text-gray-600">{selectedAlert.message}</p>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                  <div>
+                                    <span className="font-semibold">Created:</span>
+                                    <p>{format(new Date(selectedAlert.created_at), 'PPpp')}</p>
+                                  </div>
+                                  <div>
+                                    <span className="font-semibold">Source:</span>
+                                    <p>{selectedAlert.source || 'N/A'}</p>
+                                  </div>
+                                </div>
+
+                                {selectedAlert.metadata && (
+                                  <div>
+                                    <h4 className="font-semibold mb-2">Additional Details</h4>
+                                    <pre className="bg-gray-50 p-3 rounded text-sm overflow-auto">
+                                      {JSON.stringify(selectedAlert.metadata, null, 2)}
+                                    </pre>
+                                  </div>
+                                )}
+
+                                <div className="flex gap-2 pt-4 border-t">
+                                  {selectedAlert.status === 'unread' && (
+                                    <Button 
+                                      variant="outline" 
+                                      onClick={() => markAsRead(selectedAlert.id)}
+                                    >
+                                      Mark as Read
+                                    </Button>
+                                  )}
+                                  {selectedAlert.status !== 'resolved' && (
+                                    <Button 
+                                      onClick={() => markAsResolved(selectedAlert.id)}
+                                    >
+                                      <CheckCircle className="h-4 w-4 mr-2" />
+                                      Mark as Resolved
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </DialogContent>
+                        </Dialog>
+                        
+                        {alert.status === 'unread' && (
+                          <Button 
+                            variant="outline" 
                             size="sm"
-                            variant="outline"
-                            onClick={() => handleStatusChange(alert.id, 'acknowledged')}
+                            onClick={() => markAsRead(alert.id)}
                           >
-                            Acknowledge
+                            Mark Read
                           </Button>
                         )}
                         {alert.status !== 'resolved' && (
-                          <Button
+                          <Button 
                             size="sm"
-                            onClick={() => handleStatusChange(alert.id, 'resolved')}
+                            onClick={() => markAsResolved(alert.id)}
                           >
-                            <CheckCircle className="h-4 w-4 mr-2" />
+                            <CheckCircle className="h-4 w-4 mr-1" />
                             Resolve
                           </Button>
                         )}
@@ -423,8 +425,5 @@ const AlertsPage = () => {
         </TabsContent>
       </Tabs>
     </div>
-  )
+  );
 }
-
-export default AlertsPage
-

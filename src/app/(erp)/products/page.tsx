@@ -26,9 +26,13 @@ export default function ProductsSalesPage() {
   const user = getCurrentUser();
 
   useEffect(() => {
-    fetch("/api/products")
+    fetch("/api/products?limit=1000") // Get all products for the sales page
       .then((r) => r.json())
-      .then((data: ProductWithInventory[]) => setProducts(data));
+      .then((data) => {
+        // Handle both old format (array) and new format (object with products array)
+        const productsArray = Array.isArray(data) ? data : data.products || [];
+        setProducts(productsArray);
+      });
 
     fetch("/api/crm/customers")
       .then((r) => r.json())

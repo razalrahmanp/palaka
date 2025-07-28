@@ -37,11 +37,13 @@ export const ProductionJobForm: React.FC<Props> = ({ initialData, onSubmit, onCa
   const [users,    setUsers]    = useState<User[]>([]);
 
   useEffect(() => {
-  fetch('/api/products')
+  fetch('/api/products?limit=1000')
     .then((r) => r.json())
     .then((data) => {
+      // Handle both old format (array) and new format (object with products array)
+      const productsArray = Array.isArray(data) ? data : data.products || [];
       setProducts(
-        data.map(
+        productsArray.map(
           normalizeProduct
         )
       );

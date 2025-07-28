@@ -76,10 +76,19 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(data, { status: 201 });
 }
 
-// GET: Fetch all products (now simplified)
-export async function GET() {
-  // Join inventory_items with products to ensure we get all product fields including SKU
-  const { data: products, error } = await adminSupabase
+// GET: Fetch all products with pagination support
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const page = parseInt(searchParams.get('page') || '1');
+  const limit = parseInt(searchParams.get('limit') || '20');
+  const search = searchParams.get('search') || '';
+  const category = searchParams.get('category') || '';
+  const supplier = searchParams.get('supplier') || '';
+  
+  const offset = (page - 1) * limit;
+
+  // Build query with filters
+  let query = adminSupabase
     .from('inventory_items')
     .select(`
       *,
@@ -100,7 +109,23 @@ export async function GET() {
         id,
         name
       )
-    `);
+    `, { count: 'exact' });
+
+  // Apply filters
+  if (search) {
+    query = query.or(`products.name.ilike.%${search}%,products.sku.ilike.%${search}%,products.description.ilike.%${search}%`);
+  }
+  if (category) {
+    query = query.eq('category', category);
+  }
+  if (supplier) {
+    query = query.eq('supplier_id', supplier);
+  }
+
+  // Apply pagination
+  query = query.range(offset, offset + limit - 1);
+  
+  const { data: products, error, count } = await query;
 
   if (error) {
     console.error('GET /api/products error', error);
@@ -108,7 +133,7 @@ export async function GET() {
   }
 
   // Transform the data to match ProductWithInventory interface
-  const productsWithMargin = products.map(item => {
+  const productsWithMargin = products?.map(item => {
       const product = item.products;
       const supplier = item.suppliers;
       const cost = product?.cost || 0;
@@ -140,9 +165,19 @@ export async function GET() {
         cost: product.cost,
         applied_margin: applied_margin.toFixed(1)
       };
-  });
+  }) || [];
 
-  return NextResponse.json(productsWithMargin);
+  return NextResponse.json({
+    products: productsWithMargin,
+    pagination: {
+      page,
+      limit,
+      total: count || 0,
+      totalPages: Math.ceil((count || 0) / limit),
+      hasNext: (count || 0) > offset + limit,
+      hasPrev: page > 1
+    }
+  });
 }
 
 // PUT: Update a product and recalculate price if cost changes

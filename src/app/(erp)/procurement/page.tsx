@@ -27,10 +27,12 @@ export default function ProcurementPage() {
   const [ord, sup, prodRaw] = await Promise.all([
     fetch('/api/procurement/purchase_orders').then(r => r.json()),
     fetch('/api/suppliers').then(r => r.json()),
-    fetch('/api/products').then(r => r.json()),
+    fetch('/api/products?limit=1000').then(r => r.json()),
   ]);
 
-  const prod = prodRaw.map(
+  // Handle both old format (array) and new format (object with products array)
+  const productsArray = Array.isArray(prodRaw) ? prodRaw : prodRaw.products || [];
+  const prod = productsArray.map(
     normalizeProduct
   );
 

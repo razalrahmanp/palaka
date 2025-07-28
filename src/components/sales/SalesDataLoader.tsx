@@ -13,11 +13,13 @@ export function useSalesData() {
     Promise.all([
       fetch('/api/sales/quotes').then((r) => r.json()).then(setQuotes),
       fetch('/api/sales/orders').then((r) => r.json()).then(setOrders),
-      fetch('/api/products')
+      fetch('/api/products?limit=1000')
         .then((r) => r.json())
         .then((data) => {
+          // Handle both old format (array) and new format (object with products array)
+          const productsArray = Array.isArray(data) ? data : data.products || [];
           setProducts(
-            data.map(
+            productsArray.map(
               (p: {
                 product_id: string;
                 product_name: string;

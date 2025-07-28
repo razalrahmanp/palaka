@@ -3,34 +3,27 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { List, Tags } from 'lucide-react'
-import { InventoryAlerts } from '@/components/inventory/InventoryAlerts'
+import { LiveInventoryAlerts } from '@/components/inventory/LiveInventoryAlerts'
 import InventoryItemForm from '@/components/inventory/InventoryItemForm'
 import { SupplierForm } from '@/components/inventory/SupplierForm'
 import { ProductWithInventory, Supplier } from '@/types'
-import { InventoryTable } from '@/components/inventory/InventoryTable'
+import { PaginatedInventoryTable } from '@/components/inventory/PaginatedInventoryTable'
 import { ProductLabels } from '@/components/inventory/ProductLabels'
 import { ProfitMarginManager } from '@/components/inventory/ProfitMarginManager'
-import { FilterBarDialog } from '@/components/inventory/FilterBar' // Importing the new FilterBarDialog component
 
 export default function InventoryPage() {
   const [items, setItems] = useState<ProductWithInventory[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
-  const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null)
   const [addItemOpen, setAddItemOpen] = useState(false)
   const [addSupplierOpen, setAddSupplierOpen] = useState(false)
   const [manageMarginsOpen, setManageMarginsOpen] = useState(false)
 
-  type InventoryFilters = {
-    supplier: string | null
-    category: string | null
-    priceRange: 'low' | 'medium' | 'high' | null
-  }
-
-  const [filters, setFilters] = useState<InventoryFilters>({ supplier: null, category: null, priceRange: null })
-  const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false) // To handle the filter dialog's visibility
-
   const fetchAll = useCallback(() => {
-    fetch('/api/products').then(r => r.json()).then(setItems)
+    fetch('/api/products?limit=1000').then(r => r.json()).then(data => {
+      // Handle both old format (array) and new format (object with products array)
+      const productsArray = Array.isArray(data) ? data : data.products || [];
+      setItems(productsArray);
+    })
     fetch('/api/suppliers').then(r => r.json()).then(setSuppliers)
   }, [])
 
@@ -109,52 +102,11 @@ export default function InventoryPage() {
     [suppliers]
   )
 
-  const handleFilterChange = (filters: InventoryFilters) => {
-    setFilters(filters)
-  }
-
-  const handleClearFilters = () => {
-    setFilters({ supplier: null, category: null, priceRange: null })
-  }
-
-  const filteredItems = items.filter(i => {
-    return (
-      (filters.supplier ? i.supplier_id === filters.supplier : true) &&
-      (filters.category ? i.category === filters.category : true) &&
-      (filters.priceRange
-        ? filters.priceRange === 'low'
-          ? (i.price ?? 0) < 1000
-          : filters.priceRange === 'medium'
-          ? (i.price ?? 0) >= 1000 && (i.price ?? 0) <= 5000
-          : (i.price ?? 0) > 5000
-        : true)
-    )
-  })
-
   const uniqueProducts = Array.from(new Map(items.map(item => [item.product_id, item])).values())
 
   return (
     <div className="flex flex-col md:flex-row gap-4 w-full h-auto md:h-[calc(100vh-4rem)] p-4">
       <div className="flex-1 overflow-hidden">
-        {/* Button to toggle the filter dialog */}
-        <button
-          onClick={() => setIsFilterDialogOpen(true)}
-          className="fixed bottom-4 right-4 bg-blue-500 text-white p-4 rounded-full shadow-lg"
-        >
-          Filter
-        </button>
-
-        {/* Filter Dialog */}
-        <FilterBarDialog
-          suppliers={suppliers}
-          selectedSupplierId={selectedSupplierId}
-          onSelectSupplier={setSelectedSupplierId}
-          onFilterChange={handleFilterChange} // Pass the filter change handler
-          onClearFilters={handleClearFilters} // Pass the clear filter function
-          isOpen={isFilterDialogOpen}
-          onClose={() => setIsFilterDialogOpen(false)} // Close the dialog
-        />
-
         <Tabs defaultValue="list" className="w-full h-full flex flex-col mt-4">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="list"><List className="mr-2 h-4 w-4" /> Inventory List</TabsTrigger>
@@ -162,27 +114,16 @@ export default function InventoryPage() {
           </TabsList>
 
           <TabsContent value="list" className="flex-1 overflow-y-auto mt-4">
-            <InventoryTable
-              items={filteredItems}
+            <PaginatedInventoryTable
               onAdjustClick={() => {}}
               onAddItem={() => setAddItemOpen(true)}
               onManageMargins={() => setManageMarginsOpen(true)}
               onAddSupplier={() => setAddSupplierOpen(true)}
+              suppliers={suppliers}
             />
-            <InventoryAlerts
-              alerts={filteredItems
-                .filter(i => i.quantity <= i.reorder_point)
-                .map(i => ({
-                  id: i.inventory_id,
-                  type: 'inventory' as const,
-                  title: 'Low Stock Alert',
-                  message: `${i.product_name} at or below reorder point`,
-                  priority: 'high' as const,
-                  status: 'new' as const,
-                  source: 'inventory_system',
-                  created_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString()
-                }))} />
+            <div className="mt-4">
+              <LiveInventoryAlerts />
+            </div>
           </TabsContent>
 
           <TabsContent value="labels" className="flex-1 overflow-y-auto mt-4">

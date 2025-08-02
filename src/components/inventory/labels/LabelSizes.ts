@@ -16,8 +16,8 @@ export const LABEL_SIZES: Record<string, LabelSize> = {
     name: 'TSC 40mm x 35mm (Current)',
     width: '40mm',
     height: '35mm',
-    qrSize: 28,
-    fontSize: { title: '12px', body: '10px', small: '9px' }
+    qrSize: 32, // Increased from 28 to 32mm to fill more space
+    fontSize: { title: '12px', body: '10px', small: '8px' }
   },
   
   '50x25': {

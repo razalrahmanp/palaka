@@ -2,58 +2,115 @@ import { LabelSize } from './LabelSizes'
 import { ProductWithInventory } from '@/types'
 
 // Generate print styles for labels
-export const generatePrintStyles = (size: LabelSize) => `
-  @page {
-    size: ${size.width} ${size.height};
-    margin: 0;
-    padding: 0;
+export const generatePrintStyles = (size: LabelSize) => {
+  // Special layout for 40mm x 35mm (TSC printer default)
+  const isTscSize = size.name.includes('40mm x 35mm')
+  
+  if (isTscSize) {
+    return `
+      @page {
+        size: ${size.width} ${size.height};
+        margin: 0;
+        padding: 0;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: Arial, sans-serif;
+        background: white;
+        color: black;
+        width: ${size.width};
+        height: ${size.height};
+      }
+      .print-label {
+        width: ${size.width};
+        height: ${size.height};
+        padding: 1mm;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: white;
+      }
+      .qr-section {
+        flex-shrink: 0;
+        margin-bottom: 1mm;
+      }
+      .qr-section img {
+        width: ${size.qrSize}mm;
+        height: ${size.qrSize}mm;
+        display: block;
+      }
+      .sku-section {
+        text-align: center;
+        line-height: 1;
+      }
+      .sku-text {
+        font-size: ${size.fontSize.small};
+        font-weight: bold;
+        color: black;
+        font-family: 'Courier New', monospace;
+      }
+    `
   }
-  * {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }
-  body {
-    font-family: Arial, sans-serif;
-    background: white;
-    color: black;
-    width: ${size.width};
-    height: ${size.height};
-  }
-  .print-label {
-    width: ${size.width};
-    height: ${size.height};
-    padding: 2mm;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: white;
-  }
-  .qr-section {
-    flex-shrink: 0;
-  }
-  .qr-section img {
-    width: ${size.qrSize}mm;
-    height: ${size.qrSize}mm;
-    display: block;
-  }
-  .text-section {
-    flex: 1;
-    margin-left: 3mm;
-    text-align: center;
-  }
-  .product-name {
-    font-size: ${size.fontSize.title};
-    font-weight: bold;
-    margin-bottom: 2mm;
-    color: black;
-  }
-  .sku-text {
-    font-size: ${size.fontSize.body};
-    font-weight: bold;
-    color: black;
-  }
-`
+  
+  // Default horizontal layout for other sizes
+  return `
+    @page {
+      size: ${size.width} ${size.height};
+      margin: 0;
+      padding: 0;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: Arial, sans-serif;
+      background: white;
+      color: black;
+      width: ${size.width};
+      height: ${size.height};
+    }
+    .print-label {
+      width: ${size.width};
+      height: ${size.height};
+      padding: 2mm;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: white;
+    }
+    .qr-section {
+      flex-shrink: 0;
+    }
+    .qr-section img {
+      width: ${size.qrSize}mm;
+      height: ${size.qrSize}mm;
+      display: block;
+    }
+    .text-section {
+      flex: 1;
+      margin-left: 3mm;
+      text-align: center;
+    }
+    .product-name {
+      font-size: ${size.fontSize.title};
+      font-weight: bold;
+      margin-bottom: 2mm;
+      color: black;
+    }
+    .sku-text {
+      font-size: ${size.fontSize.body};
+      font-weight: bold;
+      color: black;
+    }
+  `
+}
 
 // Generate QR code URL
 export const generateQRCodeUrl = (productId: string, size: number) => {
@@ -62,10 +119,26 @@ export const generateQRCodeUrl = (productId: string, size: number) => {
   return `https://api.qrserver.com/v1/create-qr-code/?size=${pixelSize}x${pixelSize}&data=${encodeURIComponent(productId)}&format=png&margin=1&ecc=M`
 }
 
-// Generate single label HTML - Very simple structure
+// Generate single label HTML - Optimized for different sizes
 export const generateLabelHTML = (product: ProductWithInventory, size: LabelSize) => {
   const qrCodeUrl = generateQRCodeUrl(product.product_id, size.qrSize)
+  const isTscSize = size.name.includes('40mm x 35mm')
   
+  if (isTscSize) {
+    // Vertical layout for 40mm x 35mm - QR code fills most space, SKU below
+    return `
+      <div class="print-label">
+        <div class="qr-section">
+          <img src="${qrCodeUrl}" alt="QR Code" />
+        </div>
+        <div class="sku-section">
+          <div class="sku-text">${product.sku || 'N/A'}</div>
+        </div>
+      </div>
+    `
+  }
+  
+  // Horizontal layout for other sizes
   return `
     <div class="print-label">
       <div class="qr-section">

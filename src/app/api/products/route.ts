@@ -154,6 +154,7 @@ export async function GET(request: NextRequest) {
         quantity: item.quantity,
         reorder_point: item.reorder_point,
         updated_at: item.updated_at,
+        product_created_at: product.created_at, // Add product creation date
         supplier_name: supplier?.name || null,
         supplier_id: item.supplier_id,
         price: product.price,

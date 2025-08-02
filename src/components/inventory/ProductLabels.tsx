@@ -30,6 +30,11 @@ interface ProductFilters {
   selectedProduct: string
   dateFrom: Date | undefined
   dateTo: Date | undefined
+  supplier: string
+  location: string
+  createdBy: string
+  updatedBy: string
+  dateType: 'created' | 'updated' // New field to toggle between created_at and updated_at filtering
 }
 
 export const ProductLabels: React.FC<Props> = ({ products }) => {
@@ -38,18 +43,45 @@ export const ProductLabels: React.FC<Props> = ({ products }) => {
     search: '',
     selectedProduct: '',
     dateFrom: undefined,
-    dateTo: undefined
+    dateTo: undefined,
+    supplier: '',
+    location: '',
+    createdBy: '',
+    updatedBy: '',
+    dateType: 'updated'
   })
+  const [suppliers, setSuppliers] = useState<Array<{id: string, name: string}>>([])
+  const [users, setUsers] = useState<Array<{id: string, name: string}>>([])
+
+  // Fetch suppliers and users for filtering
+  React.useEffect(() => {
+    // Fetch suppliers
+    fetch('/api/suppliers')
+      .then(r => r.json())
+      .then(data => setSuppliers(data || []))
+      .catch(console.error)
+
+    // Fetch all users (for created_by/updated_by filtering)
+    fetch('/api/employees') // This should fetch all employees/users
+      .then(r => r.json())
+      .then(data => setUsers(data || []))
+      .catch(console.error)
+  }, [])
 
   const currentSize = LABEL_SIZES[selectedSize]
 
-  // Get unique product names for dropdown
+  // Get unique values for filter dropdowns
   const uniqueProductNames = useMemo(() => {
     const names = [...new Set(products.map(p => p.product_name))].sort()
     return names
   }, [products])
 
-  // Filter products based on search, product selection, and date range
+  const uniqueLocations = useMemo(() => {
+    const locations = [...new Set(products.map(p => p.location).filter(Boolean))].sort() as string[]
+    return locations
+  }, [products])
+
+  // Filter products based on all filter criteria
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
       // Search filter (product name, SKU, category)
@@ -69,9 +101,30 @@ export const ProductLabels: React.FC<Props> = ({ products }) => {
         return false
       }
 
-      // Date range filter (based on updated_at - inventory added date)
+      // Supplier filter
+      if (filters.supplier && product.supplier_id !== filters.supplier) {
+        return false
+      }
+
+      // Location filter
+      if (filters.location && product.location !== filters.location) {
+        return false
+      }
+
+      // Created by / Updated by filters (placeholder for now as we need to add these fields to the API)
+      // These would need backend support to filter by user who created/updated the records
+      
+      // Date range filter (based on products.created_at or inventory_items.updated_at)
       if (filters.dateFrom || filters.dateTo) {
-        const productDate = new Date(product.updated_at)
+        let productDate: Date
+        
+        if (filters.dateType === 'created' && product.product_created_at) {
+          // Use product creation date from products table
+          productDate = new Date(product.product_created_at)
+        } else {
+          // Use inventory updated date from inventory_items table
+          productDate = new Date(product.updated_at)
+        }
         
         if (filters.dateFrom && productDate < filters.dateFrom) {
           return false
@@ -104,11 +157,17 @@ export const ProductLabels: React.FC<Props> = ({ products }) => {
       search: '',
       selectedProduct: '',
       dateFrom: undefined,
-      dateTo: undefined
+      dateTo: undefined,
+      supplier: '',
+      location: '',
+      createdBy: '',
+      updatedBy: '',
+      dateType: 'updated'
     })
   }
 
-  const hasActiveFilters = filters.search || filters.selectedProduct || filters.dateFrom || filters.dateTo
+  const hasActiveFilters = filters.search || filters.selectedProduct || filters.dateFrom || filters.dateTo || 
+    filters.supplier || filters.location || filters.createdBy || filters.updatedBy
 
   return (
     <div className="space-y-6">
@@ -130,7 +189,7 @@ export const ProductLabels: React.FC<Props> = ({ products }) => {
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {/* Search Input */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-gray-700">Search</label>
@@ -169,9 +228,79 @@ export const ProductLabels: React.FC<Props> = ({ products }) => {
             </Select>
           </div>
 
+          {/* Supplier Filter */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">Supplier</label>
+            <Select
+              value={filters.supplier}
+              onValueChange={(value) => setFilters(prev => ({ 
+                ...prev, 
+                supplier: value === 'all' ? '' : value 
+              }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="All suppliers" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All suppliers</SelectItem>
+                {suppliers.map((supplier) => (
+                  <SelectItem key={supplier.id} value={supplier.id}>
+                    {supplier.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Location Filter */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">Location</label>
+            <Select
+              value={filters.location}
+              onValueChange={(value) => setFilters(prev => ({ 
+                ...prev, 
+                location: value === 'all' ? '' : value 
+              }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="All locations" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All locations</SelectItem>
+                {uniqueLocations.map((location) => (
+                  <SelectItem key={location} value={location}>
+                    {location}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Date Type Toggle */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">Date Filter Type</label>
+            <Select
+              value={filters.dateType}
+              onValueChange={(value: 'created' | 'updated') => setFilters(prev => ({ 
+                ...prev, 
+                dateType: value 
+              }))}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="updated">Updated Date</SelectItem>
+                <SelectItem value="created">Created Date</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           {/* Date From */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Added From</label>
+            <label className="text-sm font-medium text-gray-700">
+              {filters.dateType === 'created' ? 'Created From' : 'Updated From'}
+            </label>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -195,7 +324,9 @@ export const ProductLabels: React.FC<Props> = ({ products }) => {
 
           {/* Date To */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Added To</label>
+            <label className="text-sm font-medium text-gray-700">
+              {filters.dateType === 'created' ? 'Created To' : 'Updated To'}
+            </label>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -215,6 +346,31 @@ export const ProductLabels: React.FC<Props> = ({ products }) => {
                 />
               </PopoverContent>
             </Popover>
+          </div>
+
+          {/* Created By Filter - Placeholder for future implementation */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">Created By</label>
+            <Select
+              value={filters.createdBy}
+              onValueChange={(value) => setFilters(prev => ({ 
+                ...prev, 
+                createdBy: value === 'all' ? '' : value 
+              }))}
+              disabled // Disabled until backend support is added
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="All users (coming soon)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All users</SelectItem>
+                {users.map((user) => (
+                  <SelectItem key={user.id} value={user.id}>
+                    {user.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 

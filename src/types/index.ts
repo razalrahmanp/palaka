@@ -307,6 +307,7 @@ export interface ProductWithInventory {
   quantity: number;
   reorder_point: number;
   updated_at: string;
+  product_created_at?: string; // Add product creation date from products table
   supplier_name?: string | null;
   supplier_id?: string | null;
   price?: number | null;

@@ -34,12 +34,21 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const users = data.map((user: any) => ({
+  type User = {
+    id: string;
+    name: string;
+    email: string;
+    role_id: string;
+    roles?: { name: string }[];
+    created_at: string;
+  };
+
+  const users = data.map((user: User) => ({
     id: user.id,
     name: user.name,
     email: user.email,
     role_id: user.role_id,
-    role: user.roles?.name,
+    role: user.roles && user.roles.length > 0 ? user.roles[0].name : undefined,
     created_at: user.created_at,
   }))
 

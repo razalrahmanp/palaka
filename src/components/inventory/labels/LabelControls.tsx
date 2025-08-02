@@ -3,21 +3,28 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button'
 import { Settings, Printer } from 'lucide-react'
 import { LABEL_SIZES } from './LabelSizes'
+import { ProductWithInventory } from '@/types'
 
 type Props = {
   selectedSize: string
   onSizeChange: (size: string) => void
   onPrintAll: () => void
   productCount: number
+  products?: ProductWithInventory[]
 }
 
 export const LabelControls: React.FC<Props> = ({ 
   selectedSize, 
   onSizeChange, 
   onPrintAll, 
-  productCount 
-}) => (
-  <div className="bg-white p-4 rounded-lg border shadow-sm">
+  productCount,
+  products = []
+}) => {
+  // Calculate total labels based on quantities
+  const totalLabels = products.reduce((sum, product) => sum + (product.quantity || 1), 0)
+  
+  return (
+    <div className="bg-white p-4 rounded-lg border shadow-sm">
     <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
@@ -46,11 +53,14 @@ export const LabelControls: React.FC<Props> = ({
         disabled={productCount === 0}
       >
         <Printer className="h-4 w-4" />
-        Print All ({productCount})
+        Print All ({productCount} products, {totalLabels} labels)
       </Button>
     </div>
     <div className="mt-2 text-xs text-gray-600">
       Current size: <strong>{LABEL_SIZES[selectedSize].name}</strong> - Optimized for TSC thermal barcode printers
+      <br />
+      <span className="text-blue-600">Labels will be printed based on each product&apos;s quantity</span>
     </div>
   </div>
-)
+  )
+}

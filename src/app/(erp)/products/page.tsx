@@ -31,16 +31,31 @@ export default function ProductsSalesPage() {
       .then((data) => {
         // Handle both old format (array) and new format (object with products array)
         const productsArray = Array.isArray(data) ? data : data.products || [];
-        setProducts(productsArray);
+        
+        // Remove duplicates based on product_id
+        const uniqueProducts = productsArray.filter((product: ProductWithInventory, index: number, self: ProductWithInventory[]) => 
+          index === self.findIndex((p: ProductWithInventory) => p.product_id === product.product_id)
+        );
+        
+        setProducts(uniqueProducts);
+      })
+      .catch((error) => {
+        console.error('Error fetching products:', error);
       });
 
     fetch("/api/crm/customers")
       .then((r) => r.json())
-      .then((data: Customer[]) => setCustomers(data));
+      .then((data: Customer[]) => setCustomers(data))
+      .catch((error) => {
+        console.error('Error fetching customers:', error);
+      });
 
     fetch("/api/suppliers")
       .then((r) => r.json())
-      .then((data: Supplier[]) => setSuppliers(data));
+      .then((data: Supplier[]) => setSuppliers(data))
+      .catch((error) => {
+        console.error('Error fetching suppliers:', error);
+      });
   }, []);
 
   function addToCart(p: ProductWithInventory) {

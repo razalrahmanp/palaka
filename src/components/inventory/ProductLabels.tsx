@@ -6,7 +6,7 @@ import { LABEL_SIZES, DEFAULT_LABEL_SIZE } from './labels/LabelSizes'
 import { LabelControls } from './labels/LabelControls'
 import { LabelPreview } from './labels/LabelPreview'
 import { EmptyLabelsState } from './labels/EmptyLabelsState'
-import { printSingleLabel, printBatchLabels } from './labels/PrintService'
+import { printBatchLabels, printQuantityLabels } from './labels/PrintService'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { 
@@ -145,7 +145,8 @@ export const ProductLabels: React.FC<Props> = ({ products }) => {
   }, [products, filters])
 
   const handlePrint = (product: ProductWithInventory) => {
-    printSingleLabel(product, currentSize)
+    // Print labels based on product quantity for stock labeling
+    printQuantityLabels(product, currentSize)
   }
 
   const handlePrintAll = () => {
@@ -430,6 +431,7 @@ export const ProductLabels: React.FC<Props> = ({ products }) => {
         onSizeChange={setSelectedSize}
         onPrintAll={handlePrintAll}
         productCount={filteredProducts.length}
+        products={filteredProducts}
       />
 
       {/* Products Grid */}

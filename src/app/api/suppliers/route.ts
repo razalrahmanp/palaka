@@ -16,10 +16,17 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { name, contact } = await req.json()
+  const { name, contact, email, address } = await req.json()
   const { data, error } = await supabase
     .from('suppliers')
-    .insert([{ name, contact }])
+    .insert([{ 
+      name, 
+      contact, 
+      email, 
+      address,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }])
     .select()
     .single()
 

@@ -1,183 +1,177 @@
 {
-  "wood_materials": [
-    { "id": "teak", "name": "Teak" },
-    { "id": "mahogany", "name": "Mahogany" },
-    { "id": "acacia", "name": "Acacia" },
-    { "id": "rubberwood", "name": "Rubberwood" },
-    { "id": "plywood", "name": "Plywood" },
-    { "id": "multi_wood", "name": "Multi Wood" },
-    { "id": "particle_board", "name": "Particle Board" },
-    { "id": "mdf", "name": "MDF" }
-  ],
-  "upholstery_materials": [
-    { "id": "leather", "name": "Leather" },
-    { "id": "rexin", "name": "Rexin" },
-    { "id": "cotton", "name": "Cotton" },
-    { "id": "velvet", "name": "Velvet" }
-  ],
-  "metal_materials": [
-    { "id": "steel", "name": "Steel" },
-    { "id": "iron", "name": "Iron" },
-    { "id": "aluminum", "name": "Aluminum" }
-  ],
-  "glass_materials": [
-    { "id": "tempered", "name": "Tempered Glass" },
-    { "id": "frosted", "name": "Frosted Glass" }
-  ],
-  "synthetic_materials": [
-    { "id": "plastic", "name": "Plastic" },
-    { "id": "fiber", "name": "Fiber" }
-  ],
-  "categories": [
-    {
-      "id": "seating",
-      "name": "Seating",
-      "subcategories": [
-        {
-          "id": "chairs",
-          "name": "Chairs",
-          "products": ["DINING CHAIR", "CHAIR FIBER", "SITOUT CHAIR", "EASY CHAIR", "COFEE CHAIR", "FOLDING CHAIR", "BABY CHAIR"],
-          "materials": ["teak", "mahogany", "acacia", "rubberwood", "fiber", "plastic"]
+    "wood_materials": [
+        { "id": "teak", "name": "Teak" },
+        { "id": "mahogany", "name": "Mahogany" },
+        { "id": "acacia", "name": "Acacia" },
+        { "id": "rubberwood", "name": "Rubberwood" },
+        { "id": "plywood", "name": "Plywood" },
+        { "id": "multi_wood", "name": "Multi Wood" },
+        { "id": "particle_board", "name": "Particle Board" },
+        { "id": "mdf", "name": "MDF" }
+    ],
+    "upholstery_materials": [
+        { "id": "leather", "name": "Leather" },
+        { "id": "rexin", "name": "Rexin" },
+        { "id": "cotton", "name": "Cotton" },
+        { "id": "velvet", "name": "Velvet" }
+    ],
+    "metal_materials": [
+        { "id": "steel", "name": "Steel" },
+        { "id": "iron", "name": "Iron" },
+        { "id": "aluminum", "name": "Aluminum" }
+    ],
+    "glass_materials": [
+        { "id": "tempered", "name": "Tempered Glass" },
+        { "id": "frosted", "name": "Frosted Glass" }
+    ],
+    "synthetic_materials": [
+        { "id": "plastic", "name": "Plastic" },
+        { "id": "fiber", "name": "Fiber" }
+    ],
+    "categories": [{
+            "id": "seating",
+            "name": "Seating",
+            "subcategories": [{
+                    "id": "chairs",
+                    "name": "Chairs",
+                    "products": ["DINING CHAIR", "CHAIR FIBER", "SITOUT CHAIR", "EASY CHAIR", "COFEE CHAIR", "FOLDING CHAIR", "BABY CHAIR"],
+                    "materials": ["teak", "mahogany", "acacia", "rubberwood", "fiber", "plastic"]
+                },
+                {
+                    "id": "office_chairs",
+                    "name": "Office Chairs",
+                    "products": ["OFFICE CHAIR", "REVOLVING CHAIR", "COUNTER CHAIR"],
+                    "materials": ["steel", "leather", "rexin", "fiber", "plastic"]
+                },
+                {
+                    "id": "stools",
+                    "name": "Stools",
+                    "products": ["BARSTOOL", "STOOL", "STUP STOOL"],
+                    "materials": ["teak", "mahogany", "acacia", "rubberwood", "steel", "iron"]
+                },
+                {
+                    "id": "benches",
+                    "name": "Benches",
+                    "products": ["GARDEN BENCH", "SITOUT BENCH"],
+                    "materials": ["teak", "mahogany", "acacia", "rubberwood", "steel", "iron"]
+                },
+                {
+                    "id": "sofas",
+                    "name": "Sofas",
+                    "products": ["THREE SEATER", "SOFA SETTY", "BEEN BAG"],
+                    "materials": ["leather", "rexin", "cotton", "velvet", "teak", "mahogany", "acacia", "rubberwood"]
+                }
+            ]
         },
         {
-          "id": "office_chairs",
-          "name": "Office Chairs",
-          "products": ["OFFICE CHAIR", "REVOLVING CHAIR", "COUNTER CHAIR"],
-          "materials": ["steel", "leather", "rexin", "fiber", "plastic"]
+            "id": "tables",
+            "name": "Tables",
+            "subcategories": [{
+                    "id": "dining_tables",
+                    "name": "Dining Tables",
+                    "products": ["DINING TABLE"],
+                    "materials": ["teak", "mahogany", "acacia", "rubberwood", "plywood", "multi_wood", "marble"]
+                },
+                {
+                    "id": "coffee_tables",
+                    "name": "Coffee & Side Tables",
+                    "products": ["TEAPOY", "GLASS TEAPOY", "COFEE TABLE"],
+                    "materials": ["teak", "mahogany", "acacia", "rubberwood", "plywood", "glass", "tempered", "frosted"]
+                },
+                {
+                    "id": "specialty_tables",
+                    "name": "Specialty Tables",
+                    "products": ["MARBLE TOP", "KITCHEN TABLE", "PIANO TABLE"],
+                    "materials": ["teak", "mahogany", "acacia", "marble", "glass"]
+                },
+                {
+                    "id": "work_tables",
+                    "name": "Work Tables",
+                    "products": ["OFFICE TABLE", "COMPUTER TABLE", "STUDAY TABLE"],
+                    "materials": ["teak", "mahogany", "acacia", "rubberwood", "plywood", "particle_board"]
+                },
+                {
+                    "id": "utility_tables",
+                    "name": "Utility Tables",
+                    "products": ["IRON TABLE", "FIBER TABLE", "STEEL TABLE"],
+                    "materials": ["iron", "steel", "fiber", "plastic"]
+                }
+            ]
         },
         {
-          "id": "stools",
-          "name": "Stools",
-          "products": ["BARSTOOL", "STOOL", "STUP STOOL"],
-          "materials": ["teak", "mahogany", "acacia", "rubberwood", "steel", "iron"]
+            "id": "bedroom",
+            "name": "Bedroom Furniture",
+            "subcategories": [{
+                    "id": "beds",
+                    "name": "Beds",
+                    "products": ["COT", "FOLDING COT", "FOLDING BED", "DIVAN"],
+                    "materials": ["teak", "mahogany", "acacia", "rubberwood", "iron", "steel", "plywood"]
+                },
+                {
+                    "id": "mattresses",
+                    "name": "Mattresses & Bedding",
+                    "products": ["MATTRESS", "PILLOW", "CUSHION"],
+                    "materials": ["cotton", "velvet", "rexin"]
+                },
+                {
+                    "id": "bedroom_furniture",
+                    "name": "Bedroom Furniture",
+                    "products": ["BEDSIDE", "DRESSING TABLE", "BEDROOM SET"],
+                    "materials": ["teak", "mahogany", "acacia", "rubberwood", "plywood", "particle_board"]
+                },
+                {
+                    "id": "storage_units",
+                    "name": "Storage Units",
+                    "products": ["ALMIRAH", "STEEL ALMIRAH"],
+                    "materials": ["teak", "mahogany", "acacia", "rubberwood", "plywood", "particle_board", "steel"]
+                }
+            ]
         },
         {
-          "id": "benches",
-          "name": "Benches",
-          "products": ["GARDEN BENCH", "SITOUT BENCH"],
-          "materials": ["teak", "mahogany", "acacia", "rubberwood", "steel", "iron"]
+            "id": "storage",
+            "name": "Storage & Organization",
+            "subcategories": [{
+                    "id": "shelving",
+                    "name": "Shelving & Racks",
+                    "products": ["BOOK SHELF", "SHOE RACK"],
+                    "materials": ["teak", "mahogany", "acacia", "rubberwood", "plywood", "particle_board", "steel"]
+                },
+                {
+                    "id": "stands",
+                    "name": "Stands & Hangers",
+                    "products": ["CLOTH HANGER", "SAREE STAND", "DRYER STAND", "TV STAND"],
+                    "materials": ["teak", "mahogany", "acacia", "rubberwood", "steel", "iron"]
+                }
+            ]
         },
         {
-          "id": "sofas",
-          "name": "Sofas",
-          "products": ["THREE SEATER", "SOFA SETTY", "BEEN BAG"],
-          "materials": ["leather", "rexin", "cotton", "velvet", "teak", "mahogany", "acacia", "rubberwood"]
+            "id": "decor",
+            "name": "Decor & Accessories",
+            "subcategories": [{
+                    "id": "wall_decor",
+                    "name": "Wall Decor",
+                    "products": ["MIRROR", "COLOGREPHY"],
+                    "materials": ["teak", "mahogany", "acacia", "glass", "steel"]
+                },
+                {
+                    "id": "home_textiles",
+                    "name": "Home Textiles",
+                    "products": ["MAT", "CURTAIN"],
+                    "materials": ["cotton", "velvet", "rexin"]
+                },
+                {
+                    "id": "traditional",
+                    "name": "Traditional Items",
+                    "products": ["AMBALAM", "SWING"],
+                    "materials": ["teak", "mahogany", "acacia", "rubberwood", "cotton"]
+                },
+                {
+                    "id": "decorative_items",
+                    "name": "Decorative Items",
+                    "products": ["GLASS"],
+                    "materials": ["glass", "tempered", "frosted"]
+                }
+            ]
         }
-      ]
-    },
-    {
-      "id": "tables",
-      "name": "Tables",
-      "subcategories": [
-        {
-          "id": "dining_tables",
-          "name": "Dining Tables",
-          "products": ["DINING TABLE"],
-          "materials": ["teak", "mahogany", "acacia", "rubberwood", "plywood", "multi_wood", "marble"]
-        },
-        {
-          "id": "coffee_tables",
-          "name": "Coffee & Side Tables",
-          "products": ["TEAPOY", "GLASS TEAPOY", "COFEE TABLE"],
-          "materials": ["teak", "mahogany", "acacia", "rubberwood", "plywood", "glass", "tempered", "frosted"]
-        },
-        {
-          "id": "specialty_tables",
-          "name": "Specialty Tables",
-          "products": ["MARBLE TOP", "KITCHEN TABLE", "PIANO TABLE"],
-          "materials": ["teak", "mahogany", "acacia", "marble", "glass"]
-        },
-        {
-          "id": "work_tables",
-          "name": "Work Tables",
-          "products": ["OFFICE TABLE", "COMPUTER TABLE", "STUDAY TABLE"],
-          "materials": ["teak", "mahogany", "acacia", "rubberwood", "plywood", "particle_board"]
-        },
-        {
-          "id": "utility_tables",
-          "name": "Utility Tables",
-          "products": ["IRON TABLE", "FIBER TABLE", "STEEL TABLE"],
-          "materials": ["iron", "steel", "fiber", "plastic"]
-        }
-      ]
-    },
-    {
-      "id": "bedroom",
-      "name": "Bedroom Furniture",
-      "subcategories": [
-        {
-          "id": "beds",
-          "name": "Beds",
-          "products": ["COT", "FOLDING COT", "FOLDING BED", "DIVAN"],
-          "materials": ["teak", "mahogany", "acacia", "rubberwood", "iron", "steel", "plywood"]
-        },
-        {
-          "id": "mattresses",
-          "name": "Mattresses & Bedding",
-          "products": ["MATTRESS", "PILLOW", "CUSHION"],
-          "materials": ["cotton", "velvet", "rexin"]
-        },
-        {
-          "id": "bedroom_furniture",
-          "name": "Bedroom Furniture",
-          "products": ["BEDSIDE", "DRESSING TABLE", "BEDROOM SET"],
-          "materials": ["teak", "mahogany", "acacia", "rubberwood", "plywood", "particle_board"]
-        },
-        {
-          "id": "storage_units",
-          "name": "Storage Units",
-          "products": ["ALMIRAH", "STEEL ALMIRAH"],
-          "materials": ["teak", "mahogany", "acacia", "rubberwood", "plywood", "particle_board", "steel"]
-        }
-      ]
-    },
-    {
-      "id": "storage",
-      "name": "Storage & Organization",
-      "subcategories": [
-        {
-          "id": "shelving",
-          "name": "Shelving & Racks",
-          "products": ["BOOK SHELF", "SHOE RACK"],
-          "materials": ["teak", "mahogany", "acacia", "rubberwood", "plywood", "particle_board", "steel"]
-        },
-        {
-          "id": "stands",
-          "name": "Stands & Hangers",
-          "products": ["CLOTH HANGER", "SAREE STAND", "DRYER STAND", "TV STAND"],
-          "materials": ["teak", "mahogany", "acacia", "rubberwood", "steel", "iron"]
-        }
-      ]
-    },
-    {
-      "id": "decor",
-      "name": "Decor & Accessories",
-      "subcategories": [
-        {
-          "id": "wall_decor",
-          "name": "Wall Decor",
-          "products": ["MIRROR", "COLOGREPHY"],
-          "materials": ["teak", "mahogany", "acacia", "glass", "steel"]
-        },
-        {
-          "id": "home_textiles",
-          "name": "Home Textiles",
-          "products": ["MAT", "CURTAIN"],
-          "materials": ["cotton", "velvet", "rexin"]
-        },
-        {
-          "id": "traditional",
-          "name": "Traditional Items",
-          "products": ["AMBALAM", "SWING"],
-          "materials": ["teak", "mahogany", "acacia", "rubberwood", "cotton"]
-        },
-        {
-          "id": "decorative_items",
-          "name": "Decorative Items",
-          "products": ["GLASS"],
-          "materials": ["glass", "tempered", "frosted"]
-        }
-      ]
-    }
-  ]
+    ]
 }

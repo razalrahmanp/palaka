@@ -155,6 +155,10 @@ export interface Supplier {
   id: string
   name: string
   contact?: string
+  email?: string
+  address?: string
+  created_at?: string
+  updated_at?: string
 }
 
 export interface ProductionRun {

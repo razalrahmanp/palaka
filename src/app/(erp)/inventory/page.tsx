@@ -11,6 +11,7 @@ import { PaginatedInventoryTable } from '@/components/inventory/PaginatedInvento
 import { ProductLabels } from '@/components/inventory/ProductLabels'
 import { ProfitMarginManager } from '@/components/inventory/ProfitMarginManager'
 
+
 export default function InventoryPage() {
   const [items, setItems] = useState<ProductWithInventory[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
@@ -113,6 +114,7 @@ export default function InventoryPage() {
             <TabsTrigger value="labels"><Tags className="mr-2 h-4 w-4" /> Product Labels</TabsTrigger>
           </TabsList>
 
+
           <TabsContent value="list" className="flex-1 overflow-y-auto mt-4">
             <PaginatedInventoryTable
               onAdjustClick={() => {}}
@@ -150,7 +152,7 @@ export default function InventoryPage() {
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Add Inventory Item</DialogTitle></DialogHeader>
           <InventoryItemForm
-            existingProducts={items.map(i => ({ id: i.product_id, name: i.product_name }))} 
+            existingProducts={uniqueProducts.map(i => ({ id: i.product_id, name: i.product_name }))} 
             suppliers={suppliers}
             onSubmit={createInventory}
             onCancel={() => setAddItemOpen(false)}
@@ -178,4 +180,6 @@ export default function InventoryPage() {
       </Dialog>
     </div>
   )
+
+  
 }

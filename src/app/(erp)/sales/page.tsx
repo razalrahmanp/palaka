@@ -1,5 +1,9 @@
 'use client';
 import React, { useState } from 'react';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle } from '@/components/ui/card';
+import { User } from 'lucide-react';
 import { QuoteSection } from '@/components/sales/QuoteSection';
 import { OrderSection } from '@/components/sales/OrderSection';
 import { CustomOrdersSection } from "@/components/sales/custom-sales/CustomOrdersSection";
@@ -151,7 +155,36 @@ refresh();
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4">
+    <div className="p-4 space-y-6">
+      {/* Sales Navigation Header */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span>Sales Management</span>
+            <div className="flex gap-2">
+              {['Sales Representative', 'Sales Manager', 'System Administrator', 'Executive'].includes(currentUser?.role || '') && (
+                <Link href="/sales/representative">
+                  <Button variant="outline" size="sm" className="flex items-center gap-2">
+                    <User className="h-4 w-4" />
+                    {currentUser?.role === 'Sales Representative' ? 'My Dashboard' : 'Sales Dashboard'}
+                  </Button>
+                </Link>
+              )}
+              {/* {['Sales Manager', 'System Administrator', 'Executive'].includes(currentUser?.role || '') && (
+                <Link href="/sales/representative">
+                  <Button variant="outline" size="sm" className="flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4" />
+                    Analytics
+                  </Button>
+                </Link>
+              )} */}
+            </div>
+          </CardTitle>
+        </CardHeader>
+      </Card>
+
+      {/* Main Sales Content */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <QuoteSection
         quoteSearch={quoteSearch}
         setQuoteSearch={setQuoteSearch}
@@ -226,6 +259,7 @@ refresh();
           refresh,
         }}
       />
+      </div>
     </div>
   );
 }

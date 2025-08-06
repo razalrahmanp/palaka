@@ -1,8 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink } from './NavLink';
-import { Home, Users, Package, Warehouse, ShoppingCart, Wrench, Truck, DollarSign, BarChart as AnalyticsIcon, Bell, Settings, Star, Users2, Building2 } from 'lucide-react';
+import { Home, Users, Package, Warehouse, ShoppingCart, Wrench, Truck, DollarSign, BarChart as AnalyticsIcon, Bell, Settings, Star, Users2, Building2, Calculator } from 'lucide-react';
 import { hasPermission, hasAnyPermission } from '@/lib/auth';
 
 // Nav item definition
@@ -25,6 +25,7 @@ const navItems: NavItem[] = [
   { href: "/procurement", icon: Truck, label: "Procurement", permission: 'purchase_order:read' },
   { href: "/logistics", icon: Truck, label: "Logistics", permission: ['delivery:read','delivery:read_own'] },
   { href: "/finance", icon: DollarSign, label: "Finance", permission: ['invoice:create','payment:manage'] },
+  { href: "/accounting", icon: Calculator, label: "Accounting", permission: ['invoice:create','payment:manage'] },
   { href: "/analytics", icon: AnalyticsIcon, label: "Analytics", permission: 'analytics:read' },
 ];
 
@@ -38,7 +39,35 @@ const adminNavItems: NavItem[] = [
   { href: "/settings", icon: Settings, label: "Settings", permission: 'user:manage' },
 ];
 
-export const Sidebar = ({ isOpen, onToggle }: { isOpen: boolean; onToggle: () => void }) => (
+interface SidebarProps {
+  isOpen: boolean;
+  onToggle: () => void;
+}
+
+export const Sidebar = ({ isOpen, onToggle }: SidebarProps) => {
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
+
+  if (!isHydrated) {
+    // Show minimal sidebar during hydration to prevent mismatch
+    return (
+      <aside className={`fixed md:relative z-30 bg-amber-50 border-r border-amber-200 transition-all duration-300 ${
+        isOpen ? 'w-64' : 'w-16 md:w-64'
+      } h-full overflow-y-auto`}>
+        <div className="p-4">
+          <h2 className="text-xl font-bold text-amber-800">Al Rams ERP</h2>
+        </div>
+        <nav className="flex-1 p-4 space-y-2">
+          <div className="text-center text-amber-600">Loading...</div>
+        </nav>
+      </aside>
+    );
+  }
+
+  return (
   <aside
     className={`fixed md:relative top-0 left-0 z-50 w-64 bg-white/70 backdrop-blur-md border-r border-white/30 text-brown-900 shadow-lg transition-all duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:block`}
   >
@@ -100,4 +129,5 @@ export const Sidebar = ({ isOpen, onToggle }: { isOpen: boolean; onToggle: () =>
         ))}
     </nav>
   </aside>
-);
+  );
+}

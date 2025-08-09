@@ -20,13 +20,22 @@ export default function ErpLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen bg-gray-100 font-sans">
+      {/* Mobile overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+      
       {/* Sidebar - Mobile view toggles with sidebarOpen */}
       <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
       
-      {/* Main content */}
-      <div className="flex flex-col flex-1">
+      {/* Main content - Full height without header space */}
+      <div className="flex-1 relative">
+        {/* Floating Header Icons */}
         <Header onSidebarToggle={() => setSidebarOpen(!sidebarOpen)} />
-        <main className="flex-1 p-6 overflow-y-auto">{children}</main>
+        <main className="h-full p-6 overflow-y-auto">{children}</main>
       </div>
     </div>
   );

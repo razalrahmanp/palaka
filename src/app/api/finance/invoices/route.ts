@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseAdmin";
+import { createInvoiceJournalEntry } from "@/lib/accounting-integration";
 import type { PostgrestError } from "@supabase/supabase-js";
 
 interface InvoiceRow {
@@ -78,26 +79,52 @@ export async function POST(req: Request) {
   // Normalize status to lowercase to match CHECK constraint
   const normalizedStatus = (status ?? "").toLowerCase();
 
-  const { data, error } = await supabase
-    .from("invoices")
-    .insert([
-      {
-        sales_order_id,
-        customer_id: so.customer_id,
-        customer_name,
-        total,
-        status: normalizedStatus,
-        paid_amount,
-      },
-    ])
-    .single();
+  try {
+    // 1. Create invoice record
+    const { data: invoice, error } = await supabase
+      .from("invoices")
+      .insert([
+        {
+          sales_order_id,
+          customer_id: so.customer_id,
+          customer_name,
+          total,
+          status: normalizedStatus,
+          paid_amount,
+        },
+      ])
+      .select()
+      .single();
 
-  if (error) {
-    console.error("Error inserting invoice:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      console.error("Error inserting invoice:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // 2. Create accounting journal entry for the invoice
+    // Dr. Accounts Receivable / Cr. Sales Revenue
+    try {
+      await createInvoiceJournalEntry({
+        id: invoice.id,
+        total: total,
+        created_at: new Date().toISOString(),
+        customer_id: so.customer_id
+      });
+      console.log(`✅ Journal entry created for invoice ${invoice.id}`);
+    } catch (journalError) {
+      console.error('❌ Failed to create journal entry for invoice:', journalError);
+      // Don't fail the invoice creation, but log the error
+    }
+
+    return NextResponse.json({ 
+      data: invoice,
+      accounting_integration: true,
+      message: "Invoice created with automatic journal entry"
+    }, { status: 201 });
+  } catch (error) {
+    console.error('Error creating invoice:', error);
+    return NextResponse.json({ error: "Failed to create invoice" }, { status: 500 });
   }
-
-  return NextResponse.json({ data }, { status: 201 });
 }
 
 

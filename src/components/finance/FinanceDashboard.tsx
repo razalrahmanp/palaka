@@ -2,13 +2,17 @@
 import React from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 
+// This is the OLD finance dashboard component
+// The NEW enhanced version is in EnhancedFinanceOverview.tsx
+// This file is kept for reference but should not be used
+
 interface Props {
   receivables: number;
   payables: number;
   totalPayments: number;
 }
 
-export function FinanceDashboard({ receivables, payables, totalPayments }: Props) {
+export function LegacyFinanceDashboard({ receivables, payables, totalPayments }: Props) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
       <Card>

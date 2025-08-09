@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseAdmin";
+import { createPaymentJournalEntry } from "@/lib/accounting-integration";
 import type { PostgrestError } from "@supabase/supabase-js";
 
 interface PaymentRow {
@@ -36,36 +37,60 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  const { error: insertError } = await supabase
-    .from("payments")
-    .insert([{ invoice_id, amount, date, method }]);
+  try {
+    // 1. Create payment record
+    const { data: payment, error: insertError } = await supabase
+      .from("payments")
+      .insert([{ invoice_id, amount, date, method }])
+      .select()
+      .single();
 
-  if (insertError) {
-    return NextResponse.json({ error: insertError.message }, { status: 500 });
+    if (insertError) {
+      return NextResponse.json({ error: insertError.message }, { status: 500 });
+    }
+
+    // 2. Recalculate total paid amount for that invoice
+    const { data: payments, error: fetchError } = await supabase
+      .from("payments")
+      .select("amount")
+      .eq("invoice_id", invoice_id);
+
+    if (fetchError) {
+      return NextResponse.json({ error: fetchError.message }, { status: 500 });
+    }
+
+    const totalPaid = (payments || []).reduce((sum, p) => sum + p.amount, 0);
+
+    const { data: invoice, error: updateError } = await supabase
+      .from("invoices")
+      .update({ paid_amount: totalPaid })
+      .eq("id", invoice_id)
+      .select()
+      .single();
+
+    if (updateError) {
+      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    // 3. Create accounting journal entry for the payment
+    // Dr. Cash/Bank / Cr. Accounts Receivable
+    try {
+      await createPaymentJournalEntry(payment, invoice);
+      console.log(`✅ Journal entry created for payment ${payment.id}`);
+    } catch (journalError) {
+      console.error('❌ Failed to create journal entry for payment:', journalError);
+      // Don't fail the payment creation, but log the error
+    }
+
+    return NextResponse.json({ 
+      success: true,
+      accounting_integration: true,
+      message: "Payment recorded with automatic journal entry"
+    });
+  } catch (error) {
+    console.error('Error creating payment:', error);
+    return NextResponse.json({ error: "Failed to create payment" }, { status: 500 });
   }
-
-  // 👇 Recalculate total paid amount for that invoice
-  const { data: payments, error: fetchError } = await supabase
-    .from("payments")
-    .select("amount")
-    .eq("invoice_id", invoice_id);
-
-  if (fetchError) {
-    return NextResponse.json({ error: fetchError.message }, { status: 500 });
-  }
-
-  const totalPaid = (payments || []).reduce((sum, p) => sum + p.amount, 0);
-
-  const { error: updateError } = await supabase
-    .from("invoices")
-    .update({ paid_amount: totalPaid })
-    .eq("id", invoice_id);
-
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ success: true });
 }
 
 export async function PUT(req: Request) {

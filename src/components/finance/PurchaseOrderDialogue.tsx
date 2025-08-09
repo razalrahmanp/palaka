@@ -6,9 +6,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectTrigger,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { FinPurchaseOrder } from "@/types";
+import { ShoppingCart, Calendar, CreditCard, Package } from "lucide-react";
 
 interface BankAccount {
   id: string;
@@ -85,12 +95,14 @@ useEffect(() => {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>
-            {initialData ? "Edit Purchase Order" : "New Purchase Order"}
+          <DialogTitle className="text-xl font-semibold text-gray-800 flex items-center gap-2">
+            <ShoppingCart className="h-5 w-5" />
+            {initialData ? "Edit Purchase Order" : "Create Purchase Order"}
           </DialogTitle>
         </DialogHeader>
+        
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -118,102 +130,220 @@ useEffect(() => {
               bank_account_id: selectedBankId,
             });
           }}
-          className="space-y-4"
+          className="space-y-6 py-4"
         >
-          <Input
-            title="Supplier Name"
-            placeholder="Enter supplier name"
-            value={supplier}
-            onChange={(e) => setSupplier(e.target.value)}
-            required
-          />
+          {/* Supplier Information */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium text-gray-800 border-b pb-2">Supplier Information</h3>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-gray-700">Supplier Name *</Label>
+              <Input
+                placeholder="Enter supplier name"
+                value={supplier}
+                onChange={(e) => setSupplier(e.target.value)}
+                className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                required
+              />
+            </div>
+          </div>
 
-          <Input
-            type="date"
-            title="Purchase Date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            required
-          />
+          {/* Dates */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium text-gray-800 border-b pb-2">Order Dates</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  Purchase Date *
+                </Label>
+                <Input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  Due Date
+                </Label>
+                <Input
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+          </div>
 
-          <Input
-            type="date"
-            title="Due Date"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-          />
+          {/* Order Status */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium text-gray-800 border-b pb-2">Order Status</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-gray-700">Order Status</Label>
+                <Select
+                  value={status}
+                  onValueChange={(v) => setStatus(v as "pending" | "approved" | "received")}
+                >
+                  <SelectTrigger className="border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">
+                      <Badge variant="secondary" className="bg-yellow-100 text-yellow-700">Pending</Badge>
+                    </SelectItem>
+                    <SelectItem value="approved">
+                      <Badge variant="secondary" className="bg-blue-100 text-blue-700">Approved</Badge>
+                    </SelectItem>
+                    <SelectItem value="received">
+                      <Badge variant="secondary" className="bg-green-100 text-green-700">Received</Badge>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <select
-            value={status}
-            onChange={(e) =>
-              setStatus(e.target.value as "pending" | "approved" | "received")
-            }
-            className="border p-2 rounded w-full"
-            title="Order Status"
-          >
-            <option value="pending">Status: Pending</option>
-            <option value="approved">Status: Approved</option>
-            <option value="received">Status: Received</option>
-          </select>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-gray-700">Payment Status</Label>
+                <Select
+                  value={paymentStatus}
+                  onValueChange={(v) => setPaymentStatus(v as "unpaid" | "partially_paid" | "paid")}
+                >
+                  <SelectTrigger className="border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unpaid">
+                      <Badge variant="secondary" className="bg-red-100 text-red-700">Unpaid</Badge>
+                    </SelectItem>
+                    <SelectItem value="partially_paid">
+                      <Badge variant="secondary" className="bg-orange-100 text-orange-700">Partially Paid</Badge>
+                    </SelectItem>
+                    <SelectItem value="paid">
+                      <Badge variant="secondary" className="bg-green-100 text-green-700">Fully Paid</Badge>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
 
-          <select
-            value={paymentStatus}
-            onChange={(e) =>
-              setPaymentStatus(
-                e.target.value as "unpaid" | "partially_paid" | "paid"
-              )
-            }
-            className="border p-2 rounded w-full"
-            title="Payment Status"
-          >
-            <option value="unpaid">Payment: Unpaid</option>
-            <option value="partially_paid">Payment: Partially Paid</option>
-            <option value="paid">Payment: Fully Paid</option>
-          </select>
+          {/* Financial Details */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium text-gray-800 border-b pb-2">Financial Information</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-gray-700">Total Amount *</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="Total purchase amount"
+                  value={total || ""}
+                  onChange={(e) => setTotal(parseFloat(e.target.value) || 0)}
+                  className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                  required
+                />
+              </div>
 
-          <Input
-            type="number"
-            title="Paid Amount"
-            placeholder="Enter amount paid"
-            value={paidAmount}
-            onChange={(e) => setPaidAmount(parseFloat(e.target.value) || 0)}
-          />
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                  <CreditCard className="h-4 w-4" />
+                  Paid Amount
+                </Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="Amount paid"
+                  value={paidAmount || ""}
+                  onChange={(e) => setPaidAmount(parseFloat(e.target.value) || 0)}
+                  className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                />
+              </div>
+            </div>
 
-          <Input
-            type="number"
-            title="Total Amount"
-            placeholder="Total purchase order amount"
-            value={total}
-            onChange={(e) => setTotal(parseFloat(e.target.value))}
-            required
-          />
+            {/* Balance Display */}
+            <div className={`p-3 rounded-lg border-2 ${
+              (total - paidAmount) > 0 
+                ? 'border-red-200 bg-red-50 text-red-800' 
+                : 'border-green-200 bg-green-50 text-green-800'
+            }`}>
+              <div className="text-sm font-medium">Remaining Balance:</div>
+              <div className="text-lg font-bold">₹{(total - paidAmount).toFixed(2)}</div>
+            </div>
+          </div>
 
-          <Textarea
-            title="Products"
-            value={productsText}
-            onChange={(e) => setProductsText(e.target.value)}
-            placeholder="Enter product names, one per line"
-            rows={4}
-          />
+          {/* Products */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium text-gray-800 border-b pb-2 flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              Products
+            </h3>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-gray-700">Product List</Label>
+              <Textarea
+                value={productsText}
+                onChange={(e) => setProductsText(e.target.value)}
+                placeholder="Enter product names, one per line"
+                rows={4}
+                className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+              />
+              <p className="text-xs text-gray-500">Enter each product on a new line</p>
+            </div>
+          </div>
 
-          <select
-            value={paymentMethod}
-            onChange={(e) => setPaymentMethod(e.target.value)}
-            className="border p-2 rounded w-full"
-            title="Payment Method"
-          >
-            <option value="cash">Cash</option>
-            {bankAccounts.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-                {b.account_number ? ` - ${b.account_number}` : ""}
-              </option>
-            ))}
-          </select>
+          {/* Payment Method */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium text-gray-800 border-b pb-2">Payment Method</h3>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-gray-700">Payment Method</Label>
+              <Select
+                value={paymentMethod}
+                onValueChange={(v) => setPaymentMethod(v)}
+              >
+                <SelectTrigger className="border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">
+                    <Badge variant="secondary" className="bg-green-100 text-green-700">Cash</Badge>
+                  </SelectItem>
+                  {bankAccounts.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      <div className="flex items-center gap-2">
+                        <CreditCard className="h-4 w-4" />
+                        <span>{b.name}</span>
+                        {b.account_number && (
+                          <span className="text-gray-500">- {b.account_number}</span>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
 
-          <Button type="submit" className="w-full">
-            {initialData ? "Update Purchase Order" : "Create Purchase Order"}
-          </Button>
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row gap-3 pt-6">
+            <Button 
+              type="submit" 
+              className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white border-0"
+            >
+              {initialData ? "Update Purchase Order" : "Create Purchase Order"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              className="flex-1 border-gray-300 text-gray-700 hover:bg-gray-50"
+            >
+              Cancel
+            </Button>
+          </div>
         </form>
       </DialogContent>
     </Dialog>

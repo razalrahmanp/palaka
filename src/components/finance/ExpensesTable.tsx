@@ -1,6 +1,8 @@
 "use client";
 import React, { useEffect, useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -21,7 +23,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { PlusCircle, Trash2, Download } from "lucide-react";
+import {
+  Select,
+  SelectTrigger,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { PlusCircle, Trash2, Download, Receipt, Calculator, CreditCard, Calendar } from "lucide-react";
 import { subcategoryMap } from "@/types";
 import { getCurrentUser } from "@/lib/auth";
 
@@ -144,24 +154,50 @@ useEffect(() => {
   );
 
   return (
-    <Card>
-      <CardHeader className="flex justify-between items-center">
-        <CardTitle>Expenses</CardTitle>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={exportCSV}>
-            <Download className="w-4 h-4 mr-2" /> Export CSV
-          </Button>
-          <Button onClick={() => setDialogOpen(true)}>
-            <PlusCircle className="mr-2 h-4 w-4" /> New Expense
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex gap-4 flex-wrap">
+    <div className="space-y-6">
+      {/* Summary Card */}
+      <Card className="border-0 shadow-lg bg-gradient-to-br from-red-50 to-orange-100">
+        <CardContent className="p-6">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-gradient-to-r from-red-500 to-orange-600 rounded-xl">
+              <PlusCircle className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-red-700">Total Expenses</p>
+              <p className="text-3xl font-bold text-red-900">₹{totalExpense.toLocaleString()}</p>
+              <p className="text-sm text-red-600 mt-1">
+                {filteredExpenses.length} expense{filteredExpenses.length !== 1 && "s"} recorded
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Enhanced Expenses Card */}
+      <Card className="border-0 shadow-xl">
+        <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 border-b">
+          <div className="flex justify-between items-center">
+            <CardTitle className="text-xl font-bold text-gray-800">Expense Management</CardTitle>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={exportCSV} className="hover:bg-gray-50">
+                <Download className="w-4 h-4 mr-2" /> Export CSV
+              </Button>
+              <Button 
+                onClick={() => setDialogOpen(true)}
+                className="bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 text-white"
+              >
+                <PlusCircle className="mr-2 h-4 w-4" /> New Expense
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4 p-6">
+        {/* Enhanced Filters */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
           <select
             value={filters.category}
             onChange={(e) => setFilters({ ...filters, category: e.target.value })}
-            className="border px-3 py-2 rounded"
+            className="border border-gray-300 px-3 py-2 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
             title="Select Category"
           >
             <option value="">All Categories</option>
@@ -173,7 +209,7 @@ useEffect(() => {
           <select
             value={filters.payment_method}
             onChange={(e) => setFilters({ ...filters, payment_method: e.target.value })}
-            className="border px-3 py-2 rounded"
+            className="border border-gray-300 px-3 py-2 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
             title="Select Payment Method"
           >
             <option value="">All Payment Methods</option>
@@ -186,55 +222,61 @@ useEffect(() => {
             type="date"
             value={filters.startDate}
             onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
-            className="border px-3 py-2 rounded"
+            className="border border-gray-300 px-3 py-2 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
             title="Select Start Date"
           />
           <input
             type="date"
             value={filters.endDate}
             onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
-            className="border px-3 py-2 rounded"
+            className="border border-gray-300 px-3 py-2 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
             title="Select End Date"
           />
         </div>
 
-        <div className="overflow-auto rounded-md border">
+        <div className="overflow-auto rounded-lg border border-gray-200 shadow-sm">
           <Table>
             <TableHeader>
-              <TableRow className="bg-gray-100 text-gray-600 uppercase text-xs">
-                <TableHead>Date</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-                <TableHead>Method</TableHead>
-                <TableHead />
+              <TableRow className="bg-gradient-to-r from-gray-100 to-gray-200">
+                <TableHead className="font-semibold text-gray-700">Date</TableHead>
+                <TableHead className="font-semibold text-gray-700">Category</TableHead>
+                <TableHead className="font-semibold text-gray-700">Description</TableHead>
+                <TableHead className="text-right font-semibold text-gray-700">Amount</TableHead>
+                <TableHead className="font-semibold text-gray-700">Method</TableHead>
+                <TableHead className="text-center font-semibold text-gray-700">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredExpenses.map((e, idx) => (
-                <TableRow key={e.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                  <TableCell>{e.date}</TableCell>
+                <TableRow key={e.id} className={`border-b transition-colors hover:bg-gray-50 ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}>
+                  <TableCell className="font-medium">{e.date}</TableCell>
                   <TableCell>{badge(e.subcategory || e.category)}</TableCell>
-                  <TableCell>{e.description || "-"}</TableCell>
-                  <TableCell className="text-right text-red-600 font-semibold">
-                    ₹{e.amount.toFixed(2)}
+                  <TableCell className="text-gray-600">{e.description || "-"}</TableCell>
+                  <TableCell className="text-right text-red-600 font-bold text-lg">
+                    ₹{e.amount.toLocaleString()}
                   </TableCell>
-                  <TableCell>{e.payment_method || "-"}</TableCell>
+                  <TableCell>
+                    <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">
+                      {e.payment_method || "Cash"}
+                    </span>
+                  </TableCell>
                   <TableCell className="text-center">
                     <Button
-                      variant="ghost"
-                      size="icon"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-3 hover:bg-red-50 hover:border-red-300 text-red-600"
                       onClick={() => handleDelete(e.id)}
                     >
-                      <Trash2 className="h-4 w-4 text-red-500" />
+                      <Trash2 className="h-3 w-3 mr-1" />
+                      Delete
                     </Button>
                   </TableCell>
                 </TableRow>
               ))}
-              <TableRow className="bg-gray-100 font-semibold">
-                <TableCell colSpan={3}>Total</TableCell>
-                <TableCell className="text-right text-red-700">
-                  ₹{totalExpense.toFixed(2)}
+              <TableRow className="bg-gradient-to-r from-red-50 to-orange-50 font-semibold border-t-2 border-red-200">
+                <TableCell colSpan={3} className="text-red-800 font-bold">Total Expenses</TableCell>
+                <TableCell className="text-right text-red-800 font-bold text-xl">
+                  ₹{totalExpense.toLocaleString()}
                 </TableCell>
                 <TableCell colSpan={2}></TableCell>
               </TableRow>
@@ -244,97 +286,182 @@ useEffect(() => {
       </CardContent>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>New Expense</DialogTitle>
+            <DialogTitle className="text-xl font-semibold text-gray-800 flex items-center gap-2">
+              <Receipt className="h-5 w-5" />
+              Record New Expense
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
-            <input
-              type="date"
-              value={form.date || ""}
-              onChange={(e) => setForm({ ...form, date: e.target.value })}
-              className="border px-3 py-2 w-full rounded"
-              required
-              title="Select Date"
-            />
-            <select
-              value={form.subcategory || ""}
-              onChange={(e) => {
-                const selected = e.target.value;
-                const mapping =
-                  subcategoryMap[selected as keyof typeof subcategoryMap] || {
-                    category: "Other",
-                    type: "Indirect",
-                  };
+          
+          <div className="space-y-6 py-4">
+            {/* Date and Category Section */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium text-gray-800 border-b pb-2">Expense Details</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    Date *
+                  </Label>
+                  <Input
+                    type="date"
+                    value={form.date || ""}
+                    onChange={(e) => setForm({ ...form, date: e.target.value })}
+                    className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    required
+                  />
+                </div>
 
-                setForm({
-                  ...form,
-                  subcategory: selected,
-                  category: mapping.category,
-                  type: mapping.type,
-                });
-              }}
-              className="border px-3 py-2 w-full rounded"
-              required
-              title="Select Subcategory"
-            >
-              <option value="">Select Subcategory</option>
-              {Object.keys(subcategoryMap).map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700">Subcategory *</Label>
+                  <Select
+                    value={form.subcategory || ""}
+                    onValueChange={(selected) => {
+                      const mapping =
+                        subcategoryMap[selected as keyof typeof subcategoryMap] || {
+                          category: "Other",
+                          type: "Indirect",
+                        };
 
-            <input
-              placeholder="Category"
-              value={form.category || ""}
-              readOnly
-              className="border px-3 py-2 w-full rounded bg-gray-100 text-gray-700"
-            />
-            <input
-              placeholder="Expense Type"
-              value={form.type || ""}
-              readOnly
-              className="border px-3 py-2 w-full rounded bg-gray-100 text-gray-700"
-            />
+                      setForm({
+                        ...form,
+                        subcategory: selected,
+                        category: mapping.category,
+                        type: mapping.type,
+                      });
+                    }}
+                  >
+                    <SelectTrigger className="border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                      <SelectValue placeholder="Select subcategory" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.keys(subcategoryMap).map((name) => (
+                        <SelectItem key={name} value={name}>
+                          {name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
 
-            <input
-              placeholder="Description"
-              value={form.description || ""}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              className="border px-3 py-2 w-full rounded"
-            />
-            <input
-              type="number"
-              placeholder="Amount"
-              value={form.amount ?? ""}
-              onChange={(e) =>
-                setForm({ ...form, amount: parseFloat(e.target.value) })
-              }
-              className="border px-3 py-2 w-full rounded"
-            />
-            <select
-              value={form.payment_method || "cash"}
-              onChange={(e) => setForm({ ...form, payment_method: e.target.value })}
-              className="border px-3 py-2 w-full rounded"
-              required
-              title="Select Payment Method"
-            >
-              <option value="cash">Cash</option>
-              {bankAccounts.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name} {b.account_number ? `(${b.account_number})` : ""}
-                </option>
-              ))}
-            </select>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700">Category</Label>
+                  <Input
+                    placeholder="Category"
+                    value={form.category || ""}
+                    readOnly
+                    className="bg-gray-50 border-gray-300 text-gray-700"
+                  />
+                </div>
 
-            <Button className="w-full" onClick={handleSave}>
-              Save Expense
-            </Button>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700">Type</Label>
+                  <div className="flex items-center h-10">
+                    <Badge 
+                      variant="secondary" 
+                      className={`${
+                        form.type === 'Direct' 
+                          ? 'bg-blue-100 text-blue-700' 
+                          : 'bg-orange-100 text-orange-700'
+                      }`}
+                    >
+                      {form.type || "Not Selected"}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Financial Information */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium text-gray-800 border-b pb-2">Financial Information</h3>
+              
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-gray-700">Description</Label>
+                <Input
+                  placeholder="Enter expense description"
+                  value={form.description || ""}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                  <Calculator className="h-4 w-4" />
+                  Amount *
+                </Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="Enter amount"
+                  value={form.amount ?? ""}
+                  onChange={(e) =>
+                    setForm({ ...form, amount: parseFloat(e.target.value) || 0 })
+                  }
+                  className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Payment Method */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium text-gray-800 border-b pb-2">Payment Method</h3>
+              
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-gray-700">Payment Method</Label>
+                <Select
+                  value={form.payment_method || "cash"}
+                  onValueChange={(value) => setForm({ ...form, payment_method: value })}
+                >
+                  <SelectTrigger className="border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">
+                      <Badge variant="secondary" className="bg-green-100 text-green-700">Cash</Badge>
+                    </SelectItem>
+                    {bankAccounts.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        <div className="flex items-center gap-2">
+                          <CreditCard className="h-4 w-4" />
+                          <span>{b.name}</span>
+                          {b.account_number && (
+                            <span className="text-gray-500">- {b.account_number}</span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-3 pt-4">
+              <Button 
+                onClick={handleSave}
+                className="flex-1 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white border-0"
+              >
+                Save Expense
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setDialogOpen(false)}
+                className="flex-1 border-gray-300 text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
-    </Card>
+      </Card>
+    </div>
   );
 }

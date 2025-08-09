@@ -22,7 +22,6 @@ interface Account {
   normal_balance: 'DEBIT' | 'CREDIT'
   is_active?: boolean
 }
-
 interface Employee {
   id: string
   name: string
@@ -125,8 +124,6 @@ export default function SimplifiedJournalEntry({ onSave }: { onSave: () => void 
   const [selectedTemplate, setSelectedTemplate] = useState<string>('')
   const [openDebitCombo, setOpenDebitCombo] = useState(false)
   const [openCreditCombo, setOpenCreditCombo] = useState(false)
-  const [openEmployeeCombo, setOpenEmployeeCombo] = useState(false)
-  const [openSupplierCombo, setOpenSupplierCombo] = useState(false)
   const [journalSearchQuery, setJournalSearchQuery] = useState('')
   
   const [formData, setFormData] = useState<TransactionFormData>({
@@ -625,127 +622,48 @@ export default function SimplifiedJournalEntry({ onSave }: { onSave: () => void 
                       Refresh
                     </Button>
                   </div>
-                  <div className="text-xs text-blue-600 mb-2 bg-blue-50 px-2 py-1 rounded border border-blue-200">
-                    💡 Selecting an employee will auto-fill the salary amount. Sales performance will be shown for sales roles.
-                    {employees.length > 0 && <span className="ml-2 text-green-600">({employees.length} employees loaded)</span>}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        console.log('Current employees:', employees)
-                        console.log('Current formData:', formData)
-                        toast.info(`${employees.length} employees available`)
-                      }}
-                      className="ml-2 h-5 text-xs"
-                    >
-                      Debug
-                    </Button>
-                  </div>
-                  <Popover open={openEmployeeCombo} onOpenChange={setOpenEmployeeCombo}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        aria-expanded={openEmployeeCombo}
-                        className="w-full justify-between h-auto p-3"
-                      >
-                        {formData.employee_id ? (
-                          <div className="flex items-center gap-2">
-                            <Badge className="bg-blue-100 text-blue-800">EMP</Badge>
-                            <div className="flex-1 text-left">
-                              <span className="font-medium">{employees.find(emp => emp.id === formData.employee_id)?.name}</span>
-                              {employees.find(emp => emp.id === formData.employee_id)?.role && (
-                                <div className="text-xs text-gray-500">
-                                  {employees.find(emp => emp.id === formData.employee_id)?.role} • ₹{employees.find(emp => emp.id === formData.employee_id)?.salary?.toLocaleString()}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          "Select employee..."
-                        )}
-                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-full p-0 max-h-60 overflow-hidden" style={{ width: 'var(--radix-popover-trigger-width)' }}>
-                      <Command>
-                        <CommandInput placeholder="Search employees by name or ID..." />
-                        <CommandEmpty>
-                          {employeesLoading 
-                            ? 'Loading employees...' 
-                            : employees.length === 0 
-                              ? 'No employees found. Please add employees first.' 
-                              : 'No employee found.'
+                  
+                  {/* Employee Selection Dropdown */}
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="text-xs text-blue-700 mb-2 font-medium">
+                      Select Employee for Salary Payment:
+                    </div>
+                    <select 
+                      className="w-full p-2 border border-blue-300 rounded-md text-sm bg-white"
+                      value={formData.employee_id || ''}
+                      title="Select Employee for Salary Payment"
+                      aria-label="Select Employee for Salary Payment"
+                      onChange={(e) => {
+                        const selectedEmployee = employees.find(emp => emp.id === e.target.value)
+                        if (selectedEmployee) {
+                          console.log('Employee selected:', selectedEmployee)
+                          
+                          setFormData(prev => ({ 
+                            ...prev, 
+                            employee_id: selectedEmployee.id,
+                            description: `Salary payment for ${selectedEmployee.name}`,
+                            amount: selectedEmployee.salary || 0
+                          }))
+                          
+                          // Fetch sales data if employee is in sales role
+                          if (selectedEmployee.role && ['sales representative', 'sales manager', 'sales executive'].includes(selectedEmployee.role.toLowerCase())) {
+                            fetchEmployeeSales(selectedEmployee.id)
+                          } else {
+                            setSelectedEmployeeSales(null)
                           }
-                        </CommandEmpty>
-                        <div className="max-h-48 overflow-y-auto">
-                          <CommandGroup>
-                            {employees.map((employee) => {
-                              const handleEmployeeSelect = () => {
-                                console.log('Employee selected:', employee) // Debug log
-                                
-                                setFormData(prev => ({ 
-                                  ...prev, 
-                                  employee_id: employee.id,
-                                  description: `Salary payment for ${employee.name}`,
-                                  amount: employee.salary || 0
-                                }))
-                                
-                                // Fetch sales data if employee is in sales role
-                                if (employee.role && ['sales representative', 'sales manager', 'sales executive'].includes(employee.role.toLowerCase())) {
-                                  fetchEmployeeSales(employee.id)
-                                } else {
-                                  setSelectedEmployeeSales(null)
-                                }
-                                
-                                setOpenEmployeeCombo(false)
-                              }
-
-                              return (
-                                <CommandItem
-                                  key={employee.id}
-                                  value={`${employee.name} ${employee.employee_id} ${employee.department || ''}`}
-                                  onSelect={handleEmployeeSelect}
-                                  onClick={handleEmployeeSelect}
-                                  className="cursor-pointer hover:bg-gray-100"
-                                >
-                                  <div className="flex items-center gap-2 w-full">
-                                    <Badge className="bg-blue-100 text-blue-800" variant="secondary">
-                                      {employee.employee_id}
-                                    </Badge>
-                                    <div className="flex-1">
-                                      <div className="font-medium">{employee.name}</div>
-                                      <div className="text-xs text-gray-500 flex items-center gap-2">
-                                        <span>{employee.department}</span>
-                                        {employee.role && (
-                                          <>
-                                            <span>•</span>
-                                            <span className="font-medium">{employee.role}</span>
-                                          </>
-                                        )}
-                                        {employee.salary && (
-                                          <>
-                                            <span>•</span>
-                                            <span className="text-green-600 font-medium">₹{employee.salary.toLocaleString()}</span>
-                                          </>
-                                        )}
-                                      </div>
-                                    </div>
-                                    <Check
-                                      className={cn(
-                                        "ml-auto h-4 w-4",
-                                        formData.employee_id === employee.id ? "opacity-100" : "opacity-0"
-                                      )}
-                                    />
-                                  </div>
-                                </CommandItem>
-                              )
-                            })}
-                          </CommandGroup>
-                        </div>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
+                          
+                          toast.success(`Selected ${selectedEmployee.name} - ₹${selectedEmployee.salary?.toLocaleString()}`)
+                        }
+                      }}
+                    >
+                      <option value="">Choose an employee...</option>
+                      {employees.map(employee => (
+                        <option key={employee.id} value={employee.id}>
+                          {employee.employee_id} - {employee.name} - {employee.department || 'No Department'} - ₹{employee.salary?.toLocaleString() || 0}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               )}
 
@@ -798,66 +716,40 @@ export default function SimplifiedJournalEntry({ onSave }: { onSave: () => void 
               {selectedTemplate === 'supplier_payment' && (
                 <div className="space-y-2">
                   <Label>Select Supplier</Label>
-                  <Popover open={openSupplierCombo} onOpenChange={setOpenSupplierCombo}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        aria-expanded={openSupplierCombo}
-                        className="w-full justify-between h-auto p-3"
-                      >
-                        {formData.supplier_id ? (
-                          <div className="flex items-center gap-2">
-                            <Badge className="bg-green-100 text-green-800">SUP</Badge>
-                            <span>{suppliers.find(sup => sup.id === formData.supplier_id)?.name}</span>
-                          </div>
-                        ) : (
-                          "Select supplier..."
-                        )}
-                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-full p-0 max-h-60 overflow-hidden" style={{ width: 'var(--radix-popover-trigger-width)' }}>
-                      <Command>
-                        <CommandInput placeholder="Search suppliers..." />
-                        <CommandEmpty>No supplier found.</CommandEmpty>
-                        <div className="max-h-48 overflow-y-auto">
-                          <CommandGroup>
-                            {suppliers.map((supplier) => (
-                              <CommandItem
-                                key={supplier.id}
-                                value={supplier.name}
-                                onSelect={() => {
-                                  setFormData(prev => ({ 
-                                    ...prev, 
-                                    supplier_id: supplier.id,
-                                    description: `Payment to ${supplier.name}`
-                                  }))
-                                  setOpenSupplierCombo(false)
-                                }}
-                              >
-                                <div className="flex items-center gap-2 w-full">
-                                  <Badge className="bg-green-100 text-green-800" variant="secondary">
-                                    SUP
-                                  </Badge>
-                                  <div className="flex-1">
-                                    <div className="font-medium">{supplier.name}</div>
-                                    <div className="text-xs text-gray-500">{supplier.email}</div>
-                                  </div>
-                                  <Check
-                                    className={cn(
-                                      "ml-auto h-4 w-4",
-                                      formData.supplier_id === supplier.id ? "opacity-100" : "opacity-0"
-                                    )}
-                                  />
-                                </div>
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </div>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
+                  
+                  {/* Supplier Selection Dropdown */}
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="text-xs text-green-700 mb-2 font-medium">
+                      Select Supplier for Payment:
+                    </div>
+                    <select 
+                      className="w-full p-2 border border-green-300 rounded-md text-sm bg-white"
+                      value={formData.supplier_id || ''}
+                      title="Select Supplier for Payment"
+                      aria-label="Select Supplier for Payment"
+                      onChange={(e) => {
+                        const selectedSupplier = suppliers.find(sup => sup.id === e.target.value)
+                        if (selectedSupplier) {
+                          console.log('Supplier selected:', selectedSupplier)
+                          
+                          setFormData(prev => ({ 
+                            ...prev, 
+                            supplier_id: selectedSupplier.id,
+                            description: `Payment to ${selectedSupplier.name}`
+                          }))
+                          
+                          toast.success(`Selected ${selectedSupplier.name}`)
+                        }
+                      }}
+                    >
+                      <option value="">Choose a supplier...</option>
+                      {suppliers.map(supplier => (
+                        <option key={supplier.id} value={supplier.id}>
+                          {supplier.name} - {supplier.email || 'No Email'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               )}
 

@@ -2,8 +2,73 @@
 
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
+import { createPurchaseOrderJournalEntry, createSupplierPaymentJournalEntry } from "@/lib/accounting-integration";
 import { FinPurchaseOrder } from "@/types";
 import { getCurrentUser } from "@/lib/auth";
+
+// Helper function to create vendor bill from purchase order
+async function createVendorBillFromPO({
+  purchase_order_id,
+  supplier_id,
+  total_amount
+}: {
+  purchase_order_id: string;
+  supplier_id: string;
+  total_amount: number;
+}) {
+  try {
+    // Get supplier payment terms
+    const { data: paymentTerms } = await supabase
+      .from('vendor_payment_terms')
+      .select('payment_terms_days')
+      .eq('supplier_id', supplier_id)
+      .eq('is_active', true)
+      .single();
+
+    const termsDays = paymentTerms?.payment_terms_days || 30;
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + termsDays);
+
+    // Generate bill number
+    const billNumber = `PO-${purchase_order_id.substring(0, 8)}-${Date.now()}`;
+
+    // Get system user for created_by
+    const { data: systemUser } = await supabase
+      .from('users')
+      .select('id')
+      .limit(1)
+      .single();
+
+    // Create vendor bill
+    const { data: vendorBill, error: vendorBillError } = await supabase
+      .from('vendor_bills')
+      .insert({
+        bill_number: billNumber,
+        supplier_id: supplier_id,
+        purchase_order_id: purchase_order_id,
+        bill_date: new Date().toISOString().split('T')[0],
+        due_date: dueDate.toISOString().split('T')[0],
+        total_amount: total_amount,
+        paid_amount: 0,
+        status: 'pending',
+        description: `Vendor bill for Purchase Order ${purchase_order_id}`,
+        reference_number: `PO-REF-${purchase_order_id}`,
+        created_by: systemUser?.id,
+        updated_by: systemUser?.id
+      })
+      .select()
+      .single();
+
+    if (vendorBillError) {
+      throw vendorBillError;
+    }
+
+    return vendorBill;
+  } catch (error) {
+    console.error("Error creating vendor bill from PO:", error);
+    throw error;
+  }
+}
 
 export async function GET() {
   try {
@@ -109,37 +174,94 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  const { error } = await supabase.from("purchase_orders").insert([
-    {
-      supplier_id,
-      product_id: product_id ?? null,
-      quantity,
-      status,
-      due_date,
-      paid_amount,
-      payment_status,
-      created_by: getCurrentUser(),
-    },
-  ]);
+  try {
+    // 1. Get product details to calculate total
+    let total = 0;
+    if (product_id) {
+      const { data: product } = await supabase
+        .from("products")
+        .select("price")
+        .eq("id", product_id)
+        .single();
+      
+      if (product) {
+        total = (product.price || 0) * quantity;
+      }
+    }
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  if (paid_amount && payment_status === "paid") {
-    await supabase.from("expenses").insert([
+    // 2. Create purchase order record
+    const { data: purchaseOrder, error } = await supabase.from("purchase_orders").insert([
       {
-        date: new Date().toISOString().slice(0, 10),
-        category: "Manufacturing",
-        description: `PO Payment to Supplier ID: ${supplier_id}`,
-        amount: paid_amount,
-        payment_method: "Bank",
-        type: "Direct",
+        supplier_id,
+        product_id: product_id ?? null,
+        quantity,
+        total,
+        status,
+        due_date,
+        paid_amount,
+        payment_status,
+        created_by: getCurrentUser(),
       },
-    ]);
-  }
+    ])
+    .select()
+    .single();
 
-  return NextResponse.json({ success: true });
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // 3. Create accounting journal entry for purchase order
+    // Dr. Inventory / Cr. Accounts Payable
+    if (total > 0) {
+      try {
+        await createPurchaseOrderJournalEntry({
+          id: purchaseOrder.id,
+          total: total,
+          created_at: new Date().toISOString(),
+          supplier_id: supplier_id
+        });
+        console.log(`✅ Journal entry created for purchase order ${purchaseOrder.id}`);
+      } catch (journalError) {
+        console.error('❌ Failed to create journal entry for purchase order:', journalError);
+      }
+    }
+
+    // 4. If payment made, create expense record and journal entry
+    if (paid_amount && payment_status === "paid") {
+      await supabase.from("expenses").insert([
+        {
+          date: new Date().toISOString().slice(0, 10),
+          category: "Manufacturing",
+          description: `PO Payment to Supplier ID: ${supplier_id}`,
+          amount: paid_amount,
+          payment_method: "Bank",
+          type: "Direct",
+        },
+      ]);
+
+      // Create payment journal entry
+      try {
+        await createSupplierPaymentJournalEntry({
+          id: `${purchaseOrder.id}-payment`,
+          amount: paid_amount,
+          payment_date: new Date().toISOString(),
+          supplier_id: supplier_id
+        });
+        console.log(`✅ Payment journal entry created for purchase order ${purchaseOrder.id}`);
+      } catch (journalError) {
+        console.error('❌ Failed to create payment journal entry:', journalError);
+      }
+    }
+
+    return NextResponse.json({ 
+      success: true,
+      accounting_integration: true,
+      message: "Purchase order created with automatic journal entries"
+    });
+  } catch (error) {
+    console.error('Error creating purchase order:', error);
+    return NextResponse.json({ error: "Failed to create purchase order" }, { status: 500 });
+  }
 }
 
 export async function PUT(req: Request) {
@@ -178,6 +300,17 @@ export async function PUT(req: Request) {
     due_date,
   };
 
+  // Get PO details before update for vendor bill creation
+  const { data: existingPO, error: fetchError } = await supabase
+    .from("purchase_orders")
+    .select("id, supplier_id, total, status")
+    .eq("id", id)
+    .single();
+
+  if (fetchError) {
+    return NextResponse.json({ error: fetchError.message }, { status: 500 });
+  }
+
   const { error: updateError } = await supabase
     .from("purchase_orders")
     .update(updates)
@@ -185,6 +318,20 @@ export async function PUT(req: Request) {
 
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+
+  // Create vendor bill when PO is approved
+  if (status && status === 'approved' && existingPO?.status !== 'approved') {
+    try {
+      await createVendorBillFromPO({
+        purchase_order_id: id,
+        supplier_id: existingPO.supplier_id,
+        total_amount: existingPO.total || 0
+      });
+      console.log(`✅ Vendor bill created for approved purchase order ${id}`);
+    } catch (vendorBillError) {
+      console.error('❌ Failed to create vendor bill for purchase order:', vendorBillError);
+    }
   }
 
   if (paid_amount && paid_amount > 0) {
@@ -207,6 +354,19 @@ export async function PUT(req: Request) {
         created_by: getCurrentUser(), // Replace with actual user ID if available
       },
     ]);
+
+    // Create supplier payment journal entry
+    try {
+      await createSupplierPaymentJournalEntry({
+        id: `${id}-payment-${Date.now()}`,
+        amount: paid_amount,
+        payment_date: new Date().toISOString(),
+        supplier_id: body.supplier_id || 'unknown'
+      });
+      console.log(`✅ Payment journal entry created for purchase order ${id}`);
+    } catch (journalError) {
+      console.error('❌ Failed to create payment journal entry:', journalError);
+    }
 
     // create a bank transaction if bank_account_id is provided
     // if (bank_account_id) {

@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Edit, Trash2, Download, Check } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Edit, Trash2, Download, Check, Building, TrendingUp, DollarSign } from "lucide-react";
 import { FinPurchaseOrder } from "@/types";
-import clsx from "clsx";
 
 interface Props {
   orders: FinPurchaseOrder[];
@@ -63,39 +64,90 @@ export function PurchaseOrdersTable({
   };
 
   const statusBadge = (status: string) => {
-    const base = "px-2 py-1 rounded-full text-xs font-semibold";
     switch (status) {
       case "pending":
-        return <span className={clsx(base, "bg-yellow-100 text-yellow-800")}>Pending</span>;
+        return <Badge className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white">Pending</Badge>;
       case "approved":
-        return <span className={clsx(base, "bg-blue-100 text-blue-800")}>Approved</span>;
+        return <Badge className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white">Approved</Badge>;
       case "received":
-        return <span className={clsx(base, "bg-green-100 text-green-800")}>Received</span>;
+        return <Badge className="bg-gradient-to-r from-green-500 to-emerald-600 text-white">Received</Badge>;
       default:
-        return <span className={clsx(base, "bg-gray-100 text-gray-600")}>{status}</span>;
+        return <Badge variant="secondary">{status}</Badge>;
     }
   };
 
   return (
-    <div className="space-y-4">
-      {/* Filter & Export */}
-      <div className="flex justify-between items-center">
-        <div className="space-x-2">
-          {["all", "pending", "approved", "received"].map((s) => (
-            <Button
-              key={s}
-              variant={statusFilter === s ? "default" : "outline"}
-              onClick={() => setStatusFilter(s as "all" | "pending" | "approved" | "received")}
-            >
-              {s.charAt(0).toUpperCase() + s.slice(1)}
-            </Button>
-          ))}
-        </div>
-        <Button onClick={handleExportCSV}>
-          <Download className="mr-2 w-4 h-4" />
-          Export CSV
-        </Button>
+    <div className="space-y-6">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="border-0 shadow-lg bg-gradient-to-br from-purple-50 to-indigo-100">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl">
+                <Building className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-purple-700">Total Amount</p>
+                <p className="text-2xl font-bold text-purple-900">₹{totalAmount.toLocaleString()}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-lg bg-gradient-to-br from-green-50 to-green-100">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-gradient-to-r from-green-500 to-green-600 rounded-xl">
+                <TrendingUp className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-green-700">Paid Amount</p>
+                <p className="text-2xl font-bold text-green-900">₹{totalPaid.toLocaleString()}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-lg bg-gradient-to-br from-orange-50 to-red-100">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-gradient-to-r from-orange-500 to-red-600 rounded-xl">
+                <DollarSign className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-orange-700">Pending Amount</p>
+                <p className="text-2xl font-bold text-orange-900">₹{totalPending.toLocaleString()}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Enhanced Purchase Orders Card */}
+      <Card className="border-0 shadow-xl">
+        <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 border-b">
+          <div className="flex justify-between items-center">
+            <CardTitle className="text-xl font-bold text-gray-800">Purchase Orders</CardTitle>
+            <Button onClick={handleExportCSV} variant="outline" className="hover:bg-gray-50">
+              <Download className="mr-2 w-4 h-4" />
+              Export CSV
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-6 space-y-4">
+          {/* Enhanced Filter Buttons */}
+          <div className="flex gap-2 flex-wrap">
+            {["all", "pending", "approved", "received"].map((s) => (
+              <Button
+                key={s}
+                variant={statusFilter === s ? "default" : "outline"}
+                className={statusFilter === s ? "bg-gradient-to-r from-purple-500 to-indigo-600 text-white" : ""}
+                onClick={() => setStatusFilter(s as "all" | "pending" | "approved" | "received")}
+              >
+                {s.charAt(0).toUpperCase() + s.slice(1)}
+              </Button>
+            ))}
+          </div>
 
       {/* Table */}
       <div className="overflow-auto border rounded-md shadow-sm">
@@ -184,6 +236,8 @@ export function PurchaseOrdersTable({
           </tfoot>
         </table>
       </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

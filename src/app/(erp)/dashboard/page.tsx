@@ -123,25 +123,45 @@ export default function DashboardPage() {
   ] : [];
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-emerald-50 p-6 space-y-8">
+      {/* Header Section */}
+      <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-xl p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
+              Executive Dashboard
+            </h1>
+            <p className="text-gray-600 mt-2">Real-time business intelligence and key performance indicators</p>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="h-8 w-8 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center">
+              <TrendingUp className="h-5 w-5 text-white" />
+            </div>
+            <span className="text-sm font-medium text-gray-600">Live Data</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {statsCardsData.map((stat) => (
           <StatCard key={stat.title} {...stat} />
         ))}
       </div>
 
-      <div className="grid gap-6 grid-cols-1">
-        <div className="space-y-4">
-          <h2 className="text-lg sm:text-xl font-semibold text-gray-700">
+      {/* Analytics Section */}
+      <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-xl p-6">
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">
             Business Intelligence & Analytics
           </h2>
-          <Charts
-            profitVsExpenses={executiveData?.profitVsExpenses}
-            salesTrends={executiveData?.salesTrends}
-            topPerformers={executiveData?.topPerformers}
-          />
+          <p className="text-gray-600">Comprehensive view of business performance and trends</p>
         </div>
-        {/* The Alerts component is no longer displayed on the dashboard */}
+        <Charts
+          profitVsExpenses={executiveData?.profitVsExpenses}
+          salesTrends={executiveData?.salesTrends}
+          topPerformers={executiveData?.topPerformers}
+        />
       </div>
     </div>
   );

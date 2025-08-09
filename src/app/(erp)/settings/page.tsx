@@ -242,30 +242,37 @@ const SettingsPage = () => {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">System Settings</h1>
-          <p className="text-gray-600 mt-1">Configure system-wide settings and preferences</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button onClick={fetchSettings} variant="outline" size="sm">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
-          <Button onClick={() => openEditModal()}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Setting
-          </Button>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 p-6 space-y-8">
+      {/* Header Section */}
+      <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-xl p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-700 to-slate-600 bg-clip-text text-transparent">
+              System Settings
+            </h1>
+            <p className="text-gray-600 mt-2">Configure system-wide settings and preferences</p>
+          </div>
+          <div className="flex items-center space-x-3">
+            <div className="h-8 w-8 bg-gradient-to-br from-gray-500 to-slate-600 rounded-lg flex items-center justify-center">
+              <SettingsIcon className="h-5 w-5 text-white" />
+            </div>
+            <Button onClick={fetchSettings} variant="outline" size="sm" className="bg-white/80 backdrop-blur-sm border-white/20">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
+            <Button onClick={() => openEditModal()} className="bg-gradient-to-r from-gray-600 to-slate-700 hover:from-gray-700 hover:to-slate-800 text-white shadow-lg">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Setting
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card>
+        <Card className="bg-white/80 backdrop-blur-sm border border-white/20 shadow-lg hover:shadow-xl transition-all duration-300">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-gray-900">
               <User className="h-5 w-5" />
               User & Role Management
             </CardTitle>
@@ -285,9 +292,9 @@ const SettingsPage = () => {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-white/80 backdrop-blur-sm border border-white/20 shadow-lg hover:shadow-xl transition-all duration-300">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-gray-900">
               <Activity className="h-5 w-5" />
               Audit Logs
             </CardTitle>
@@ -296,16 +303,16 @@ const SettingsPage = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button size="sm">
+            <Button size="sm" className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white">
               <Activity className="mr-2 h-4 w-4" />
               View Audit Logs
             </Button>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-white/80 backdrop-blur-sm border border-white/20 shadow-lg hover:shadow-xl transition-all duration-300">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-gray-900">
               <Database className="h-5 w-5" />
               System Backup
             </CardTitle>
@@ -314,7 +321,7 @@ const SettingsPage = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button size="sm">
+            <Button size="sm" className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white">
               <Database className="mr-2 h-4 w-4" />
               Backup Settings
             </Button>
@@ -323,24 +330,48 @@ const SettingsPage = () => {
       </div>
 
       {/* Settings Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="general">General</TabsTrigger>
-          <TabsTrigger value="notifications">Notifications</TabsTrigger>
-          <TabsTrigger value="security">Security</TabsTrigger>
-          <TabsTrigger value="integration">Integration</TabsTrigger>
-        </TabsList>
+      <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-xl overflow-hidden">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <div className="bg-gradient-to-r from-gray-50 to-slate-50 px-6 py-4 border-b border-gray-100/50">
+            <TabsList className="bg-white/60 backdrop-blur-sm border border-white/20 rounded-xl p-1 grid w-full grid-cols-4 gap-1">
+              <TabsTrigger 
+                value="general"
+                className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-gray-600 data-[state=active]:to-slate-700 data-[state=active]:text-white rounded-lg transition-all duration-300"
+              >
+                General
+              </TabsTrigger>
+              <TabsTrigger 
+                value="notifications"
+                className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-gray-600 data-[state=active]:to-slate-700 data-[state=active]:text-white rounded-lg transition-all duration-300"
+              >
+                Notifications
+              </TabsTrigger>
+              <TabsTrigger 
+                value="security"
+                className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-gray-600 data-[state=active]:to-slate-700 data-[state=active]:text-white rounded-lg transition-all duration-300"
+              >
+                Security
+              </TabsTrigger>
+              <TabsTrigger 
+                value="integration"
+                className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-gray-600 data-[state=active]:to-slate-700 data-[state=active]:text-white rounded-lg transition-all duration-300"
+              >
+                Integration
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
-        {Object.entries(settings).map(([category, categorySettings]) => (
-          <TabsContent key={category} value={category} className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  {React.createElement(getSettingIcon(category), { className: "h-5 w-5" })}
-                  {category.charAt(0).toUpperCase() + category.slice(1)} Settings
-                  <Badge variant="outline">{categorySettings.length}</Badge>
-                </CardTitle>
-                <CardDescription>
+          <div className="p-6">
+            {Object.entries(settings).map(([category, categorySettings]) => (
+              <TabsContent key={category} value={category} className="mt-0">
+                <Card className="bg-white/60 backdrop-blur-sm border border-white/20 shadow-lg">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-gray-900">
+                      {React.createElement(getSettingIcon(category), { className: "h-5 w-5" })}
+                      {category.charAt(0).toUpperCase() + category.slice(1)} Settings
+                      <Badge variant="outline" className="bg-white/80">{categorySettings.length}</Badge>
+                    </CardTitle>
+                    <CardDescription>
                   Configure {category} settings for your organization
                 </CardDescription>
               </CardHeader>
@@ -401,7 +432,9 @@ const SettingsPage = () => {
             </Card>
           </TabsContent>
         ))}
-      </Tabs>
+          </div>
+        </Tabs>
+      </div>
 
       {/* Edit Setting Modal */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>

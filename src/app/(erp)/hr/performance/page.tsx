@@ -303,21 +303,28 @@ const PerformancePage = () => {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Performance Management</h1>
-          <p className="text-gray-600">Manage employee performance reviews and goals</p>
-        </div>
-        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-          <DialogTrigger asChild>
-            <Button className="flex items-center gap-2">
-              <Plus className="h-4 w-4" />
-              Create Review
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-purple-50 p-6 space-y-8">
+      {/* Header Section */}
+      <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-xl p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-violet-600 bg-clip-text text-transparent">
+              Performance Management
+            </h1>
+            <p className="text-gray-600 mt-2">Manage employee performance reviews and goals</p>
+          </div>
+          <div className="flex items-center space-x-3">
+            <div className="h-8 w-8 bg-gradient-to-br from-purple-500 to-violet-600 rounded-lg flex items-center justify-center">
+              <Star className="h-5 w-5 text-white" />
+            </div>
+            <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+              <DialogTrigger asChild>
+                <Button className="bg-gradient-to-r from-purple-600 to-violet-700 hover:from-purple-700 hover:to-violet-800 text-white shadow-lg flex items-center gap-2">
+                  <Plus className="h-4 w-4" />
+                  Create Review
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl bg-white/95 backdrop-blur-sm">
             <DialogHeader>
               <DialogTitle>Create Performance Review</DialogTitle>
             </DialogHeader>
@@ -711,8 +718,10 @@ const PerformancePage = () => {
           )}
         </DialogContent>
       </Dialog>
+        </div>
+      </div>
     </div>
-  )
+  );
 }
 
 export default PerformancePage

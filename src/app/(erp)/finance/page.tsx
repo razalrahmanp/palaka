@@ -1,6 +1,20 @@
+/**
+ * Finance Page - Enhanced Version
+ * 
+ * This page now uses the EnhancedFinanceOverview component which provides:
+ * - Modern UI/UX with gradients and animations
+ * - Accounting integration status and monitoring
+ * - Real-time health metrics and system status
+ * - Enhanced transaction display with integration indicators
+ * - Complete finance-accounting integration
+ * 
+ * The old FinanceDashboard component has been replaced with EnhancedFinanceOverview
+ * for a more comprehensive and user-friendly experience.
+ */
+
 "use client";
 import React, { useState, useEffect } from "react";
-import { FinanceDashboard } from "@/components/finance/FinanceDashboard";
+import EnhancedFinanceOverview from "@/components/finance/EnhancedFinanceOverview";
 import { InvoicesTable } from "@/components/finance/InvoicesTable";
 import { InvoiceDialog } from "@/components/finance/InvoiceDialog";
 import { ExpensesTable } from "@/components/finance/ExpensesTable";
@@ -19,6 +33,8 @@ import {
 import { Invoice, Payment, FinPurchaseOrder } from "@/types";
 import { PurchaseOrderDialog } from "@/components/finance/PurchaseOrderDialogue";
 import { PaymentDialog } from "@/components/finance/PaymentDialog";
+import { PurchaseOrderJournalAutoBalance } from "@/components/finance/PurchaseOrderJournalAutoBalance";
+import { VendorBillAutoBalance } from "@/components/finance/VendorBillAutoBalance";
 
 export default function FinancePage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -54,33 +70,23 @@ export default function FinancePage() {
     fetchPurchaseOrders();
   }, []);
 
-  const totalReceivables = invoices.reduce(
-    (sum, i) => sum + (i.total - i.paid_amount),
-    0
-  );
-  const totalPayments = invoices.reduce((sum, i) => sum + i.paid_amount, 0);
-  const totalPayables = purchaseOrders.reduce((sum, po) => {
-  const unpaid = (po.total ?? 0) - (po.paid_amount ?? 0);
-  return sum + (unpaid > 0 ? unpaid : 0);
-}, 0);
-
   return (
-    <div className="p-4 space-y-4">
-      <FinanceDashboard
-        receivables={totalReceivables}
-        payables={totalPayables }
-        totalPayments={totalPayments}
-      />
+    <div className="w-full">
+      {/* Enhanced Finance Overview Dashboard */}
+      <EnhancedFinanceOverview />
 
-      <Tabs defaultValue="invoices">
-        <TabsList className="flex flex-wrap">
-          <TabsTrigger value="invoices">Invoices</TabsTrigger>
-          <TabsTrigger value="payments">Payments</TabsTrigger>
-          <TabsTrigger value="purchase-order">Purchase Orders</TabsTrigger>
-          <TabsTrigger value="expenses">Expenses</TabsTrigger>
-          <TabsTrigger value="cashflow">Cashflow</TabsTrigger>
-          <TabsTrigger value="bank_accounts">Bank Accounts</TabsTrigger>
-        </TabsList>
+      {/* Finance Operations Tabs */}
+      <div className="p-4">
+        <Tabs defaultValue="invoices">
+          <TabsList className="flex flex-wrap mb-6">
+            <TabsTrigger value="invoices" className="text-sm font-medium">Invoices</TabsTrigger>
+            <TabsTrigger value="payments" className="text-sm font-medium">Payments</TabsTrigger>
+            <TabsTrigger value="purchase-order" className="text-sm font-medium">Purchase Orders</TabsTrigger>
+            <TabsTrigger value="expenses" className="text-sm font-medium">Expenses</TabsTrigger>
+            <TabsTrigger value="cashflow" className="text-sm font-medium">Cashflow</TabsTrigger>
+            <TabsTrigger value="bank_accounts" className="text-sm font-medium">Bank Accounts</TabsTrigger>
+            <TabsTrigger value="accounting" className="text-sm font-medium">Accounting</TabsTrigger>
+          </TabsList>
 
         <TabsContent value="invoices">
           <div className="flex justify-between mb-2">
@@ -223,7 +229,15 @@ export default function FinancePage() {
         <TabsContent value="bank_accounts">
           <BankAccountsTable />
         </TabsContent>
-      </Tabs>
+
+        <TabsContent value="accounting">
+          <div className="space-y-6">
+            <PurchaseOrderJournalAutoBalance />
+            <VendorBillAutoBalance />
+          </div>
+        </TabsContent>
+        </Tabs>
+      </div>
     </div>
   );
 }

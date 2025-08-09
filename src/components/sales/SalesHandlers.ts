@@ -41,6 +41,9 @@ export function createSalesHandlers(
       return;
     }
 
+    // Always refresh data after quote save/update
+    refresh();
+
     if (quoteData.status === 'Approved') {
       const createdQuote = isEdit ? selectedQuote : await res.json();
       const orderItems = await Promise.all(
@@ -94,6 +97,11 @@ export function createSalesHandlers(
         console.error('Failed to create order', await orderRes.json());
         return;
       }
+
+      // Refresh again after order creation to ensure all sections see the new data
+      setTimeout(() => {
+        refresh();
+      }, 500); // Small delay to ensure backend processing is complete
 
       await Promise.all(
         orderItems

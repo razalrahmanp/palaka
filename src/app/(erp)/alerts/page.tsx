@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -198,36 +198,43 @@ export default function AlertsPage() {
   const alertCounts = getAlertCounts();
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Page Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Alerts</h1>
-          <p className="text-muted-foreground">
-            Monitor and manage system alerts and notifications
-          </p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-red-50 p-6 space-y-8">
+      {/* Header Section */}
+      <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-xl p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-red-600 to-rose-600 bg-clip-text text-transparent">
+              System Alerts
+            </h1>
+            <p className="text-gray-600 mt-2">Monitor and manage system alerts and notifications</p>
+          </div>
+          <div className="flex items-center space-x-3">
+            <div className="h-8 w-8 bg-gradient-to-br from-red-500 to-rose-600 rounded-lg flex items-center justify-center">
+              <Bell className="h-5 w-5 text-white" />
+            </div>
+            <Button onClick={() => fetchAlerts()} className="bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 text-white shadow-lg">
+              <Bell className="mr-2 h-4 w-4" />
+              Refresh
+            </Button>
+          </div>
         </div>
-        <Button onClick={() => fetchAlerts()}>
-          <Bell className="mr-2 h-4 w-4" />
-          Refresh
-        </Button>
       </div>
 
       {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-xl p-6">
+        <div className="mb-4">
+          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
             <Filter className="h-5 w-5" />
-            Filters
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="Search alerts..."
+            Filters & Search
+          </h2>
+          <p className="text-gray-600">Filter and search through system alerts</p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex-1">
+            <div className="relative">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search alerts..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
@@ -263,24 +270,62 @@ export default function AlertsPage() {
                 <SelectItem value="archived">Archived</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Alert Tabs */}
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
-        <TabsList className="grid w-full grid-cols-7">
-          <TabsTrigger value="all">All ({alertCounts.all})</TabsTrigger>
-          <TabsTrigger value="inventory">Inventory ({alertCounts.inventory})</TabsTrigger>
-          <TabsTrigger value="sales">Sales ({alertCounts.sales})</TabsTrigger>
-          <TabsTrigger value="procurement">Procurement ({alertCounts.procurement})</TabsTrigger>
-          <TabsTrigger value="hr">HR ({alertCounts.hr})</TabsTrigger>
-          <TabsTrigger value="finance">Finance ({alertCounts.finance})</TabsTrigger>
-          <TabsTrigger value="system">System ({alertCounts.system})</TabsTrigger>
-        </TabsList>
+      <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-xl overflow-hidden">
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
+          <div className="bg-gradient-to-r from-red-50 to-rose-50 px-6 py-4 border-b border-red-100/50">
+            <TabsList className="bg-white/60 backdrop-blur-sm border border-white/20 rounded-xl p-1 grid w-full grid-cols-7 gap-1">
+              <TabsTrigger 
+                value="all"
+                className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-red-600 data-[state=active]:to-rose-600 data-[state=active]:text-white rounded-lg transition-all duration-300 text-xs"
+              >
+                All ({alertCounts.all})
+              </TabsTrigger>
+              <TabsTrigger 
+                value="inventory"
+                className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-red-600 data-[state=active]:to-rose-600 data-[state=active]:text-white rounded-lg transition-all duration-300 text-xs"
+              >
+                Inventory ({alertCounts.inventory})
+              </TabsTrigger>
+              <TabsTrigger 
+                value="sales"
+                className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-red-600 data-[state=active]:to-rose-600 data-[state=active]:text-white rounded-lg transition-all duration-300 text-xs"
+              >
+                Sales ({alertCounts.sales})
+              </TabsTrigger>
+              <TabsTrigger 
+                value="procurement"
+                className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-red-600 data-[state=active]:to-rose-600 data-[state=active]:text-white rounded-lg transition-all duration-300 text-xs"
+              >
+                Procurement ({alertCounts.procurement})
+              </TabsTrigger>
+              <TabsTrigger 
+                value="hr"
+                className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-red-600 data-[state=active]:to-rose-600 data-[state=active]:text-white rounded-lg transition-all duration-300 text-xs"
+              >
+                HR ({alertCounts.hr})
+              </TabsTrigger>
+              <TabsTrigger 
+                value="finance"
+                className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-red-600 data-[state=active]:to-rose-600 data-[state=active]:text-white rounded-lg transition-all duration-300 text-xs"
+              >
+                Finance ({alertCounts.finance})
+              </TabsTrigger>
+              <TabsTrigger 
+                value="system"
+                className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-red-600 data-[state=active]:to-rose-600 data-[state=active]:text-white rounded-lg transition-all duration-300 text-xs"
+              >
+                System ({alertCounts.system})
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
-        {/* Alert List */}
-        <TabsContent value={activeTab} className="mt-6">
+          <div className="p-6">
+            {/* Alert List */}
+            <TabsContent value={activeTab} className="mt-0">
           {loading ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -423,7 +468,9 @@ export default function AlertsPage() {
             </div>
           )}
         </TabsContent>
-      </Tabs>
+          </div>
+        </Tabs>
+      </div>
     </div>
   );
 }

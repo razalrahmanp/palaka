@@ -1,6 +1,70 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabaseAdmin';
 
+// Helper function to create vendor bill from purchase order
+async function createVendorBillFromPO({
+  purchase_order_id,
+  supplier_id,
+  total_amount
+}: {
+  purchase_order_id: string;
+  supplier_id: string;
+  total_amount: number;
+}) {
+  try {
+    // Get supplier payment terms
+    const { data: paymentTerms } = await supabase
+      .from('vendor_payment_terms')
+      .select('payment_terms_days')
+      .eq('supplier_id', supplier_id)
+      .eq('is_active', true)
+      .single();
+
+    const termsDays = paymentTerms?.payment_terms_days || 30;
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + termsDays);
+
+    // Generate bill number
+    const billNumber = `PO-${purchase_order_id.substring(0, 8)}-${Date.now()}`;
+
+    // Get system user for created_by
+    const { data: systemUser } = await supabase
+      .from('users')
+      .select('id')
+      .limit(1)
+      .single();
+
+    // Create vendor bill
+    const { data: vendorBill, error: vendorBillError } = await supabase
+      .from('vendor_bills')
+      .insert({
+        bill_number: billNumber,
+        supplier_id: supplier_id,
+        purchase_order_id: purchase_order_id,
+        bill_date: new Date().toISOString().split('T')[0],
+        due_date: dueDate.toISOString().split('T')[0],
+        total_amount: total_amount,
+        paid_amount: 0,
+        status: 'pending',
+        description: `Vendor bill for Purchase Order ${purchase_order_id}`,
+        reference_number: `PO-REF-${purchase_order_id}`,
+        created_by: systemUser?.id,
+        updated_by: systemUser?.id
+      })
+      .select()
+      .single();
+
+    if (vendorBillError) {
+      throw vendorBillError;
+    }
+
+    return vendorBill;
+  } catch (error) {
+    console.error("Error creating vendor bill from PO:", error);
+    throw error;
+  }
+}
+
 type PurchaseOrderPayload = {
   supplier_id: string;
   product_id?: string;
@@ -95,6 +159,17 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "Missing id" }, { status: 400 });
   }
 
+  // Get existing PO details before update for vendor bill creation
+  const { data: existingPO, error: fetchError } = await supabase
+    .from("purchase_orders")
+    .select("id, supplier_id, total, status")
+    .eq("id", id)
+    .single();
+
+  if (fetchError) {
+    return NextResponse.json({ error: fetchError.message }, { status: 500 });
+  }
+
   const updatePayload: Partial<PurchaseOrderPayload> = {
     quantity: updates.quantity,
     status: updates.status,
@@ -143,6 +218,25 @@ export async function PUT(req: NextRequest) {
     console.error(error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // Create vendor bill when PO is approved
+  if (updates.status && updates.status === 'approved' && existingPO?.status !== 'approved') {
+    try {
+      const vendorBillTotal = total || existingPO.total || 0;
+      if (vendorBillTotal > 0) {
+        await createVendorBillFromPO({
+          purchase_order_id: id,
+          supplier_id: existingPO.supplier_id,
+          total_amount: vendorBillTotal
+        });
+        console.log(`✅ Vendor bill created for approved purchase order ${id}`);
+      }
+    } catch (vendorBillError) {
+      console.error('❌ Failed to create vendor bill for purchase order:', vendorBillError);
+      // Don't fail the entire request if vendor bill creation fails
+    }
+  }
+
   return NextResponse.json(data);
 }
 

@@ -185,29 +185,36 @@ export default function VendorsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Vendor Management</h1>
-          <p className="text-gray-600 mt-2">Manage suppliers, track purchases, and monitor vendor performance</p>
-        </div>
-        <div className="flex space-x-2">
-          <Button variant="outline" onClick={handleSyncSuppliers}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Sync Suppliers
-          </Button>
-          <Button asChild>
-            <Link href="/vendors/new">
-              <PlusCircle className="h-4 w-4 mr-2" />
-              Add New Vendor
-            </Link>
-          </Button>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-emerald-50 p-6 space-y-8">
+      {/* Header Section */}
+      <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-xl p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-green-600 bg-clip-text text-transparent">
+              Vendor Management
+            </h1>
+            <p className="text-gray-600 mt-2">Manage suppliers, track purchases, and monitor vendor performance</p>
+          </div>
+          <div className="flex items-center space-x-3">
+            <div className="h-8 w-8 bg-gradient-to-br from-emerald-500 to-green-600 rounded-lg flex items-center justify-center">
+              <Package className="h-5 w-5 text-white" />
+            </div>
+            <Button variant="outline" onClick={handleSyncSuppliers} className="bg-white/80 backdrop-blur-sm border-white/20">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Sync Suppliers
+            </Button>
+            <Button asChild className="bg-gradient-to-r from-emerald-600 to-green-700 hover:from-emerald-700 hover:to-green-800 text-white shadow-lg">
+              <Link href="/vendors/new">
+                <PlusCircle className="h-4 w-4 mr-2" />
+                Add New Vendor
+              </Link>
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
         <Card>
           <CardContent className="p-3">
             <div className="flex items-center justify-between">

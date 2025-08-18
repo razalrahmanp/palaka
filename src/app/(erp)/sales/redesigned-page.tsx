@@ -794,6 +794,7 @@ function OrdersTabContent({
                               style={{
                                 width: `${Math.min(100, Math.max(0, ((orderWithPayment.total_paid || 0) / ((orderWithPayment.final_price || order.total) || 1)) * 100))}%`
                               }}
+                               
                             ></div>
                           </div>
                         </div>

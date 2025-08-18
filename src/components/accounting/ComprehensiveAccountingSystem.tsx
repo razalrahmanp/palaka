@@ -1,11 +1,14 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Progress } from '@/components/ui/progress'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { 
   RefreshCw, 
   Building, 
@@ -22,18 +25,19 @@ import {
   Target,
   TrendingUp,
   ArrowRight,
-  Play,
-  Settings,
   Info,
   ChevronRight,
   Zap,
-  DollarSign
+  DollarSign,
+  Calendar,
+  Hash
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { subcategoryMap } from '@/types'
 import ChartOfAccountsManager from './ChartOfAccountsManager'
 import OpeningBalanceSetup from './OpeningBalanceSetup'
+import OpeningBalanceManager from './OpeningBalanceManager'
 import SimplifiedJournalEntry from './SimplifiedJournalEntry'
-import JournalEntryList from './JournalEntryList'
 import FinancialReports from './FinancialReports'
 import AdvancedSupplierManagement from './AdvancedSupplierManagement'
 
@@ -71,6 +75,20 @@ export default function ComprehensiveAccountingSystem() {
   const [syncing, setSyncing] = useState(false)
   const [activeTab, setActiveTab] = useState('dashboard')
   const [setupProgress, setSetupProgress] = useState(0)
+  const [quickEntryType, setQuickEntryType] = useState<'payable' | 'receivable' | 'expense' | 'manual' | null>(null)
+  const [suppliers, setSuppliers] = useState<Array<{id: string; name: string}>>([])
+  const [customers, setCustomers] = useState<Array<{id: string; name: string}>>([])
+  const [bankAccounts, setBankAccounts] = useState<Array<{id: string; name: string}>>([])
+  const [formData, setFormData] = useState({
+    amount: '',
+    description: '',
+    entityId: '',
+    paymentMethod: 'bank_transfer',
+    reference: '',
+    date: new Date().toISOString().split('T')[0],
+    subcategory: '',
+    bankAccountId: ''
+  })
 
   // Calculate setup completion
   useEffect(() => {
@@ -96,6 +114,9 @@ export default function ComprehensiveAccountingSystem() {
 
   useEffect(() => {
     fetchAllData()
+    fetchSuppliers()
+    fetchCustomers()
+    fetchBankAccounts()
   }, [fetchAllData])
 
   const fetchAccountingSummary = async () => {
@@ -237,6 +258,403 @@ export default function ComprehensiveAccountingSystem() {
     return `₹${amount.toLocaleString()}`
   }
 
+  // Fetch suppliers and customers for quick entries
+  const fetchSuppliers = async () => {
+    try {
+      const response = await fetch('/api/suppliers')
+      if (response.ok) {
+        const result = await response.json()
+        setSuppliers(result.map((s: { id: string; name: string }) => ({ id: s.id, name: s.name })))
+      }
+    } catch (error) {
+      console.error('Error fetching suppliers:', error)
+    }
+  }
+
+  const fetchCustomers = async () => {
+    try {
+      const response = await fetch('/api/crm/customers')
+      if (response.ok) {
+        const result = await response.json()
+        setCustomers(result.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })))
+      }
+    } catch (error) {
+      console.error('Error fetching customers:', error)
+    }
+  }
+
+  const fetchBankAccounts = async () => {
+    try {
+      const response = await fetch('/api/finance/bank_accounts')
+      if (response.ok) {
+        const result = await response.json()
+        setBankAccounts(result.data?.map((b: { id: string; name: string }) => ({ id: b.id, name: b.name })) || [])
+      }
+    } catch (error) {
+      console.error('Error fetching bank accounts:', error)
+    }
+  }
+
+  // Load data for quick entries
+  useEffect(() => {
+    if (quickEntryType) {
+      fetchSuppliers()
+      fetchCustomers()
+      fetchBankAccounts()
+    }
+  }, [quickEntryType])
+
+  // Create journal entry for quick entries
+  const createQuickJournalEntry = async (entryData: {
+    description: string
+    reference: string
+    entry_date: string
+    source_document_type: string
+    lines: Array<{
+      account_code: string
+      description: string
+      debit_amount: number
+      credit_amount: number
+    }>
+  }) => {
+    try {
+      const response = await fetch('/api/accounting/journal-entries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entryData)
+      })
+      
+      if (response.ok) {
+        const result = await response.json()
+        toast.success('Transaction recorded successfully!')
+        setQuickEntryType(null)
+        setFormData({
+          amount: '',
+          description: '',
+          entityId: '',
+          paymentMethod: 'bank_transfer',
+          reference: '',
+          date: new Date().toISOString().split('T')[0],
+          subcategory: '',
+          bankAccountId: ''
+        })
+        fetchAllData()
+        return result
+      } else {
+        throw new Error('Failed to create journal entry')
+      }
+    } catch (error) {
+      console.error('Error creating journal entry:', error)
+      toast.error('Failed to record transaction')
+    }
+  }
+
+  // Handle form submission
+  const handleQuickEntrySubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!formData.amount || !formData.description) {
+      toast.error('Please fill in all required fields')
+      return
+    }
+
+    let journalEntryData
+    const amount = parseFloat(formData.amount)
+
+    switch (quickEntryType) {
+      case 'payable':
+        // Vendor Payment: Dr. Accounts Payable, Cr. Bank
+        journalEntryData = {
+          description: `Vendor Payment - ${formData.description}`,
+          reference: formData.reference,
+          entry_date: formData.date,
+          source_document_type: 'VENDOR_PAYMENT',
+          lines: [
+            {
+              account_code: '2001', // Accounts Payable
+              description: formData.description,
+              debit_amount: amount,
+              credit_amount: 0
+            },
+            {
+              account_code: '1002', // Bank Account
+              description: `Payment via ${formData.paymentMethod}`,
+              debit_amount: 0,
+              credit_amount: amount
+            }
+          ]
+        }
+        break
+
+      case 'receivable':
+        // Customer Payment: Dr. Bank, Cr. Accounts Receivable
+        journalEntryData = {
+          description: `Customer Payment - ${formData.description}`,
+          reference: formData.reference,
+          entry_date: formData.date,
+          source_document_type: 'CUSTOMER_PAYMENT',
+          lines: [
+            {
+              account_code: '1002', // Bank Account
+              description: `Received via ${formData.paymentMethod}`,
+              debit_amount: amount,
+              credit_amount: 0
+            },
+            {
+              account_code: '1200', // Accounts Receivable
+              description: formData.description,
+              debit_amount: 0,
+              credit_amount: amount
+            }
+          ]
+        }
+        break
+
+      case 'expense':
+        // Business Expense: Dr. Expense Account, Cr. Bank
+        journalEntryData = {
+          description: `Business Expense - ${formData.description}`,
+          reference: formData.reference,
+          entry_date: formData.date,
+          source_document_type: 'EXPENSE',
+          lines: [
+            {
+              account_code: '5000', // General Expenses
+              description: formData.description,
+              debit_amount: amount,
+              credit_amount: 0
+            },
+            {
+              account_code: '1002', // Bank Account
+              description: `Payment via ${formData.paymentMethod}`,
+              debit_amount: 0,
+              credit_amount: amount
+            }
+          ]
+        }
+        break
+
+      default:
+        return
+    }
+
+    await createQuickJournalEntry(journalEntryData)
+  }
+
+  // Render quick entry forms with enhanced finance-style UI
+  const renderQuickEntryForm = () => {
+    if (!quickEntryType || quickEntryType === 'manual') {
+      return (
+        <div className="p-8 text-center text-gray-500">
+          <p className="text-lg mb-4">Select a quick entry type above to get started</p>
+          <p className="text-sm">Choose from vendor payments, customer receipts, expenses, or manual entries</p>
+        </div>
+      )
+    }
+
+    return (
+      <form onSubmit={handleQuickEntrySubmit} className="space-y-6 p-6">
+        {/* Amount and Date Section */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+              <CreditCard className="h-4 w-4" />
+              Amount *
+            </Label>
+            <Input
+              type="number"
+              step="0.01"
+              placeholder="Enter amount"
+              value={formData.amount}
+              onChange={(e) => setFormData(prev => ({ ...prev, amount: e.target.value }))}
+              className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+              <Calendar className="h-4 w-4" />
+              Date *
+            </Label>
+            <Input
+              type="date"
+              value={formData.date}
+              onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
+              className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+              required
+            />
+          </div>
+        </div>
+
+        {/* Entity Selection (Supplier/Customer) */}
+        {(quickEntryType === 'payable' || quickEntryType === 'receivable') && (
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-gray-700">
+              {quickEntryType === 'payable' ? 'Supplier *' : 'Customer *'}
+            </Label>
+            <Select 
+              value={formData.entityId} 
+              onValueChange={(value) => setFormData(prev => ({ ...prev, entityId: value }))}
+              required
+            >
+              <SelectTrigger className="border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                <SelectValue placeholder={`Select ${quickEntryType === 'payable' ? 'supplier' : 'customer'}`} />
+              </SelectTrigger>
+              <SelectContent>
+                {(quickEntryType === 'payable' ? suppliers : customers).map((entity) => (
+                  <SelectItem key={entity.id} value={entity.id}>
+                    {entity.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {/* Expense Category (for expense type) */}
+        {quickEntryType === 'expense' && (
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-gray-700">Expense Category *</Label>
+            <Select
+              value={formData.subcategory}
+              onValueChange={(value) => setFormData(prev => ({ ...prev, subcategory: value }))}
+              required
+            >
+              <SelectTrigger className="border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                <SelectValue placeholder="Select expense category" />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.keys(subcategoryMap).map((category) => (
+                  <SelectItem key={category} value={category}>
+                    {category}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {/* Payment Method and Bank Account */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-gray-700">Payment Method *</Label>
+            <Select 
+              value={formData.paymentMethod} 
+              onValueChange={(value) => setFormData(prev => ({ ...prev, paymentMethod: value }))}
+            >
+              <SelectTrigger className="border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="bank_transfer">
+                  <div className="flex items-center gap-2">
+                    <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">Bank Transfer</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="cash">
+                  <div className="flex items-center gap-2">
+                    <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs">Cash</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="cheque">
+                  <div className="flex items-center gap-2">
+                    <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded text-xs">Cheque</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="upi">
+                  <div className="flex items-center gap-2">
+                    <span className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded text-xs">UPI</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="credit_card">
+                  <div className="flex items-center gap-2">
+                    <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs">Credit Card</span>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {formData.paymentMethod === 'bank_transfer' && (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-gray-700">Bank Account</Label>
+              <Select 
+                value={formData.bankAccountId} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, bankAccountId: value }))}
+              >
+                <SelectTrigger className="border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                  <SelectValue placeholder="Select bank account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {bankAccounts.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+
+        {/* Description and Reference */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              Description *
+            </Label>
+            <Input
+              placeholder={
+                quickEntryType === 'payable' ? 'Payment to supplier for...' :
+                quickEntryType === 'receivable' ? 'Payment received from customer for...' :
+                'Expense description'
+              }
+              value={formData.description}
+              onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+              className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+              <Hash className="h-4 w-4" />
+              Reference Number
+            </Label>
+            <Input
+              placeholder="Transaction reference"
+              value={formData.reference}
+              onChange={(e) => setFormData(prev => ({ ...prev, reference: e.target.value }))}
+              className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row gap-3 pt-6 border-t">
+          <Button 
+            type="submit" 
+            className="flex-1 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white border-0"
+          >
+            {quickEntryType === 'payable' && 'Record Payment'}
+            {quickEntryType === 'receivable' && 'Record Receipt'}
+            {quickEntryType === 'expense' && 'Record Expense'}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1 border-gray-300 text-gray-700 hover:bg-gray-50"
+            onClick={() => setQuickEntryType(null)}
+          >
+            Cancel
+          </Button>
+        </div>
+      </form>
+    )
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -319,9 +737,9 @@ export default function ComprehensiveAccountingSystem() {
             <BarChart3 className="h-5 w-5" />
             <span className="text-xs font-medium">Overview</span>
           </TabsTrigger>
-          <TabsTrigger value="setup" className="flex flex-col items-center gap-1 py-3 rounded-md">
-            <Settings className="h-5 w-5" />
-            <span className="text-xs font-medium">Setup</span>
+          <TabsTrigger value="enhanced-balances" className="flex flex-col items-center gap-1 py-3 rounded-md">
+            <Zap className="h-5 w-5" />
+            <span className="text-xs font-medium">Enhanced OB</span>
           </TabsTrigger>
           <TabsTrigger value="transactions" className="flex flex-col items-center gap-1 py-3 rounded-md">
             <BookOpen className="h-5 w-5" />
@@ -512,153 +930,216 @@ export default function ComprehensiveAccountingSystem() {
             </Card>
 
             <Card className="cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-105 bg-gradient-to-br from-amber-50 to-amber-100" 
-                  onClick={() => setActiveTab('setup')}>
+                  onClick={() => setActiveTab('enhanced-balances')}>
               <CardContent className="p-6 text-center">
                 <div className="bg-amber-100 p-3 rounded-full w-fit mx-auto mb-4">
-                  <Settings className="h-6 w-6 text-amber-600" />
+                  <Zap className="h-6 w-6 text-amber-600" />
                 </div>
-                <h3 className="font-semibold text-amber-800 mb-2">Initial Setup</h3>
-                <p className="text-sm text-amber-600">Configure opening balances and chart of accounts</p>
+                <h3 className="font-semibold text-amber-800 mb-2">Enhanced Setup</h3>
+                <p className="text-sm text-amber-600">Configure opening balances with enhanced automation</p>
                 <ChevronRight className="h-4 w-4 text-amber-500 mx-auto mt-3" />
               </CardContent>
             </Card>
           </div>
         </TabsContent>
 
-        {/* Setup Tab - Getting Started Wizard */}
-        <TabsContent value="setup" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-3">
-                <div className="bg-blue-100 p-2 rounded-full">
-                  <Settings className="h-5 w-5 text-blue-600" />
+        {/* Enhanced Opening Balances Tab */}
+        <TabsContent value="enhanced-balances" className="space-y-6">
+          {/* Quick Setup Guide */}
+          <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="bg-purple-100 p-3 rounded-full">
+                  <Zap className="h-6 w-6 text-purple-600" />
                 </div>
-                <div>
-                  <div>Initial Accounting Setup</div>
-                  <div className="text-sm text-gray-500 font-normal">Complete these steps to get started</div>
-                </div>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-green-100 p-2 rounded-full">
-                      <Target className="h-5 w-5 text-green-600" />
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-purple-800 mb-2">Enhanced Opening Balance System</h3>
+                  <p className="text-purple-700 mb-4">
+                    Complete your accounting setup with our enhanced opening balance system. 
+                    Set up all business entities including loans, investors, vendor outstanding, and more.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="flex items-center gap-3 p-3 bg-white/50 rounded-lg">
+                      <div className="bg-green-100 p-2 rounded-full">
+                        <Target className="h-4 w-4 text-green-600" />
+                      </div>
+                      <div>
+                        <div className="font-medium text-green-800">1. Opening Balances</div>
+                        <div className="text-xs text-green-600">Set starting amounts</div>
+                      </div>
                     </div>
-                    <div>
-                      <div className="font-medium">1. Set Opening Balances</div>
-                      <div className="text-sm text-gray-600">Configure your starting financial position</div>
+                    <div className="flex items-center gap-3 p-3 bg-white/50 rounded-lg">
+                      <div className="bg-blue-100 p-2 rounded-full">
+                        <Package className="h-4 w-4 text-blue-600" />
+                      </div>
+                      <div>
+                        <div className="font-medium text-blue-800">2. Sync Inventory</div>
+                        <div className="text-xs text-blue-600">Connect inventory</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 p-3 bg-white/50 rounded-lg">
+                      <div className="bg-orange-100 p-2 rounded-full">
+                        <Calculator className="h-4 w-4 text-orange-600" />
+                      </div>
+                      <div>
+                        <div className="font-medium text-orange-800">3. Chart Setup</div>
+                        <div className="text-xs text-orange-600">Configure accounts</div>
+                      </div>
                     </div>
                   </div>
-                  <Button onClick={() => setActiveTab('opening')} size="sm">
-                    <Play className="h-4 w-4 mr-2" />
-                    Start
-                  </Button>
-                </div>
-
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-purple-100 p-2 rounded-full">
-                      <Package className="h-5 w-5 text-purple-600" />
-                    </div>
-                    <div>
-                      <div className="font-medium">2. Sync Inventory</div>
-                      <div className="text-sm text-gray-600">Connect your inventory with accounting</div>
-                    </div>
-                  </div>
-                  <Button onClick={() => setActiveTab('inventory')} size="sm">
-                    <Play className="h-4 w-4 mr-2" />
-                    Configure
-                  </Button>
-                </div>
-
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-blue-100 p-2 rounded-full">
-                      <Calculator className="h-5 w-5 text-blue-600" />
-                    </div>
-                    <div>
-                      <div className="font-medium">3. Chart of Accounts</div>
-                      <div className="text-sm text-gray-600">Customize your account structure</div>
-                    </div>
-                  </div>
-                  <Button onClick={() => setActiveTab('advanced')} size="sm">
-                    <Play className="h-4 w-4 mr-2" />
-                    Setup
-                  </Button>
                 </div>
               </div>
             </CardContent>
           </Card>
+          
+          {/* Quick Actions */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => setActiveTab('inventory')}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="bg-purple-100 p-2 rounded-full">
+                    <Package className="h-5 w-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <div className="font-semibold">Sync Inventory</div>
+                    <div className="text-sm text-gray-600">Connect inventory data</div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-gray-400 ml-auto" />
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => setActiveTab('advanced')}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="bg-blue-100 p-2 rounded-full">
+                    <Calculator className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <div className="font-semibold">Chart of Accounts</div>
+                    <div className="text-sm text-gray-600">Setup account structure</div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-gray-400 ml-auto" />
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => setActiveTab('transactions')}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="bg-green-100 p-2 rounded-full">
+                    <BookOpen className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div>
+                    <div className="font-semibold">Start Transactions</div>
+                    <div className="text-sm text-gray-600">Record journal entries</div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-gray-400 ml-auto" />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <OpeningBalanceManager />
         </TabsContent>
 
         {/* Transactions Tab - Daily Operations */}
         <TabsContent value="transactions" className="space-y-6">
-          {/* Quick Help Guide */}
-          <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
-            <CardContent className="p-4">
-              <div className="flex items-start gap-3">
-                <div className="bg-blue-100 p-2 rounded-full">
-                  <Info className="h-4 w-4 text-blue-600" />
+          {/* Quick Entry Actions */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => setQuickEntryType('payable')}>
+              <CardContent className="p-4 text-center">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                  <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
                 </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-blue-800 mb-2">Quick Guide: Recording Transactions</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-blue-700">
-                    <div>
-                      <div className="font-medium mb-1">💰 Salary Payment</div>
-                      <div>Debit: Salary Expense → Credit: Bank Account</div>
-                    </div>
-                    <div>
-                      <div className="font-medium mb-1">🏭 Supplier Payment</div>
-                      <div>Debit: Accounts Payable → Credit: Bank Account</div>
-                    </div>
-                    <div>
-                      <div className="font-medium mb-1">📋 Business Expense</div>
-                      <div>Debit: Expense Account → Credit: Bank Account</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+                <h3 className="font-semibold text-sm">Pay Vendor</h3>
+                <p className="text-xs text-gray-600">Record vendor payment</p>
+              </CardContent>
+            </Card>
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-            <div className="xl:col-span-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <BookOpen className="h-5 w-5 text-blue-600" />
-                    Quick Transaction Entry
-                  </CardTitle>
-                  <p className="text-sm text-gray-600">Record transactions with automated double-entry bookkeeping</p>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <SimplifiedJournalEntry 
-                    onSave={() => {
-                      fetchAllData()
-                      toast.success('Transaction recorded successfully!')
-                    }} 
-                  />
-                </CardContent>
-              </Card>
-            </div>
-            
-            <div className="xl:col-span-1">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="h-5 w-5 text-green-600" />
-                    Recent Transactions
-                  </CardTitle>
-                  <p className="text-sm text-gray-600">Your latest journal entries</p>
-                </CardHeader>
-                <CardContent>
-                  <JournalEntryList />
-                </CardContent>
-              </Card>
-            </div>
+            <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => setQuickEntryType('receivable')}>
+              <CardContent className="p-4 text-center">
+                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                  <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                  </svg>
+                </div>
+                <h3 className="font-semibold text-sm">Receive Payment</h3>
+                <p className="text-xs text-gray-600">Record customer payment</p>
+              </CardContent>
+            </Card>
+
+            <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => setQuickEntryType('expense')}>
+              <CardContent className="p-4 text-center">
+                <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                  <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </div>
+                <h3 className="font-semibold text-sm">Record Expense</h3>
+                <p className="text-xs text-gray-600">Add business expense</p>
+              </CardContent>
+            </Card>
+
+            <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => setQuickEntryType('manual')}>
+              <CardContent className="p-4 text-center">
+                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                  <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </div>
+                <h3 className="font-semibold text-sm">Manual Entry</h3>
+                <p className="text-xs text-gray-600">Custom journal entry</p>
+              </CardContent>
+            </Card>
           </div>
+
+          {/* Main Transaction Entry Form */}
+          <Card className="w-full">
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span>
+                  {quickEntryType === 'payable' && 'Vendor Payment Entry'}
+                  {quickEntryType === 'receivable' && 'Customer Payment Entry'}
+                  {quickEntryType === 'expense' && 'Expense Entry'}
+                  {quickEntryType === 'manual' && 'Manual Journal Entry'}
+                  {!quickEntryType && 'Transaction Entry'}
+                </span>
+                {quickEntryType && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => setQuickEntryType(null)}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </CardTitle>
+              <CardDescription>
+                {quickEntryType === 'payable' && 'Record payment to vendors and suppliers with automatic journal entries'}
+                {quickEntryType === 'receivable' && 'Record payment received from customers with automatic journal entries'}
+                {quickEntryType === 'expense' && 'Record business expenses and costs with automatic journal entries'}
+                {quickEntryType === 'manual' && 'Create custom journal entries with manual account mapping'}
+                {!quickEntryType && 'Choose a quick entry type above or create manual journal entries'}
+              </CardDescription>
+            </CardHeader>
+            {quickEntryType === 'manual' ? (
+              <div className="w-full">
+                <SimplifiedJournalEntry 
+                  onSave={() => {
+                    fetchAllData()
+                    toast.success('Transaction recorded successfully!')
+                  }} 
+                />
+              </div>
+            ) : (
+              <CardContent className="space-y-6">
+                {renderQuickEntryForm()}
+              </CardContent>
+            )}
+          </Card>
         </TabsContent>
 
         {/* Opening Balances Tab */}

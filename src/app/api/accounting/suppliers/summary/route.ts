@@ -19,31 +19,53 @@ export async function GET() {
 
     const supplierSummaries = await Promise.all(
       (suppliers || []).map(async (supplier) => {
-        // Get purchase order items for this supplier to calculate product info
-        const { data: purchaseItems } = await supabaseAdmin
-          .from('purchase_order_items')
+        // Get inventory items for this supplier to calculate current product info and profit potential
+        const { data: inventoryItems } = await supabaseAdmin
+          .from('inventory_items')
           .select(`
-            *,
-            purchase_order:purchase_orders!inner(supplier_id, status),
-            product:products(name, price, cost)
+            id,
+            quantity,
+            reorder_point,
+            updated_at,
+            products!inner(
+              id,
+              name,
+              sku,
+              description,
+              category,
+              price,
+              cost,
+              supplier_id,
+              image_url
+            )
           `)
-          .eq('purchase_order.supplier_id', supplier.id);
+          .eq('products.supplier_id', supplier.id);
 
-        // Calculate product totals
-        const products = (purchaseItems || []).map((item) => ({
-          id: item.id,
-          supplier_id: supplier.id,
-          product_name: item.item_name || item.product?.name || 'Unknown Product',
-          quantity: item.quantity || 0,
-          cost_price: item.unit_price || item.product?.cost || 0,
-          mrp: item.product?.price || item.unit_price * 1.5 || 0,
-          total_cost: item.total_price || ((item.quantity || 0) * (item.unit_price || 0)),
-          delivery_date: item.created_at || new Date().toISOString()
-        }));
+        // Calculate product totals from current inventory
+        const products = (inventoryItems || []).map((item) => {
+          const product = Array.isArray(item.products) ? item.products[0] : item.products;
+          if (!product) return null;
+          
+          const quantity = item.quantity || 0;
+          const cost_price = product.cost || 0;
+          const mrp = product.price || 0;
+          
+          return {
+            id: item.id,
+            supplier_id: supplier.id,
+            product_name: product.name || 'Unknown Product',
+            quantity: quantity,
+            cost_price: cost_price,
+            mrp: mrp,
+            total_cost: quantity * cost_price,
+            total_mrp_value: quantity * mrp,
+            delivery_date: item.updated_at || new Date().toISOString()
+          };
+        }).filter(Boolean);
 
         const total_products = products.length;
-        const total_cost = products.reduce((sum, p) => sum + (p.total_cost || 0), 0);
-        const total_mrp = products.reduce((sum, p) => sum + ((p.quantity || 0) * (p.mrp || 0)), 0);
+        const total_cost = products.reduce((sum, p) => sum + (p?.total_cost || 0), 0);
+        const total_mrp = products.reduce((sum, p) => sum + (p?.total_mrp_value || 0), 0);
 
         // Get vendor bills for outstanding amounts
         const { data: vendorBills } = await supabaseAdmin

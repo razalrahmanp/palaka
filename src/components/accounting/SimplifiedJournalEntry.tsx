@@ -111,6 +111,156 @@ const TRANSACTION_TEMPLATES = [
     credit_type: 'ASSET',
     suggested_debit: 'Fixed Assets',
     suggested_credit: 'Cash/Bank Account'
+  },
+  {
+    id: 'customer_payment',
+    name: 'Customer Payment',
+    description: 'Receive payment from customers',
+    icon: TrendingUp,
+    debit_type: 'ASSET',
+    credit_type: 'ASSET',
+    suggested_debit: 'Cash/Bank Account',
+    suggested_credit: 'Accounts Receivable'
+  },
+  {
+    id: 'loan_received',
+    name: 'Loan Received',
+    description: 'Record bank loan or financing',
+    icon: CreditCard,
+    debit_type: 'ASSET',
+    credit_type: 'LIABILITY',
+    suggested_debit: 'Cash/Bank Account',
+    suggested_credit: 'Loan Payable'
+  },
+  {
+    id: 'loan_payment',
+    name: 'Loan Payment',
+    description: 'Pay loan installment',
+    icon: TrendingDown,
+    debit_type: 'LIABILITY',
+    credit_type: 'ASSET',
+    suggested_debit: 'Loan Payable',
+    suggested_credit: 'Cash/Bank Account'
+  },
+  {
+    id: 'rent_payment',
+    name: 'Rent Payment',
+    description: 'Pay office/warehouse rent',
+    icon: Building,
+    debit_type: 'EXPENSE',
+    credit_type: 'ASSET',
+    suggested_debit: 'Rent Expense',
+    suggested_credit: 'Cash/Bank Account'
+  },
+  {
+    id: 'utility_payment',
+    name: 'Utility Payment',
+    description: 'Pay electricity, water, internet',
+    icon: TrendingDown,
+    debit_type: 'EXPENSE',
+    credit_type: 'ASSET',
+    suggested_debit: 'Utilities Expense',
+    suggested_credit: 'Cash/Bank Account'
+  },
+  {
+    id: 'insurance_payment',
+    name: 'Insurance Payment',
+    description: 'Pay insurance premiums',
+    icon: Building,
+    debit_type: 'EXPENSE',
+    credit_type: 'ASSET',
+    suggested_debit: 'Insurance Expense',
+    suggested_credit: 'Cash/Bank Account'
+  },
+  {
+    id: 'tax_payment',
+    name: 'Tax Payment',
+    description: 'Pay GST, income tax, etc.',
+    icon: TrendingDown,
+    debit_type: 'LIABILITY',
+    credit_type: 'ASSET',
+    suggested_debit: 'Tax Payable',
+    suggested_credit: 'Cash/Bank Account'
+  },
+  {
+    id: 'inventory_purchase',
+    name: 'Inventory Purchase',
+    description: 'Buy inventory/stock',
+    icon: Building,
+    debit_type: 'ASSET',
+    credit_type: 'LIABILITY',
+    suggested_debit: 'Inventory',
+    suggested_credit: 'Accounts Payable'
+  },
+  {
+    id: 'depreciation',
+    name: 'Depreciation',
+    description: 'Record asset depreciation',
+    icon: TrendingDown,
+    debit_type: 'EXPENSE',
+    credit_type: 'ASSET',
+    suggested_debit: 'Depreciation Expense',
+    suggested_credit: 'Accumulated Depreciation'
+  },
+  {
+    id: 'owner_withdrawal',
+    name: 'Owner Withdrawal',
+    description: 'Owner draws money from business',
+    icon: DollarSign,
+    debit_type: 'EQUITY',
+    credit_type: 'ASSET',
+    suggested_debit: 'Owner Drawings',
+    suggested_credit: 'Cash/Bank Account'
+  },
+  {
+    id: 'capital_investment',
+    name: 'Capital Investment',
+    description: 'Owner invests in business',
+    icon: TrendingUp,
+    debit_type: 'ASSET',
+    credit_type: 'EQUITY',
+    suggested_debit: 'Cash/Bank Account',
+    suggested_credit: 'Owner Capital'
+  },
+  {
+    id: 'bank_charges',
+    name: 'Bank Charges',
+    description: 'Bank fees and charges',
+    icon: CreditCard,
+    debit_type: 'EXPENSE',
+    credit_type: 'ASSET',
+    suggested_debit: 'Bank Charges',
+    suggested_credit: 'Cash/Bank Account'
+  },
+  {
+    id: 'interest_income',
+    name: 'Interest Income',
+    description: 'Interest earned on deposits',
+    icon: TrendingUp,
+    debit_type: 'ASSET',
+    credit_type: 'REVENUE',
+    suggested_debit: 'Cash/Bank Account',
+    suggested_credit: 'Interest Income'
+  },
+  {
+    id: 'freight_charges',
+    name: 'Freight Charges',
+    description: 'Transportation and delivery costs',
+    icon: TrendingDown,
+    debit_type: 'EXPENSE',
+    credit_type: 'ASSET',
+    suggested_debit: 'Freight Expense',
+    suggested_credit: 'Cash/Bank Account'
+  },
+  {
+    id: 'advertising_expense',
+    name: 'Advertising',
+    description: 'Marketing and advertising costs',
+    icon: TrendingDown,
+    debit_type: 'EXPENSE',
+    credit_type: 'ASSET',
+    suggested_debit: 'Advertising Expense',
+    suggested_credit: 'Cash/Bank Account'
   }
 ]
 
@@ -360,6 +510,81 @@ export default function SimplifiedJournalEntry({ onSave }: { onSave: () => void 
         debitAccount = findAccount('ASSET', ['fixed', 'equipment', 'furniture', 'building'])
         creditAccount = findAccount('ASSET', ['cash', 'bank', 'checking', 'current'])
         break
+
+      case 'customer_payment':
+        debitAccount = findAccount('ASSET', ['cash', 'bank', 'checking', 'current'])
+        creditAccount = findAccount('ASSET', ['receivable', 'debtor', 'customer'])
+        break
+
+      case 'loan_received':
+        debitAccount = findAccount('ASSET', ['cash', 'bank', 'checking', 'current'])
+        creditAccount = findAccount('LIABILITY', ['loan', 'borrowing', 'payable', 'debt'])
+        break
+
+      case 'loan_payment':
+        debitAccount = findAccount('LIABILITY', ['loan', 'borrowing', 'payable', 'debt'])
+        creditAccount = findAccount('ASSET', ['cash', 'bank', 'checking', 'current'])
+        break
+
+      case 'rent_payment':
+        debitAccount = findAccount('EXPENSE', ['rent', 'lease', 'rental'])
+        creditAccount = findAccount('ASSET', ['cash', 'bank', 'checking', 'current'])
+        break
+
+      case 'utility_payment':
+        debitAccount = findAccount('EXPENSE', ['utility', 'utilities', 'electricity', 'water', 'internet'])
+        creditAccount = findAccount('ASSET', ['cash', 'bank', 'checking', 'current'])
+        break
+
+      case 'insurance_payment':
+        debitAccount = findAccount('EXPENSE', ['insurance', 'premium', 'coverage'])
+        creditAccount = findAccount('ASSET', ['cash', 'bank', 'checking', 'current'])
+        break
+
+      case 'tax_payment':
+        debitAccount = findAccount('LIABILITY', ['tax', 'gst', 'vat', 'income tax', 'payable'])
+        creditAccount = findAccount('ASSET', ['cash', 'bank', 'checking', 'current'])
+        break
+
+      case 'inventory_purchase':
+        debitAccount = findAccount('ASSET', ['inventory', 'stock', 'goods', 'merchandise'])
+        creditAccount = findAccount('LIABILITY', ['payable', 'supplier', 'vendor', 'creditor'])
+        break
+
+      case 'depreciation':
+        debitAccount = findAccount('EXPENSE', ['depreciation', 'amortization'])
+        creditAccount = findAccount('ASSET', ['accumulated', 'depreciation', 'contra'])
+        break
+
+      case 'owner_withdrawal':
+        debitAccount = findAccount('EQUITY', ['drawing', 'withdrawal', 'owner', 'capital'])
+        creditAccount = findAccount('ASSET', ['cash', 'bank', 'checking', 'current'])
+        break
+
+      case 'capital_investment':
+        debitAccount = findAccount('ASSET', ['cash', 'bank', 'checking', 'current'])
+        creditAccount = findAccount('EQUITY', ['capital', 'owner', 'equity', 'investment'])
+        break
+
+      case 'bank_charges':
+        debitAccount = findAccount('EXPENSE', ['bank', 'charges', 'fees', 'service'])
+        creditAccount = findAccount('ASSET', ['cash', 'bank', 'checking', 'current'])
+        break
+
+      case 'interest_income':
+        debitAccount = findAccount('ASSET', ['cash', 'bank', 'checking', 'current'])
+        creditAccount = findAccount('REVENUE', ['interest', 'income', 'earning'])
+        break
+
+      case 'freight_charges':
+        debitAccount = findAccount('EXPENSE', ['freight', 'transport', 'delivery', 'shipping'])
+        creditAccount = findAccount('ASSET', ['cash', 'bank', 'checking', 'current'])
+        break
+
+      case 'advertising_expense':
+        debitAccount = findAccount('EXPENSE', ['advertising', 'marketing', 'promotion', 'publicity'])
+        creditAccount = findAccount('ASSET', ['cash', 'bank', 'checking', 'current'])
+        break
       
       default:
         // Fallback to original logic
@@ -465,7 +690,7 @@ export default function SimplifiedJournalEntry({ onSave }: { onSave: () => void 
   const selectedCreditAccount = accounts.find(acc => acc.id === formData.credit_account_id)
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-6 w-full">
       {/* Quick Search for Journal Entries */}
       <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
         <CardContent className="p-4">
@@ -514,7 +739,7 @@ export default function SimplifiedJournalEntry({ onSave }: { onSave: () => void 
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-3">
             {TRANSACTION_TEMPLATES.map(template => {
               const Icon = template.icon
               return (

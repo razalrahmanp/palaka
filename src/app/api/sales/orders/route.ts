@@ -8,6 +8,9 @@ type OrderRow = {
   customer_id: string;
   status: string;
   created_at: string;
+  final_price?: number | null;
+  original_price?: number | null;
+  discount_amount?: number | null;
   customer: { name: string } | null;
 };
 
@@ -33,6 +36,34 @@ type OrderItemInput = {
   unit_price: number;
 };
 
+type OrderQueryResult = {
+  id: string;
+  quote_id?: string | null;
+  customer_id: string;
+  status: string;
+  created_at: string;
+  final_price?: number | null;
+  original_price?: number | null;
+  discount_amount?: number | null;
+  customers?: { name: string }[] | null;
+};
+
+type ItemQueryResult = {
+  order_id: string;
+  quantity: number;
+  unit_price: number | null;
+  product?: {
+    name: string;
+    price: number;
+    suppliers?: { name: string }[];
+  }[] | null;
+  custom_product?: {
+    name: string;
+    price: number;
+    suppliers?: { name: string }[];
+  }[] | null;
+};
+
 export async function GET() {
   const { data: ordersRaw, error: ordersError } = await supabase
     .from("sales_orders")
@@ -42,6 +73,9 @@ export async function GET() {
       customer_id,
       status,
       created_at,
+      final_price,
+      original_price,
+      discount_amount,
       customers(name)
     `);
 
@@ -49,13 +83,16 @@ export async function GET() {
     return NextResponse.json({ error: ordersError.message }, { status: 500 });
   }
 
-  const orders: OrderRow[] = (ordersRaw ?? []).map((o: any) => ({
+  const orders: OrderRow[] = (ordersRaw ?? []).map((o: OrderQueryResult) => ({
     id: o.id,
     quote_id: o.quote_id,
     customer_id: o.customer_id,
     status: o.status,
     created_at: o.created_at,
-    customer: o.customers ? { name: o.customers.name } : null,
+    final_price: o.final_price,
+    original_price: o.original_price, 
+    discount_amount: o.discount_amount,
+    customer: o.customers && o.customers.length > 0 ? { name: o.customers[0].name } : null,
   }));
 
   const { data: itemsRaw, error: itemsError } = await supabase
@@ -72,19 +109,19 @@ export async function GET() {
     return NextResponse.json({ error: itemsError.message }, { status: 500 });
   }
 
-  const items: ItemRow[] = (itemsRaw ?? []).map((i: any) => ({
+  const items: ItemRow[] = (itemsRaw ?? []).map((i: ItemQueryResult) => ({
     order_id: i.order_id,
     quantity: i.quantity,
     unit_price: i.unit_price,
-    product: i.product ? {
-      name: i.product.name,
-      price: i.product.price,
-      supplier: i.product.suppliers || null,
+    product: i.product && i.product.length > 0 ? {
+      name: i.product[0].name,
+      price: i.product[0].price,
+      supplier: i.product[0].suppliers && i.product[0].suppliers.length > 0 ? { name: i.product[0].suppliers[0].name } : null,
     } : null,
-    custom_product: i.custom_product ? {
-      name: i.custom_product.name,
-      price: i.custom_product.price,
-      supplier: i.custom_product.suppliers || null,
+    custom_product: i.custom_product && i.custom_product.length > 0 ? {
+      name: i.custom_product[0].name,
+      price: i.custom_product[0].price,
+      supplier: i.custom_product[0].suppliers && i.custom_product[0].suppliers.length > 0 ? { name: i.custom_product[0].suppliers[0].name } : null,
     } : null,
   }));
 
@@ -101,7 +138,7 @@ export async function GET() {
           "N/A",
       }));
 
-    const total = orderItems.reduce(
+    const calculatedTotal = orderItems.reduce(
       (sum, item) => sum + item.price * item.quantity,
       0
     );
@@ -113,7 +150,11 @@ export async function GET() {
       date: order.created_at?.split("T")[0],
       status: order.status,
       supplier_name: orderItems[0]?.supplier_name ?? "N/A",
-      total,
+      // Use final_price from database if available, otherwise use calculated total
+      total: order.final_price ?? calculatedTotal,
+      final_price: order.final_price ?? calculatedTotal,
+      original_price: order.original_price ?? calculatedTotal,
+      discount_amount: order.discount_amount ?? 0,
       items: orderItems,
     };
   });

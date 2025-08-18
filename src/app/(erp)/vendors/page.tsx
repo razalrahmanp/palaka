@@ -2,12 +2,10 @@
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { PlusCircle, Eye, Edit, Trash2, Package, DollarSign, ShoppingCart, CreditCard, RefreshCw } from 'lucide-react';
+import { PlusCircle, Eye, Edit, Package, DollarSign, ShoppingCart, CreditCard, RefreshCw, Star, Target, Filter } from 'lucide-react';
 import Link from 'next/link';
-import { VendorDashboard } from '@/components/vendors/VendorDashboard';
 
 interface VendorStats {
   id: string;
@@ -17,6 +15,7 @@ interface VendorStats {
   total_spent: number;
   pending_orders: number;
   current_stock_value: number;
+  current_stock_quantity: number;
   total_cost_inr: number;
   total_mrp_inr: number;
   profit_margin_inr: number;
@@ -30,6 +29,18 @@ interface VendorStats {
   total_pending: number; // Amount owed to vendor
   unpaid_orders: number; // Number of unpaid orders
   payment_status: 'pending' | 'paid';
+  // Detailed inventory information
+  inventory_summary?: {
+    total_products: number;
+    total_quantity: number;
+    total_stock_value: number;
+    total_stock_cost: number;
+    total_profit: number;
+    low_stock_items: number;
+    out_of_stock_items: number;
+    categories: string[];
+    overall_profit_margin: number;
+  };
 }
 
 export default function VendorsPage() {
@@ -41,6 +52,7 @@ export default function VendorsPage() {
   const [sortBy, setSortBy] = useState('current_stock_value');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [filterStatus, setFilterStatus] = useState<'all' | 'Active' | 'Inactive'>('all');
+  const [performanceFilter, setPerformanceFilter] = useState<string>('all');
 
   const fetchVendors = useCallback(async () => {
     try {
@@ -48,7 +60,27 @@ export default function VendorsPage() {
       const response = await fetch('/api/vendors/stats');
       if (!response.ok) throw new Error('Failed to fetch vendors');
       const data = await response.json();
-      setVendors(data);
+      
+      // Fetch detailed inventory for each vendor
+      const vendorsWithInventory = await Promise.all(
+        data.map(async (vendor: VendorStats) => {
+          try {
+            const inventoryResponse = await fetch(`/api/suppliers/${vendor.id}/inventory`);
+            if (inventoryResponse.ok) {
+              const inventoryData = await inventoryResponse.json();
+              return {
+                ...vendor,
+                inventory_summary: inventoryData.summary
+              };
+            }
+          } catch (error) {
+            console.error(`Error fetching inventory for vendor ${vendor.id}:`, error);
+          }
+          return vendor;
+        })
+      );
+      
+      setVendors(vendorsWithInventory);
     } catch (error) {
       console.error('Error fetching vendors:', error);
     } finally {
@@ -81,30 +113,6 @@ export default function VendorsPage() {
     }
   };
 
-  const handleDeleteVendor = async (vendorId: string, vendorName: string) => {
-    if (!confirm(`Are you sure you want to delete vendor "${vendorName}"? This action cannot be undone.`)) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/vendors/${vendorId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete vendor');
-      }
-
-      // Refresh the vendor list
-      await fetchVendors();
-      alert('Vendor deleted successfully');
-    } catch (error) {
-      console.error('Error deleting vendor:', error);
-      alert(error instanceof Error ? error.message : 'Failed to delete vendor');
-    }
-  };
-
   useEffect(() => {
     fetchVendors();
   }, [fetchVendors]);
@@ -127,7 +135,22 @@ export default function VendorsPage() {
       const matchesSearch = vendor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           (vendor.contact && vendor.contact.toLowerCase().includes(searchTerm.toLowerCase()));
       const matchesStatus = filterStatus === 'all' || vendor.status === filterStatus;
-      return matchesSearch && matchesStatus;
+      
+      // Performance filters
+      let matchesPerformance = true;
+      if (performanceFilter === 'top_performers') {
+        matchesPerformance = (vendor.profit_percentage || 0) >= 20 && (vendor.total_cost_inr || 0) > 10000;
+      } else if (performanceFilter === 'high_value') {
+        matchesPerformance = (vendor.inventory_summary?.total_stock_value || vendor.total_mrp_inr || 0) >= 50000;
+      } else if (performanceFilter === 'high_profit') {
+        matchesPerformance = (vendor.inventory_summary?.total_profit || vendor.profit_margin_inr || 0) >= 15000;
+      } else if (performanceFilter === 'low_stock_issues') {
+        matchesPerformance = (vendor.inventory_summary?.low_stock_items || 0) > 0 || (vendor.inventory_summary?.out_of_stock_items || 0) > 0;
+      } else if (performanceFilter === 'payment_pending') {
+        matchesPerformance = (vendor.total_pending || 0) > 0;
+      }
+      
+      return matchesSearch && matchesStatus && matchesPerformance;
     });
 
     // Sort vendors
@@ -155,7 +178,7 @@ export default function VendorsPage() {
     });
 
     return filtered;
-  }, [vendors, searchTerm, sortBy, sortOrder, filterStatus]);
+  }, [vendors, searchTerm, sortBy, sortOrder, filterStatus, performanceFilter]);
 
   // Update pagination based on filtered results
   const totalPages = Math.ceil(filteredAndSortedVendors.length / itemsPerPage);
@@ -213,109 +236,118 @@ export default function VendorsPage() {
         </div>
       </div>
 
-      {/* Overview Cards */}
+      {/* Enhanced Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-        <Card>
-          <CardContent className="p-3">
+        <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-indigo-50 hover:shadow-xl transition-all duration-300">
+          <CardContent className="p-4">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-gray-600">Total Vendors</p>
-                <p className="text-lg font-bold text-gray-900">{vendors.length}</p>
-                <p className="text-xs text-gray-500">
+              <div className="flex-1">
+                <div className="flex items-center space-x-2 mb-2">
+                  <Package className="h-5 w-5 text-blue-600" />
+                  <p className="text-sm font-semibold text-blue-900">Total Vendors</p>
+                </div>
+                <p className="text-2xl font-bold text-blue-700">{vendors.length}</p>
+                <p className="text-xs text-blue-600 mt-1">
                   Active: {vendors.filter(v => v.status === 'Active').length}
                 </p>
               </div>
-              <Package className="h-5 w-5 text-blue-600" />
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-3">
+        <Card className="border-0 shadow-lg bg-gradient-to-br from-green-50 to-emerald-50 hover:shadow-xl transition-all duration-300">
+          <CardContent className="p-4">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-gray-600">Stock Cost</p>
-                <p className="text-lg font-bold text-gray-900">
-                  {formatCurrency(vendors.reduce((sum, v) => sum + (v.total_cost_inr || 0), 0))}
+              <div className="flex-1">
+                <div className="flex items-center space-x-2 mb-2">
+                  <DollarSign className="h-5 w-5 text-green-600" />
+                  <p className="text-sm font-semibold text-green-900">Stock Cost</p>
+                </div>
+                <p className="text-2xl font-bold text-green-700">
+                  {formatCurrency(vendors.reduce((sum, v) => sum + (v.inventory_summary?.total_stock_cost || v.total_cost_inr || 0), 0))}
                 </p>
-                <p className="text-xs text-gray-500">Current stock cost</p>
+                <p className="text-xs text-green-600 mt-1">Current stock cost</p>
               </div>
-              <DollarSign className="h-5 w-5 text-blue-600" />
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-3">
+        <Card className="border-0 shadow-lg bg-gradient-to-br from-orange-50 to-amber-50 hover:shadow-xl transition-all duration-300">
+          <CardContent className="p-4">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-gray-600">Stock MRP</p>
-                <p className="text-lg font-bold text-gray-900">
-                  {formatCurrency(vendors.reduce((sum, v) => sum + (v.total_mrp_inr || 0), 0))}
+              <div className="flex-1">
+                <div className="flex items-center space-x-2 mb-2">
+                  <ShoppingCart className="h-5 w-5 text-orange-600" />
+                  <p className="text-sm font-semibold text-orange-900">Stock MRP</p>
+                </div>
+                <p className="text-2xl font-bold text-orange-700">
+                  {formatCurrency(vendors.reduce((sum, v) => sum + (v.inventory_summary?.total_stock_value || v.total_mrp_inr || 0), 0))}
                 </p>
-                <p className="text-xs text-gray-500">Current stock value</p>
+                <p className="text-xs text-orange-600 mt-1">Current stock value</p>
               </div>
-              <ShoppingCart className="h-5 w-5 text-orange-600" />
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-3">
+        <Card className="border-0 shadow-lg bg-gradient-to-br from-purple-50 to-pink-50 hover:shadow-xl transition-all duration-300">
+          <CardContent className="p-4">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-gray-600">Stock Profit</p>
-                <p className="text-lg font-bold text-purple-600">
-                  {formatCurrency(vendors.reduce((sum, v) => sum + (v.profit_margin_inr || 0), 0))}
+              <div className="flex-1">
+                <div className="flex items-center space-x-2 mb-2">
+                  <CreditCard className="h-5 w-5 text-purple-600" />
+                  <p className="text-sm font-semibold text-purple-900">Stock Profit</p>
+                </div>
+                <p className="text-2xl font-bold text-purple-700">
+                  {formatCurrency(vendors.reduce((sum, v) => sum + (v.inventory_summary?.total_profit || v.profit_margin_inr || 0), 0))}
                 </p>
-                <p className="text-xs text-gray-500">Profit potential</p>
+                <p className="text-xs text-purple-600 mt-1">Profit potential</p>
               </div>
-              <CreditCard className="h-5 w-5 text-purple-600" />
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-3">
+        <Card className="border-0 shadow-lg bg-gradient-to-br from-teal-50 to-cyan-50 hover:shadow-xl transition-all duration-300">
+          <CardContent className="p-4">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-gray-600">Total Paid</p>
-                <p className="text-lg font-bold text-green-600">
+              <div className="flex-1">
+                <div className="flex items-center space-x-2 mb-2">
+                  <DollarSign className="h-5 w-5 text-teal-600" />
+                  <p className="text-sm font-semibold text-teal-900">Total Paid</p>
+                </div>
+                <p className="text-2xl font-bold text-teal-700">
                   {formatCurrency(vendors.reduce((sum, v) => sum + (v.total_paid || 0), 0))}
                 </p>
-                <p className="text-xs text-gray-500">Paid to vendors</p>
+                <p className="text-xs text-teal-600 mt-1">Paid to vendors</p>
               </div>
-              <DollarSign className="h-5 w-5 text-green-600" />
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-3">
+        <Card className="border-0 shadow-lg bg-gradient-to-br from-red-50 to-rose-50 hover:shadow-xl transition-all duration-300">
+          <CardContent className="p-4">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-gray-600">Total Pending</p>
-                <p className="text-lg font-bold text-red-600">
+              <div className="flex-1">
+                <div className="flex items-center space-x-2 mb-2">
+                  <Package className="h-5 w-5 text-red-600" />
+                  <p className="text-sm font-semibold text-red-900">Total Pending</p>
+                </div>
+                <p className="text-2xl font-bold text-red-700">
                   {formatCurrency(vendors.reduce((sum, v) => sum + (v.total_pending || 0), 0))}
                 </p>
-                <p className="text-xs text-gray-500">Owed to vendors</p>
+                <p className="text-xs text-red-600 mt-1">Owed to vendors</p>
               </div>
-              <Package className="h-5 w-5 text-red-600" />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Vendor Analytics - Moved up for better visibility */}
-      <VendorDashboard />
-
-      {/* Search and Filter Controls */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-wrap gap-4 items-center">
+      {/* Enhanced Search and Filter Controls */}
+      <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
+        <CardContent className="p-6">
+          <div className="flex flex-wrap gap-4 items-end">
             {/* Search */}
             <div className="flex-1 min-w-64">
-              <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="search" className="block text-sm font-semibold text-gray-700 mb-2">
                 Search Vendors
               </label>
               <input
@@ -324,20 +356,20 @@ export default function VendorsPage() {
                 placeholder="Search by vendor name or contact..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
               />
             </div>
 
             {/* Sort By */}
             <div className="min-w-48">
-              <label htmlFor="sortBy" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="sortBy" className="block text-sm font-semibold text-gray-700 mb-2">
                 Sort By
               </label>
               <select
                 id="sortBy"
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white transition-all"
               >
                 <option value="current_stock_value">Stock Value</option>
                 <option value="name">Vendor Name</option>
@@ -353,14 +385,14 @@ export default function VendorsPage() {
 
             {/* Sort Order */}
             <div className="min-w-32">
-              <label htmlFor="sortOrder" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="sortOrder" className="block text-sm font-semibold text-gray-700 mb-2">
                 Order
               </label>
               <select
                 id="sortOrder"
                 value={sortOrder}
                 onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white transition-all"
               >
                 <option value="desc">High to Low</option>
                 <option value="asc">Low to High</option>
@@ -369,18 +401,38 @@ export default function VendorsPage() {
 
             {/* Filter by Status */}
             <div className="min-w-32">
-              <label htmlFor="filterStatus" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="filterStatus" className="block text-sm font-semibold text-gray-700 mb-2">
                 Status
               </label>
               <select
                 id="filterStatus"
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value as 'all' | 'Active' | 'Inactive')}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white transition-all"
               >
                 <option value="all">All Status</option>
                 <option value="Active">Active</option>
                 <option value="Inactive">Inactive</option>
+              </select>
+            </div>
+
+            {/* Performance Filters */}
+            <div className="min-w-48">
+              <label htmlFor="performanceFilter" className="block text-sm font-semibold text-gray-700 mb-2">
+                Performance
+              </label>
+              <select
+                id="performanceFilter"
+                value={performanceFilter}
+                onChange={(e) => setPerformanceFilter(e.target.value)}
+                className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white transition-all"
+              >
+                <option value="all">All Vendors</option>
+                <option value="top_performers">⭐ Top Performers</option>
+                <option value="high_value">💰 High Value Stock</option>
+                <option value="high_profit">📈 High Profit</option>
+                <option value="low_stock_issues">⚠️ Stock Issues</option>
+                <option value="payment_pending">💳 Payment Pending</option>
               </select>
             </div>
 
@@ -394,21 +446,86 @@ export default function VendorsPage() {
                   setSortBy('current_stock_value');
                   setSortOrder('desc');
                   setFilterStatus('all');
+                  setPerformanceFilter('all');
                   setCurrentPage(1);
                 }}
-                className="h-10"
+                className="h-12 px-6 bg-gray-50 hover:bg-gray-100 border-2 border-gray-200 hover:border-gray-300 font-medium transition-all"
               >
                 Clear Filters
               </Button>
             </div>
           </div>
 
+          {/* Quick Performance Filter Buttons */}
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <div className="flex items-center mb-3">
+              <Filter className="h-4 w-4 text-gray-600 mr-2" />
+              <span className="text-sm font-semibold text-gray-700">Quick Performance Filters:</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant={performanceFilter === 'all' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setPerformanceFilter('all')}
+                className="h-8 px-3 text-xs"
+              >
+                All Vendors
+              </Button>
+              <Button
+                variant={performanceFilter === 'top_performers' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setPerformanceFilter('top_performers')}
+                className="h-8 px-3 text-xs bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-200 text-yellow-800 hover:from-yellow-100 hover:to-amber-100"
+              >
+                <Star className="h-3 w-3 mr-1" />
+                Top Performers
+              </Button>
+              <Button
+                variant={performanceFilter === 'high_value' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setPerformanceFilter('high_value')}
+                className="h-8 px-3 text-xs bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 text-green-800 hover:from-green-100 hover:to-emerald-100"
+              >
+                <DollarSign className="h-3 w-3 mr-1" />
+                High Value
+              </Button>
+              <Button
+                variant={performanceFilter === 'high_profit' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setPerformanceFilter('high_profit')}
+                className="h-8 px-3 text-xs bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 text-blue-800 hover:from-blue-100 hover:to-indigo-100"
+              >
+                <Target className="h-3 w-3 mr-1" />
+                High Profit
+              </Button>
+              <Button
+                variant={performanceFilter === 'low_stock_issues' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setPerformanceFilter('low_stock_issues')}
+                className="h-8 px-3 text-xs bg-gradient-to-r from-red-50 to-rose-50 border-red-200 text-red-800 hover:from-red-100 hover:to-rose-100"
+              >
+                <Package className="h-3 w-3 mr-1" />
+                Stock Issues
+              </Button>
+              <Button
+                variant={performanceFilter === 'payment_pending' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setPerformanceFilter('payment_pending')}
+                className="h-8 px-3 text-xs bg-gradient-to-r from-orange-50 to-amber-50 border-orange-200 text-orange-800 hover:from-orange-100 hover:to-amber-100"
+              >
+                <CreditCard className="h-3 w-3 mr-1" />
+                Payment Due
+              </Button>
+            </div>
+          </div>
+
           {/* Results Summary */}
-          <div className="mt-3 pt-3 border-t border-gray-200">
-            <p className="text-sm text-gray-600">
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <p className="text-sm text-gray-600 font-medium">
               Showing {filteredAndSortedVendors.length} of {vendors.length} vendors
               {searchTerm && ` matching "${searchTerm}"`}
               {filterStatus !== 'all' && ` with status "${filterStatus}"`}
+              {performanceFilter !== 'all' && ` filtered by performance`}
             </p>
           </div>
         </CardContent>
@@ -447,100 +564,212 @@ export default function VendorsPage() {
               <p className="text-gray-500">Loading vendors...</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Vendor Name</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Products</TableHead>
-                  <TableHead className="text-right">Stock Cost</TableHead>
-                  <TableHead className="text-right">Stock MRP</TableHead>
-                  <TableHead className="text-right">Paid</TableHead>
-                  <TableHead className="text-right">Pending</TableHead>
-                  <TableHead className="text-right">Profit</TableHead>
-                  <TableHead>Payment Status</TableHead>
-                  <TableHead>Last Order</TableHead>
-                  <TableHead className="text-center">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paginatedVendors.map((vendor) => (
-                  <TableRow key={vendor.id}>
-                    <TableCell className="font-medium">
-                      <Link 
-                        href={`/vendors/${vendor.id}`}
-                        className="text-blue-600 hover:text-blue-800 hover:underline"
-                      >
-                        {vendor.name}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{vendor.contact || 'N/A'}</TableCell>
-                    <TableCell>
-                      <Badge className={getStatusBadge(vendor.status)}>
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {paginatedVendors.map((vendor) => (
+                <Card key={vendor.id} className="group relative overflow-hidden border-0 shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-br from-white to-gray-50/50">
+                  <CardHeader className="pb-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <CardTitle className="text-lg font-bold text-gray-900 group-hover:text-emerald-600 transition-colors">
+                          <Link href={`/vendors/${vendor.id}`} className="hover:underline">
+                            {vendor.name}
+                          </Link>
+                        </CardTitle>
+                        <CardDescription className="text-sm text-gray-600 mt-1">
+                          {vendor.contact || 'No contact info'}
+                        </CardDescription>
+                      </div>
+                      <Badge className={`${getStatusBadge(vendor.status)} font-medium`}>
                         {vendor.status}
                       </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">{vendor.products_count || 0}</TableCell>
-                    <TableCell className="text-right font-medium text-blue-600">
-                      {formatCurrency(vendor.total_cost_inr || 0)}
-                    </TableCell>
-                    <TableCell className="text-right font-medium text-orange-600">
-                      {formatCurrency(vendor.total_mrp_inr || 0)}
-                    </TableCell>
-                    <TableCell className="text-right text-green-600">{formatCurrency(vendor.total_paid || 0)}</TableCell>
-                    <TableCell className="text-right">
-                      <span className={(vendor.total_pending || 0) > 0 ? 'text-red-600 font-medium' : 'text-gray-500'}>
-                        {formatCurrency(vendor.total_pending || 0)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <span className={(vendor.profit_margin_inr || 0) >= 0 ? 'text-green-600' : 'text-red-600'}>
-                        {formatCurrency(vendor.profit_margin_inr || 0)}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={
-                        vendor.payment_status === 'paid' 
-                          ? 'bg-green-100 text-green-800'
-                          : vendor.total_pending > 0 
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-gray-100 text-gray-800'
-                      }>
-                        {vendor.payment_status === 'paid' ? 'Paid' : `${vendor.unpaid_orders || 0} Unpaid`}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {vendor.last_order_date 
-                        ? new Date(vendor.last_order_date).toLocaleDateString()
-                        : 'Never'
-                      }
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <div className="flex items-center justify-center space-x-2">
-                        <Button variant="ghost" size="sm" asChild>
-                          <Link href={`/vendors/${vendor.id}`}>
-                            <Eye className="h-4 w-4" />
-                          </Link>
-                        </Button>
-                        <Button variant="ghost" size="sm" asChild>
-                          <Link href={`/vendors/${vendor.id}/edit`}>
-                            <Edit className="h-4 w-4" />
-                          </Link>
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => handleDeleteVendor(vendor.id, vendor.name)}
-                        >
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </Button>
+                    </div>
+                  </CardHeader>
+                  
+                  <CardContent className="space-y-4">
+                    {/* Enhanced Inventory Stock Summary */}
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
+                      <h4 className="text-sm font-semibold text-blue-900 mb-3 flex items-center">
+                        <Package className="w-4 h-4 mr-2" />
+                        Inventory Stock Details
+                      </h4>
+                      {vendor.inventory_summary ? (
+                        <div className="space-y-3">
+                          {/* Product and Stock Count */}
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="text-center">
+                              <div className="text-lg font-bold text-blue-600">
+                                {vendor.inventory_summary.total_products}
+                              </div>
+                              <div className="text-xs text-blue-700 font-medium">Products</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-lg font-bold text-blue-600">
+                                {vendor.inventory_summary.total_quantity}
+                              </div>
+                              <div className="text-xs text-blue-700 font-medium">Total Qty</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-lg font-bold text-blue-600">
+                                {vendor.inventory_summary.categories.length}
+                              </div>
+                              <div className="text-xs text-blue-700 font-medium">Categories</div>
+                            </div>
+                          </div>
+                          
+                          {/* Stock Status Alerts */}
+                          {(vendor.inventory_summary.low_stock_items > 0 || vendor.inventory_summary.out_of_stock_items > 0) && (
+                            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-blue-200">
+                              {vendor.inventory_summary.low_stock_items > 0 && (
+                                <div className="flex items-center space-x-1 bg-yellow-100 rounded-lg p-2">
+                                  <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                                  <span className="text-xs font-medium text-yellow-700">
+                                    {vendor.inventory_summary.low_stock_items} Low Stock
+                                  </span>
+                                </div>
+                              )}
+                              {vendor.inventory_summary.out_of_stock_items > 0 && (
+                                <div className="flex items-center space-x-1 bg-red-100 rounded-lg p-2">
+                                  <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                                  <span className="text-xs font-medium text-red-700">
+                                    {vendor.inventory_summary.out_of_stock_items} Out of Stock
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="text-center">
+                            <div className="text-2xl font-bold text-blue-600">
+                              {vendor.products_count || 0}
+                            </div>
+                            <div className="text-xs text-blue-700 font-medium">Products</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-2xl font-bold text-blue-600">
+                              {vendor.current_stock_quantity || 0}
+                            </div>
+                            <div className="text-xs text-blue-700 font-medium">Units in Stock</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Enhanced Financial Summary */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-3 border border-green-100">
+                        <div className="text-xs text-green-700 font-medium mb-1">Stock Cost</div>
+                        <div className="text-lg font-bold text-green-600">
+                          {formatCurrency(vendor.inventory_summary?.total_stock_cost || vendor.total_cost_inr || 0)}
+                        </div>
                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                      <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-lg p-3 border border-orange-100">
+                        <div className="text-xs text-orange-700 font-medium mb-1">Stock MRP</div>
+                        <div className="text-lg font-bold text-orange-600">
+                          {formatCurrency(vendor.inventory_summary?.total_stock_value || vendor.total_mrp_inr || 0)}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Enhanced Profit & Payment Status */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-100">
+                        <div>
+                          <div className="text-xs text-purple-700 font-medium">Potential Profit</div>
+                          <div className={`text-lg font-bold ${
+                            (vendor.inventory_summary?.total_profit || vendor.profit_margin_inr || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            {formatCurrency(vendor.inventory_summary?.total_profit || vendor.profit_margin_inr || 0)}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xs text-purple-700 font-medium">Margin %</div>
+                          <div className={`text-lg font-bold ${
+                            (vendor.inventory_summary?.overall_profit_margin || vendor.profit_percentage || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            {(vendor.inventory_summary?.overall_profit_margin || vendor.profit_percentage || 0).toFixed(1)}%
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-green-50 rounded-lg p-3 border border-green-100">
+                          <div className="text-xs text-green-700 font-medium mb-1">Paid</div>
+                          <div className="text-sm font-bold text-green-600">
+                            {formatCurrency(vendor.total_paid || 0)}
+                          </div>
+                        </div>
+                        <div className="bg-red-50 rounded-lg p-3 border border-red-100">
+                          <div className="text-xs text-red-700 font-medium mb-1">Pending</div>
+                          <div className="text-sm font-bold text-red-600">
+                            {formatCurrency(vendor.total_pending || 0)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Payment Status Badge */}
+                    <div className="flex items-center justify-between">
+                      <Badge className={`px-3 py-1 ${
+                        vendor.payment_status === 'paid' 
+                          ? 'bg-green-100 text-green-800 border-green-200'
+                          : vendor.total_pending > 0 
+                            ? 'bg-red-100 text-red-800 border-red-200'
+                            : 'bg-gray-100 text-gray-800 border-gray-200'
+                      }`}>
+                        {vendor.payment_status === 'paid' ? '✓ All Paid' : `${vendor.unpaid_orders || 0} Unpaid Orders`}
+                      </Badge>
+                      <div className="text-xs text-gray-500">
+                        Last order: {vendor.last_order_date 
+                          ? new Date(vendor.last_order_date).toLocaleDateString()
+                          : 'Never'
+                        }
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex items-center space-x-2 pt-2 border-t border-gray-100">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        asChild
+                        className="flex-1 group-hover:border-emerald-300 group-hover:text-emerald-600 transition-colors"
+                      >
+                        <Link href={`/vendors/${vendor.id}`} className="flex items-center justify-center">
+                          <Eye className="h-4 w-4 mr-1" />
+                          View
+                        </Link>
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        asChild
+                        className="flex-1 group-hover:border-blue-300 group-hover:text-blue-600 transition-colors"
+                      >
+                        <Link href={`/vendors/${vendor.id}/edit`} className="flex items-center justify-center">
+                          <Edit className="h-4 w-4 mr-1" />
+                          Edit
+                        </Link>
+                      </Button>
+                      {vendor.inventory_summary && vendor.inventory_summary.total_products > 0 && (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          asChild
+                          className="flex-1 group-hover:border-purple-300 group-hover:text-purple-600 transition-colors"
+                        >
+                          <Link href={`/vendors/${vendor.id}/inventory`} className="flex items-center justify-center">
+                            <Package className="h-4 w-4 mr-1" />
+                            Stock
+                          </Link>
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           )}
           
           {/* Pagination Controls */}

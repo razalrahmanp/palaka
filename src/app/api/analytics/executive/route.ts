@@ -19,16 +19,30 @@ export async function GET() {
     if (productsError) throw new Error(`Products Error: ${productsError.message}`);
     const productCosts = new Map(products.map((p: ProductCost) => [p.id, parseFloat(p.cost) || 0]));
 
+    // Get sales orders with final prices (what we actually collect)
+    const { data: salesOrdersData, error: salesOrdersError } = await supabaseAdmin
+      .from('sales_orders')
+      .select('id, final_price, original_price')
+      .neq('status', 'draft');
+    if (salesOrdersError) throw new Error(`Sales Orders Error: ${salesOrdersError.message}`);
+
+    // Get sales order items for cost calculation
     const { data: salesData, error: salesError } = await supabaseAdmin
       .from('sales_order_items')
       .select('product_id, unit_price, quantity');
     if (salesError) throw new Error(`Sales Error: ${salesError.message}`);
 
+    // Calculate total revenue using final_price (what we actually collect after discounts)
     let totalRevenue = 0;
+    (salesOrdersData as { id: string; final_price?: string; original_price?: string }[]).forEach(order => {
+      // Use final_price (actual amount collected after discounts)
+      const revenue = parseFloat(order.final_price || '0') || 0;
+      totalRevenue += revenue;
+    });
+
+    // Calculate total cost from sales items
     let totalCost = 0;
     (salesData as SalesOrderItem[]).forEach(item => {
-      const revenueForItem = (parseFloat(item.unit_price) || 0) * (item.quantity || 0);
-      totalRevenue += revenueForItem;
       const cost = productCosts.get(item.product_id) || 0;
       totalCost += cost * (item.quantity || 0);
     });

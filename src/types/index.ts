@@ -113,13 +113,64 @@ export interface Quote {
   customer: string;
   items: OrderItem[];
   total_price: number;
-  status: 'Draft' | 'Submitted' | 'Approved' | 'Rejected' | 'Converted';
+  original_price?: number;
+  final_price?: number;
+  discount_amount?: number;
+  emi_enabled?: boolean;
+  emi_monthly?: number;
+  freight_charges?: number;
+  notes?: string;
+  // Partial Payment Fields
+  payment_status?: 'pending' | 'partial' | 'paid' | 'overdue';
+  total_paid?: number;
+  remaining_balance?: number;
+  payment_history?: {
+    id: string;
+    amount: number;
+    date: string;
+    method: 'cash' | 'card' | 'bank_transfer' | 'check';
+    reference?: string;
+    notes?: string;
+  }[];
+  status: 'Draft' | 'Pending' | 'Submitted' | 'Approved' | 'Rejected' | 'Converted';
   created_by: string;
   created_at: string;
 }
 
 export type OrderStatus = 'draft' | 'confirmed' | 'shipped' | 'delivered';
 
+export interface SalesOrder {
+  id: string;
+  customer_id: string;
+  customer: string;
+  items: OrderItem[];
+  total_price: number;
+  original_price?: number;
+  final_price?: number;
+  discount_amount?: number;
+  emi_enabled?: boolean;
+  emi_monthly?: number;
+  freight_charges?: number;
+  notes?: string;
+  // Partial Payment Fields
+  payment_status?: 'pending' | 'partial' | 'paid' | 'overdue';
+  total_paid?: number;
+  remaining_balance?: number;
+  payment_history?: {
+    id: string;
+    amount: number;
+    date: string;
+    method: 'cash' | 'card' | 'bank_transfer' | 'check';
+    reference?: string;
+    notes?: string;
+  }[];
+  status: 'draft' | 'confirmed' | 'shipped' | 'delivered';
+  created_by: string;
+  created_at: string;
+  quote_id?: string;
+  deliveryAddress?: string;
+  deliveryDate?: string;
+}
 
 export interface Order {
   id: string;
@@ -127,6 +178,9 @@ export interface Order {
   supplier_name?: string;
   items: OrderItem[];
   total: number;
+  final_price?: number;
+  original_price?: number;
+  discount_amount?: number;
   status: OrderStatus;
   date: string;
   quote_id?: string;

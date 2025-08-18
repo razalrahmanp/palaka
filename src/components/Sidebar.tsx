@@ -74,20 +74,29 @@ export const Sidebar = ({ isOpen, onToggle }: SidebarProps) => {
   }
 
   return (
-  <aside
-    className={`fixed md:relative top-0 left-0 z-50 w-64 bg-gradient-to-b from-white to-gray-50 border-r border-gray-200 shadow-xl transition-all duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:block`}
-  >
+    <aside
+      className={`fixed md:fixed top-0 left-0 z-50 h-full bg-gradient-to-b from-white to-gray-50 border-r border-gray-200 shadow-xl transition-all duration-300 ease-in-out
+        ${isOpen ? 'w-64 md:translate-x-0' : 'w-0 md:-translate-x-64'}
+      `}
+      style={{ minWidth: isOpen ? '16rem' : '0', width: isOpen ? '16rem' : '0' }}
+    >
     {/* Header */}
     <div className="flex items-center justify-between h-16 px-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white">
       <div className="flex items-center">
         <Package className="h-8 w-8 text-white" />
         <span className="ml-3 text-xl font-bold">Al Rams ERP</span>
       </div>
-      {/* Mobile toggle button */}
-      <button onClick={onToggle} className="md:hidden text-white">
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-        </svg>
+      {/* Toggle button for both desktop and mobile */}
+      <button onClick={onToggle} className="text-white">
+        {isOpen ? (
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        ) : (
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        )}
       </button>
     </div>
     

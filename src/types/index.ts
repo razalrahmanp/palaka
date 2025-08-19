@@ -142,7 +142,7 @@ export type OrderStatus = 'draft' | 'confirmed' | 'shipped' | 'delivered';
 export interface SalesOrder {
   id: string;
   customer_id: string;
-  customer: string;
+  customer: { name: string } | null;
   items: OrderItem[];
   total_price: number;
   original_price?: number;
@@ -164,6 +164,12 @@ export interface SalesOrder {
     reference?: string;
     notes?: string;
   }[];
+  // Invoice tracking
+  invoices?: {
+    id: string;
+    total: number;
+    status: InvoiceStatus;
+  }[];
   status: 'draft' | 'confirmed' | 'shipped' | 'delivered';
   created_by: string;
   created_at: string;
@@ -174,7 +180,7 @@ export interface SalesOrder {
 
 export interface Order {
   id: string;
-  customer: string;
+  customer: { name: string } | null;
   supplier_name?: string;
   items: OrderItem[];
   total: number;
@@ -251,15 +257,21 @@ export interface PurchaseOrder {
   total?:       number | null; // Total cost, calculated if product_id exists
 }
 
-export type InvoiceStatus = 'Paid' | 'Unpaid' | 'Overdue';
+export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'partially_paid';
 
 export interface Invoice {
   id: string;
+  invoice_number: string;
+  sales_order_id: string;
+  customer_id: string;
   customer_name: string;
   status: InvoiceStatus;
   total: number;
   paid_amount: number;
+  amount: number;
   date?: string;
+  created_at: string;
+  due_date: string;
 }
 
 // src/types/index.ts
@@ -272,7 +284,8 @@ export interface Payment {
   description: string;
   invoice_id?: string;
   customer_id?: string;
-
+  customer_name: string;
+  notes?: string;
 }
 
 // 2. Simpler one (for Finance UI)

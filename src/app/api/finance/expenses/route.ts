@@ -1,7 +1,6 @@
 // app/api/finance/expenses/route.ts
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseAdmin";
-import { createExpenseJournalEntry } from "@/lib/accounting-integration";
 import { subcategoryMap } from "@/types";
 
 export async function GET() {
@@ -78,14 +77,15 @@ export async function POST(req: Request) {
     // 5. Create accounting journal entry for the expense
     // Dr. Expense Account / Cr. Cash/Bank Account
     try {
-      await createExpenseJournalEntry({
-        id: exp.id,
-        date: date,
-        category: category,
-        description: description,
-        amount: amount
-      });
-      console.log(`✅ Journal entry created for expense ${exp.id}`);
+      // TODO: Accounting integration removed
+      // await createExpenseJournalEntry({
+      //   id: exp.id,
+      //   date: date,
+      //   category: category,
+      //   description: description,
+      //   amount: amount
+      // });
+      console.log(`✅ Journal entry creation skipped for expense ${exp.id}`);
     } catch (journalError) {
       console.error('❌ Failed to create journal entry for expense:', journalError);
       // Don't fail the expense creation, but log the error

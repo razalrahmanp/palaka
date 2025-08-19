@@ -45,8 +45,16 @@ export function PurchaseOrderJournalAutoBalance() {
   const fetchMissingJournals = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/accounting/purchase-order-journals');
-      const result = await response.json();
+      // TODO: Accounting API removed - implement alternative journal logic
+      // Temporary placeholder data
+      const result = { 
+        success: true, 
+        data: {
+          total_purchase_orders: 0,
+          missing_journal_entries: 0,
+          purchase_orders: []
+        } as PurchaseOrderJournalData
+      };
       
       if (result.success) {
         setData(result.data);
@@ -61,21 +69,22 @@ export function PurchaseOrderJournalAutoBalance() {
     }
   };
 
-  const createMissingJournals = async (specificIds?: string[]) => {
+  const createMissingJournals = async () => {
     try {
       setProcessing(true);
-      const response = await fetch('/api/accounting/purchase-order-journals', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'create_missing_journals',
-          ...(specificIds && { purchase_order_ids: specificIds })
-        }),
-      });
-
-      const result = await response.json();
+      // TODO: Accounting API removed - implement alternative journal logic
+      
+      // Temporary placeholder response
+      const result = { 
+        success: true, 
+        message: 'Journal creation disabled - accounting module removed',
+        data: {
+          processed: 0,
+          successful: 0,
+          failed: 0,
+          results: []
+        }
+      };
       
       if (result.success) {
         setLastResult(result.data);
@@ -84,7 +93,7 @@ export function PurchaseOrderJournalAutoBalance() {
         // Refresh the data
         await fetchMissingJournals();
       } else {
-        toast.error(result.error || 'Failed to create journal entries');
+        toast.error('Failed to create journal entries');
       }
     } catch (error) {
       console.error('Error creating journal entries:', error);
@@ -319,7 +328,7 @@ export function PurchaseOrderJournalAutoBalance() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => createMissingJournals([po.id])}
+                          onClick={() => createMissingJournals()}
                           disabled={processing}
                         >
                           {processing ? (

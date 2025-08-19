@@ -347,11 +347,12 @@ export default function EnhancedFinanceOverview() {
                     <Button 
                       variant="outline" 
                       size="sm"
-                      onClick={() => window.location.href = '/accounting'}
-                      className="bg-white/80 text-amber-800 border-amber-300 hover:bg-amber-50 hover:border-amber-400 transition-all duration-200 rounded-xl shadow-sm"
+                      disabled
+                      title="Accounting module has been removed"
+                      className="bg-gray-100 text-gray-400 border-gray-300 cursor-not-allowed rounded-xl shadow-sm"
                     >
                       <BookOpen className="h-4 w-4 mr-2" />
-                      View Accounting Dashboard
+                      Accounting Dashboard (Disabled)
                       <ExternalLink className="h-3 w-3 ml-2" />
                     </Button>
                     <div className="flex items-center gap-2 px-3 py-1 bg-white/60 rounded-full border border-amber-200">
@@ -660,11 +661,12 @@ export default function EnhancedFinanceOverview() {
             <div className="p-4 border-t border-gray-100 bg-white/50">
               <Button 
                 variant="outline" 
-                className="w-full bg-white hover:bg-gray-50 border-gray-200 hover:border-gray-300 transition-all duration-200"
-                onClick={() => window.location.href = '/accounting'}
+                className="w-full bg-gray-100 text-gray-400 border-gray-300 cursor-not-allowed"
+                disabled
+                title="Accounting module has been removed"
               >
                 <BookOpen className="h-4 w-4 mr-2" />
-                View All Journal Entries in Accounting Dashboard
+                Journal Entries (Accounting Disabled)
                 <ArrowRight className="h-4 w-4 ml-2" />
               </Button>
             </div>

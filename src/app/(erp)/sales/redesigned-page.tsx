@@ -70,7 +70,7 @@ export default function RedesignedSalesPage() {
 
   const filteredOrders = orders.filter(order => {
     const matchesSearch = !searchTerm || 
-      order.customer?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.customer?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.id?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
     return matchesSearch && matchesStatus;
@@ -647,6 +647,7 @@ function OrdersTabContent({
   formatCurrency: (amount: number) => string;
   getStatusColor: (status: string) => string;
 }) {
+  
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
       {orders.map((order) => (
@@ -662,7 +663,7 @@ function OrdersTabContent({
             </div>
             <p className="text-sm text-gray-600 flex items-center">
               <User className="mr-1 h-4 w-4" />
-              {order.customer}
+              {order.customer?.name || 'Unknown Customer'}
             </p>
             {order.date && (
               <p className="text-xs text-gray-500 flex items-center">
@@ -791,10 +792,7 @@ function OrdersTabContent({
                           <div className="w-full bg-gray-200 rounded-full h-2">
                             <div 
                               className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                              style={{
-                                width: `${Math.min(100, Math.max(0, ((orderWithPayment.total_paid || 0) / ((orderWithPayment.final_price || order.total) || 1)) * 100))}%`
-                              }}
-                               
+                              data-progress={Math.min(100, Math.max(0, ((orderWithPayment.total_paid || 0) / ((orderWithPayment.final_price || order.total) || 1)) * 100))}
                             ></div>
                           </div>
                         </div>
@@ -827,33 +825,35 @@ function OrdersTabContent({
               </div>
 
               {/* Action Buttons */}
-              <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="flex-1 rounded-lg hover:bg-green-50 hover:border-green-300 hover:text-green-700"
-                  onClick={() => onView(order)}
-                >
-                  <Eye className="mr-1 h-4 w-4" />
-                  View
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="flex-1 rounded-lg hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700"
-                  onClick={() => onEdit(order)}
-                >
-                  <Edit className="mr-1 h-4 w-4" />
-                  Edit
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="rounded-lg hover:bg-red-50 hover:border-red-300 hover:text-red-700"
-                  onClick={() => order.id && onDelete(order.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="flex-1 rounded-lg hover:bg-green-50 hover:border-green-300 hover:text-green-700"
+                    onClick={() => onView(order)}
+                  >
+                    <Eye className="mr-1 h-4 w-4" />
+                    View
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="flex-1 rounded-lg hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700"
+                    onClick={() => onEdit(order)}
+                  >
+                    <Edit className="mr-1 h-4 w-4" />
+                    Edit
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="rounded-lg hover:bg-red-50 hover:border-red-300 hover:text-red-700"
+                    onClick={() => order.id && onDelete(order.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </div>
           </CardContent>

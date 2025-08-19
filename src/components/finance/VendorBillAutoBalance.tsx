@@ -46,8 +46,19 @@ export function VendorBillAutoBalance() {
   const fetchMissingVendorBills = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/accounting/vendor-bills-auto-balance');
-      const result = await response.json();
+      // TODO: Accounting API removed - implement alternative vendor bill logic
+      // const response = await fetch('/api/accounting/vendor-bills-auto-balance');
+      // const result = await response.json();
+      
+      // Temporary placeholder data
+      const result = { 
+        success: true, 
+        data: {
+          total_purchase_orders: 0,
+          missing_vendor_bills: 0,
+          approved_pos_without_bills: []
+        } as VendorBillData
+      };
       
       if (result.success) {
         setData(result.data);
@@ -62,21 +73,31 @@ export function VendorBillAutoBalance() {
     }
   };
 
-  const createMissingVendorBills = async (specificIds?: string[]) => {
+  const createMissingVendorBills = async () => {
     try {
       setProcessing(true);
-      const response = await fetch('/api/accounting/vendor-bills-auto-balance', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'create_missing_vendor_bills',
-          ...(specificIds && { purchase_order_ids: specificIds })
-        }),
-      });
-
-      const result = await response.json();
+      // TODO: Accounting API removed - implement alternative vendor bill logic
+      // const response = await fetch('/api/accounting/vendor-bills-auto-balance', {
+      //   method: 'POST',
+      //   headers: {
+      //     'Content-Type': 'application/json',
+      //   },
+      //   body: JSON.stringify({
+      //     action: 'create_missing_vendor_bills',
+      //     ...(specificIds && { purchase_order_ids: specificIds })
+      //   }),
+      
+      // Temporary placeholder response
+      const result = { 
+        success: true, 
+        message: 'Vendor bill creation disabled - accounting module removed',
+        data: {
+          processed: 0,
+          successful: 0,
+          failed: 0,
+          results: []
+        }
+      };
       
       if (result.success) {
         setLastResult(result.data);
@@ -85,7 +106,7 @@ export function VendorBillAutoBalance() {
         // Refresh the data
         await fetchMissingVendorBills();
       } else {
-        toast.error(result.error || 'Failed to create vendor bills');
+        toast.error('Failed to create vendor bills');
       }
     } catch (error) {
       console.error('Error creating vendor bills:', error);
@@ -326,7 +347,7 @@ export function VendorBillAutoBalance() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => createMissingVendorBills([po.id])}
+                          onClick={() => createMissingVendorBills()}
                           disabled={processing}
                         >
                           {processing ? (

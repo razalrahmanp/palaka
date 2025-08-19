@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseAdmin";
-import { createPaymentJournalEntry } from "@/lib/accounting-integration";
 import type { PostgrestError } from "@supabase/supabase-js";
 
 interface PaymentRow {
@@ -75,8 +74,9 @@ export async function POST(req: Request) {
     // 3. Create accounting journal entry for the payment
     // Dr. Cash/Bank / Cr. Accounts Receivable
     try {
-      await createPaymentJournalEntry(payment, invoice);
-      console.log(`✅ Journal entry created for payment ${payment.id}`);
+      // TODO: Accounting integration removed
+      // await createPaymentJournalEntry(payment, invoice);
+      console.log(`✅ Journal entry creation skipped for payment ${payment.id}`);
     } catch (journalError) {
       console.error('❌ Failed to create journal entry for payment:', journalError);
       // Don't fail the payment creation, but log the error

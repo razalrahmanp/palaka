@@ -2,7 +2,6 @@
 
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
-import { createPurchaseOrderJournalEntry, createSupplierPaymentJournalEntry } from "@/lib/accounting-integration";
 import { FinPurchaseOrder } from "@/types";
 import { getCurrentUser } from "@/lib/auth";
 
@@ -214,13 +213,14 @@ export async function POST(req: Request) {
     // Dr. Inventory / Cr. Accounts Payable
     if (total > 0) {
       try {
-        await createPurchaseOrderJournalEntry({
-          id: purchaseOrder.id,
-          total: total,
-          created_at: new Date().toISOString(),
-          supplier_id: supplier_id
-        });
-        console.log(`✅ Journal entry created for purchase order ${purchaseOrder.id}`);
+        // TODO: Accounting integration removed
+        // await createPurchaseOrderJournalEntry({
+        //   id: purchaseOrder.id,
+        //   total: total,
+        //   created_at: new Date().toISOString(),
+        //   supplier_id: supplier_id
+        // });
+        console.log(`✅ Journal entry creation skipped for purchase order ${purchaseOrder.id}`);
       } catch (journalError) {
         console.error('❌ Failed to create journal entry for purchase order:', journalError);
       }
@@ -241,13 +241,14 @@ export async function POST(req: Request) {
 
       // Create payment journal entry
       try {
-        await createSupplierPaymentJournalEntry({
-          id: `${purchaseOrder.id}-payment`,
-          amount: paid_amount,
-          payment_date: new Date().toISOString(),
-          supplier_id: supplier_id
-        });
-        console.log(`✅ Payment journal entry created for purchase order ${purchaseOrder.id}`);
+        // TODO: Accounting integration removed
+        // await createSupplierPaymentJournalEntry({
+        //   id: `${purchaseOrder.id}-payment`,
+        //   amount: paid_amount,
+        //   payment_date: new Date().toISOString(),
+        //   supplier_id: supplier_id
+        // });
+        console.log(`✅ Payment journal entry creation skipped for purchase order ${purchaseOrder.id}`);
       } catch (journalError) {
         console.error('❌ Failed to create payment journal entry:', journalError);
       }
@@ -357,13 +358,14 @@ export async function PUT(req: Request) {
 
     // Create supplier payment journal entry
     try {
-      await createSupplierPaymentJournalEntry({
-        id: `${id}-payment-${Date.now()}`,
-        amount: paid_amount,
-        payment_date: new Date().toISOString(),
-        supplier_id: body.supplier_id || 'unknown'
-      });
-      console.log(`✅ Payment journal entry created for purchase order ${id}`);
+      // TODO: Accounting integration removed
+      // await createSupplierPaymentJournalEntry({
+      //   id: `${id}-payment-${Date.now()}`,
+      //   amount: paid_amount,
+      //   payment_date: new Date().toISOString(),
+      //   supplier_id: body.supplier_id || 'unknown'
+      // });
+      console.log(`✅ Payment journal entry creation skipped for purchase order ${id}`);
     } catch (journalError) {
       console.error('❌ Failed to create payment journal entry:', journalError);
     }

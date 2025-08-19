@@ -22,7 +22,7 @@ export function OrderSection({
   orderSearch, setOrderSearch,
   orderDate, setOrderDate,
   filteredOrders,
-  onViewOrder, onEditOrder, onDeleteOrder,
+  onViewOrder, onEditOrder, onDeleteOrder
 }: {
   orderSearch: string;
   setOrderSearch: (v: string) => void;
@@ -89,7 +89,7 @@ export function OrderSection({
                       <div className="space-y-3">
                         <div className="flex items-center gap-2">
                           <User className="h-4 w-4 text-gray-400" />
-                          <span className="font-medium text-gray-900">{o.customer}</span>
+                          <span className="font-medium text-gray-900">{o.customer?.name || 'Unknown Customer'}</span>
                         </div>
                         {o.items && o.items.length > 0 && (
                           <div className="space-y-2">

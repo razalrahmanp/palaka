@@ -1,5 +1,5 @@
 import React from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { QuoteBuilderForm } from '@/components/sales/QuoteBuilderForm';
 import { OrderDetails } from '@/components/sales/OrderDetails';
 import { OrderEditForm } from '@/components/sales/OrderEditForm';
@@ -85,10 +85,10 @@ export function SalesModals({
       </Dialog>
 
       <Dialog open={isOrderModalOpen} onOpenChange={setIsOrderModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Order Details: {selectedOrder?.id}</DialogTitle>
-          </DialogHeader>
+        <DialogContent className="!max-w-none !max-h-none !w-screen !h-screen !m-0 !p-0 !gap-0 !rounded-none !border-0 fixed !inset-0 !transform-none !translate-x-0 !translate-y-0">
+          <DialogDescription className="sr-only">
+            Order details view with invoice information, customer details, and action buttons for printing and sharing.
+          </DialogDescription>
           {selectedOrder && <OrderDetails order={selectedOrder} />}
         </DialogContent>
       </Dialog>
@@ -101,7 +101,7 @@ export function SalesModals({
           {selectedOrder && (
             <OrderEditForm
               order={selectedOrder}
-              customerId={customers.find((c) => c.name === selectedOrder.customer)?.id || ''}
+              customerId={customers.find((c) => c.name === selectedOrder.customer?.name)?.id || ''}
               availableProducts={products}
               onSave={async (updates) => {
                 const res = await fetch(`/api/sales/orders`, {

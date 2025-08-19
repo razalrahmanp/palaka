@@ -1,9 +1,128 @@
 import { supabase } from '@/lib/supabaseAdmin';
 import { NextRequest, NextResponse } from 'next/server';
 
-export async function PUT(req: NextRequest) {
-  const url = new URL(req.url);
-  const id = url.pathname.split("/").at(-2); // Extracts [id] from /api/sales/orders/[id]
+interface OrderItemWithProducts {
+  order_id: string;
+  quantity: number;
+  unit_price: number | null;
+  product_id?: string | null;
+  name?: string | null;
+  supplier_name?: string | null;
+  products?: {
+    name: string;
+    price: number;
+    sku?: string;
+    suppliers?: { name: string }[];
+  } | {
+    name: string;
+    price: number;
+    sku?: string;
+    suppliers?: { name: string }[];
+  }[] | null;
+}
+
+export async function GET(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const { id } = await params;
+
+  if (!id) {
+    return NextResponse.json({ error: 'Missing order ID' }, { status: 400 });
+  }
+
+  try {
+    // Fetch sales order with customer details
+    const { data: orderData, error: orderError } = await supabase
+      .from('sales_orders')
+      .select(`
+        *,
+        customers:customer_id (
+          id,
+          name,
+          email,
+          phone,
+          address,
+          city,
+          state,
+          pincode
+        )
+      `)
+      .eq('id', id)
+      .single();
+
+    if (orderError) {
+      console.error('Error fetching order:', orderError);
+      return NextResponse.json({ error: orderError.message }, { status: 500 });
+    }
+
+    // Fetch order items from sales_order_items table with product details including SKU
+    const { data: itemsData, error: itemsError } = await supabase
+      .from('sales_order_items')
+      .select(`
+        *,
+        products:product_id(name, sku, price, suppliers(name))
+      `)
+      .eq('order_id', id);
+
+    if (itemsError) {
+      console.error('Error fetching order items:', itemsError);
+      return NextResponse.json({ error: itemsError.message }, { status: 500 });
+    }
+
+    // Try to get sales representative from quotes if quote_id exists
+    let salesRepresentative = null;
+    if (orderData.quote_id) {
+      const { data: quoteData } = await supabase
+        .from('quotes')
+        .select(`
+          sales_representative_id,
+          users:sales_representative_id (
+            id,
+            name,
+            email
+          )
+        `)
+        .eq('id', orderData.quote_id)
+        .single();
+      
+      salesRepresentative = quoteData?.users || null;
+    }
+
+    // Map items to include SKU from products relationship
+    const mappedItems = (itemsData || []).map((item: OrderItemWithProducts) => ({
+      ...item,
+      sku: item.products 
+        ? Array.isArray(item.products) 
+          ? (item.products.length > 0 ? item.products[0].sku : null)
+          : item.products.sku
+        : null,
+      name: item.name || (item.products 
+        ? Array.isArray(item.products) 
+          ? (item.products.length > 0 ? item.products[0].name : null)
+          : item.products.name
+        : null)
+    }));
+
+    const orderWithDetails = {
+      ...orderData,
+      items: mappedItems,
+      customer: orderData.customers,
+      sales_representative: salesRepresentative
+    };
+
+    return NextResponse.json(orderWithDetails);
+  } catch (error) {
+    console.error('Unexpected error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const { id } = await params;
 
   if (!id) {
     return NextResponse.json({ error: 'Missing order ID' }, { status: 400 });

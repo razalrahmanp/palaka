@@ -1,0 +1,433 @@
+'use client';
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
+import { Progress } from '@/components/ui/progress';
+import { 
+  CreditCard, 
+  DollarSign, 
+  Calendar,
+  User,
+  FileText,
+  History,
+  Plus,
+  CheckCircle,
+  AlertCircle
+} from 'lucide-react';
+import { Invoice, Payment } from '@/types';
+import { toast } from 'sonner';
+
+interface PaymentTrackingDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  invoice: Invoice | null;
+  onSuccess: () => void;
+}
+
+export function PaymentTrackingDialog({ 
+  open, 
+  onOpenChange, 
+  invoice, 
+  onSuccess 
+}: PaymentTrackingDialogProps) {
+  const [loading, setLoading] = useState(false);
+  const [paymentHistory, setPaymentHistory] = useState<Payment[]>([]);
+  const [showAddPayment, setShowAddPayment] = useState(false);
+  const [paymentData, setPaymentData] = useState({
+    amount: 0,
+    method: 'cash' as 'cash' | 'card' | 'bank_transfer' | 'check',
+    reference: '',
+    notes: '',
+    date: new Date().toISOString().split('T')[0]
+  });
+
+  const fetchPaymentHistory = useCallback(async () => {
+    if (!invoice) return;
+    
+    try {
+      const response = await fetch(`/api/finance/payments?invoice_id=${invoice.id}`);
+      if (response.ok) {
+        const payments = await response.json();
+        setPaymentHistory(payments);
+      }
+    } catch (error) {
+      console.error('Error fetching payment history:', error);
+    }
+  }, [invoice]);
+
+  useEffect(() => {
+    if (invoice && open) {
+      fetchPaymentHistory();
+      const remainingAmount = invoice.total - invoice.paid_amount;
+      setPaymentData(prev => ({
+        ...prev,
+        amount: remainingAmount,
+        notes: `Payment for Invoice ${invoice.id.slice(0, 8)}`
+      }));
+    }
+  }, [invoice, open, fetchPaymentHistory]);
+
+  const handleAddPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!invoice) return;
+
+    setLoading(true);
+    try {
+      const response = await fetch('/api/finance/payments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          invoice_id: invoice.id,
+          customer_id: invoice.customer_id,
+          customer_name: invoice.customer_name,
+          amount: paymentData.amount,
+          method: paymentData.method,
+          reference: paymentData.reference,
+          notes: paymentData.notes,
+          date: paymentData.date
+        }),
+      });
+
+      if (response.ok) {
+        toast.success('Payment recorded successfully');
+        fetchPaymentHistory();
+        onSuccess();
+        setShowAddPayment(false);
+        
+        // Reset form
+        setPaymentData({
+          amount: 0,
+          method: 'cash',
+          reference: '',
+          notes: '',
+          date: new Date().toISOString().split('T')[0]
+        });
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Failed to record payment');
+      }
+    } catch (error) {
+      console.error('Error recording payment:', error);
+      toast.error('Failed to record payment');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR'
+    }).format(amount);
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-IN');
+  };
+
+  const getPaymentMethodBadge = (method: string) => {
+    const colors = {
+      cash: 'bg-green-100 text-green-800',
+      card: 'bg-blue-100 text-blue-800',
+      bank_transfer: 'bg-purple-100 text-purple-800',
+      check: 'bg-orange-100 text-orange-800'
+    };
+    
+    return (
+      <Badge className={colors[method as keyof typeof colors] || 'bg-gray-100 text-gray-800'}>
+        {method.replace('_', ' ').toUpperCase()}
+      </Badge>
+    );
+  };
+
+  if (!invoice) return null;
+
+  const remainingAmount = invoice.total - invoice.paid_amount;
+  const paymentProgress = (invoice.paid_amount / invoice.total) * 100;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <CreditCard className="h-5 w-5" />
+            Payment Tracking - Invoice {invoice.id.slice(0, 8)}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-6">
+          {/* Invoice Summary */}
+          <Card className="bg-gray-50">
+            <CardContent className="p-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <FileText className="h-4 w-4 text-blue-500" />
+                    <span className="font-medium">Invoice Details</span>
+                  </div>
+                  <p className="text-sm text-gray-600">Invoice ID: {invoice.id.slice(0, 8)}</p>
+                  <p className="text-sm text-gray-600">Date: {formatDate(invoice.created_at)}</p>
+                  <p className="text-sm text-gray-600">
+                    Status: <Badge className={
+                      invoice.status === 'paid' ? 'bg-green-100 text-green-800' :
+                      invoice.status === 'partially_paid' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-red-100 text-red-800'
+                    }>{invoice.status.replace('_', ' ')}</Badge>
+                  </p>
+                </div>
+                
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <User className="h-4 w-4 text-green-500" />
+                    <span className="font-medium">Customer</span>
+                  </div>
+                  <p className="text-sm text-gray-600">{invoice.customer_name}</p>
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <DollarSign className="h-4 w-4 text-purple-500" />
+                    <span className="font-medium">Payment Progress</span>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>Progress</span>
+                      <span>{paymentProgress.toFixed(1)}%</span>
+                    </div>
+                    <Progress value={Math.min(paymentProgress, 100)} className="w-full" />
+                  </div>
+                </div>
+              </div>
+              
+              <Separator className="my-4" />
+              
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <FileText className="h-4 w-4 text-blue-500" />
+                    <span className="font-medium text-sm">Total Amount</span>
+                  </div>
+                  <p className="text-lg font-bold text-blue-600">
+                    {formatCurrency(invoice.total)}
+                  </p>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span className="font-medium text-sm">Paid Amount</span>
+                  </div>
+                  <p className="text-lg font-bold text-green-600">
+                    {formatCurrency(invoice.paid_amount)}
+                  </p>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertCircle className="h-4 w-4 text-red-500" />
+                    <span className="font-medium text-sm">Remaining</span>
+                  </div>
+                  <p className="text-lg font-bold text-red-600">
+                    {formatCurrency(remainingAmount)}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Payment History */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <History className="h-5 w-5" />
+                  Payment History
+                </div>
+                {remainingAmount > 0 && (
+                  <Button
+                    size="sm"
+                    onClick={() => setShowAddPayment(!showAddPayment)}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Payment
+                  </Button>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {showAddPayment && remainingAmount > 0 && (
+                <Card className="mb-4 border-dashed">
+                  <CardContent className="p-4">
+                    <form onSubmit={handleAddPayment} className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="amount">Payment Amount</Label>
+                          <Input
+                            id="amount"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max={remainingAmount}
+                            value={paymentData.amount}
+                            onChange={(e) => setPaymentData(prev => ({ 
+                              ...prev, 
+                              amount: parseFloat(e.target.value) || 0 
+                            }))}
+                            required
+                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            Maximum: {formatCurrency(remainingAmount)}
+                          </p>
+                        </div>
+                        <div>
+                          <Label htmlFor="method">Payment Method</Label>
+                          <Select
+                            value={paymentData.method}
+                            onValueChange={(value: "cash" | "card" | "bank_transfer" | "check") => setPaymentData(prev => ({ 
+                              ...prev, 
+                              method: value 
+                            }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select method" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="cash">Cash</SelectItem>
+                              <SelectItem value="card">Card</SelectItem>
+                              <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                              <SelectItem value="check">Check</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="date">Payment Date</Label>
+                          <Input
+                            id="date"
+                            type="date"
+                            value={paymentData.date}
+                            onChange={(e) => setPaymentData(prev => ({ 
+                              ...prev, 
+                              date: e.target.value 
+                            }))}
+                            required
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="reference">Reference Number</Label>
+                          <Input
+                            id="reference"
+                            value={paymentData.reference}
+                            onChange={(e) => setPaymentData(prev => ({ 
+                              ...prev, 
+                              reference: e.target.value 
+                            }))}
+                            placeholder="Transaction ID, Check number, etc."
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label htmlFor="notes">Notes</Label>
+                        <Textarea
+                          id="notes"
+                          value={paymentData.notes}
+                          onChange={(e) => setPaymentData(prev => ({ 
+                            ...prev, 
+                            notes: e.target.value 
+                          }))}
+                          placeholder="Additional notes about this payment..."
+                          rows={2}
+                        />
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Button type="submit" disabled={loading}>
+                          {loading ? 'Recording...' : 'Record Payment'}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setShowAddPayment(false)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </form>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Payment History Table */}
+              {paymentHistory.length > 0 ? (
+                <div className="rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Method</TableHead>
+                        <TableHead>Reference</TableHead>
+                        <TableHead>Notes</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paymentHistory.map((payment) => (
+                        <TableRow key={payment.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Calendar className="h-4 w-4 text-gray-500" />
+                              {formatDate(payment.date)}
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-semibold text-green-600">
+                            {formatCurrency(payment.amount)}
+                          </TableCell>
+                          <TableCell>
+                            {getPaymentMethodBadge(payment.method)}
+                          </TableCell>
+                          <TableCell>{payment.reference || 'N/A'}</TableCell>
+                          <TableCell className="max-w-xs truncate">
+                            {payment.notes || 'N/A'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <CreditCard className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No payments recorded yet</p>
+                  {remainingAmount > 0 && (
+                    <p className="text-sm">Click &quot;Add Payment&quot; to record the first payment</p>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

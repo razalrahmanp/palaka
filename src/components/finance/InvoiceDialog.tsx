@@ -37,7 +37,7 @@ export function InvoiceDialog({
   const [salesOrders, setSalesOrders] = useState<Order[]>([]);
   const [salesOrderId, setSalesOrderId] = useState<string>("");
   const [customerName, setCustomerName] = useState<string>("");
-  const [status, setStatus] = useState<InvoiceStatus>("Unpaid");
+  const [status, setStatus] = useState<InvoiceStatus>("draft");
   const [total, setTotal] = useState<number>(0);
   const [paidAmount, setPaidAmount] = useState<number>(0);
 
@@ -61,7 +61,7 @@ export function InvoiceDialog({
     } else {
       setSalesOrderId("");
       setCustomerName("");
-      setStatus("Unpaid");
+      setStatus("draft");
       setTotal(0);
       setPaidAmount(0);
     }
@@ -71,7 +71,7 @@ export function InvoiceDialog({
   useEffect(() => {
     const so = salesOrders.find((o) => o.id === salesOrderId);
     if (so) {
-      setCustomerName(so.customer);
+      setCustomerName(so.customer?.name || 'Unknown Customer');
       setTotal(so.total);
     }
   }, [salesOrderId, salesOrders]);
@@ -91,10 +91,15 @@ export function InvoiceDialog({
             e.preventDefault();
             onSave({
               sales_order_id: salesOrderId,
+              invoice_number: `INV-${Date.now()}`,
+              customer_id: salesOrderId, // Temporary - should be proper customer ID
               customer_name: customerName,
               status,
               total,
+              amount: total,
               paid_amount: paidAmount,
+              created_at: new Date().toISOString(),
+              due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from now
             });
           }}
           className="space-y-6 py-4"
@@ -115,7 +120,7 @@ export function InvoiceDialog({
                   <SelectItem key={so.id} value={so.id}>
                     <div className="flex items-center justify-between w-full">
                       <span className="font-medium">{so.id}</span>
-                      <span className="text-gray-600">— {so.customer}</span>
+                      <span className="text-gray-600">— {so.customer?.name || 'Unknown Customer'}</span>
                     </div>
                   </SelectItem>
                 ))}

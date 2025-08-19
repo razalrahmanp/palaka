@@ -1,5 +1,5 @@
 // src/app/api/sales/orders/route.ts
-import { supabase } from "@/lib/supabaseAdmin";
+import { supabase } from "@/lib/supabaseClient";
 import { NextResponse } from "next/server";
 
 type OrderRow = {
@@ -18,16 +18,17 @@ type ItemRow = {
   order_id: string;
   quantity: number;
   unit_price: number | null;
-  product: {
+  product_id?: string | null;
+  product_name?: string | null;
+  supplier_name?: string | null;
+  sku?: string | null;
+  products?: {
     name: string;
     price: number;
-    supplier: { name: string } | null;
-  } | null;
-  custom_product: {
-    name: string;
-    price: number;
-    supplier: { name: string } | null;
-  } | null;
+    sku?: string;
+    supplier_id?: string;
+    suppliers?: { name: string }[];
+  }[] | null;
 };
 
 type OrderItemInput = {
@@ -45,21 +46,24 @@ type OrderQueryResult = {
   final_price?: number | null;
   original_price?: number | null;
   discount_amount?: number | null;
-  customers?: { name: string }[] | null;
+  customers?: { name: string } | { name: string }[] | null;
 };
 
 type ItemQueryResult = {
   order_id: string;
   quantity: number;
   unit_price: number | null;
-  product?: {
+  product_id?: string | null;
+  supplier_name?: string | null;
+  products?: {
     name: string;
     price: number;
+    sku?: string;
     suppliers?: { name: string }[];
-  }[] | null;
-  custom_product?: {
+  } | {
     name: string;
     price: number;
+    sku?: string;
     suppliers?: { name: string }[];
   }[] | null;
 };
@@ -76,7 +80,7 @@ export async function GET() {
       final_price,
       original_price,
       discount_amount,
-      customers(name)
+      customers:customer_id(name)
     `);
 
   if (ordersError) {
@@ -90,9 +94,13 @@ export async function GET() {
     status: o.status,
     created_at: o.created_at,
     final_price: o.final_price,
-    original_price: o.original_price, 
+    original_price: o.original_price,
     discount_amount: o.discount_amount,
-    customer: o.customers && o.customers.length > 0 ? { name: o.customers[0].name } : null,
+    customer: o.customers 
+      ? Array.isArray(o.customers) 
+        ? (o.customers.length > 0 ? { name: o.customers[0].name } : null)
+        : { name: o.customers.name }
+      : null
   }));
 
   const { data: itemsRaw, error: itemsError } = await supabase
@@ -101,8 +109,9 @@ export async function GET() {
       order_id,
       quantity,
       unit_price,
-      product:products(name, price, suppliers(name)),
-      custom_product:custom_products(name, price, suppliers(name))
+      product_id,
+      supplier_name,
+      products:product_id(name, sku, price, suppliers(name))
     `);
 
   if (itemsError) {
@@ -113,29 +122,31 @@ export async function GET() {
     order_id: i.order_id,
     quantity: i.quantity,
     unit_price: i.unit_price,
-    product: i.product && i.product.length > 0 ? {
-      name: i.product[0].name,
-      price: i.product[0].price,
-      supplier: i.product[0].suppliers && i.product[0].suppliers.length > 0 ? { name: i.product[0].suppliers[0].name } : null,
-    } : null,
-    custom_product: i.custom_product && i.custom_product.length > 0 ? {
-      name: i.custom_product[0].name,
-      price: i.custom_product[0].price,
-      supplier: i.custom_product[0].suppliers && i.custom_product[0].suppliers.length > 0 ? { name: i.custom_product[0].suppliers[0].name } : null,
-    } : null,
+    product_id: i.product_id,
+    product_name: i.products 
+      ? Array.isArray(i.products) 
+        ? (i.products.length > 0 ? i.products[0].name : null)
+        : i.products.name
+      : null,
+    supplier_name: i.supplier_name,
+    sku: i.products 
+      ? Array.isArray(i.products) 
+        ? (i.products.length > 0 ? i.products[0].sku : null)
+        : i.products.sku
+      : null,
+    products: null, // Will be populated from the relationship data if needed
   }));
 
   const grouped = orders.map((order) => {
     const orderItems = items
       .filter((i) => i.order_id === order.id)
       .map((i) => ({
-        name: i.product?.name ?? i.custom_product?.name ?? "(no name)",
+        name: i.product_name || "(no name)",
         quantity: i.quantity ?? 0,
-        price: i.unit_price ?? i.product?.price ?? i.custom_product?.price ?? 0,
-        supplier_name:
-          i.product?.supplier?.name ??
-          i.custom_product?.supplier?.name ??
-          "N/A",
+        price: i.unit_price ?? 0,
+        supplier_name: i.supplier_name || "N/A",
+        sku: i.sku || null,
+        product_id: i.product_id || null,
       }));
 
     const calculatedTotal = orderItems.reduce(
@@ -146,7 +157,7 @@ export async function GET() {
     return {
       id: order.id,
       quote_id: order.quote_id ?? null,
-      customer: order.customer?.name ?? "(unknown)",
+      customer: order.customer,
       date: order.created_at?.split("T")[0],
       status: order.status,
       supplier_name: orderItems[0]?.supplier_name ?? "N/A",

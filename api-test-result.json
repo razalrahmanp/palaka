@@ -1,0 +1,68 @@
+[
+  {
+    "id": "431872a0-86db-494a-ac59-c6b7e0620f98",
+    "quote_id": "b47bcdfb-027a-4477-8162-dad8a29ded2c",
+    "customer": null,
+    "date": "2025-08-13",
+    "status": "delivered",
+    "supplier_name": "DAFFO-CALICUT",
+    "total": 28500,
+    "final_price": 28500,
+    "original_price": 32200,
+    "discount_amount": 3700,
+    "items": [
+      {
+        "name": "SOFA SETTY",
+        "quantity": 1,
+        "price": 32200,
+        "supplier_name": "DAFFO-CALICUT"
+      }
+    ]
+  },
+  {
+    "id": "46b5d860-18ae-421d-a99e-2de53677eead",
+    "quote_id": "bb84464d-ae1f-47be-a14a-c4da24d944ce",
+    "customer": null,
+    "date": "2025-08-19",
+    "status": "ready_for_delivery",
+    "supplier_name": "THREEMEN",
+    "total": 6250,
+    "final_price": 6250,
+    "original_price": 6720,
+    "discount_amount": 470,
+    "items": [
+      {
+        "name": "ALMIRAH",
+        "quantity": 1,
+        "price": 6720,
+        "supplier_name": "THREEMEN"
+      }
+    ]
+  },
+  {
+    "id": "3c89c66f-47b9-4770-9bed-a605187fbe02",
+    "quote_id": "920cec7e-bfdf-4bc4-9bc3-d889df5591bf",
+    "customer": null,
+    "date": "2025-08-19",
+    "status": "ready_for_delivery",
+    "supplier_name": "MAPLE TUNE FURNITURES(P) LTD",
+    "total": 21800,
+    "final_price": 21800,
+    "original_price": 23791.4,
+    "discount_amount": 1991.4,
+    "items": [
+      {
+        "name": "ALMIRAH",
+        "quantity": 1,
+        "price": 19741.4,
+        "supplier_name": "MAPLE TUNE FURNITURES(P) LTD"
+      },
+      {
+        "name": "ALMIRAH",
+        "quantity": 1,
+        "price": 4050,
+        "supplier_name": "THREEMEN"
+      }
+    ]
+  }
+]

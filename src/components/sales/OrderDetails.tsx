@@ -86,7 +86,11 @@ interface DetailedOrder {
 
 const formatCurrency = (amount: number) => {
   if (typeof amount !== 'number' || isNaN(amount)) return '₹ 0.00';
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
+  // Use explicit ₹ symbol to ensure consistency across all formats
+  return '₹ ' + new Intl.NumberFormat('en-IN', { 
+    minimumFractionDigits: 2, 
+    maximumFractionDigits: 2 
+  }).format(amount);
 };
 
 const formatDate = (dateString: string | undefined) => {
@@ -188,15 +192,23 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
         body { 
           margin: 0; 
           padding: 0; 
-          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+          font-family: Arial, sans-serif; 
           font-size: 11px;
-          line-height: 1.3;
+          line-height: 1.4;
+          color: #000000 !important;
+          background: #ffffff !important;
+        }
+        * {
+          color: #000000 !important;
+          background: transparent !important;
+          border-color: #000000 !important;
         }
         .no-print { display: none !important; }
         .print-break { page-break-before: always; }
         table { 
           page-break-inside: avoid; 
           font-size: 10px;
+          border-collapse: collapse !important;
         }
         .print-full-width { width: 100% !important; max-width: none !important; }
         .print-compact { 
@@ -210,14 +222,48 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
         h1, h2, h3, h4, h5 { 
           margin: 8px 0 4px 0 !important; 
           line-height: 1.2 !important;
+          color: #000000 !important;
+          font-weight: bold !important;
         }
-        .bg-gray-50, .bg-yellow-50 { 
-          background-color: #f9fafb !important; 
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
+        .header-section {
+          border: 2px solid #000000 !important;
+          padding: 15px !important;
+          margin-bottom: 20px !important;
+          background: #ffffff !important;
+        }
+        .info-section {
+          border: 1px solid #000000 !important;
+          padding: 10px !important;
+          margin-bottom: 15px !important;
+        }
+        .items-table th, .items-table td { 
+          border: 1px solid #000000 !important; 
+          padding: 8px !important; 
+        }
+        .items-table th { 
+          background: #ffffff !important; 
+          color: #000000 !important;
+          font-weight: bold !important; 
+          border: 2px solid #000000 !important;
+        }
+        .total-section {
+          border: 2px solid #000000 !important;
+          padding: 10px !important;
+          margin-top: 15px !important;
         }
         .border-t, .border-b { 
           border-width: 1px !important; 
+          border-color: #000000 !important;
+        }
+        .bg-gradient-to-r, .bg-blue-600, .bg-blue-800, .bg-gray-50, .bg-yellow-50,
+        .bg-blue-50, .bg-purple-50, .bg-green-50, .bg-white { 
+          background: #ffffff !important; 
+          color: #000000 !important;
+        }
+        .text-blue-600, .text-blue-100, .text-blue-800, .text-green-600, 
+        .text-purple-600, .text-gray-600, .text-gray-700, .text-gray-500,
+        .text-gray-900, .text-white {
+          color: #000000 !important;
         }
       }
     `;
@@ -237,10 +283,86 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
       <html>
       <head>
         <meta charset="UTF-8">
-        <title>Order Invoice - ${order.id}</title>
+        <title>Estimate - ${order.id}</title>
         <style>
-          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; }
+          * { 
+            box-sizing: border-box; 
+            margin: 0; 
+            padding: 0;
+            color: #000000 !important;
+            background-color: transparent !important;
+          }
+          body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            background: #ffffff !important;
+            color: #000000 !important;
+            line-height: 1.4;
+          }
           .no-print { display: none; }
+          .header-section {
+            border: 2px solid #000000;
+            padding: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+          }
+          .company-name {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 10px;
+          }
+          .estimate-title {
+            font-size: 18px;
+            font-weight: bold;
+          }
+          .info-section {
+            border: 1px solid #000000;
+            padding: 15px;
+            margin-bottom: 20px;
+          }
+          .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+          }
+          .info-box h3 {
+            font-weight: bold;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #000000;
+            padding-bottom: 5px;
+          }
+          .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+          }
+          .items-table th, .items-table td {
+            border: 1px solid #000000;
+            padding: 12px;
+            text-align: left;
+          }
+          .items-table th {
+            background: #ffffff;
+            font-weight: bold;
+            border: 2px solid #000000;
+          }
+          .total-section {
+            border: 2px solid #000000;
+            padding: 15px;
+            margin-top: 20px;
+          }
+          .total-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+          }
+          .total-final {
+            font-weight: bold;
+            font-size: 18px;
+            border-top: 2px solid #000000;
+            padding-top: 10px;
+            margin-top: 10px;
+          }
         </style>
       </head>
       <body>
@@ -249,7 +371,7 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
       </html>
     `], { type: 'text/html' });
     element.href = URL.createObjectURL(file);
-    element.download = `Invoice_${order.id}_${new Date().toISOString().split('T')[0]}.html`;
+    element.download = `Estimate_${order.id}_${new Date().toISOString().split('T')[0]}.html`;
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
@@ -268,7 +390,7 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
         items: order.items?.map(item => ({
           name: item.name || 'Unknown Product',
           quantity: item.quantity || 0,
-          price: item.unit_price || item.final_price || item.price || 0,
+          price: item.unit_price || item.price || 0,
           total: item.final_price || (item.quantity || 0) * (item.unit_price || item.price || 0)
         })) || [],
         subtotal: order.original_price || order.total || 0,
@@ -309,7 +431,7 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
         items: order.items?.map(item => ({
           name: item.name || 'Unknown Product',
           quantity: item.quantity || 0,
-          price: item.unit_price || item.final_price || item.price || 0,
+          price: item.unit_price || item.price || 0,
           total: item.final_price || (item.quantity || 0) * (item.unit_price || item.price || 0)
         })) || [],
         subtotal: order.original_price || order.total || 0,
@@ -387,7 +509,7 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto">
         <div ref={printRef} className="bg-white">
-          {/* Compact Invoice Header */}
+          {/* Compact Estimate Header */}
           <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
@@ -401,9 +523,9 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
               </div>
               <div className="text-right">
                 <div className="bg-white bg-opacity-20 rounded-lg p-3">
-                  <div className="text-blue-100 text-xs font-medium">Invoice #</div>
+                  <div className="text-blue-100 text-xs font-medium">Estimate #</div>
                   <div className="font-mono text-sm font-bold">
-                    INV-{order.id?.slice(0, 8).toUpperCase()}
+                    EST-{order.id?.slice(0, 8).toUpperCase()}
                   </div>
                   <div className="text-blue-100 text-xs mt-1">
                     {formatDate(order.date || order.created_at)}

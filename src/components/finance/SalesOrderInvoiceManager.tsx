@@ -116,6 +116,7 @@ export function SalesOrderInvoiceManager() {
 
       console.log('Processed Invoices:', invoices); // Enhanced debugging
       console.log('Processed Payments:', payments); // Enhanced debugging
+      console.log('Payments structure check:', payments.length > 0 ? payments[0] : 'No payments found'); // Check structure
 
       // Process orders with invoice status
       const processedOrders = orders.map((order: SalesOrder) => {
@@ -124,9 +125,25 @@ export function SalesOrderInvoiceManager() {
         const orderTotal = order.final_price || order.total || 0;
         const remainingToInvoice = orderTotal - totalInvoiced;
         
-        // Calculate paid amount for each order
-        const orderPayments = payments.filter((payment: PaymentDetails) => payment.sales_order_id === order.id);
-        const paidAmount = orderPayments.reduce((sum: number, payment: PaymentDetails) => sum + payment.amount, 0);
+        // Calculate paid amount for each order by joining through invoices
+        const orderInvoiceIds = orderInvoices.map((inv: Invoice) => inv.id);
+        const orderPayments = payments.filter((payment: { invoice_id: string; amount: number }) => 
+          orderInvoiceIds.includes(payment.invoice_id)
+        );
+        const paidAmount = orderPayments.reduce((sum: number, payment: { amount: number }) => sum + payment.amount, 0);
+        
+        // Debug payment calculation for all orders to understand the issue
+        if (paidAmount > 0 || order.id === 'f0dd3c5b-2384-48be-a14c-558e29154908') {
+          console.log(`DEBUG - Order ${order.id.slice(0, 8)} payment calculation:`, {
+            orderInvoices: orderInvoices.length,
+            orderInvoiceIds,
+            allPaymentsCount: payments.length,
+            orderPayments: orderPayments.length,
+            paidAmount,
+            orderTotal: order.final_price || order.total || 0,
+            samplePayment: payments.length > 0 ? payments[0] : null
+          });
+        }
         
         // Calculate payment status based on amounts
         const calculatedPaymentStatus = paidAmount >= orderTotal ? 'paid' : paidAmount > 0 ? 'partially_paid' : 'unpaid';

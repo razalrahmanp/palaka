@@ -44,27 +44,28 @@ export class WhatsAppService {
       total,
       companyName,
       companyPhone,
-      companyAddress 
+      companyAddress,
+      paymentInfo
     } = billData;
 
     let message = `*${companyName}*\n`;
-    message += `📋 *INVOICE*\n`;
-    message += `─────────────────────\n\n`;
+    message += `📋 *INVOICE DETAILS*\n`;
+    message += `═══════════════════════\n\n`;
     
     message += `👤 *Customer:* ${customerName}\n`;
     message += `📄 *Order #:* ${orderNumber}\n`;
     message += `📅 *Date:* ${new Date().toLocaleDateString('en-IN')}\n\n`;
     
-    message += `🛍️ *Items:*\n`;
+    message += `🛍️ *ITEMS ORDERED:*\n`;
     message += `─────────────────────\n`;
     
     items.forEach((item, index) => {
-      message += `${index + 1}. ${item.name}\n`;
+      message += `${index + 1}. *${item.name}*\n`;
       message += `   Qty: ${item.quantity} × ₹${item.price.toLocaleString('en-IN')}\n`;
-      message += `   Total: ₹${item.total.toLocaleString('en-IN')}\n\n`;
+      message += `   Subtotal: ₹${item.total.toLocaleString('en-IN')}\n\n`;
     });
     
-    message += `💰 *Bill Summary:*\n`;
+    message += `💰 *BILLING SUMMARY:*\n`;
     message += `─────────────────────\n`;
     message += `Subtotal: ₹${subtotal.toLocaleString('en-IN')}\n`;
     
@@ -73,18 +74,42 @@ export class WhatsAppService {
     }
     
     if (tax > 0) {
-      message += `Tax: ₹${tax.toLocaleString('en-IN')}\n`;
+      message += `Tax/GST: ₹${tax.toLocaleString('en-IN')}\n`;
     }
     
-    message += `*Grand Total: ₹${total.toLocaleString('en-IN')}*\n\n`;
+    message += `*GRAND TOTAL: ₹${total.toLocaleString('en-IN')}*\n\n`;
     
-    message += `📞 *Contact:* ${companyPhone || 'N/A'}\n`;
+    // Add payment information if available
+    if (paymentInfo) {
+      message += `💳 *PAYMENT STATUS:*\n`;
+      message += `─────────────────────\n`;
+      message += `Total Amount: ₹${total.toLocaleString('en-IN')}\n`;
+      message += `Amount Paid: ₹${paymentInfo.totalPaid.toLocaleString('en-IN')}\n`;
+      message += `Balance Due: ₹${paymentInfo.balanceDue.toLocaleString('en-IN')}\n`;
+      message += `Status: *${paymentInfo.paymentStatus}*\n`;
+      
+      if (paymentInfo.lastPaymentDate) {
+        message += `Last Payment: ${new Date(paymentInfo.lastPaymentDate).toLocaleDateString('en-IN')}\n`;
+      }
+      
+      if (paymentInfo.paymentCount > 0) {
+        message += `Payments Made: ${paymentInfo.paymentCount}\n`;
+      }
+      
+      message += `\n`;
+    }
+    
+    message += `📞 *CONTACT INFO:*\n`;
+    message += `─────────────────────\n`;
+    message += `Phone: ${companyPhone || 'N/A'}\n`;
     if (companyAddress) {
-      message += `📍 *Address:* ${companyAddress}\n`;
+      message += `Address: ${companyAddress}\n`;
     }
+    message += `Website: www.alramsfurnitures.com\n`;
     
-    message += `\nThank you for your business! 🙏\n`;
-    message += `*${companyName}*`;
+    message += `\n🙏 *Thank you for choosing ${companyName}!*\n`;
+    message += `We appreciate your business and look forward to serving you again.\n\n`;
+    message += `*${companyName}* - Your Trusted Furniture Partner`;
     
     return message;
   }
@@ -520,6 +545,125 @@ export class WhatsAppService {
   static async sendBill(phoneNumber: string, billData: WhatsAppBillData): Promise<{success: boolean, message: string}> {
     // For backward compatibility, redirect to PDF method
     return this.sendBillAsPDF(phoneNumber, billData);
+  }
+
+  /**
+   * Sends bill details as formatted text message via WhatsApp
+   */
+  static async sendBillAsText(phoneNumber: string, billData: WhatsAppBillData): Promise<{success: boolean, message: string}> {
+    try {
+      // Validate phone number
+      const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
+      if (!cleanPhone || cleanPhone.length < 10) {
+        return {
+          success: false,
+          message: 'Invalid phone number. Please enter a valid WhatsApp number with country code.'
+        };
+      }
+
+      // Format the bill message
+      const message = this.formatBillMessage(billData);
+      
+      // Check message length (WhatsApp URL has limitations)
+      const maxLength = 2000; // Conservative limit for WhatsApp URLs
+      if (message.length > maxLength) {
+        // Create a shorter version if the message is too long
+        const shortMessage = this.formatShortBillMessage(billData);
+        const encodedMessage = encodeURIComponent(shortMessage);
+        const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodedMessage}`;
+        
+        console.log('Message was too long, using shorter version');
+        console.log('WhatsApp URL:', whatsappUrl);
+        
+        // Open WhatsApp in new window/tab
+        window.open(whatsappUrl, '_blank');
+        
+        return {
+          success: true,
+          message: 'WhatsApp opened with simplified invoice details. Message was shortened to fit WhatsApp limits.'
+        };
+      }
+      
+      // Create WhatsApp URL with formatted message
+      const encodedMessage = encodeURIComponent(message);
+      const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodedMessage}`;
+      
+      console.log('WhatsApp URL:', whatsappUrl);
+      console.log('Message length:', message.length);
+      
+      // Check if window.open is available (browser environment)
+      if (typeof window === 'undefined' || typeof window.open !== 'function') {
+        return {
+          success: false,
+          message: 'WhatsApp sharing is not available in this environment.'
+        };
+      }
+      
+      // Open WhatsApp in new window/tab
+      const newWindow = window.open(whatsappUrl, '_blank');
+      
+      if (!newWindow) {
+        return {
+          success: false,
+          message: 'Failed to open WhatsApp. Please check if popup blocker is disabled and try again.'
+        };
+      }
+      
+      return {
+        success: true,
+        message: 'WhatsApp opened successfully! Please send the message from WhatsApp.'
+      };
+    } catch (error) {
+      console.error('Error sending WhatsApp text:', error);
+      return {
+        success: false,
+        message: `Failed to open WhatsApp: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
+  }
+
+  /**
+   * Creates a shorter version of the bill message for WhatsApp URL limits
+   */
+  static formatShortBillMessage(billData: WhatsAppBillData): string {
+    const { 
+      customerName, 
+      orderNumber, 
+      items, 
+      total,
+      companyName,
+      companyPhone,
+      paymentInfo
+    } = billData;
+
+    let message = `*${companyName}*\n📋 *INVOICE*\n\n`;
+    
+    message += `👤 *Customer:* ${customerName}\n`;
+    message += `📄 *Order:* ${orderNumber}\n`;
+    message += `📅 *Date:* ${new Date().toLocaleDateString('en-IN')}\n\n`;
+    
+    // Show only first 3 items to save space
+    const displayItems = items.slice(0, 3);
+    message += `🛍️ *Items:*\n`;
+    displayItems.forEach((item, index) => {
+      message += `${index + 1}. ${item.name} (${item.quantity}x) - ₹${item.total.toLocaleString('en-IN')}\n`;
+    });
+    
+    if (items.length > 3) {
+      message += `... and ${items.length - 3} more items\n`;
+    }
+    
+    message += `\n💰 *Total: ₹${total.toLocaleString('en-IN')}*\n\n`;
+    
+    if (paymentInfo && paymentInfo.balanceDue > 0) {
+      message += `💳 Balance Due: ₹${paymentInfo.balanceDue.toLocaleString('en-IN')}\n\n`;
+    }
+    
+    message += `📞 ${companyPhone}\n`;
+    message += `🌐 www.alramsfurnitures.com\n`;
+    message += `Thank you for choosing ${companyName}!`;
+    
+    return message;
   }
 
   static generatePrintableInvoice(billData: WhatsAppBillData): string {

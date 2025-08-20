@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Order } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { WhatsAppDialog } from './WhatsAppDialog';
 import { 
   Printer, 
   Download, 
@@ -113,33 +114,20 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
   const printRef = useRef<HTMLDivElement>(null);
   const [order, setOrder] = useState<DetailedOrder>(initialOrder as unknown as DetailedOrder);
   const [loading, setLoading] = useState(false);
-
-  // Fetch detailed order information
-  useEffect(() => {
-    const fetchDetailedOrder = async () => {
-      if (!initialOrder.id) return;
-      
-      setLoading(true);
-      try {
-        const response = await fetch(`/api/sales/orders/${initialOrder.id}`);
-        if (response.ok) {
-          const detailedOrder = await response.json();
-          setOrder(detailedOrder);
-        }
-      } catch (error) {
-        console.error('Error fetching detailed order:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchDetailedOrder();
-  }, [initialOrder.id]);
+  const [whatsappDialogOpen, setWhatsappDialogOpen] = useState(false);
+  const [whatsappLoading, setWhatsappLoading] = useState(false);
+  const [paymentInfo, setPaymentInfo] = useState<{
+    totalPaid: number;
+    balanceDue: number;
+    paymentStatus: string;
+    paymentCount: number;
+    lastPaymentDate?: string;
+  } | null>(null);
 
   // Helper function to fetch payment information
-  const fetchPaymentInfo = async () => {
+  const fetchPaymentInfo = useCallback(async () => {
     try {
-      const response = await fetch(`/api/sales/orders/${order.id}/payment-summary`);
+      const response = await fetch(`/api/sales/orders/${initialOrder.id}/payment-summary`);
       if (!response.ok) {
         console.log('Payment summary not available');
         return null;
@@ -157,7 +145,33 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
       console.error('Error fetching payment info:', error);
       return null;
     }
-  };
+  }, [initialOrder.id]);
+
+  // Fetch detailed order information
+  useEffect(() => {
+    const fetchDetailedOrder = async () => {
+      if (!initialOrder.id) return;
+      
+      setLoading(true);
+      try {
+        const response = await fetch(`/api/sales/orders/${initialOrder.id}`);
+        if (response.ok) {
+          const detailedOrder = await response.json();
+          setOrder(detailedOrder);
+        }
+
+        // Fetch payment information
+        const paymentData = await fetchPaymentInfo();
+        setPaymentInfo(paymentData);
+      } catch (error) {
+        console.error('Error fetching detailed order:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDetailedOrder();
+  }, [initialOrder.id, fetchPaymentInfo]);
 
   const handlePrint = () => {
     if (!printRef.current) return;
@@ -167,11 +181,44 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
     const style = document.createElement('style');
     style.textContent = `
       @media print {
-        body { margin: 0; padding: 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        @page {
+          size: A4;
+          margin: 0.5in;
+        }
+        body { 
+          margin: 0; 
+          padding: 0; 
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+          font-size: 11px;
+          line-height: 1.3;
+        }
         .no-print { display: none !important; }
         .print-break { page-break-before: always; }
-        table { page-break-inside: avoid; }
+        table { 
+          page-break-inside: avoid; 
+          font-size: 10px;
+        }
         .print-full-width { width: 100% !important; max-width: none !important; }
+        .print-compact { 
+          padding: 8px !important; 
+          margin: 4px 0 !important;
+        }
+        .text-sm { font-size: 10px !important; }
+        .text-xs { font-size: 9px !important; }
+        .space-y-2 > * + * { margin-top: 4px !important; }
+        .space-y-1 > * + * { margin-top: 2px !important; }
+        h1, h2, h3, h4, h5 { 
+          margin: 8px 0 4px 0 !important; 
+          line-height: 1.2 !important;
+        }
+        .bg-gray-50, .bg-yellow-50 { 
+          background-color: #f9fafb !important; 
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        .border-t, .border-b { 
+          border-width: 1px !important; 
+        }
       }
     `;
     document.head.appendChild(style);
@@ -221,15 +268,15 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
         items: order.items?.map(item => ({
           name: item.name || 'Unknown Product',
           quantity: item.quantity || 0,
-          price: item.price || 0,
-          total: (item.quantity || 0) * (item.price || 0)
+          price: item.unit_price || item.final_price || item.price || 0,
+          total: item.final_price || (item.quantity || 0) * (item.unit_price || item.price || 0)
         })) || [],
         subtotal: order.original_price || order.total || 0,
         discount: order.discount_amount || 0,
         total: order.final_price || order.total || 0,
-        companyName: 'Al Rams Furniture ERP',
-        companyPhone: '+91 9876543210',
-        companyAddress: 'Furniture Store Address, City, State',
+        companyName: 'Al Rams Furnitures & Interiors',
+        companyPhone: '+91 9645075858 | +91 8606056999',
+        companyAddress: 'Arakkal, Pattambi Road, Perumpilavu, Thrissur, Kerala, 680519',
         paymentInfo: paymentInfo || undefined
       };
       
@@ -241,54 +288,67 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
     }
   };
 
-  const handleSendWhatsApp = async () => {
-    try {
-      // Prompt user for WhatsApp number
-      const defaultPhone = order.customer?.phone || '';
-      const whatsappNumber = prompt(
-        'Enter WhatsApp number (with country code):', 
-        defaultPhone || '+91'
-      );
-      
-      if (!whatsappNumber || whatsappNumber.trim() === '' || whatsappNumber.trim() === '+91') {
-        alert('Please enter a valid WhatsApp number.');
-        return;
-      }
+  const handleSendWhatsApp = () => {
+    setWhatsappDialogOpen(true);
+  };
 
+  const handleWhatsAppSend = async (phoneNumber: string, sendAsText: boolean) => {
+    setWhatsappLoading(true);
+    try {
+      console.log('Starting WhatsApp send process...', { phoneNumber, sendAsText });
+      
       // Fetch payment information
       const paymentInfo = await fetchPaymentInfo();
+      console.log('Payment info fetched:', paymentInfo);
 
       // Format data for WhatsApp
       const billData = {
         customerName: order.customer?.name || 'Unknown Customer',
-        customerPhone: whatsappNumber.trim(),
+        customerPhone: phoneNumber,
         orderNumber: order.id?.slice(0, 8) || 'N/A',
         items: order.items?.map(item => ({
           name: item.name || 'Unknown Product',
           quantity: item.quantity || 0,
-          price: item.price || 0,
-          total: (item.quantity || 0) * (item.price || 0)
+          price: item.unit_price || item.final_price || item.price || 0,
+          total: item.final_price || (item.quantity || 0) * (item.unit_price || item.price || 0)
         })) || [],
         subtotal: order.original_price || order.total || 0,
         discount: order.discount_amount || 0,
         total: order.final_price || order.total || 0,
-        companyName: 'Al Rams Furniture ERP',
-        companyPhone: '+91 9876543210',
-        companyAddress: 'Furniture Store Address, City, State',
+        companyName: 'Al Rams Furnitures & Interiors',
+        companyPhone: '+91 9645075858 | +91 8606056999',
+        companyAddress: 'Arakkal, Pattambi Road, Perumpilavu, Thrissur, Kerala, 680519',
         paymentInfo: paymentInfo || undefined
       };
       
+      console.log('Bill data prepared:', billData);
+      
       const { WhatsAppService } = await import('@/lib/whatsappService');
-      const result = await WhatsAppService.sendBillAsPDF(whatsappNumber.trim(), billData);
+      console.log('WhatsApp service imported');
+      
+      let result;
+      if (sendAsText) {
+        console.log('Sending as text...');
+        result = await WhatsAppService.sendBillAsText(phoneNumber, billData);
+      } else {
+        console.log('Sending as PDF...');
+        result = await WhatsAppService.sendBillAsPDF(phoneNumber, billData);
+      }
+      
+      console.log('WhatsApp send result:', result);
       
       if (result.success) {
         alert(result.message);
+        setWhatsappDialogOpen(false);
       } else {
         alert(`Failed to send WhatsApp: ${result.message}`);
       }
     } catch (error) {
       console.error('Error sending WhatsApp:', error);
-      alert('Error sending WhatsApp. Please try again.');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      alert(`Error sending WhatsApp: ${errorMessage}. Please try again.`);
+    } finally {
+      setWhatsappLoading(false);
     }
   };
 
@@ -302,9 +362,10 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Fixed Action Bar */}
-      <div className="flex-shrink-0 flex justify-end gap-3 p-4 bg-white border-b no-print">
+    <>
+      <div className="flex flex-col h-full overflow-hidden">
+        {/* Fixed Action Bar */}
+        <div className="flex-shrink-0 flex justify-end gap-3 p-4 bg-white border-b no-print">
         <Button onClick={handlePrint} size="sm" className="bg-blue-600 hover:bg-blue-700">
           <Printer className="h-4 w-4 mr-2" />
           Print
@@ -335,7 +396,7 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
                 </div>
                 <div>
                   <h1 className="text-xl font-bold">SALES INVOICE</h1>
-                  <p className="text-blue-100 text-sm">Al Rams Furniture ERP</p>
+                  <p className="text-blue-100 text-sm">Al Rams Furnitures & Interiors</p>
                 </div>
               </div>
               <div className="text-right">
@@ -353,25 +414,25 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
           </div>
 
           {/* Company & Customer Information - Compact */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4 bg-gray-50 text-sm">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 print-compact p-4 bg-gray-50 text-sm">
             {/* Company Information */}
             <div className="space-y-2">
               <div className="flex items-center space-x-2">
                 <Building2 className="h-4 w-4 text-blue-600" />
-                <h3 className="font-bold text-sm text-gray-900">Al Rams Furniture</h3>
+                <h3 className="font-bold text-sm text-gray-900">Al Rams Furnitures & Interiors</h3>
               </div>
               <div className="space-y-1 text-xs text-gray-700">
                 <p className="flex items-center">
                   <MapPin className="h-3 w-3 mr-1 text-gray-500" />
-                  123 Furniture Street, Furniture City
+                  Arakkal, Pattambi Road, Perumpilavu, Thrissur, Kerala, 680519
                 </p>
                 <p className="flex items-center">
                   <Phone className="h-3 w-3 mr-1 text-gray-500" />
-                  +91 98765 43210
+                  +91 9645075858 | +91 8606056999
                 </p>
                 <p className="flex items-center">
                   <Mail className="h-3 w-3 mr-1 text-gray-500" />
-                  sales@alramsfurniture.com
+                  www.alramsfurnitures.com
                 </p>
               </div>
             </div>
@@ -467,7 +528,7 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
           </div>
 
           {/* Items Table - Optimized for space */}
-          <div className="p-4">
+          <div className="print-compact p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-lg font-bold text-gray-900">Order Items</h3>
               <div className="text-xs text-gray-500">
@@ -479,24 +540,24 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
-                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Qty</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Unit Price</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Discount</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
+                    <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                    <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
+                    <th className="px-2 py-1 text-center text-xs font-medium text-gray-500 uppercase">Qty</th>
+                    <th className="px-2 py-1 text-right text-xs font-medium text-gray-500 uppercase">Unit Price</th>
+                    <th className="px-2 py-1 text-right text-xs font-medium text-gray-500 uppercase">Discount</th>
+                    <th className="px-2 py-1 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {order.items && order.items.length > 0 ? order.items.map((item, idx) => (
                     <tr key={idx} className="hover:bg-gray-50">
-                      <td className="px-3 py-3">
-                        <div className="flex items-center space-x-3">
-                          <div className="flex-shrink-0 w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
-                            <ImageIcon className="h-5 w-5 text-gray-400" />
+                      <td className="px-2 py-2">
+                        <div className="flex items-center space-x-2">
+                          <div className="flex-shrink-0 w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                            <ImageIcon className="h-4 w-4 text-gray-400" />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="font-medium text-gray-900 text-sm truncate">
+                            <div className="font-medium text-gray-900 text-xs truncate">
                               {item.name || 'Unknown Product'}
                             </div>
                             {item.supplier_name && (
@@ -507,29 +568,29 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
                           </div>
                         </div>
                       </td>
-                      <td className="px-3 py-3">
-                        <span className="font-mono bg-gray-100 px-2 py-1 rounded text-xs">
+                      <td className="px-2 py-2">
+                        <span className="font-mono bg-gray-100 px-1 py-1 rounded text-xs">
                           {item.sku || 'N/A'}
                         </span>
                       </td>
-                      <td className="px-3 py-3 text-center">
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      <td className="px-2 py-2 text-center">
+                        <span className="inline-flex items-center px-1 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                           {item.quantity}
                         </span>
                       </td>
-                      <td className="px-3 py-3 text-right font-medium text-sm">
+                      <td className="px-2 py-2 text-right font-medium text-xs">
                         {formatCurrency(item.unit_price || item.price || 0)}
                       </td>
-                      <td className="px-3 py-3 text-right">
+                      <td className="px-2 py-2 text-right">
                         {item.discount_percentage ? (
-                          <span className="text-green-600 font-medium text-sm">
+                          <span className="text-green-600 font-medium text-xs">
                             {item.discount_percentage.toFixed(1)}%
                           </span>
                         ) : (
                           <span className="text-gray-400">-</span>
                         )}
                       </td>
-                      <td className="px-3 py-3 text-right font-bold text-sm">
+                      <td className="px-2 py-2 text-right font-bold text-xs">
                         {formatCurrency(item.final_price || (item.unit_price || item.price || 0) * item.quantity)}
                       </td>
                     </tr>
@@ -546,11 +607,11 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
             </div>
           </div>
 
-          {/* Financial Summary - Compact */}
-          <div className="bg-gray-50 p-4 border-t border-gray-200">
+          {/* Financial Summary with Payment Information - Compact */}
+          <div className="bg-gray-50 print-compact p-4 border-t border-gray-200">
             <div className="max-w-md ml-auto">
               <h4 className="font-bold text-base text-gray-900 mb-3">Order Summary</h4>
-              <div className="space-y-2 text-sm">
+              <div className="space-y-1 text-sm">
                 {order.original_price && order.original_price !== order.final_price && (
                   <div className="flex justify-between text-gray-600">
                     <span>Subtotal:</span>
@@ -575,6 +636,49 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
                     {formatCurrency(order.final_price || order.total || 0)}
                   </span>
                 </div>
+                
+                {/* Payment Information */}
+                {paymentInfo && (
+                  <div className="mt-4 pt-3 border-t border-gray-300">
+                    <h5 className="font-bold text-sm text-gray-900 mb-2">Payment Details</h5>
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-gray-600">
+                        <span>Payment Status:</span>
+                        <span className={`font-medium px-2 py-1 rounded-full text-xs ${
+                          paymentInfo.paymentStatus === 'paid' ? 'bg-green-100 text-green-800' :
+                          paymentInfo.paymentStatus === 'partial' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {paymentInfo.paymentStatus.toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-gray-600">
+                        <span>Amount Paid:</span>
+                        <span className="font-medium text-green-600">
+                          {formatCurrency(paymentInfo.totalPaid)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-gray-600">
+                        <span>Balance Due:</span>
+                        <span className={`font-medium ${paymentInfo.balanceDue > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          {formatCurrency(paymentInfo.balanceDue)}
+                        </span>
+                      </div>
+                      {paymentInfo.paymentCount > 0 && (
+                        <div className="flex justify-between text-gray-600">
+                          <span>Payments Made:</span>
+                          <span className="font-medium">{paymentInfo.paymentCount}</span>
+                        </div>
+                      )}
+                      {paymentInfo.lastPaymentDate && (
+                        <div className="flex justify-between text-gray-600">
+                          <span>Last Payment:</span>
+                          <span className="font-medium">{formatDate(paymentInfo.lastPaymentDate)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -586,26 +690,38 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
 
           {/* Notes Section - Compact */}
           {order.notes && (
-            <div className="p-4 bg-yellow-50 border-t border-yellow-200">
+            <div className="print-compact p-4 bg-yellow-50 border-t border-yellow-200">
               <h4 className="font-bold text-gray-900 mb-2 flex items-center text-sm">
                 <FileText className="h-4 w-4 mr-2 text-yellow-600" />
                 Order Notes
               </h4>
-              <p className="text-gray-700 text-sm bg-white p-3 rounded-lg border border-yellow-200">
+              <p className="text-gray-700 text-xs bg-white p-2 rounded-lg border border-yellow-200">
                 {order.notes}
               </p>
             </div>
           )}
 
           {/* Compact Footer */}
-          <div className="bg-gray-900 text-white p-3 text-center">
+          <div className="bg-gray-900 text-white print-compact p-3 text-center">
             <p className="text-xs">Thank you for your business!</p>
             <p className="text-xs text-gray-400 mt-1">
-              Generated on {new Date().toLocaleDateString('en-IN')} by Al Rams Furniture ERP
+              Generated on {new Date().toLocaleDateString('en-IN')} by Al Rams Furnitures & Interiors
             </p>
           </div>
         </div>
       </div>
-    </div>
+      </div>
+
+      {/* WhatsApp Dialog */}
+      <WhatsAppDialog
+        isOpen={whatsappDialogOpen}
+        onClose={() => setWhatsappDialogOpen(false)}
+        onSend={handleWhatsAppSend}
+        customerName={order.customer?.name}
+        customerPhone={order.customer?.phone}
+        orderNumber={order.id?.slice(0, 8)}
+        isLoading={whatsappLoading}
+      />
+    </>
   );
 };

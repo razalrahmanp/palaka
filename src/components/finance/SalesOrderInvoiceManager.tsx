@@ -6,6 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   FileText, 
   DollarSign, 
@@ -19,7 +24,8 @@ import {
   Eye,
   Plus,
   Printer,
-  MessageCircle
+  MessageCircle,
+  Minus
 } from 'lucide-react';
 import { SalesOrder, Invoice } from '@/types';
 import { CreateInvoiceDialog } from './CreateInvoiceDialog';
@@ -35,6 +41,7 @@ interface SalesOrderWithInvoice extends SalesOrder {
   total_invoiced?: number;
   remaining_to_invoice?: number;
   paid_amount?: number; // Amount already paid
+  payment_balance?: number; // Outstanding amount on invoices
 }
 
 interface PaymentDetails {
@@ -64,15 +71,36 @@ interface SalesOrderItem {
   };
 }
 
+interface Expense {
+  id: string;
+  date: string;
+  category: string;
+  type: string;
+  description: string;
+  amount: number;
+  payment_method: string;
+  created_by?: string;
+  created_at: string;
+}
+
 export function SalesOrderInvoiceManager() {
   const [salesOrders, setSalesOrders] = useState<SalesOrderWithInvoice[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [payments, setPayments] = useState<PaymentDetails[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState<SalesOrderWithInvoice | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
   const [paymentTrackingOpen, setPaymentTrackingOpen] = useState(false);
+  const [createExpenseOpen, setCreateExpenseOpen] = useState(false);
+  const [expenseForm, setExpenseForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    description: '',
+    amount: '',
+    category: 'Other',
+    payment_method: 'cash'
+  });
   const [activeTab, setActiveTab] = useState('orders');
 
   useEffect(() => {
@@ -99,20 +127,24 @@ export function SalesOrderInvoiceManager() {
       console.log('Orders count:', orders?.length || 0); // Enhanced debugging
       
       // Then fetch the rest
-      const [invoicesRes, paymentsRes] = await Promise.all([
+      const [invoicesRes, paymentsRes, expensesRes] = await Promise.all([
         fetch('/api/finance/invoices'),
-        fetch('/api/finance/payments')
+        fetch('/api/finance/payments'),
+        fetch('/api/finance/expenses')
       ]);
       
       const invoicesData = await invoicesRes.json();
       const paymentsData = await paymentsRes.json();
+      const expensesData = await expensesRes.json();
       
       console.log('Raw Invoices Data:', invoicesData); // Enhanced debugging
       console.log('Raw Payments Data:', paymentsData); // Enhanced debugging
+      console.log('Raw Expenses Data:', expensesData); // Enhanced debugging
 
       // Handle different API response structures
       const invoices = Array.isArray(invoicesData) ? invoicesData : (invoicesData.data || []);
       const payments = Array.isArray(paymentsData) ? paymentsData : (paymentsData.data || []);
+      const expenses = Array.isArray(expensesData) ? expensesData : (expensesData.data || []);
 
       console.log('Processed Invoices:', invoices); // Enhanced debugging
       console.log('Processed Payments:', payments); // Enhanced debugging
@@ -131,22 +163,12 @@ export function SalesOrderInvoiceManager() {
           orderInvoiceIds.includes(payment.invoice_id)
         );
         const paidAmount = orderPayments.reduce((sum: number, payment: { amount: number }) => sum + payment.amount, 0);
-        
-        // Debug payment calculation for all orders to understand the issue
-        if (paidAmount > 0 || order.id === 'f0dd3c5b-2384-48be-a14c-558e29154908') {
-          console.log(`DEBUG - Order ${order.id.slice(0, 8)} payment calculation:`, {
-            orderInvoices: orderInvoices.length,
-            orderInvoiceIds,
-            allPaymentsCount: payments.length,
-            orderPayments: orderPayments.length,
-            paidAmount,
-            orderTotal: order.final_price || order.total || 0,
-            samplePayment: payments.length > 0 ? payments[0] : null
-          });
-        }
-        
+              
         // Calculate payment status based on amounts
         const calculatedPaymentStatus = paidAmount >= orderTotal ? 'paid' : paidAmount > 0 ? 'partially_paid' : 'unpaid';
+        
+        // Calculate payment balance (outstanding amount on invoices)
+        const paymentBalance = Math.max(0, totalInvoiced - paidAmount);
         
         let invoiceStatus: 'not_invoiced' | 'partially_invoiced' | 'fully_invoiced' = 'not_invoiced';
         if (totalInvoiced > 0) {
@@ -163,6 +185,7 @@ export function SalesOrderInvoiceManager() {
           total_invoiced: totalInvoiced,
           remaining_to_invoice: remainingToInvoice,
           paid_amount: paidAmount,
+          payment_balance: paymentBalance,
           calculated_payment_status: calculatedPaymentStatus
         };
       });
@@ -171,6 +194,7 @@ export function SalesOrderInvoiceManager() {
       setSalesOrders(processedOrders);
       setInvoices(invoices);
       setPayments(payments);
+      setExpenses(expenses);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -355,12 +379,61 @@ export function SalesOrderInvoiceManager() {
     }
   };
 
+  const handleCreateExpense = async () => {
+    try {
+      const response = await fetch('/api/finance/expenses', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          date: expenseForm.date,
+          subcategory: expenseForm.category,
+          description: expenseForm.description,
+          amount: parseFloat(expenseForm.amount),
+          payment_method: expenseForm.payment_method,
+          bank_account_id: 1, // Default bank account - you may want to make this selectable
+          created_by: 'system' // You may want to get this from auth context
+        }),
+      });
+
+      if (response.ok) {
+        setCreateExpenseOpen(false);
+        setExpenseForm({
+          date: new Date().toISOString().split('T')[0],
+          description: '',
+          amount: '',
+          category: 'Other',
+          payment_method: 'cash'
+        });
+        fetchData(); // Refresh data
+        alert('Expense created successfully!');
+      } else {
+        const error = await response.json();
+        alert(`Failed to create expense: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error creating expense:', error);
+      alert('Error creating expense. Please try again.');
+    }
+  };
+
   // Summary calculations
   const totalOrderValue = salesOrders.reduce((sum, order) => sum + (order.final_price || order.total_price || order.total || 0), 0);
   const totalInvoiced = salesOrders.reduce((sum, order) => sum + (order.total_invoiced || 0), 0);
-  const totalPaid = invoices.reduce((sum, inv) => sum + inv.paid_amount, 0);
+  const totalPaid = salesOrders.reduce((sum, order) => sum + (order.paid_amount || 0), 0);
   const pendingInvoicing = totalOrderValue - totalInvoiced;
   const pendingPayments = totalInvoiced - totalPaid;
+
+  // Debug stat calculations
+  console.log('STAT CALCULATIONS:', {
+    totalOrderValue,
+    totalInvoiced,
+    totalPaid,
+    pendingInvoicing,
+    pendingPayments,
+    ordersWithPayments: salesOrders.filter(order => (order.paid_amount || 0) > 0).length
+  });
 
   if (loading) {
     return (
@@ -400,7 +473,7 @@ export function SalesOrderInvoiceManager() {
         
         {/* Main Navigation Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 h-12 bg-gray-50 rounded-none border-b">
+          <TabsList className="grid w-full grid-cols-4 h-12 bg-gray-50 rounded-none border-b">
             <TabsTrigger 
               value="orders" 
               className="text-sm font-medium h-full data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-blue-500"
@@ -422,12 +495,19 @@ export function SalesOrderInvoiceManager() {
               <CreditCard className="h-4 w-4 mr-2" />
               Payments ({payments.length})
             </TabsTrigger>
+            <TabsTrigger 
+              value="expenses"
+              className="text-sm font-medium h-full data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-blue-500"
+            >
+              <Minus className="h-4 w-4 mr-2" />
+              Expenses ({expenses.length})
+            </TabsTrigger>
           </TabsList>
 
           {/* Summary Cards - Contextual based on active tab */}
           <div className="p-6 bg-gray-50">
             {activeTab === 'orders' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
                 <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 shadow-md">
                   <CardContent className="p-4">
                     <div className="flex items-center gap-3">
@@ -470,16 +550,44 @@ export function SalesOrderInvoiceManager() {
                   </CardContent>
                 </Card>
 
+                <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200 shadow-md">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-emerald-500 rounded-lg">
+                        <DollarSign className="h-5 w-5 text-white" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-emerald-600 font-medium">Total Collected</p>
+                        <p className="text-xl font-bold text-emerald-900">{formatCurrency(totalPaid)}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 shadow-md">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-red-500 rounded-lg">
+                        <AlertCircle className="h-5 w-5 text-white" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-red-600 font-medium">Outstanding</p>
+                        <p className="text-xl font-bold text-red-900">{formatCurrency(pendingPayments)}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
                 <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200 shadow-md">
                   <CardContent className="p-4">
                     <div className="flex items-center gap-3">
                       <div className="p-2 bg-purple-500 rounded-lg">
-                        <DollarSign className="h-5 w-5 text-white" />
+                        <Receipt className="h-5 w-5 text-white" />
                       </div>
                       <div>
-                        <p className="text-sm text-purple-600 font-medium">Completion Rate</p>
+                        <p className="text-sm text-purple-600 font-medium">Payment Rate</p>
                         <p className="text-xl font-bold text-purple-900">
-                          {totalOrderValue > 0 ? Math.round((totalInvoiced / totalOrderValue) * 100) : 0}%
+                          {totalInvoiced > 0 ? Math.round((totalPaid / totalInvoiced) * 100) : 0}%
                         </p>
                       </div>
                     </div>
@@ -639,8 +747,7 @@ export function SalesOrderInvoiceManager() {
               {/* Nested tab for Sales Orders and Payments */}
               <Tabs defaultValue="invoice-orders">
                 <TabsList className="w-full">
-                  <TabsTrigger value="invoice-orders" className="w-1/2">All Sales Orders</TabsTrigger>
-                  <TabsTrigger value="payment-orders" className="w-1/2">All Sales Orders & Payments</TabsTrigger>
+                  <TabsTrigger value="invoice-orders" className="w-full">All Sales Orders</TabsTrigger>
                 </TabsList>
                 
                 <TabsContent value="invoice-orders" className="pt-4">
@@ -672,7 +779,7 @@ export function SalesOrderInvoiceManager() {
                           <TableHead className="font-semibold w-[120px]">Date</TableHead>
                           <TableHead className="font-semibold w-[150px]">Order Value</TableHead>
                           <TableHead className="font-semibold w-[140px]">Status</TableHead>
-                          <TableHead className="font-semibold w-[130px]">Invoiced Amt</TableHead>
+                          <TableHead className="font-semibold w-[130px]">Paid Amt</TableHead>
                           <TableHead className="font-semibold w-[130px]">Balance</TableHead>
                           <TableHead className="font-semibold w-[120px]">Payment</TableHead>
                           <TableHead className="font-semibold text-center">Actions</TableHead>
@@ -739,7 +846,7 @@ export function SalesOrderInvoiceManager() {
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-col">
-                                <span className="font-medium text-green-600">{formatCurrency(order.total_invoiced || 0)}</span>
+                                <span className="font-medium text-green-600">{formatCurrency(order.paid_amount || 0)}</span>
                                 <span className="text-xs text-gray-500 mt-1">
                                   {((order.total_invoiced || 0) / (order.final_price || order.total_price || order.total || 1) * 100).toFixed(0)}% invoiced
                                 </span>
@@ -747,9 +854,17 @@ export function SalesOrderInvoiceManager() {
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-col">
-                                <span className="font-medium text-orange-600">{formatCurrency(order.remaining_to_invoice || 0)}</span>
+                                <span className="font-medium text-orange-600">
+                                  {formatCurrency(order.payment_balance || 0)}
+                                </span>
                                 <span className="text-xs text-gray-500 mt-1">
-                                  {((order.remaining_to_invoice || 0) / (order.final_price || order.total_price || order.total || 1) * 100).toFixed(0)}% remaining
+                                  {(() => {
+                                    if ((order.total_invoiced || 0) <= 0) return '0% outstanding';
+                                    const percentage = ((order.payment_balance || 0) / (order.total_invoiced || 1) * 100);
+                                    if (percentage === 0) return '0% outstanding';
+                                    if (percentage < 1) return `<1% outstanding`;
+                                    return `${percentage.toFixed(0)}% outstanding`;
+                                  })()}
                                 </span>
                               </div>
                             </TableCell>
@@ -836,88 +951,6 @@ export function SalesOrderInvoiceManager() {
                   </TableBody>
                 </Table>
                 </div>
-                </TabsContent>
-                
-                {/* All Sales Orders & Payments Subtab */}
-                <TabsContent value="payment-orders" className="pt-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <p className="text-sm text-gray-600">
-                      Showing all sales orders. Track payments and manage payment status for any order.
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-gray-200 overflow-hidden">
-                    <Table>
-                      <TableHeader className="bg-gray-50">
-                        <TableRow>
-                          <TableHead className="font-semibold">Order ID</TableHead>
-                          <TableHead className="font-semibold">Customer</TableHead>
-                          <TableHead className="font-semibold">Order Date</TableHead>
-                          <TableHead className="font-semibold">Order Total</TableHead>
-                          <TableHead className="font-semibold">Paid</TableHead>
-                          <TableHead className="font-semibold">Balance</TableHead>
-                          <TableHead className="font-semibold">Payment Status</TableHead>
-                          <TableHead className="font-semibold text-center">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {salesOrders.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={8} className="text-center py-8">
-                              <div className="flex flex-col items-center gap-2">
-                                <Package className="h-8 w-8 text-gray-400" />
-                                <p className="text-gray-500">No sales orders found</p>
-                                <p className="text-xs text-gray-400">Create a sales order to get started</p>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          salesOrders.map((order) => (
-                          <TableRow key={order.id} className="hover:bg-gray-50 transition-colors">
-                            <TableCell className="font-medium text-blue-600">{order.id.slice(0, 8)}</TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <User className="h-4 w-4 text-gray-500" />
-                                <span className="font-medium">{order.customer?.name || 'Unknown Customer'}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <Calendar className="h-4 w-4 text-gray-500" />
-                                {formatDate(order.created_at)}
-                              </div>
-                            </TableCell>
-                            <TableCell className="font-semibold text-gray-900">
-                              {formatCurrency(order.final_price || order.total_price || order.total || 0)}
-                            </TableCell>
-                            <TableCell className="text-green-600 font-medium">
-                              {/* This would normally come from payment data */}
-                              {formatCurrency(order.paid_amount || 0)}
-                            </TableCell>
-                            <TableCell className="text-orange-600 font-medium">
-                              {formatCurrency((order.final_price || order.total_price || order.total || 0) - (order.paid_amount || 0))}
-                            </TableCell>
-                            <TableCell>
-                              {getPaymentStatusBadge(
-                                ((order.paid_amount || 0) >= (order.final_price || order.total_price || order.total || 0) ? 'PAID' : 
-                                 (order.paid_amount || 0) > 0 ? 'PARTIAL' : 'UNPAID'))}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center justify-center gap-1">
-                                <SalesOrderPaymentTracker
-                                  orderId={order.id}
-                                  orderTotal={order.final_price || order.total_price || order.total || 0}
-                                  onPaymentAdded={() => {
-                                    fetchData();
-                                    console.log('Payment added successfully - Invoice auto-created/updated');
-                                  }}
-                                />
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        )))}
-                      </TableBody>
-                    </Table>
-                  </div>
                 </TabsContent>
               </Tabs>
             </TabsContent>
@@ -1072,6 +1105,177 @@ export function SalesOrderInvoiceManager() {
                 </Table>
               </div>
             </TabsContent>
+
+            {/* Expenses Tab */}
+            <TabsContent value="expenses" className="space-y-4 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Expense Management</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Track and manage business expenses
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchData()}
+                    className="flex items-center gap-2"
+                  >
+                    <Clock className="h-4 w-4" />
+                    Refresh
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-red-600 hover:bg-red-700"
+                    onClick={() => setCreateExpenseOpen(true)}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Expense
+                  </Button>
+                </div>
+              </div>
+
+              {/* Expenses Summary Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 shadow-md">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-red-500 rounded-lg">
+                        <Minus className="h-5 w-5 text-white" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-red-600 font-medium">Total Expenses</p>
+                        <p className="text-xl font-bold text-red-900">
+                          {formatCurrency(expenses.reduce((sum, exp) => sum + exp.amount, 0))}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 shadow-md">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-orange-500 rounded-lg">
+                        <Calendar className="h-5 w-5 text-white" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-orange-600 font-medium">This Month</p>
+                        <p className="text-xl font-bold text-orange-900">
+                          {formatCurrency(expenses.filter(exp => {
+                            const expenseDate = new Date(exp.date);
+                            const now = new Date();
+                            return expenseDate.getMonth() === now.getMonth() && expenseDate.getFullYear() === now.getFullYear();
+                          }).reduce((sum, exp) => sum + exp.amount, 0))}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-yellow-200 shadow-md">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-yellow-500 rounded-lg">
+                        <AlertCircle className="h-5 w-5 text-white" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-yellow-600 font-medium">Avg Expense</p>
+                        <p className="text-xl font-bold text-yellow-900">
+                          {formatCurrency(expenses.length > 0 ? expenses.reduce((sum, exp) => sum + exp.amount, 0) / expenses.length : 0)}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200 shadow-md">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-purple-500 rounded-lg">
+                        <Receipt className="h-5 w-5 text-white" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-purple-600 font-medium">Expense Count</p>
+                        <p className="text-xl font-bold text-purple-900">{expenses.length}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Expenses Table */}
+              <div className="rounded-lg border border-gray-200 overflow-hidden bg-white shadow-sm">
+                <Table>
+                  <TableHeader className="bg-gray-50">
+                    <TableRow>
+                      <TableHead className="font-semibold">Date</TableHead>
+                      <TableHead className="font-semibold">Description</TableHead>
+                      <TableHead className="font-semibold">Category</TableHead>
+                      <TableHead className="font-semibold">Type</TableHead>
+                      <TableHead className="font-semibold">Amount</TableHead>
+                      <TableHead className="font-semibold">Payment Method</TableHead>
+                      <TableHead className="font-semibold">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {expenses.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-8">
+                          <div className="flex flex-col items-center gap-2">
+                            <Minus className="h-8 w-8 text-gray-400" />
+                            <p className="text-gray-500">No expenses found</p>
+                            <p className="text-xs text-gray-400">Add an expense to get started</p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      expenses.map((expense) => (
+                        <TableRow key={expense.id} className="hover:bg-gray-50 transition-colors">
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Calendar className="h-4 w-4 text-gray-500" />
+                              {formatDate(expense.date)}
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-medium">{expense.description}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="font-medium">{expense.category}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge 
+                              variant={expense.type === 'Direct' ? 'default' : 'secondary'}
+                              className="font-medium"
+                            >
+                              {expense.type}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-semibold text-red-600">
+                            {formatCurrency(expense.amount)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="font-medium">{expense.payment_method}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-xs px-2 py-1"
+                                title="View Details"
+                              >
+                                <Eye className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </TabsContent>
           </div>
         </Tabs>
       </div>
@@ -1090,6 +1294,109 @@ export function SalesOrderInvoiceManager() {
         invoice={selectedInvoice}
         onSuccess={fetchData}
       />
+
+      {/* Create Expense Dialog */}
+      <Dialog open={createExpenseOpen} onOpenChange={setCreateExpenseOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Create New Expense</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="date" className="text-right">
+                Date
+              </Label>
+              <Input
+                id="date"
+                type="date"
+                value={expenseForm.date}
+                onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })}
+                className="col-span-3"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="description" className="text-right">
+                Description
+              </Label>
+              <Textarea
+                id="description"
+                placeholder="Enter expense description..."
+                value={expenseForm.description}
+                onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
+                className="col-span-3"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="amount" className="text-right">
+                Amount
+              </Label>
+              <Input
+                id="amount"
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                value={expenseForm.amount}
+                onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
+                className="col-span-3"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="category" className="text-right">
+                Category
+              </Label>
+              <Select value={expenseForm.category} onValueChange={(value) => setExpenseForm({ ...expenseForm, category: value })}>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Office Supplies">Office Supplies</SelectItem>
+                  <SelectItem value="Marketing">Marketing</SelectItem>
+                  <SelectItem value="Travel">Travel</SelectItem>
+                  <SelectItem value="Utilities">Utilities</SelectItem>
+                  <SelectItem value="Equipment">Equipment</SelectItem>
+                  <SelectItem value="Software">Software</SelectItem>
+                  <SelectItem value="Insurance">Insurance</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="payment_method" className="text-right">
+                Payment Method
+              </Label>
+              <Select value={expenseForm.payment_method} onValueChange={(value) => setExpenseForm({ ...expenseForm, payment_method: value })}>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Select payment method" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                  <SelectItem value="card">Card</SelectItem>
+                  <SelectItem value="cheque">Cheque</SelectItem>
+                  <SelectItem value="online">Online Payment</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCreateExpenseOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button 
+              type="button" 
+              onClick={handleCreateExpense}
+              disabled={!expenseForm.description || !expenseForm.amount}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Create Expense
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

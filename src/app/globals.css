@@ -119,6 +119,11 @@
     }
 }
 
+/* Progress bar styling */
+[data-progress] {
+    width: calc(var(--progress, 0) * 1%);
+}
+
 @media print {
     .no-print {
         display: none !important;

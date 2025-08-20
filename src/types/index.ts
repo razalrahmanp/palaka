@@ -196,6 +196,11 @@ export interface Order {
   reserved_stock?: { product: string, qty: number }[];
   deliveryAddress?: string;
   deliveryDate?: string;
+  // Payment information
+  total_paid?: number;
+  balance_due?: number;
+  payment_status?: 'paid' | 'partial' | 'pending' | 'overdue';
+  payment_count?: number;
 }
 
 

@@ -22,7 +22,6 @@ import {
 
 // Import subcomponents
 import { SalesOrderInvoiceManager } from '@/components/finance/SalesOrderInvoiceManager';
-import { SalesOrderPaymentDashboard } from '@/components/finance/SalesOrderPaymentDashboard';
 import ChartOfAccounts from '@/components/finance/ChartOfAccounts';
 import GeneralLedger from '@/components/finance/GeneralLedger';
 import JournalEntryManager from '@/components/finance/JournalEntryManager';
@@ -244,14 +243,10 @@ export default function FinancePage() {
       <Card>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <CardHeader className="pb-0">
-            <TabsList className="grid w-full grid-cols-7 h-12">
+            <TabsList className="grid w-full grid-cols-6 h-12">
               <TabsTrigger value="overview" className="flex items-center gap-2">
                 <PieChart className="h-4 w-4" />
                 Overview
-              </TabsTrigger>
-              <TabsTrigger value="payments" className="flex items-center gap-2">
-                <CreditCard className="h-4 w-4" />
-                Payments
               </TabsTrigger>
               <TabsTrigger value="invoices" className="flex items-center gap-2">
                 <FileText className="h-4 w-4" />
@@ -356,11 +351,6 @@ export default function FinancePage() {
                   </div>
                 </CardContent>
               </Card>
-            </TabsContent>
-
-            {/* Payments Management Tab */}
-            <TabsContent value="payments">
-              <SalesOrderPaymentDashboard />
             </TabsContent>
 
             {/* Invoice Management Tab */}

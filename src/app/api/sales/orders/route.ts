@@ -103,6 +103,46 @@ export async function GET() {
       : null
   }));
 
+  // Fetch payment data for all orders
+  const orderIds = orders.map(o => o.id);
+  const { data: invoices, error: invoicesError } = await supabase
+    .from('invoices')
+    .select('id, sales_order_id')
+    .in('sales_order_id', orderIds);
+
+  if (invoicesError) {
+    console.error('Error fetching invoices:', invoicesError);
+  }
+
+  // Get payments for all invoices
+  const invoiceIds = invoices?.map(inv => inv.id) || [];
+  const { data: payments, error: paymentsError } = await supabase
+    .from('payments')
+    .select('invoice_id, amount')
+    .in('invoice_id', invoiceIds);
+
+  if (paymentsError) {
+    console.error('Error fetching payments:', paymentsError);
+  }
+
+  // Create payment summary for each order
+  const orderPaymentMap = new Map();
+  orders.forEach(order => {
+    const orderInvoices = invoices?.filter(inv => inv.sales_order_id === order.id) || [];
+    const orderInvoiceIds = orderInvoices.map(inv => inv.id);
+    const orderPayments = payments?.filter(p => orderInvoiceIds.includes(p.invoice_id)) || [];
+    const totalPaid = orderPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const orderTotal = order.final_price || 0;
+    const balanceDue = orderTotal - totalPaid;
+    
+    orderPaymentMap.set(order.id, {
+      total_paid: totalPaid,
+      balance_due: balanceDue,
+      payment_status: totalPaid >= orderTotal ? 'paid' : totalPaid > 0 ? 'partial' : 'pending',
+      payment_count: orderPayments.length
+    });
+  });
+
   const { data: itemsRaw, error: itemsError } = await supabase
     .from("sales_order_items")
     .select(`
@@ -154,6 +194,14 @@ export async function GET() {
       0
     );
 
+    // Get payment information for this order
+    const paymentInfo = orderPaymentMap.get(order.id) || {
+      total_paid: 0,
+      balance_due: order.final_price ?? calculatedTotal,
+      payment_status: 'pending',
+      payment_count: 0
+    };
+
     return {
       id: order.id,
       quote_id: order.quote_id ?? null,
@@ -167,6 +215,11 @@ export async function GET() {
       original_price: order.original_price ?? calculatedTotal,
       discount_amount: order.discount_amount ?? 0,
       items: orderItems,
+      // Add payment information
+      total_paid: paymentInfo.total_paid,
+      balance_due: paymentInfo.balance_due,
+      payment_status: paymentInfo.payment_status,
+      payment_count: paymentInfo.payment_count,
     };
   });
 

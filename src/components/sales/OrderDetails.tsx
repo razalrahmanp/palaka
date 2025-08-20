@@ -274,9 +274,9 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
         subtotal: order.original_price || order.total || 0,
         discount: order.discount_amount || 0,
         total: order.final_price || order.total || 0,
-        companyName: 'Al Rams Furnitures & Interiors',
-        companyPhone: '+91 9645075858 | +91 8606056999',
-        companyAddress: 'Arakkal, Pattambi Road, Perumpilavu, Thrissur, Kerala, 680519',
+        companyName: 'FurniFlow ERP',
+        companyPhone: '+91 9645075858 | +91 8606056999 | +91 9747141858',
+        companyAddress: '',
         paymentInfo: paymentInfo || undefined
       };
       
@@ -315,9 +315,9 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
         subtotal: order.original_price || order.total || 0,
         discount: order.discount_amount || 0,
         total: order.final_price || order.total || 0,
-        companyName: 'Al Rams Furnitures & Interiors',
-        companyPhone: '+91 9645075858 | +91 8606056999',
-        companyAddress: 'Arakkal, Pattambi Road, Perumpilavu, Thrissur, Kerala, 680519',
+        companyName: 'FurniFlow ERP',
+        companyPhone: '+91 9645075858 | +91 8606056999 | +91 9747141858',
+        companyAddress: '',
         paymentInfo: paymentInfo || undefined
       };
       
@@ -395,8 +395,8 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
                   <Receipt className="h-5 w-5 text-blue-600" />
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold">SALES INVOICE</h1>
-                  <p className="text-blue-100 text-sm">Al Rams Furnitures & Interiors</p>
+                  <h1 className="text-xl font-bold">ESTIMATE</h1>
+                  <p className="text-blue-100 text-sm">FurniFlow ERP</p>
                 </div>
               </div>
               <div className="text-right">
@@ -419,20 +419,12 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
             <div className="space-y-2">
               <div className="flex items-center space-x-2">
                 <Building2 className="h-4 w-4 text-blue-600" />
-                <h3 className="font-bold text-sm text-gray-900">Al Rams Furnitures & Interiors</h3>
+                <h3 className="font-bold text-sm text-gray-900">FurniFlow ERP</h3>
               </div>
               <div className="space-y-1 text-xs text-gray-700">
                 <p className="flex items-center">
-                  <MapPin className="h-3 w-3 mr-1 text-gray-500" />
-                  Arakkal, Pattambi Road, Perumpilavu, Thrissur, Kerala, 680519
-                </p>
-                <p className="flex items-center">
                   <Phone className="h-3 w-3 mr-1 text-gray-500" />
-                  +91 9645075858 | +91 8606056999
-                </p>
-                <p className="flex items-center">
-                  <Mail className="h-3 w-3 mr-1 text-gray-500" />
-                  www.alramsfurnitures.com
+                  +91 9645075858 | +91 8606056999 | +91 9747141858
                 </p>
               </div>
             </div>
@@ -705,7 +697,7 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
           <div className="bg-gray-900 text-white print-compact p-3 text-center">
             <p className="text-xs">Thank you for your business!</p>
             <p className="text-xs text-gray-400 mt-1">
-              Generated on {new Date().toLocaleDateString('en-IN')} by Al Rams Furnitures & Interiors
+              Generated on {new Date().toLocaleDateString('en-IN')} by FurniFlow ERP
             </p>
           </div>
         </div>

@@ -4,11 +4,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Ensure params is awaited properly
-    const { id: orderId } = await Promise.resolve(params);
+    const { id: orderId } = await params;
 
     // Get order details using actual database structure
     const { data: order, error: orderError } = await supabase

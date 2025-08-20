@@ -4,11 +4,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Ensure params is awaited properly
-    const { id: orderId } = await Promise.resolve(params);
+    const { id: orderId } = await params;
     
     // Log the orderId for debugging
     console.log('Fetching payments for orderId:', orderId);
@@ -68,11 +68,11 @@ export async function GET(
   }
 }export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Ensure params is awaited properly
-    const { id: orderId } = await Promise.resolve(params);
+    const { id: orderId } = await params;
     const body = await request.json();
 
     const {

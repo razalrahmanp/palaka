@@ -171,7 +171,7 @@ export default function QuoteDetails({
               <div className="space-y-3">
                 <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                   <Building className="h-5 w-5 text-blue-600" />
-                  Al Rams Furniture ERP
+                  FurniFlow ERP
                 </h3>
                 <div className="space-y-1 text-sm text-gray-600">
                   <p className="flex items-center gap-2">
@@ -180,11 +180,7 @@ export default function QuoteDetails({
                   </p>
                   <p className="flex items-center gap-2">
                     <Phone className="h-4 w-4" />
-                    +91 9645075858 | +91 8606056999
-                  </p>
-                  <p className="flex items-center gap-2">
-                    <Mail className="h-4 w-4" />
-                    www.alramsfurnitures.com
+                    +91 9645075858 | +91 8606056999 | +91 9747141858
                   </p>
                 </div>
               </div>
@@ -431,7 +427,7 @@ export default function QuoteDetails({
             {/* Footer */}
             <div className="footer text-center text-gray-500">
               <p>Thank you for your business!</p>
-              <p>Al Rams Furniture ERP - Your trusted furniture partner</p>
+              <p>FurniFlow ERP - Your trusted furniture partner</p>
             </div>
           </div>
         </div>

@@ -134,7 +134,7 @@ export const ProductionJobForm: React.FC<Props> = ({ initialData, onSubmit, onCa
             <SelectTrigger><SelectValue placeholder="None"/></SelectTrigger>
             <SelectContent>
               {orders.map(o=>(
-                <SelectItem key={o.id} value={o.id}>{o.id} – {o.customer}</SelectItem>
+                <SelectItem key={o.id} value={o.id}>{o.id} – {o.customer?.name || 'Unknown Customer'}</SelectItem>
               ))}
             </SelectContent>
           </Select>

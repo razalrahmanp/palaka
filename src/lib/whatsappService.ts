@@ -49,7 +49,7 @@ export class WhatsAppService {
     } = billData;
 
     let message = `*${companyName}*\n`;
-    message += `📋 *INVOICE DETAILS*\n`;
+    message += `📋 *ESTIMATE DETAILS*\n`;
     message += `═══════════════════════\n\n`;
     
     message += `👤 *Customer:* ${customerName}\n`;
@@ -349,7 +349,7 @@ export class WhatsAppService {
       <body>
         <div class="header">
           <div class="company-name">${billData.companyName}</div>
-          <div class="invoice-title">SALES INVOICE</div>
+          <div class="invoice-title">ESTIMATE</div>
         </div>
         
         <div class="info-section">
@@ -359,8 +359,8 @@ export class WhatsAppService {
             <p>Phone: ${billData.customerPhone}</p>
           </div>
           <div class="info-box">
-            <h3>Invoice Details:</h3>
-            <p>Invoice #: <strong class="highlight">${billData.orderNumber}</strong></p>
+            <h3>Estimate Details:</h3>
+            <p>Estimate #: <strong class="highlight">${billData.orderNumber}</strong></p>
             <p>Date: ${new Date().toLocaleDateString('en-IN')}</p>
           </div>
         </div>
@@ -474,14 +474,14 @@ export class WhatsAppService {
         const url = URL.createObjectURL(pdfBlob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `Invoice_${billData.orderNumber}_${new Date().toISOString().split('T')[0]}.pdf`;
+        a.download = `Estimate_${billData.orderNumber}_${new Date().toISOString().split('T')[0]}.pdf`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
         // Open WhatsApp with message
-        const message = `📄 Invoice for Order #${billData.orderNumber}\n\nDear ${billData.customerName},\n\nPlease find your invoice attached. Thank you for your business!\n\n${billData.companyName}`;
+        const message = `📄 Estimate for Order #${billData.orderNumber}\n\nDear ${billData.customerName},\n\nPlease find your estimate attached. Thank you for your business!\n\n${billData.companyName}`;
         const encodedMessage = encodeURIComponent(message);
         const whatsappUrl = `https://web.whatsapp.com/send?phone=${formattedPhone}&text=${encodedMessage}`;
         window.open(whatsappUrl, '_blank');
@@ -493,8 +493,8 @@ export class WhatsAppService {
       const formData = new FormData();
       formData.append('to', formattedPhone);
       formData.append('type', 'document');
-      formData.append('document', pdfBlob, `Invoice_${billData.orderNumber}.pdf`);
-      formData.append('caption', `📄 Invoice for Order #${billData.orderNumber}\n\nDear ${billData.customerName},\n\nThank you for your business!\n\n${billData.companyName}`);
+      formData.append('document', pdfBlob, `Estimate_${billData.orderNumber}.pdf`);
+      formData.append('caption', `📄 Estimate for Order #${billData.orderNumber}\n\nDear ${billData.customerName},\n\nThank you for your business!\n\n${billData.companyName}`);
 
       const response = await fetch(this.API_URL, {
         method: 'POST',

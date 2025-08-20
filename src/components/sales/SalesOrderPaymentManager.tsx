@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -104,27 +104,28 @@ export function SalesOrderPaymentManager({
     notes: ''
   });
 
-  useEffect(() => {
-    const fetchPayments = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch(`/api/sales/orders/${orderId}/payments`);
-        
-        if (!response.ok) {
-          throw new Error('Failed to fetch payments');
-        }
-
-        const data = await response.json();
-        setPayments(data.payments || []);
-        setSummary(data.summary);
-      } catch (error) {
-        console.error('Error fetching payments:', error);
-      } finally {
-        setLoading(false);
+  const fetchPayments = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/sales/orders/${orderId}/payments`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch payments');
       }
-    };
-    fetchPayments();
+
+      const data = await response.json();
+      setPayments(data.payments || []);
+      setSummary(data.summary);
+    } catch (error) {
+      console.error('Error fetching payments:', error);
+    } finally {
+      setLoading(false);
+    }
   }, [orderId]);
+
+  useEffect(() => {
+    fetchPayments();
+  }, [fetchPayments]);
 
   const handleAddPayment = async () => {
     try {

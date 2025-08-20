@@ -10,61 +10,71 @@ export async function GET(
     // Ensure params is awaited properly
     const { id: orderId } = await Promise.resolve(params);
 
-    // Get payment summary from the view
-    const { data: summary, error } = await supabase
-      .from('sales_order_payment_summary')
-      .select('*')
-      .eq('sales_order_id', orderId)
+    // Get order details using actual database structure
+    const { data: order, error: orderError } = await supabase
+      .from('sales_orders')
+      .select(`
+        id,
+        final_price,
+        customer_id
+      `)
+      .eq('id', orderId)
       .single();
 
-    if (error) {
-      console.log('Payment summary error:', error);
-      // If view doesn't exist or has issues, calculate manually
-      
-      // Get order details
-      const { data: order, error: orderError } = await supabase
-        .from('sales_orders')
-        .select(`
-          id,
-          final_price,
-          total_paid,
-          payment_status,
-          customers:customer_id(name)
-        `)
-        .eq('id', orderId)
-        .single();
-
-      if (orderError) {
-        return NextResponse.json({ error: orderError.message }, { status: 500 });
-      }
-
-      // Get total payments
-      const { data: payments, error: paymentsError } = await supabase
-        .from('sales_order_payments')
-        .select('amount')
-        .eq('sales_order_id', orderId)
-        .eq('status', 'completed');
-
-      if (paymentsError) {
-        return NextResponse.json({ error: paymentsError.message }, { status: 500 });
-      }
-
-      const totalPaid = payments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
-      const orderTotal = order.final_price || 0;
-      const balanceDue = orderTotal - totalPaid;
-
-      return NextResponse.json({
-        sales_order_id: orderId,
-        customer_name: order.customers?.[0]?.name || 'Unknown',
-        order_total: orderTotal,
-        total_paid: totalPaid,
-        balance_due: balanceDue,
-        payment_status: order.payment_status || 'pending',
-        payment_count: payments?.length || 0
-      });
+    if (orderError) {
+      return NextResponse.json({ error: orderError.message }, { status: 500 });
     }
 
-    return NextResponse.json(summary);
+    // Get customer name separately
+    const { data: customer } = await supabase
+      .from('customers')
+      .select('name')
+      .eq('id', order.customer_id)
+      .single();
+
+    // Get all invoices for this sales order
+    const { data: invoices, error: invoiceError } = await supabase
+      .from('invoices')
+      .select('id')
+      .eq('sales_order_id', orderId);
+      
+    if (invoiceError) {
+      console.error('Error fetching invoices:', invoiceError);
+      return NextResponse.json({ error: invoiceError.message }, { status: 500 });
+    }
+
+    let totalPaid = 0;
+    let paymentCount = 0;
+
+    if (invoices && invoices.length > 0) {
+      const invoiceIds = invoices.map(inv => inv.id);
+      
+      // Get payments for these invoices
+      const { data: payments, error: paymentsError } = await supabase
+        .from('payments')
+        .select('amount')
+        .in('invoice_id', invoiceIds);
+        
+      if (paymentsError) {
+        console.error('Error fetching payments:', paymentsError);
+      } else {
+        totalPaid = payments?.reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
+        paymentCount = payments?.length || 0;
+      }
+    }
+
+    const orderTotal = order.final_price || 0;
+    const balanceDue = orderTotal - totalPaid;
+
+    return NextResponse.json({
+      sales_order_id: orderId,
+      customer_name: customer?.name || 'Unknown',
+      order_total: orderTotal,
+      total_paid: totalPaid,
+      balance_due: balanceDue,
+      payment_status: totalPaid >= orderTotal ? 'paid' : totalPaid > 0 ? 'partial' : 'pending',
+      payment_count: paymentCount
+    });
 
   } catch (error) {
     console.error('Error fetching payment summary:', error);

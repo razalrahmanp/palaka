@@ -90,6 +90,15 @@ export class WhatsAppService {
   }
 
   static async generateInvoicePDF(billData: WhatsAppBillData): Promise<Blob> {
+    try {
+      return await this.generateInvoicePDFWithCanvas(billData);
+    } catch (error) {
+      console.warn('Canvas-based PDF generation failed, falling back to simple PDF:', error);
+      return this.generateSimplePDF(billData);
+    }
+  }
+
+  static async generateInvoicePDFWithCanvas(billData: WhatsAppBillData): Promise<Blob> {
     // Create a temporary container for rendering HTML
     const container = document.createElement('div');
     container.style.position = 'absolute';
@@ -98,6 +107,7 @@ export class WhatsAppService {
     container.style.width = '800px';
     container.style.background = '#ffffff';
     container.style.fontFamily = 'Arial, sans-serif';
+    container.style.isolation = 'isolate'; // Prevent color inheritance
     
     // Generate clean invoice HTML with standard colors only
     const cleanInvoiceHTML = this.generateCleanPDFInvoice(billData);
@@ -105,7 +115,7 @@ export class WhatsAppService {
     document.body.appendChild(container);
 
     try {
-      // Convert HTML to canvas with improved settings
+      // Convert HTML to canvas with improved settings to avoid OKLCH issues
       const canvas = await html2canvas(container, {
         scale: 2,
         useCORS: true,
@@ -114,13 +124,42 @@ export class WhatsAppService {
         removeContainer: true,
         scrollX: 0,
         scrollY: 0,
+        foreignObjectRendering: false, // Disable foreign object rendering to avoid modern CSS issues
         // Ignore CSS filters and modern properties that might cause issues
         ignoreElements: (element) => {
           const computed = window.getComputedStyle(element);
-          // Ignore elements with modern CSS properties
+          // Ignore elements with modern CSS properties or complex colors
           return computed.filter !== 'none' || 
                  computed.backdropFilter !== 'none' ||
-                 computed.mixBlendMode !== 'normal';
+                 computed.mixBlendMode !== 'normal' ||
+                 computed.color.includes('oklch') ||
+                 computed.backgroundColor.includes('oklch') ||
+                 computed.borderColor.includes('oklch');
+        },
+        onclone: (clonedDoc) => {
+          // Force standard colors on cloned document to avoid OKLCH issues
+          const clonedContainer = clonedDoc.querySelector('div');
+          if (clonedContainer) {
+            // Override any potential modern color functions
+            clonedContainer.style.setProperty('color', '#000000', 'important');
+            clonedContainer.style.setProperty('background-color', '#ffffff', 'important');
+            
+            // Force all child elements to use standard colors
+            const allElements = clonedContainer.querySelectorAll('*');
+            allElements.forEach((el: Element) => {
+              const htmlEl = el as HTMLElement;
+              // Reset any potential OKLCH colors to standard equivalents
+              if (htmlEl.style.color && htmlEl.style.color.includes('oklch')) {
+                htmlEl.style.color = '#000000';
+              }
+              if (htmlEl.style.backgroundColor && htmlEl.style.backgroundColor.includes('oklch')) {
+                htmlEl.style.backgroundColor = '#ffffff';
+              }
+              if (htmlEl.style.borderColor && htmlEl.style.borderColor.includes('oklch')) {
+                htmlEl.style.borderColor = '#e2e8f0';
+              }
+            });
+          }
         }
       });
 
@@ -148,129 +187,137 @@ export class WhatsAppService {
       <head>
         <title>Invoice - ${billData.orderNumber}</title>
         <style>
-          * { box-sizing: border-box; margin: 0; padding: 0; }
+          * { 
+            box-sizing: border-box; 
+            margin: 0; 
+            padding: 0;
+            color: inherit !important;
+            background-color: transparent !important;
+          }
           body { 
-            font-family: Arial, sans-serif; 
-            margin: 40px; 
-            background: white;
-            color: #000000;
-            line-height: 1.4;
+            font-family: Arial, sans-serif !important; 
+            margin: 40px !important; 
+            background: #ffffff !important;
+            color: #000000 !important;
+            line-height: 1.4 !important;
           }
           .header { 
-            text-align: center; 
-            border-bottom: 3px solid #2563eb; 
-            padding-bottom: 20px; 
-            margin-bottom: 30px; 
-            background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-            color: white;
-            padding: 30px;
-            border-radius: 8px;
+            text-align: center !important; 
+            border-bottom: 3px solid #2563eb !important; 
+            padding-bottom: 20px !important; 
+            margin-bottom: 30px !important; 
+            background: #1e40af !important;
+            color: #ffffff !important;
+            padding: 30px !important;
+            border-radius: 8px !important;
           }
           .company-name { 
-            font-size: 28px; 
-            font-weight: bold; 
-            margin-bottom: 8px; 
-            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            font-size: 28px !important; 
+            font-weight: bold !important; 
+            margin-bottom: 8px !important; 
+            color: #ffffff !important;
           }
           .invoice-title { 
-            font-size: 18px; 
-            opacity: 0.9; 
+            font-size: 18px !important; 
+            color: #f8fafc !important;
           }
           .info-section { 
-            display: flex; 
-            justify-content: space-between; 
-            margin-bottom: 30px; 
-            gap: 30px;
+            display: flex !important; 
+            justify-content: space-between !important; 
+            margin-bottom: 30px !important; 
+            gap: 30px !important;
           }
           .info-box { 
-            width: 45%; 
-            background: #f8fafc;
-            padding: 20px;
-            border-radius: 8px;
-            border: 1px solid #e2e8f0;
+            width: 45% !important; 
+            background: #f8fafc !important;
+            padding: 20px !important;
+            border-radius: 8px !important;
+            border: 1px solid #e2e8f0 !important;
           }
           .info-box h3 { 
-            margin-top: 0; 
-            color: #1e40af; 
-            border-bottom: 2px solid #3b82f6; 
-            padding-bottom: 8px; 
-            margin-bottom: 15px;
-            font-size: 16px;
+            margin-top: 0 !important; 
+            color: #1e40af !important; 
+            border-bottom: 2px solid #3b82f6 !important; 
+            padding-bottom: 8px !important; 
+            margin-bottom: 15px !important;
+            font-size: 16px !important;
           }
           .info-box p {
-            margin-bottom: 8px;
-            color: #374151;
+            margin-bottom: 8px !important;
+            color: #374151 !important;
           }
           .items-table { 
-            width: 100%; 
-            border-collapse: collapse; 
-            margin-bottom: 30px; 
-            background: white;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            border-radius: 8px;
-            overflow: hidden;
+            width: 100% !important; 
+            border-collapse: collapse !important; 
+            margin-bottom: 30px !important; 
+            background: #ffffff !important;
+            border-radius: 8px !important;
+            overflow: hidden !important;
           }
           .items-table th, .items-table td { 
-            border: 1px solid #d1d5db; 
-            padding: 15px 12px; 
-            text-align: left; 
+            border: 1px solid #d1d5db !important; 
+            padding: 15px 12px !important; 
+            text-align: left !important; 
           }
           .items-table th { 
-            background: #1e40af; 
-            color: white;
-            font-weight: bold; 
-            text-transform: uppercase;
-            font-size: 12px;
-            letter-spacing: 0.5px;
+            background: #1e40af !important; 
+            color: #ffffff !important;
+            font-weight: bold !important; 
+            text-transform: uppercase !important;
+            font-size: 12px !important;
+            letter-spacing: 0.5px !important;
           }
           .items-table tbody tr:nth-child(even) {
-            background: #f9fafb;
+            background: #f9fafb !important;
           }
           .items-table tbody tr:hover {
-            background: #f3f4f6;
+            background: #f3f4f6 !important;
           }
           .items-table td.number { 
-            text-align: right; 
-            font-weight: 600;
+            text-align: right !important; 
+            font-weight: 600 !important;
+            color: #000000 !important;
           }
           .summary { 
-            margin-left: auto; 
-            width: 350px; 
-            background: #f8fafc;
-            padding: 25px;
-            border-radius: 8px;
-            border: 1px solid #e2e8f0;
+            margin-left: auto !important; 
+            width: 350px !important; 
+            background: #f8fafc !important;
+            padding: 25px !important;
+            border-radius: 8px !important;
+            border: 1px solid #e2e8f0 !important;
           }
           .summary-row { 
-            display: flex; 
-            justify-content: space-between; 
-            padding: 8px 0; 
-            border-bottom: 1px solid #e2e8f0;
+            display: flex !important; 
+            justify-content: space-between !important; 
+            padding: 8px 0 !important; 
+            border-bottom: 1px solid #e2e8f0 !important;
+            color: #000000 !important;
           }
           .summary-row:last-child {
-            border-bottom: none;
+            border-bottom: none !important;
           }
           .summary-row.total { 
-            font-weight: bold; 
-            font-size: 18px; 
-            border-top: 3px solid #1e40af; 
-            padding-top: 15px; 
-            margin-top: 10px;
-            color: #1e40af;
+            font-weight: bold !important; 
+            font-size: 18px !important; 
+            border-top: 3px solid #1e40af !important; 
+            padding-top: 15px !important; 
+            margin-top: 10px !important;
+            color: #1e40af !important;
           }
           .footer { 
-            text-align: center; 
-            margin-top: 50px; 
-            color: #6b7280; 
-            border-top: 2px solid #e5e7eb;
-            padding-top: 20px;
+            text-align: center !important; 
+            margin-top: 50px !important; 
+            color: #6b7280 !important; 
+            border-top: 2px solid #e5e7eb !important;
+            padding-top: 20px !important;
           }
           .footer p {
-            margin-bottom: 5px;
+            margin-bottom: 5px !important;
+            color: #6b7280 !important;
           }
           .highlight {
-            color: #1e40af;
-            font-weight: 600;
+            color: #1e40af !important;
+            font-weight: 600 !important;
           }
         </style>
       </head>
@@ -339,24 +386,24 @@ export class WhatsAppService {
           </div>
           ${billData.paymentInfo ? `
             <hr style="margin: 20px 0; border: none; border-top: 2px solid #e2e8f0;">
-            <div style="background: #f8fafc; padding: 15px; border-radius: 6px; margin-top: 15px;">
-              <h4 style="color: #1e40af; margin-bottom: 10px; font-size: 14px;">Payment Information</h4>
+            <div style="background: #f8fafc !important; padding: 15px !important; border-radius: 6px !important; margin-top: 15px !important;">
+              <h4 style="color: #1e40af !important; margin-bottom: 10px !important; font-size: 14px !important;">Payment Information</h4>
               <div class="summary-row">
-                <span>Total Paid:</span>
-                <span style="color: #059669;">₹${billData.paymentInfo.totalPaid.toLocaleString('en-IN')}</span>
+                <span style="color: #000000 !important;">Total Paid:</span>
+                <span style="color: #059669 !important;">₹${billData.paymentInfo.totalPaid.toLocaleString('en-IN')}</span>
               </div>
               <div class="summary-row">
-                <span>Balance Due:</span>
-                <span style="color: ${billData.paymentInfo.balanceDue > 0 ? '#dc2626' : '#059669'};">₹${billData.paymentInfo.balanceDue.toLocaleString('en-IN')}</span>
+                <span style="color: #000000 !important;">Balance Due:</span>
+                <span style="color: ${billData.paymentInfo.balanceDue > 0 ? '#dc2626' : '#059669'} !important;">₹${billData.paymentInfo.balanceDue.toLocaleString('en-IN')}</span>
               </div>
               <div class="summary-row">
-                <span>Payment Status:</span>
-                <span style="color: ${billData.paymentInfo.paymentStatus === 'fully_paid' ? '#059669' : '#ea580c'};">${billData.paymentInfo.paymentStatus.replace('_', ' ').toUpperCase()}</span>
+                <span style="color: #000000 !important;">Payment Status:</span>
+                <span style="color: ${billData.paymentInfo.paymentStatus === 'Paid' ? '#059669' : '#ea580c'} !important;">${billData.paymentInfo.paymentStatus.toUpperCase()}</span>
               </div>
               ${billData.paymentInfo.paymentCount > 0 ? `
                 <div class="summary-row">
-                  <span>Payments Made:</span>
-                  <span>${billData.paymentInfo.paymentCount} payment(s)</span>
+                  <span style="color: #000000 !important;">Payments Made:</span>
+                  <span style="color: #000000 !important;">${billData.paymentInfo.paymentCount} payment(s)</span>
                 </div>
               ` : ''}
             </div>
@@ -377,6 +424,14 @@ export class WhatsAppService {
 
   static async sendBillAsPDF(phoneNumber: string, billData: WhatsAppBillData): Promise<{success: boolean, message: string}> {
     try {
+      // Validate phone number
+      if (!phoneNumber || typeof phoneNumber !== 'string') {
+        return {
+          success: false,
+          message: 'Invalid phone number provided'
+        };
+      }
+
       // Format phone number (remove +, spaces, and ensure it starts with country code)
       let formattedPhone = phoneNumber.replace(/\D/g, '');
       
@@ -590,6 +645,100 @@ export class WhatsAppService {
       printWindow.onload = () => {
         printWindow.print();
       };
+    }
+  }
+
+  static generateSimplePDF(billData: WhatsAppBillData): Blob {
+    try {
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const margin = 15;
+      let currentY = margin;
+      const lineHeight = 7;
+      const pageWidth = 210;
+
+      // Header
+      pdf.setFontSize(20);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('INVOICE', margin, currentY);
+      currentY += lineHeight * 2;
+
+      // Invoice details
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(`Order #: ${billData.orderNumber}`, margin, currentY);
+      pdf.text(`Date: ${new Date().toLocaleDateString()}`, pageWidth - margin - 40, currentY);
+      currentY += lineHeight;
+
+      // Customer details
+      currentY += lineHeight;
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Bill To:', margin, currentY);
+      currentY += lineHeight;
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(billData.customerName, margin, currentY);
+      currentY += lineHeight;
+      if (billData.customerPhone) {
+        pdf.text(`Phone: ${billData.customerPhone}`, margin, currentY);
+        currentY += lineHeight;
+      }
+
+      // Items table header
+      currentY += lineHeight;
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Description', margin, currentY);
+      pdf.text('Qty', margin + 100, currentY);
+      pdf.text('Rate', margin + 120, currentY);
+      pdf.text('Amount', margin + 150, currentY);
+      currentY += lineHeight;
+
+      // Items
+      pdf.setFont('helvetica', 'normal');
+      billData.items.forEach(item => {
+        pdf.text(item.name, margin, currentY);
+        pdf.text(item.quantity.toString(), margin + 100, currentY);
+        pdf.text(`$${item.price.toFixed(2)}`, margin + 120, currentY);
+        pdf.text(`$${item.total.toFixed(2)}`, margin + 150, currentY);
+        currentY += lineHeight;
+      });
+
+      // Totals
+      currentY += lineHeight;
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(`Subtotal: $${billData.subtotal.toFixed(2)}`, margin + 120, currentY);
+      currentY += lineHeight;
+      if (billData.tax && billData.tax > 0) {
+        pdf.text(`Tax: $${billData.tax.toFixed(2)}`, margin + 120, currentY);
+        currentY += lineHeight;
+      }
+      pdf.text(`Total: $${billData.total.toFixed(2)}`, margin + 120, currentY);
+      currentY += lineHeight * 2;
+
+      // Payment information if available
+      if (billData.paymentInfo) {
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Payment Information:', margin, currentY);
+        currentY += lineHeight;
+        
+        pdf.setFont('helvetica', 'normal');
+        pdf.text(`Total Paid: $${billData.paymentInfo.totalPaid.toFixed(2)}`, margin, currentY);
+        currentY += lineHeight;
+        pdf.text(`Balance Due: $${billData.paymentInfo.balanceDue.toFixed(2)}`, margin, currentY);
+        currentY += lineHeight;
+        pdf.text(`Status: ${billData.paymentInfo.paymentStatus}`, margin, currentY);
+        currentY += lineHeight;
+        
+        if (billData.paymentInfo.lastPaymentDate) {
+          pdf.text(`Last Payment: ${billData.paymentInfo.lastPaymentDate}`, margin, currentY);
+          currentY += lineHeight;
+        }
+        
+        pdf.text(`Payment Count: ${billData.paymentInfo.paymentCount}`, margin, currentY);
+      }
+
+      return pdf.output('blob');
+    } catch (error) {
+      console.error('Error generating simple PDF:', error);
+      throw error;
     }
   }
 }

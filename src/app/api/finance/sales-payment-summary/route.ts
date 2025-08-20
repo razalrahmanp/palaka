@@ -33,9 +33,8 @@ export async function GET() {
 
       // Get all payments for calculation
       const { data: allPayments, error: paymentsError } = await supabase
-        .from('sales_order_payments')
-        .select('sales_order_id, amount')
-        .eq('status', 'completed');
+        .from('payments')
+        .select('sales_order_id, amount');
 
       if (paymentsError) {
         console.log('Payments error:', paymentsError);

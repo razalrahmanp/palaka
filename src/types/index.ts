@@ -142,12 +142,14 @@ export type OrderStatus = 'draft' | 'confirmed' | 'shipped' | 'delivered';
 export interface SalesOrder {
   id: string;
   customer_id: string;
-  customer: { name: string } | null;
+  customer: { name: string; phone?: string } | null;
   items: OrderItem[];
   total_price: number;
+  total?: number; // From API response
   original_price?: number;
   final_price?: number;
   discount_amount?: number;
+  order_number?: string; // From database
   emi_enabled?: boolean;
   emi_monthly?: number;
   freight_charges?: number;
@@ -173,6 +175,7 @@ export interface SalesOrder {
   status: 'draft' | 'confirmed' | 'shipped' | 'delivered';
   created_by: string;
   created_at: string;
+  date?: string; // From API response (formatted date)
   quote_id?: string;
   deliveryAddress?: string;
   deliveryDate?: string;

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
@@ -9,26 +9,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { 
   DollarSign, 
-  Calendar, 
   Plus
 } from 'lucide-react';
 
+// Aligned with actual database structure
 interface Payment {
   id: string;
-  payment_date: string;
+  invoice_id: string;
   amount: number;
-  payment_method: string;
-  payment_type: string;
-  reference_number?: string;
-  bank_name?: string;
-  cheque_number?: string;
-  upi_transaction_id?: string;
-  card_last_four?: string;
-  payment_gateway_reference?: string;
-  notes?: string;
-  status: string;
-  created_at: string;
-  users?: { name: string };
+  date: string;
+  method: string;
 }
 
 interface SalesOrderPaymentTrackerProps {
@@ -40,48 +30,39 @@ interface SalesOrderPaymentTrackerProps {
 export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }: SalesOrderPaymentTrackerProps) {
   const [open, setOpen] = useState(false);
   const [isAddingPayment, setIsAddingPayment] = useState(false);
-  // We store payments in the state but don't use them directly in the UI
-  const [, setPayments] = useState<Payment[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [totalPaid, setTotalPaid] = useState(0);
+  
+  // Simplified form data that matches database schema
   const [formData, setFormData] = useState({
     payment_date: new Date().toISOString().split('T')[0],
     amount: '',
-    payment_method: '',
-    payment_type: 'advance',
-    reference_number: '',
-    bank_name: '',
-    cheque_number: '',
-    upi_transaction_id: '',
-    card_last_four: '',
-    payment_gateway_reference: '',
-    notes: ''
+    method: '',
+    reference: '',
+    description: ''
   });
 
-  // Define fetchPayments with useCallback
+  // Fetch payments for this order
   const fetchPayments = useCallback(async () => {
     try {
       const response = await fetch(`/api/sales/orders/${orderId}/payments`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch payments');
+      if (response.ok) {
+        const data = await response.json();
+        setPayments(data.payments || []);
+        setTotalPaid(data.summary?.total_paid || 0);
       }
-      
-      const data = await response.json();
-      setPayments(data.payments || []);
-      
-      // Calculate total paid
-      const paid = data.payments?.reduce((sum: number, payment: Payment) => sum + payment.amount, 0) || 0;
-      setTotalPaid(paid);
     } catch (error) {
       console.error('Error fetching payments:', error);
     }
   }, [orderId]);
 
-  // Fetch payments whenever dialog is opened
   useEffect(() => {
-    if (open) {
-      fetchPayments();
-    }
-  }, [open, fetchPayments]);
+    fetchPayments();
+  }, [fetchPayments]);
+
+  const handleInputChange = (field: string, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
 
   const handleAddPayment = async () => {
     try {
@@ -91,38 +72,29 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
-          amount: parseFloat(formData.amount),
-          created_by: "00000000-0000-0000-0000-000000000000" // This would normally come from auth context
+          amount: parseFloat(formData.amount)
         })
       });
 
       if (!response.ok) {
-        throw new Error('Failed to add payment');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to add payment');
       }
 
-      // Reset form
+      // Reset form and close dialog
       setFormData({
         payment_date: new Date().toISOString().split('T')[0],
         amount: '',
-        payment_method: '',
-        payment_type: 'advance',
-        reference_number: '',
-        bank_name: '',
-        cheque_number: '',
-        upi_transaction_id: '',
-        card_last_four: '',
-        payment_gateway_reference: '',
-        notes: ''
+        method: '',
+        reference: '',
+        description: ''
       });
+      setOpen(false);
       
-      // Refresh payment data
-      fetchPayments();
-      
-      // Notify parent component
+      // Refresh payments and notify parent
+      await fetchPayments();
       onPaymentAdded();
       
-      // Close dialog
-      setOpen(false);
     } catch (error) {
       console.error('Error adding payment:', error);
       alert('Failed to add payment. Please try again.');
@@ -131,241 +103,157 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleSelectChange = (name: string, value: string) => {
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR'
-    }).format(amount);
-  };
-
-  // Helper function for currency formatting only
-  // Date formatting handled directly where needed
+  const remainingBalance = orderTotal - totalPaid;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" className="bg-green-600 hover:bg-green-700">
-          <Plus className="h-4 w-4 mr-1" />
-          Add Payment
+        <Button size="sm" variant="outline" className="bg-green-50 hover:bg-green-100 text-green-700 border-green-200">
+          <Plus className="w-4 h-4 mr-1" />
+          Track Payment
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold flex items-center gap-2">
-            <DollarSign className="h-5 w-5" />
-            Record Payment for Order
+          <DialogTitle className="flex items-center gap-2">
+            <DollarSign className="w-5 h-5" />
+            Track Payment for Order
           </DialogTitle>
         </DialogHeader>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 my-4">
-          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-            <h4 className="font-semibold text-blue-800 mb-2">Order Information</h4>
-            <div className="space-y-1">
-              <p><span className="font-medium">Order ID:</span> {orderId}</p>
-              <p><span className="font-medium">Order Total:</span> {formatCurrency(orderTotal)}</p>
-              <p><span className="font-medium">Already Paid:</span> {formatCurrency(totalPaid)}</p>
-              <p><span className="font-medium">Balance Due:</span> {formatCurrency(orderTotal - totalPaid)}</p>
+        
+        <div className="space-y-4">
+          {/* Order Summary */}
+          <div className="bg-gray-50 p-3 rounded-lg">
+            <div className="grid grid-cols-3 gap-4 text-sm">
+              <div>
+                <span className="text-gray-600">Order Total:</span>
+                <div className="font-semibold">₹{orderTotal.toLocaleString()}</div>
+              </div>
+              <div>
+                <span className="text-gray-600">Paid:</span>
+                <div className="font-semibold text-green-600">₹{totalPaid.toLocaleString()}</div>
+              </div>
+              <div>
+                <span className="text-gray-600">Balance:</span>
+                <div className="font-semibold text-orange-600">₹{remainingBalance.toLocaleString()}</div>
+              </div>
             </div>
           </div>
 
-          <div className="bg-green-50 p-4 rounded-lg border border-green-100">
-            <h4 className="font-semibold text-green-800 mb-2">Payment Details</h4>
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="payment_date">Payment Date</Label>
-                  <div className="relative">
-                    <Calendar className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
-                    <Input 
-                      id="payment_date" 
-                      name="payment_date" 
-                      type="date" 
-                      value={formData.payment_date} 
-                      onChange={handleInputChange} 
-                      className="pl-8"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="amount">Amount</Label>
-                  <div className="relative">
-                    <DollarSign className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
-                    <Input 
-                      id="amount" 
-                      name="amount" 
-                      type="number" 
-                      placeholder="0.00" 
-                      value={formData.amount} 
-                      onChange={handleInputChange} 
-                      className="pl-8"
-                    />
-                  </div>
-                </div>
-              </div>
-
+          {/* Payment Form */}
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="payment_method">Payment Method</Label>
-                <Select 
-                  value={formData.payment_method} 
-                  onValueChange={(value) => handleSelectChange('payment_method', value)}
-                >
-                  <SelectTrigger id="payment_method" className="w-full">
-                    <SelectValue placeholder="Select payment method" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CASH">Cash</SelectItem>
-                    <SelectItem value="CHEQUE">Cheque</SelectItem>
-                    <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
-                    <SelectItem value="CARD">Credit/Debit Card</SelectItem>
-                    <SelectItem value="UPI">UPI</SelectItem>
-                    <SelectItem value="OTHER">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label htmlFor="payment_type">Payment Type</Label>
-                <Select 
-                  value={formData.payment_type} 
-                  onValueChange={(value) => handleSelectChange('payment_type', value)}
-                >
-                  <SelectTrigger id="payment_type" className="w-full">
-                    <SelectValue placeholder="Select payment type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="advance">Advance</SelectItem>
-                    <SelectItem value="installment">Installment</SelectItem>
-                    <SelectItem value="final">Final Payment</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Additional payment details based on payment method */}
-        {formData.payment_method === 'CHEQUE' && (
-          <div className="space-y-3 border-t pt-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="cheque_number">Cheque Number</Label>
-                <Input 
-                  id="cheque_number" 
-                  name="cheque_number" 
-                  value={formData.cheque_number} 
-                  onChange={handleInputChange} 
+                <Label htmlFor="payment_date">Payment Date</Label>
+                <Input
+                  id="payment_date"
+                  type="date"
+                  value={formData.payment_date}
+                  onChange={(e) => handleInputChange('payment_date', e.target.value)}
                 />
               </div>
               <div>
-                <Label htmlFor="bank_name">Bank Name</Label>
-                <Input 
-                  id="bank_name" 
-                  name="bank_name" 
-                  value={formData.bank_name} 
-                  onChange={handleInputChange} 
+                <Label htmlFor="amount">Amount</Label>
+                <Input
+                  id="amount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max={remainingBalance}
+                  value={formData.amount}
+                  onChange={(e) => handleInputChange('amount', e.target.value)}
+                  placeholder="Enter amount"
                 />
               </div>
             </div>
-          </div>
-        )}
 
-        {formData.payment_method === 'BANK_TRANSFER' && (
-          <div className="space-y-3 border-t pt-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="reference_number">Reference Number</Label>
-                <Input 
-                  id="reference_number" 
-                  name="reference_number" 
-                  value={formData.reference_number} 
-                  onChange={handleInputChange} 
-                />
-              </div>
-              <div>
-                <Label htmlFor="bank_name">Bank Name</Label>
-                <Input 
-                  id="bank_name" 
-                  name="bank_name" 
-                  value={formData.bank_name} 
-                  onChange={handleInputChange} 
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {formData.payment_method === 'UPI' && (
-          <div className="space-y-3 border-t pt-3">
             <div>
-              <Label htmlFor="upi_transaction_id">UPI Transaction ID</Label>
-              <Input 
-                id="upi_transaction_id" 
-                name="upi_transaction_id" 
-                value={formData.upi_transaction_id} 
-                onChange={handleInputChange} 
+              <Label htmlFor="method">Payment Method</Label>
+              <Select 
+                value={formData.method} 
+                onValueChange={(value) => handleInputChange('method', value)}
+              >
+                <SelectTrigger id="method">
+                  <SelectValue placeholder="Select payment method" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="cheque">Cheque</SelectItem>
+                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                  <SelectItem value="upi">UPI</SelectItem>
+                  <SelectItem value="card">Card</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="reference">Reference</Label>
+              <Input
+                id="reference"
+                type="text"
+                value={formData.reference}
+                onChange={(e) => handleInputChange('reference', e.target.value)}
+                placeholder="Transaction ID, cheque number, etc."
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                value={formData.description}
+                onChange={(e) => handleInputChange('description', e.target.value)}
+                placeholder="Additional notes"
+                rows={3}
               />
             </div>
           </div>
-        )}
 
-        {formData.payment_method === 'CARD' && (
-          <div className="space-y-3 border-t pt-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="card_last_four">Last 4 Digits</Label>
-                <Input 
-                  id="card_last_four" 
-                  name="card_last_four"
-                  maxLength={4} 
-                  value={formData.card_last_four} 
-                  onChange={handleInputChange} 
-                />
-              </div>
-              <div>
-                <Label htmlFor="payment_gateway_reference">Gateway Reference</Label>
-                <Input 
-                  id="payment_gateway_reference" 
-                  name="payment_gateway_reference" 
-                  value={formData.payment_gateway_reference} 
-                  onChange={handleInputChange} 
-                />
+          {/* Actions */}
+          <div className="flex justify-end gap-2 pt-4">
+            <Button 
+              variant="outline" 
+              onClick={() => setOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleAddPayment}
+              disabled={isAddingPayment || !formData.amount || !formData.method}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {isAddingPayment ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                  Adding Payment...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Payment
+                </>
+              )}
+            </Button>
+          </div>
+          
+          {/* Payment History */}
+          {payments.length > 0 && (
+            <div className="border-t pt-4">
+              <h4 className="font-medium mb-2">Recent Payments</h4>
+              <div className="space-y-2 max-h-32 overflow-y-auto">
+                {payments.slice(0, 3).map((payment) => (
+                  <div key={payment.id} className="flex justify-between items-center text-sm bg-gray-50 p-2 rounded">
+                    <div>
+                      <span className="font-medium">₹{payment.amount.toLocaleString()}</span>
+                      <span className="text-gray-600 ml-2">via {payment.method}</span>
+                    </div>
+                    <span className="text-gray-500">{new Date(payment.date).toLocaleDateString()}</span>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
-        )}
-
-        <div className="space-y-3 border-t pt-3">
-          <div>
-            <Label htmlFor="notes">Notes</Label>
-            <Textarea 
-              id="notes" 
-              name="notes" 
-              value={formData.notes} 
-              onChange={handleInputChange} 
-              placeholder="Additional details about this payment"
-            />
-          </div>
-        </div>
-
-        <div className="flex gap-3 justify-end mt-4">
-          <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button 
-            onClick={handleAddPayment}
-            disabled={isAddingPayment || !formData.amount || !formData.payment_method}
-          >
-            {isAddingPayment ? 'Adding...' : 'Add Payment'}
-          </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

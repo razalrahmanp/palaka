@@ -178,17 +178,36 @@ export function SalesOrderInvoiceManager() {
     }
   };
 
-  const getInvoiceStatusBadge = (status: string) => {
-    switch (status) {
-      case 'not_invoiced':
-        return <Badge variant="outline" className="text-red-600 border-red-200">Not Invoiced</Badge>;
-      case 'partially_invoiced':
-        return <Badge variant="outline" className="text-yellow-600 border-yellow-200">Partially Invoiced</Badge>;
-      case 'fully_invoiced':
-        return <Badge variant="outline" className="text-green-600 border-green-200">Fully Invoiced</Badge>;
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
+  // Combined status showing invoice status with payment consideration
+  const getInvoicePaymentStatusBadge = (order: { 
+    invoice_status?: string; 
+    paid_amount?: number; 
+    total_invoiced?: number; 
+  }) => {
+    const invoiceStatus = order.invoice_status || 'not_invoiced';
+    const paidAmount = order.paid_amount || 0;
+    const totalInvoiced = order.total_invoiced || 0;
+    
+    if (invoiceStatus === 'not_invoiced') {
+      return <Badge variant="outline" className="text-red-600 border-red-200">Not Invoiced</Badge>;
     }
+    
+    if (invoiceStatus === 'partially_invoiced') {
+      return <Badge variant="outline" className="text-yellow-600 border-yellow-200">Partially Invoiced</Badge>;
+    }
+    
+    // For fully invoiced, check payment status
+    if (invoiceStatus === 'fully_invoiced') {
+      if (paidAmount >= totalInvoiced) {
+        return <Badge variant="outline" className="text-blue-600 border-blue-200">Invoiced & Paid</Badge>;
+      } else if (paidAmount > 0) {
+        return <Badge variant="outline" className="text-purple-600 border-purple-200">Invoiced & Partial Payment</Badge>;
+      } else {
+        return <Badge variant="outline" className="text-green-600 border-green-200">Invoiced & Unpaid</Badge>;
+      }
+    }
+    
+    return <Badge variant="secondary">{invoiceStatus}</Badge>;
   };
 
   const getPaymentStatusBadge = (status: string) => {
@@ -712,7 +731,7 @@ export function SalesOrderInvoiceManager() {
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-col gap-1">
-                                {getInvoiceStatusBadge(order.invoice_status || 'not_invoiced')}
+                                {getInvoicePaymentStatusBadge(order)}
                                 <span className="text-xs text-gray-500">
                                   {order.invoices?.length || 0} invoice(s)
                                 </span>

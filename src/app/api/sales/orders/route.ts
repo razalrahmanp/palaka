@@ -81,7 +81,8 @@ export async function GET() {
       original_price,
       discount_amount,
       customers:customer_id(name)
-    `);
+    `)
+    .order('created_at', { ascending: false });
 
   if (ordersError) {
     return NextResponse.json({ error: ordersError.message }, { status: 500 });

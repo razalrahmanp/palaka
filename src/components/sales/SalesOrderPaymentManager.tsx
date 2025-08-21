@@ -137,7 +137,10 @@ export function SalesOrderPaymentManager({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          ...formData,
+          amount: formData.amount,
+          method: formData.payment_method,
+          payment_date: formData.payment_date,
+          reference: formData.reference_number,
           created_by: 'current-user-id', // Replace with actual user ID
         }),
       });

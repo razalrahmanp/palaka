@@ -6,19 +6,25 @@ interface OrderItemWithProducts {
   quantity: number;
   unit_price: number | null;
   product_id?: string | null;
+  custom_product_id?: string | null;
   name?: string | null;
   supplier_name?: string | null;
   products?: {
+    id: string;
     name: string;
     price: number;
     sku?: string;
     suppliers?: { name: string }[];
-  } | {
+    boms?: { id: string; component: string; quantity: number }[];
+  } | null;
+  custom_products?: {
+    id: string;
     name: string;
-    price: number;
     sku?: string;
-    suppliers?: { name: string }[];
-  }[] | null;
+    description?: string;
+    config_schema?: Record<string, unknown>;
+    supplier_name?: string;
+  } | null;
 }
 
 export async function GET(
@@ -32,7 +38,7 @@ export async function GET(
   }
 
   try {
-    // Fetch sales order with customer details
+    // Fetch sales order with customer details and finance information
     const { data: orderData, error: orderError } = await supabase
       .from('sales_orders')
       .select(`
@@ -56,18 +62,88 @@ export async function GET(
       return NextResponse.json({ error: orderError.message }, { status: 500 });
     }
 
-    // Fetch order items from sales_order_items table with product details including SKU
+    // Fetch order items with product details, custom products, and manufacturing info
     const { data: itemsData, error: itemsError } = await supabase
       .from('sales_order_items')
       .select(`
         *,
-        products:product_id(name, sku, price, suppliers(name))
+        products:product_id(
+          id,
+          name, 
+          sku, 
+          price, 
+          suppliers(name),
+          boms(id, component, quantity)
+        ),
+        custom_products:custom_product_id(
+          id,
+          name,
+          sku,
+          description,
+          config_schema,
+          supplier_name
+        )
       `)
       .eq('order_id', id);
 
     if (itemsError) {
       console.error('Error fetching order items:', itemsError);
       return NextResponse.json({ error: itemsError.message }, { status: 500 });
+    }
+
+    // Fetch payment information (temporarily disabled due to schema mismatch)
+    // const { data: paymentsData, error: paymentsError } = await supabase
+    //   .from('sales_order_payments')
+    //   .select('*')
+    //   .eq('sales_order_id', id)
+    //   .order('payment_date', { ascending: false });
+
+    // if (paymentsError) {
+    //   console.error('Error fetching payments:', paymentsError);
+    //   // Don't fail the request, just log the error
+    // }
+
+    // Fetch payment summary (temporarily disabled due to schema mismatch)
+    // const { data: paymentSummaryData, error: paymentSummaryError } = await supabase
+    //   .from('sales_order_payment_summary')
+    //   .select('*')
+    //   .eq('sales_order_id', id)
+    //   .single();
+
+    // if (paymentSummaryError) {
+    //   console.error('Error fetching payment summary:', paymentSummaryError);
+    //   // Don't fail the request, just log the error
+    // }
+
+    const paymentsData: unknown[] = [];
+    let totalPaidFromPayments = 0;
+
+    // Fetch payments via invoices (actual database structure)
+    try {
+      const { data: invoicesData } = await supabase
+        .from('invoices')
+        .select('id, paid_amount')
+        .eq('sales_order_id', id);
+
+      if (invoicesData && invoicesData.length > 0) {
+        const invoiceIds = invoicesData.map(inv => inv.id);
+        
+        // Get total paid amount from invoices
+        totalPaidFromPayments = invoicesData.reduce((sum, inv) => sum + (inv.paid_amount || 0), 0);
+        
+        // Get detailed payment records
+        const { data: paymentsFromInvoices } = await supabase
+          .from('payments')
+          .select('*')
+          .in('invoice_id', invoiceIds)
+          .order('payment_date', { ascending: false });
+
+        if (paymentsFromInvoices) {
+          paymentsData.push(...paymentsFromInvoices);
+        }
+      }
+    } catch (error) {
+      console.log('Could not fetch payments via invoices:', error);
     }
 
     // Try to get sales representative from quotes if quote_id exists
@@ -89,26 +165,79 @@ export async function GET(
       salesRepresentative = quoteData?.users || null;
     }
 
-    // Map items to include SKU from products relationship
-    const mappedItems = (itemsData || []).map((item: OrderItemWithProducts) => ({
-      ...item,
-      sku: item.products 
-        ? Array.isArray(item.products) 
-          ? (item.products.length > 0 ? item.products[0].sku : null)
-          : item.products.sku
-        : null,
-      name: item.name || (item.products 
-        ? Array.isArray(item.products) 
-          ? (item.products.length > 0 ? item.products[0].name : null)
-          : item.products.name
-        : null)
-    }));
+    // Map items to include comprehensive product information
+    const mappedItems = (itemsData || []).map((item: OrderItemWithProducts) => {
+      const isCustomProduct = !!item.custom_product_id;
+      const needsManufacturing = item.products?.boms && item.products.boms.length > 0;
+      
+      return {
+        ...item,
+        // Product information
+        sku: item.products?.sku || item.custom_products?.sku || null,
+        name: item.name || item.products?.name || item.custom_products?.name || null,
+        supplier_name: item.supplier_name || 
+          (item.products?.suppliers && item.products.suppliers.length > 0 
+            ? item.products.suppliers[0].name 
+            : item.custom_products?.supplier_name || null),
+        
+        // Manufacturing and customization flags
+        is_custom_product: isCustomProduct,
+        needs_manufacturing: needsManufacturing,
+        custom_config: item.custom_products?.config_schema || null,
+        bom_info: item.products?.boms || null,
+        
+        // Product type for highlighting
+        product_type: isCustomProduct ? 'custom' : (needsManufacturing ? 'manufacturing' : 'standard'),
+        
+        // Additional details
+        description: item.custom_products?.description || null
+      };
+    });
+
+    // Calculate payment totals (using invoice paid amounts)
+    const totalPaid = totalPaidFromPayments;
+    const orderTotal = orderData.final_price || 0;
+    const balance = orderTotal - totalPaid;
+    
+    // Determine finance information
+    const isFinanced = orderData.emi_enabled || orderData.bajaj_finance_amount > 0;
+    const financeDetails = isFinanced ? {
+      is_financed: true,
+      emi_enabled: orderData.emi_enabled,
+      emi_plan: orderData.emi_plan,
+      emi_monthly: orderData.emi_monthly,
+      bajaj_finance_amount: orderData.bajaj_finance_amount,
+      finance_type: orderData.bajaj_finance_amount > 0 ? 'bajaj' : 'other'
+    } : {
+      is_financed: false
+    };
 
     const orderWithDetails = {
       ...orderData,
       items: mappedItems,
       customer: orderData.customers,
-      sales_representative: salesRepresentative
+      sales_representative: salesRepresentative,
+      
+      // Payment summary (using actual invoice/payment data)
+      payment_summary: {
+        total_amount: orderTotal,
+        total_paid: totalPaid,
+        balance: balance,
+        payment_status: balance <= 0 ? 'paid' : (totalPaid > 0 ? 'partial' : 'unpaid'),
+        number_of_payments: paymentsData.length,
+        first_payment_date: paymentsData.length > 0 ? (paymentsData[paymentsData.length - 1] as Record<string, unknown>)?.payment_date : null,
+        last_payment_date: paymentsData.length > 0 ? (paymentsData[0] as Record<string, unknown>)?.payment_date : null,
+        payment_methods: paymentsData.map((p: unknown) => (p as Record<string, unknown>).method).filter((m, i, arr) => arr.indexOf(m) === i),
+        payments: paymentsData
+      },
+      
+      // Finance information
+      finance_details: financeDetails,
+      
+      // Summary flags for easy checking
+      has_custom_products: mappedItems.some(item => item.is_custom_product),
+      has_manufacturing_items: mappedItems.some(item => item.needs_manufacturing),
+      requires_special_handling: mappedItems.some(item => item.is_custom_product || item.needs_manufacturing)
     };
 
     return NextResponse.json(orderWithDetails);

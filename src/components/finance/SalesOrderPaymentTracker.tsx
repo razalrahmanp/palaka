@@ -15,10 +15,15 @@ import {
 // Aligned with actual database structure
 interface Payment {
   id: string;
-  invoice_id: string;
   amount: number;
   date: string;
   method: string;
+}
+
+interface BankAccount {
+  id: string;
+  name: string;
+  account_number: string;
 }
 
 interface SalesOrderPaymentTrackerProps {
@@ -32,12 +37,14 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
   const [isAddingPayment, setIsAddingPayment] = useState(false);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [totalPaid, setTotalPaid] = useState(0);
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   
   // Simplified form data that matches database schema
   const [formData, setFormData] = useState({
     payment_date: new Date().toISOString().split('T')[0],
     amount: '',
     method: '',
+    bank_account_id: '',
     reference: '',
     description: ''
   });
@@ -56,9 +63,23 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
     }
   }, [orderId]);
 
+  // Fetch bank accounts for the form
+  const fetchBankAccounts = useCallback(async () => {
+    try {
+      const response = await fetch('/api/finance/bank_accounts');
+      if (response.ok) {
+        const data = await response.json();
+        setBankAccounts(data.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching bank accounts:', error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchPayments();
-  }, [fetchPayments]);
+    fetchBankAccounts();
+  }, [fetchPayments, fetchBankAccounts]);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -86,6 +107,7 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
         payment_date: new Date().toISOString().split('T')[0],
         amount: '',
         method: '',
+        bank_account_id: '',
         reference: '',
         description: ''
       });
@@ -186,6 +208,27 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
                 </SelectContent>
               </Select>
             </div>
+
+            {(formData.method === 'bank_transfer' || formData.method === 'cheque') && (
+              <div>
+                <Label htmlFor="bank_account">Bank Account</Label>
+                <Select 
+                  value={formData.bank_account_id} 
+                  onValueChange={(value) => handleInputChange('bank_account_id', value)}
+                >
+                  <SelectTrigger id="bank_account">
+                    <SelectValue placeholder="Select bank account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {bankAccounts.map((account) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {account.name} {account.account_number && `(${account.account_number})`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div>
               <Label htmlFor="reference">Reference</Label>

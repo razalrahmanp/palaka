@@ -3,39 +3,109 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
-    // 1. Get financial position data from accounts
+    // 1. Get sales orders and calculate payment data from invoices
+    const { data: salesOrdersData, error: salesOrdersError } = await supabase
+      .from('sales_orders')
+      .select('id, final_price, created_at');
+
+    if (salesOrdersError) {
+      console.error('Error fetching sales orders data:', salesOrdersError);
+    }
+
+    // Get all invoices to calculate payment metrics
+    const { data: allInvoicesData, error: allInvoicesError } = await supabase
+      .from('invoices')
+      .select('sales_order_id, paid_amount, total');
+
+    if (allInvoicesError) {
+      console.error('Error fetching invoices data:', allInvoicesError);
+    }
+
+    // Calculate real revenue and payment metrics from sales data
+    const salesOrders = salesOrdersData || [];
+    const allInvoices = allInvoicesData || [];
+    
+    const totalSalesRevenue = salesOrders.reduce((sum, order) => sum + (order.final_price || 0), 0);
+    
+    // Calculate total payments received from invoices
+    let totalPaymentsReceived = 0;
+    let fullyPaidOrders = 0;
+    let partialPaidOrders = 0;
+    let pendingPaymentOrders = 0;
+    
+    salesOrders.forEach(order => {
+      const orderTotal = order.final_price || 0;
+      const orderInvoices = allInvoices.filter(inv => inv.sales_order_id === order.id);
+      const orderPaidAmount = orderInvoices.reduce((sum, inv) => sum + (inv.paid_amount || 0), 0);
+      
+      totalPaymentsReceived += orderPaidAmount;
+      
+      // Determine payment status
+      if (orderPaidAmount === 0) {
+        pendingPaymentOrders++;
+      } else if (orderPaidAmount >= orderTotal) {
+        fullyPaidOrders++;
+      } else {
+        partialPaidOrders++;
+      }
+    });
+    
+    const totalOutstanding = totalSalesRevenue - totalPaymentsReceived;
+    
+    // Collection rate
+    const collectionRate = totalSalesRevenue > 0 ? (totalPaymentsReceived / totalSalesRevenue) * 100 : 0;
+
+    // 2. Get inventory assets (current stock value)
+    const { data: inventoryItems, error: inventoryError } = await supabase
+      .from('inventory_items')
+      .select(`
+        quantity,
+        products!inner(cost, supplier_id)
+      `);
+
+    if (inventoryError) {
+      console.error('Error fetching inventory items:', inventoryError);
+    }
+
+    // Calculate total inventory asset value (stock cost)
+    const totalInventoryAssets = inventoryItems?.reduce((sum, item) => {
+      const quantity = item.quantity || 0;
+      const product = Array.isArray(item.products) ? item.products[0] : item.products;
+      const cost = product?.cost || 0;
+      return sum + (quantity * cost);
+    }, 0) || 0;
+
+    // 3. Get traditional financial position data from accounts (for other assets, liabilities, etc.)
     const { data: accounts, error: accountsError } = await supabase
       .from('chart_of_accounts')
       .select('*');
 
     if (accountsError) {
       console.error('Error fetching chart of accounts:', accountsError);
-      return NextResponse.json({ error: accountsError.message }, { status: 500 });
     }
 
-    // Calculate financial metrics
-    let totalAssets = 0;
+    // Calculate financial metrics from chart of accounts (excluding inventory)
+    let totalNonInventoryAssets = 0; // Assets excluding inventory
     let totalLiabilities = 0;
     let totalEquity = 0;
-    let totalRevenue = 0;
     let totalExpenses = 0;
     let cashBalance = 0;
-    let accountsReceivable = 0;
     let accountsPayable = 0;
 
     accounts?.forEach(account => {
       if (account.is_active) {
         switch (account.account_type) {
           case 'ASSET':
-            totalAssets += account.current_balance || 0;
-            
-            // Check for cash and accounts receivable
-            if (account.account_subtype === 'CASH_AND_EQUIVALENTS') {
-              cashBalance += account.current_balance || 0;
+            // Exclude inventory-related assets since we'll use real inventory data
+            if (account.account_subtype !== 'INVENTORY' && 
+                !account.name?.toLowerCase().includes('inventory') && 
+                !account.name?.toLowerCase().includes('stock')) {
+              totalNonInventoryAssets += account.current_balance || 0;
             }
             
-            if (account.account_subtype === 'ACCOUNTS_RECEIVABLE') {
-              accountsReceivable += account.current_balance || 0;
+            // Check for cash
+            if (account.account_subtype === 'CASH_AND_EQUIVALENTS') {
+              cashBalance += account.current_balance || 0;
             }
             break;
             
@@ -52,10 +122,6 @@ export async function GET() {
             totalEquity += account.current_balance || 0;
             break;
             
-          case 'REVENUE':
-            totalRevenue += account.current_balance || 0;
-            break;
-            
           case 'EXPENSE':
             totalExpenses += account.current_balance || 0;
             break;
@@ -63,25 +129,25 @@ export async function GET() {
       }
     });
 
-    // 2. Get invoice metrics
-    const { data: invoices, error: invoicesError } = await supabase
+    // 3. Get invoice metrics with full invoice data
+    const { data: detailedInvoices, error: detailedInvoicesError } = await supabase
       .from('invoices')
       .select('*');
 
-    if (invoicesError) {
-      console.error('Error fetching invoices:', invoicesError);
+    if (detailedInvoicesError) {
+      console.error('Error fetching invoices:', detailedInvoicesError);
     }
 
     // Calculate invoice metrics
-    const pendingInvoices = invoices?.filter(inv => inv.status === 'unpaid' || inv.status === 'partially_paid').length || 0;
-    const overdueInvoices = invoices?.filter(inv => {
+    const pendingInvoices = detailedInvoices?.filter(inv => inv.status === 'unpaid' || inv.status === 'partially_paid').length || 0;
+    const overdueInvoices = detailedInvoices?.filter(inv => {
       // Consider invoice overdue if it has a due date in the past and is not fully paid
       const dueDate = inv.due_date ? new Date(inv.due_date) : null;
       return dueDate && dueDate < new Date() && 
         (inv.status === 'unpaid' || inv.status === 'partially_paid');
     }).length || 0;
 
-    // 3. Get journal entries
+    // 4. Get journal entries
     const { data: journalEntries, error: journalError } = await supabase
       .from('journal_entries')
       .select('*')
@@ -93,37 +159,50 @@ export async function GET() {
 
     const unpostedJournals = journalEntries?.length || 0;
 
-    // Calculate net income
-    const netIncome = totalRevenue - totalExpenses;
+    // Calculate financial metrics using real sales data
+    const netIncome = totalSalesRevenue - totalExpenses;
     
-    // Calculate current ratio (liquidity)
+    // Calculate current ratio (liquidity) - using outstanding as accounts receivable
+    const accountsReceivable = totalOutstanding;
+    
+    // Total assets = Non-inventory assets + Real inventory + Accounts receivable
+    const totalAssets = totalNonInventoryAssets + totalInventoryAssets + accountsReceivable;
+    
+    console.log('=== DETAILED FINANCIAL SUMMARY DEBUG ===');
+    console.log('Total Inventory Assets (from inventory_items):', totalInventoryAssets);
+    console.log('Total Non-Inventory Assets (from chart_of_accounts, excluding inventory):', totalNonInventoryAssets);
+    console.log('Accounts Receivable (unpaid sales orders):', accountsReceivable);
+    console.log('Total Assets:', totalAssets);
+    console.log('Total Liabilities:', totalLiabilities);
+    console.log('============================================');
+    
     const currentRatio = totalLiabilities === 0 ? 0 : totalAssets / totalLiabilities;
     
-    // Calculate profit margin
-    const profitMargin = totalRevenue === 0 ? 0 : (netIncome / totalRevenue) * 100;
+    // Calculate profit margin using real sales data
+    const profitMargin = totalSalesRevenue === 0 ? 0 : (netIncome / totalSalesRevenue) * 100;
     
-    // Determine cash flow trend (simplified approach)
+    // Determine cash flow trend based on payments vs outstanding
     let cashFlowTrend: 'up' | 'down' | 'stable' = 'stable';
     
-    // For simplicity, we're using a positive net income as an indicator of positive cash flow
-    if (netIncome > 0) {
+    if (collectionRate > 80) {
       cashFlowTrend = 'up';
-    } else if (netIncome < 0) {
+    } else if (collectionRate < 50) {
       cashFlowTrend = 'down';
     }
 
     return NextResponse.json({
       financialSummary: {
-        totalAssets,
+        totalAssets: totalAssets, // Include all assets: non-inventory accounts + real inventory + receivables
         totalLiabilities,
         totalEquity,
-        totalRevenue,
+        totalRevenue: totalSalesRevenue, // Use real sales revenue
         totalExpenses,
         netIncome,
-        cashBalance,
+        cashBalance: cashBalance + totalPaymentsReceived, // Include collected payments
         accountsReceivable,
         accountsPayable,
-        currentRatio
+        currentRatio,
+        inventoryAssets: totalInventoryAssets // Add inventory breakdown
       },
       metrics: {
         pendingInvoices,
@@ -131,6 +210,41 @@ export async function GET() {
         unpostedJournals,
         cashFlowTrend,
         profitMargin
+      },
+      // Add new sales payment metrics
+      salesMetrics: {
+        totalSalesRevenue,
+        totalPaymentsReceived,
+        totalOutstanding,
+        collectionRate,
+        fullyPaidOrders,
+        partialPaidOrders,
+        pendingPaymentOrders
+      },
+      // Debug information to identify calculation issues
+      debug: {
+        totalInventoryAssets,
+        totalNonInventoryAssets,
+        accountsReceivable,
+        totalAssetsBreakdown: `${totalNonInventoryAssets} + ${totalInventoryAssets} + ${accountsReceivable} = ${totalAssets}`,
+        inventoryItemCount: inventoryItems?.length || 0,
+        assetAccountCount: accounts?.filter(acc => acc.account_type === 'ASSET' && acc.is_active).length || 0,
+        largestInventoryValues: inventoryItems
+          ?.map(item => {
+            const product = Array.isArray(item.products) ? item.products[0] : item.products;
+            const value = (item.quantity || 0) * (product?.cost || 0);
+            return { quantity: item.quantity, cost: product?.cost, value };
+          })
+          .sort((a, b) => (b.value || 0) - (a.value || 0))
+          .slice(0, 5) || [],
+        largestAssetAccounts: accounts
+          ?.filter(acc => acc.account_type === 'ASSET' && acc.is_active && 
+            acc.account_subtype !== 'INVENTORY' && 
+            !acc.name?.toLowerCase().includes('inventory') && 
+            !acc.name?.toLowerCase().includes('stock'))
+          .sort((a, b) => (b.current_balance || 0) - (a.current_balance || 0))
+          .slice(0, 5)
+          .map(acc => ({ name: acc.name, balance: acc.current_balance })) || []
       }
     });
 

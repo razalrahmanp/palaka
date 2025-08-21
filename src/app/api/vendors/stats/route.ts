@@ -2,6 +2,35 @@
 import { supabase } from '@/lib/supabaseAdmin'
 import { NextResponse } from 'next/server'
 
+// Type definitions
+interface Vendor {
+  id: string;
+  name: string;
+  contact: string;
+}
+
+interface PurchaseOrder {
+  id: string;
+  quantity: number;
+  status: string;
+  total: number;
+  paid_amount: number;
+  payment_status: string;
+  created_at: string;
+  supplier_id: string;
+}
+
+interface Product {
+  price: number;
+  cost: number;
+  supplier_id: string;
+}
+
+interface InventoryItem {
+  quantity: number;
+  products: Product | Product[];
+}
+
 export async function GET() {
   try {
     // Get basic vendor data
@@ -12,51 +41,77 @@ export async function GET() {
 
     if (vendorsError) throw vendorsError;
 
-    // Get aggregated stats for each vendor
-    const vendorStats = await Promise.all(
-      vendors.map(async (vendor) => {
-        // Purchase orders count and total spent with payment tracking
-        const { data: purchaseOrders } = await supabase
-          .from('purchase_orders')
-          .select('id, quantity, status, total, paid_amount, payment_status, created_at')
-          .eq('supplier_id', vendor.id);
+    // Bulk fetch all purchase orders for all vendors in one query
+    const { data: allPurchaseOrders } = await supabase
+      .from('purchase_orders')
+      .select('id, quantity, status, total, paid_amount, payment_status, created_at, supplier_id')
+      .in('supplier_id', vendors.map(v => v.id));
 
-        // Get current stock and value from inventory_items (which contains the actual data)
-        const { data: vendorProducts } = await supabase
-          .from('inventory_items')
-          .select(`
-            quantity,
-            products!inner(price, cost, supplier_id)
-          `)
-          .eq('products.supplier_id', vendor.id);
+    // Bulk fetch all inventory data for all vendors in one query
+    const { data: allVendorProducts } = await supabase
+      .from('inventory_items')
+      .select(`
+        quantity,
+        products!inner(price, cost, supplier_id)
+      `)
+      .in('products.supplier_id', vendors.map(v => v.id));
+
+    // Group data by vendor_id for efficient processing
+    const purchaseOrdersByVendor = new Map<string, PurchaseOrder[]>();
+    const productsByVendor = new Map<string, InventoryItem[]>();
+
+    // Group purchase orders by vendor
+    allPurchaseOrders?.forEach(po => {
+      if (!purchaseOrdersByVendor.has(po.supplier_id)) {
+        purchaseOrdersByVendor.set(po.supplier_id, []);
+      }
+      purchaseOrdersByVendor.get(po.supplier_id)!.push(po);
+    });
+
+    // Group products by vendor
+    allVendorProducts?.forEach((item: InventoryItem) => {
+      const product = Array.isArray(item.products) ? item.products[0] : item.products;
+      const vendorId = product?.supplier_id;
+      if (vendorId) {
+        if (!productsByVendor.has(vendorId)) {
+          productsByVendor.set(vendorId, []);
+        }
+        productsByVendor.get(vendorId)!.push(item);
+      }
+    });
+
+    // Process vendor stats using the grouped data
+    const vendorStats = vendors.map((vendor: Vendor) => {
+      const purchaseOrders = purchaseOrdersByVendor.get(vendor.id) || [];
+      const vendorProducts = productsByVendor.get(vendor.id) || [];
 
         // Calculate current stock metrics
-        const currentStockQuantity = vendorProducts?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
-        const currentStockValue = vendorProducts?.reduce((sum, item) => {
+        const currentStockQuantity = vendorProducts.reduce((sum: number, item: InventoryItem) => sum + (item.quantity || 0), 0);
+        const currentStockValue = vendorProducts.reduce((sum: number, item: InventoryItem) => {
           const quantity = item.quantity || 0;
           const product = Array.isArray(item.products) ? item.products[0] : item.products;
           const price = product?.price || 0;
           return sum + (quantity * price);
-        }, 0) || 0;
+        }, 0);
 
         // Calculate total purchase cost (what was paid to vendor)
-        const totalPurchaseCost = vendorProducts?.reduce((sum, item) => {
+        const totalPurchaseCost = vendorProducts.reduce((sum: number, item: InventoryItem) => {
           const quantity = item.quantity || 0;
           const product = Array.isArray(item.products) ? item.products[0] : item.products;
           const cost = product?.cost || 0;
           return sum + (quantity * cost);
-        }, 0) || 0;
+        }, 0);
 
         // Calculate purchase order metrics with payment tracking
-        const totalPurchaseOrders = purchaseOrders?.length || 0;
-        const totalSpent = purchaseOrders?.reduce((sum, po) => sum + (po.total || 0), 0) || 0;
-        const totalPaid = purchaseOrders?.reduce((sum, po) => sum + (po.paid_amount || 0), 0) || 0;
+        const totalPurchaseOrders = purchaseOrders.length;
+        const totalSpent = purchaseOrders.reduce((sum: number, po: PurchaseOrder) => sum + (po.total || 0), 0);
+        const totalPaid = purchaseOrders.reduce((sum: number, po: PurchaseOrder) => sum + (po.paid_amount || 0), 0);
         const totalPending = totalSpent - totalPaid;
-        const pendingOrders = purchaseOrders?.filter(po => po.status === 'pending').length || 0;
-        const unpaidOrders = purchaseOrders?.filter(po => po.payment_status !== 'paid').length || 0;
+        const pendingOrders = purchaseOrders.filter((po: PurchaseOrder) => po.status === 'pending').length;
+        const unpaidOrders = purchaseOrders.filter((po: PurchaseOrder) => po.payment_status !== 'paid').length;
 
         // Get last order date
-        const lastOrder = purchaseOrders?.sort((a, b) => 
+        const lastOrder = purchaseOrders.sort((a: PurchaseOrder, b: PurchaseOrder) => 
           new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime()
         )?.[0];
 
@@ -71,7 +126,7 @@ export async function GET() {
           current_stock_quantity: currentStockQuantity,
           total_purchase_cost: totalPurchaseCost,
           profit_potential: currentStockValue - totalPurchaseCost,
-          products_count: vendorProducts?.length || 0,
+          products_count: vendorProducts.length,
           // Enhanced Financial metrics in INR with payment tracking
           total_cost_inr: totalPurchaseCost, // Cost value of current stock
           total_mrp_inr: currentStockValue, // MRP value of current stock
@@ -84,10 +139,9 @@ export async function GET() {
           unpaid_orders: unpaidOrders, // Number of unpaid orders
           payment_status: totalPending > 0 ? 'pending' : 'paid',
           last_order_date: lastOrder?.created_at || null,
-          status: totalPurchaseOrders > 0 || (vendorProducts?.length || 0) > 0 ? 'Active' : 'Inactive'
+          status: totalPurchaseOrders > 0 || vendorProducts.length > 0 ? 'Active' : 'Inactive'
         };
-      })
-    );
+      });
 
     // Sort vendors by current stock value (highest first)
     const sortedVendorStats = vendorStats.sort((a, b) => {

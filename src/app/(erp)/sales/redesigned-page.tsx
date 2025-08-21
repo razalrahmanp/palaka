@@ -78,32 +78,99 @@ export default function RedesignedSalesPage() {
     return matchesSearch && matchesStatus;
   });
 
-  // Enhanced statistics with partial payment tracking
-  const stats = {
-    totalQuotes: quotes.length,
-    totalOrders: orders.length,
-    // Total Revenue: Only count sales orders (not quotes) to avoid double counting
-    totalRevenue: orders.map(o => {
-      // Check if order has final_price property (SalesOrder) or use total (regular Order)
-      const orderWithFinalPrice = o as Order & { final_price?: number };
-      return orderWithFinalPrice.final_price || o.total || 0;
-    }).reduce((sum, amount) => sum + amount, 0),
-    conversionRate: quotes.length > 0 ? Math.round((quotes.filter(q => q.status === 'Converted').length / quotes.length) * 100) : 0,
-    pendingQuotes: quotes.filter(q => q.status === 'Draft' || q.status === 'Pending').length,
-    confirmedOrders: orders.filter(o => o.status === 'confirmed').length,
-    // Monthly Revenue: Only count orders this month (not quotes) to avoid double counting
-    monthlyRevenue: orders.filter(o => 
-      new Date(o.date || '').getMonth() === new Date().getMonth()
-    ).map(o => {
-      const orderWithFinalPrice = o as Order & { final_price?: number };
-      return orderWithFinalPrice.final_price || o.total || 0;
-    }).reduce((sum, amount) => sum + amount, 0),
-    monthlyOrders: orders.filter(o => new Date(o.date || '').getMonth() === new Date().getMonth()).length,
-    // New partial payment stats
-    totalPendingPayments: quotes.reduce((sum, q) => sum + (q.remaining_balance || 0), 0),
-    partialPaidQuotes: quotes.filter(q => q.payment_status === 'partial').length,
-    fullyPaidQuotes: quotes.filter(q => q.payment_status === 'paid').length
-  };
+  // Enhanced statistics with real payment and invoice data
+  const stats = (() => {
+    // Type extension for orders with payment data
+    type OrderWithPayment = Order & {
+      total_paid?: number;
+      balance_due?: number;
+      payment_status?: string;
+      payment_count?: number;
+    };
+    
+    const ordersWithPayment = orders as OrderWithPayment[];
+    
+    // Basic counts
+    const totalQuotes = quotes.length;
+    const totalOrders = orders.length;
+    
+    // Revenue calculations using actual payment data
+    const totalRevenue = ordersWithPayment.reduce((sum, order) => {
+      return sum + (order.final_price || order.total || 0);
+    }, 0);
+    
+    // Total amount actually collected (real payments)
+    const totalCollected = ordersWithPayment.reduce((sum, order) => {
+      return sum + (order.total_paid || 0);
+    }, 0);
+    
+    // Outstanding balance across all orders
+    const totalOutstanding = ordersWithPayment.reduce((sum, order) => {
+      return sum + (order.balance_due || 0);
+    }, 0);
+    
+    // Payment status breakdown
+    const fullyPaidOrders = ordersWithPayment.filter(order => order.payment_status === 'paid').length;
+    const partialPaidOrders = ordersWithPayment.filter(order => order.payment_status === 'partial').length;
+    const pendingPaymentOrders = ordersWithPayment.filter(order => order.payment_status === 'pending').length;
+    
+    // Quote conversion metrics
+    const conversionRate = totalQuotes > 0 ? Math.round((quotes.filter(q => q.status === 'Converted').length / totalQuotes) * 100) : 0;
+    const pendingQuotes = quotes.filter(q => q.status === 'Draft' || q.status === 'Pending').length;
+    const confirmedOrders = ordersWithPayment.filter(o => o.status === 'confirmed').length;
+    
+    // Monthly metrics (current month)
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    const monthlyOrders = ordersWithPayment.filter(o => 
+      new Date(o.date || '').getMonth() === currentMonth &&
+      new Date(o.date || '').getFullYear() === currentYear
+    );
+    
+    const monthlyRevenue = monthlyOrders.reduce((sum, order) => {
+      return sum + (order.final_price || order.total || 0);
+    }, 0);
+    
+    const monthlyCollected = monthlyOrders.reduce((sum, order) => {
+      return sum + (order.total_paid || 0);
+    }, 0);
+    
+    // Collection rate
+    const collectionRate = totalRevenue > 0 ? Math.round((totalCollected / totalRevenue) * 100) : 0;
+    
+    // Average order value for paid orders
+    const paidOrders = ordersWithPayment.filter(order => order.payment_status === 'paid');
+    const averageOrderValue = paidOrders.length > 0
+      ? paidOrders.reduce((sum, order) => sum + (order.final_price || order.total || 0), 0) / paidOrders.length
+      : 0;
+    
+    // Legacy fields for compatibility (using quote data)
+    const totalPendingPayments = quotes.reduce((sum, q) => sum + (q.remaining_balance || 0), 0);
+    const partialPaidQuotes = quotes.filter(q => q.payment_status === 'partial').length;
+    const fullyPaidQuotes = quotes.filter(q => q.payment_status === 'paid').length;
+    
+    return {
+      totalQuotes,
+      totalOrders,
+      totalRevenue,
+      totalCollected,
+      totalOutstanding,
+      fullyPaidOrders,
+      partialPaidOrders,
+      pendingPaymentOrders,
+      conversionRate,
+      pendingQuotes,
+      confirmedOrders,
+      monthlyRevenue,
+      monthlyCollected,
+      monthlyOrders: monthlyOrders.length,
+      collectionRate,
+      averageOrderValue,
+      totalPendingPayments,
+      partialPaidQuotes,
+      fullyPaidQuotes
+    };
+  })();
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', { 
@@ -152,7 +219,7 @@ export default function RedesignedSalesPage() {
       </div>
 
       {/* Compact Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
         <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300">
           <CardContent className="p-3">
             <div className="flex items-center justify-between">
@@ -187,9 +254,9 @@ export default function RedesignedSalesPage() {
           <CardContent className="p-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-purple-100 text-xs font-medium">Total Revenue</p>
+                <p className="text-purple-100 text-xs font-medium">Revenue</p>
                 <p className="text-xl font-bold mb-1">{formatCurrency(stats.totalRevenue)}</p>
-                <p className="text-purple-100 text-xs">+{formatCurrency(stats.monthlyRevenue)} monthly</p>
+                <p className="text-purple-100 text-xs">{stats.collectionRate}% collected</p>
               </div>
               <div className="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center">
                 <DollarSign className="h-4 w-4" />
@@ -217,14 +284,29 @@ export default function RedesignedSalesPage() {
           <CardContent className="p-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-red-100 text-xs font-medium">Pending Payments</p>
-                <p className="text-xl font-bold mb-1">{formatCurrency(stats.totalPendingPayments)}</p>
-                <p className="text-red-100 text-xs">{stats.partialPaidQuotes} partial</p>
+                <p className="text-red-100 text-xs font-medium">Outstanding</p>
+                <p className="text-xl font-bold mb-1">{formatCurrency(stats.totalOutstanding)}</p>
+                <p className="text-red-100 text-xs">{stats.pendingPaymentOrders} pending</p>
               </div>
               <div className="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center">
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
                 </svg>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300">
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-emerald-100 text-xs font-medium">Collected</p>
+                <p className="text-xl font-bold mb-1">{formatCurrency(stats.totalCollected)}</p>
+                <p className="text-emerald-100 text-xs">{stats.fullyPaidOrders} paid orders</p>
+              </div>
+              <div className="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center">
+                <CreditCard className="h-4 w-4" />
               </div>
             </div>
           </CardContent>

@@ -22,6 +22,7 @@ import {
 
 // Import subcomponents
 import { SalesOrderInvoiceManager } from '@/components/finance/SalesOrderInvoiceManager';
+import { BankAccountManager } from '@/components/finance/BankAccountManager';
 import ChartOfAccounts from '@/components/finance/ChartOfAccounts';
 import GeneralLedger from '@/components/finance/GeneralLedger';
 import JournalEntryManager from '@/components/finance/JournalEntryManager';
@@ -47,6 +48,16 @@ interface DashboardMetrics {
   profitMargin: number;
 }
 
+interface SalesMetrics {
+  totalSalesRevenue: number;
+  totalPaymentsReceived: number;
+  totalOutstanding: number;
+  collectionRate: number;
+  fullyPaidOrders: number;
+  partialPaidOrders: number;
+  pendingPaymentOrders: number;
+}
+
 export default function FinancePage() {
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
@@ -69,6 +80,15 @@ export default function FinancePage() {
     cashFlowTrend: 'stable',
     profitMargin: 0,
   });
+  const [salesMetrics, setSalesMetrics] = useState<SalesMetrics>({
+    totalSalesRevenue: 0,
+    totalPaymentsReceived: 0,
+    totalOutstanding: 0,
+    collectionRate: 0,
+    fullyPaidOrders: 0,
+    partialPaidOrders: 0,
+    pendingPaymentOrders: 0,
+  });
 
   useEffect(() => {
     fetchFinancialData();
@@ -77,19 +97,44 @@ export default function FinancePage() {
   const fetchFinancialData = async () => {
     try {
       setLoading(true);
-      // Fetch data from our API endpoint
-      const response = await fetch('/api/finance/financial-summary');
       
-      if (!response.ok) {
+      // Fetch financial summary data
+      const financialResponse = await fetch('/api/finance/financial-summary');
+      if (!financialResponse.ok) {
         throw new Error('Failed to fetch financial data');
       }
+      const financialData = await financialResponse.json();
       
-      const data = await response.json();
+      // Fetch dedicated sales stats
+      const statsResponse = await fetch('/api/finance/stats');
+      if (!statsResponse.ok) {
+        throw new Error('Failed to fetch sales stats');
+      }
+      const statsData = await statsResponse.json();
       
-      setFinancialSummary(data.financialSummary);
-      setMetrics(data.metrics);
+      setFinancialSummary(financialData.financialSummary);
+      setMetrics(financialData.metrics);
+      setSalesMetrics({
+        totalSalesRevenue: statsData.totalSalesRevenue || 0,
+        totalPaymentsReceived: statsData.totalPaymentsReceived || 0,
+        totalOutstanding: statsData.totalOutstanding || 0,
+        collectionRate: statsData.collectionRate || 0,
+        fullyPaidOrders: statsData.fullyPaidOrders || 0,
+        partialPaidOrders: statsData.partialPaidOrders || 0,
+        pendingPaymentOrders: statsData.pendingPaymentOrders || 0,
+      });
     } catch (error) {
       console.error('Error fetching financial data:', error);
+      // Set default values on error
+      setSalesMetrics({
+        totalSalesRevenue: 0,
+        totalPaymentsReceived: 0,
+        totalOutstanding: 0,
+        collectionRate: 0,
+        fullyPaidOrders: 0,
+        partialPaidOrders: 0,
+        pendingPaymentOrders: 0,
+      });
     } finally {
       setLoading(false);
     }
@@ -209,6 +254,127 @@ export default function FinancePage() {
         </Card>
       </div>
 
+      {/* Sales Payment Analytics - Real Payment Data */}
+      <Card className="border-black bg-white">
+        <CardHeader className="border-b border-black">
+          <CardTitle className="text-black">Real-Time Sales Payment Analytics</CardTitle>
+          <CardDescription className="text-gray-600">
+            Live payment metrics from sales orders and invoices
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+            {/* Total Sales Revenue */}
+            <Card className="border-black bg-white">
+              <CardContent className="p-4">
+                <div className="flex flex-col space-y-2">
+                  <div className="flex items-center justify-between">
+                    <FileText className="h-5 w-5 text-black" />
+                    <Badge variant="outline" className="text-xs border-black text-black">SALES</Badge>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-black">
+                      Rs. {(salesMetrics.totalSalesRevenue || 0).toLocaleString()}
+                    </p>
+                    <p className="text-xs text-gray-600">Total Sales Revenue</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Total Collected */}
+            <Card className="border-black bg-white">
+              <CardContent className="p-4">
+                <div className="flex flex-col space-y-2">
+                  <div className="flex items-center justify-between">
+                    <DollarSign className="h-5 w-5 text-green-600" />
+                    <Badge variant="outline" className="text-xs border-green-600 text-green-600">PAID</Badge>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-green-600">
+                      Rs. {(salesMetrics.totalPaymentsReceived || 0).toLocaleString()}
+                    </p>
+                    <p className="text-xs text-gray-600">Payments Received</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Outstanding Amount */}
+            <Card className="border-black bg-white">
+              <CardContent className="p-4">
+                <div className="flex flex-col space-y-2">
+                  <div className="flex items-center justify-between">
+                    <CreditCard className="h-5 w-5 text-red-600" />
+                    <Badge variant="outline" className="text-xs border-red-600 text-red-600">DUE</Badge>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-red-600">
+                      Rs. {(salesMetrics.totalOutstanding || 0).toLocaleString()}
+                    </p>
+                    <p className="text-xs text-gray-600">Outstanding Balance</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Collection Rate */}
+            <Card className="border-black bg-white">
+              <CardContent className="p-4">
+                <div className="flex flex-col space-y-2">
+                  <div className="flex items-center justify-between">
+                    <TrendingUp className="h-5 w-5 text-blue-600" />
+                    <Badge variant="outline" className="text-xs border-blue-600 text-blue-600">RATE</Badge>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-blue-600">
+                      {(salesMetrics.collectionRate || 0).toFixed(1)}%
+                    </p>
+                    <p className="text-xs text-gray-600">Collection Rate</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Fully Paid Orders */}
+            <Card className="border-black bg-white">
+              <CardContent className="p-4">
+                <div className="flex flex-col space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Receipt className="h-5 w-5 text-green-600" />
+                    <Badge variant="outline" className="text-xs border-green-600 text-green-600">FULL</Badge>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-green-600">
+                      {salesMetrics.fullyPaidOrders || 0}
+                    </p>
+                    <p className="text-xs text-gray-600">Fully Paid Orders</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Pending Payments */}
+            <Card className="border-black bg-white">
+              <CardContent className="p-4">
+                <div className="flex flex-col space-y-2">
+                  <div className="flex items-center justify-between">
+                    <RefreshCw className="h-5 w-5 text-orange-600" />
+                    <Badge variant="outline" className="text-xs border-orange-600 text-orange-600">PENDING</Badge>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-orange-600">
+                      {salesMetrics.pendingPaymentOrders || 0}
+                    </p>
+                    <p className="text-xs text-gray-600">Pending Payments</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Action Items Alert */}
       {(metrics.pendingInvoices > 0 || metrics.overdueInvoices > 0 || metrics.unpostedJournals > 0) && (
         <Card className="border-yellow-200 bg-yellow-50">
@@ -243,7 +409,7 @@ export default function FinancePage() {
       <Card>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <CardHeader className="pb-0">
-            <TabsList className="grid w-full grid-cols-6 h-12">
+            <TabsList className="grid w-full grid-cols-7 h-12">
               <TabsTrigger value="overview" className="flex items-center gap-2">
                 <PieChart className="h-4 w-4" />
                 Overview
@@ -251,6 +417,10 @@ export default function FinancePage() {
               <TabsTrigger value="invoices" className="flex items-center gap-2">
                 <FileText className="h-4 w-4" />
                 Invoices
+              </TabsTrigger>
+              <TabsTrigger value="bank-accounts" className="flex items-center gap-2">
+                <CreditCard className="h-4 w-4" />
+                Bank Accounts
               </TabsTrigger>
               <TabsTrigger value="accounts" className="flex items-center gap-2">
                 <BookOpen className="h-4 w-4" />
@@ -356,6 +526,11 @@ export default function FinancePage() {
             {/* Invoice Management Tab */}
             <TabsContent value="invoices">
               <SalesOrderInvoiceManager />
+            </TabsContent>
+
+            {/* Bank Accounts Management Tab */}
+            <TabsContent value="bank-accounts">
+              <BankAccountManager />
             </TabsContent>
 
             {/* Chart of Accounts Tab */}

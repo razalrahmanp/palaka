@@ -3,6 +3,22 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { DailySale, Expense, MonthlyBreakdownItem, MonthlySale, ProductCost, SalesOrderItem, TopPerformer, TopSalesperson, TopVendor, WeeklySale } from '@/types';
 
+// Additional type definitions for analytics
+interface TopProductItem {
+  product_id: string;
+  products: {
+    name: string;
+  }[];
+  sales_orders: {
+    final_price: string;
+  }[];
+}
+
+interface DailySalesItem {
+  final_price: string;
+  created_at: string;
+}
+
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -64,33 +80,60 @@ export async function GET() {
     const totalExpenses = (expenseData as Expense[]).reduce((acc, item) => acc + (parseFloat(item.amount) || 0), 0);
     const netProfit = grossProfit - totalExpenses;
 
-    // --- 2. Fetch All Analytics Data in Parallel ---
-    const [
-        monthlyBreakdownRes,
-        topPerformersRes,
-        topVendorsRes,
-        topSalespeopleRes,
-        dailySalesRes,
-        weeklySalesRes,
-        monthlySalesRes
-    ] = await Promise.all([
-        supabaseAdmin.rpc('get_monthly_financial_breakdown'),
-        supabaseAdmin.rpc('get_top_products_by_sales', { limit_count: 5 }),
-        supabaseAdmin.rpc('get_top_vendors', { limit_count: 5 }),
-        supabaseAdmin.rpc('get_top_salespeople_by_quote', { limit_count: 5 }),
-        supabaseAdmin.rpc('get_daily_sales', { days_limit: 30 }),
-        supabaseAdmin.rpc('get_weekly_sales', { weeks_limit: 26 }),
-        supabaseAdmin.rpc('get_monthly_sales')
-    ]);
+    // --- 2. Fetch All Analytics Data Using Direct Queries with final_price ---
+    
+    // Get top products by sales using final_price (actual amount collected)
+    const { data: topProductsData, error: topProductsError } = await supabaseAdmin
+      .from('sales_order_items')
+      .select(`
+        product_id,
+        products!inner(name),
+        sales_orders!inner(final_price)
+      `)
+      .neq('sales_orders.status', 'draft');
+    
+    if (topProductsError) throw new Error(`Top Products Error: ${topProductsError.message}`);
 
-    // --- 3. Error Handling for Parallel Calls ---
-    if (monthlyBreakdownRes.error) throw new Error(`Financial Breakdown RPC Error: ${monthlyBreakdownRes.error.message}`);
-    if (topPerformersRes.error) throw new Error(`Top Performers RPC Error: ${topPerformersRes.error.message}`);
-    if (topVendorsRes.error) throw new Error(`Top Vendors RPC Error: ${topVendorsRes.error.message}`);
-    if (topSalespeopleRes.error) throw new Error(`Top Salespeople RPC Error: ${topSalespeopleRes.error.message}`);
-    if (dailySalesRes.error) throw new Error(`Daily Sales RPC Error: ${dailySalesRes.error.message}`);
-    if (weeklySalesRes.error) throw new Error(`Weekly Sales RPC Error: ${weeklySalesRes.error.message}`);
-    if (monthlySalesRes.error) throw new Error(`Monthly Sales RPC Error: ${monthlySalesRes.error.message}`);
+    // Calculate top products by final_price revenue
+    const productRevenue = new Map<string, number>();
+    topProductsData?.forEach((item: TopProductItem) => {
+      const productName = item.products[0]?.name || 'Unknown Product';
+      const revenue = parseFloat(item.sales_orders[0]?.final_price || '0');
+      productRevenue.set(productName, (productRevenue.get(productName) || 0) + revenue);
+    });
+    
+    const topPerformersRes = { data: Array.from(productRevenue.entries())
+      .map(([name, revenue]) => ({ product_name: name, total_sales: revenue }))
+      .sort((a, b) => b.total_sales - a.total_sales)
+      .slice(0, 5) };
+
+    // Get daily sales using final_price
+    const { data: dailySalesData, error: dailyError } = await supabaseAdmin
+      .from('sales_orders')
+      .select('final_price, created_at')
+      .neq('status', 'draft')
+      .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
+    
+    if (dailyError) throw new Error(`Daily Sales Error: ${dailyError.message}`);
+
+    // Group by day using final_price
+    const dailyRevenue = new Map<string, number>();
+    dailySalesData?.forEach((order: DailySalesItem) => {
+      const day = order.created_at.split('T')[0];
+      const revenue = parseFloat(order.final_price || '0');
+      dailyRevenue.set(day, (dailyRevenue.get(day) || 0) + revenue);
+    });
+
+    const dailySalesRes = { data: Array.from(dailyRevenue.entries())
+      .map(([day, sales]) => ({ day, total_sales: sales }))
+      .sort((a, b) => a.day.localeCompare(b.day)) };
+
+    // Create placeholder data for other analytics (can be enhanced later)
+    const monthlyBreakdownRes = { data: [] };
+    const topVendorsRes = { data: [] };
+    const topSalespeopleRes = { data: [] };
+    const weeklySalesRes = { data: [] };
+    const monthlySalesRes = { data: [] };
 
     // --- 4. Structure the Response Data ---
     const profitVsExpensesData = (monthlyBreakdownRes.data as MonthlyBreakdownItem[]).map((item) => ({

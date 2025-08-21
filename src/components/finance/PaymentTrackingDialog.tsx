@@ -21,10 +21,19 @@ import {
   History,
   Plus,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Building2
 } from 'lucide-react';
 import { Invoice, Payment } from '@/types';
 import { toast } from 'sonner';
+
+interface BankAccount {
+  id: string;
+  name: string;
+  account_number: string;
+  current_balance: number;
+  currency: string;
+}
 
 interface PaymentTrackingDialogProps {
   open: boolean;
@@ -42,9 +51,11 @@ export function PaymentTrackingDialog({
   const [loading, setLoading] = useState(false);
   const [paymentHistory, setPaymentHistory] = useState<Payment[]>([]);
   const [showAddPayment, setShowAddPayment] = useState(false);
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [paymentData, setPaymentData] = useState({
     amount: 0,
     method: 'cash' as 'cash' | 'card' | 'bank_transfer' | 'check',
+    bank_account_id: '',
     reference: '',
     notes: '',
     date: new Date().toISOString().split('T')[0]
@@ -64,6 +75,22 @@ export function PaymentTrackingDialog({
     }
   }, [invoice]);
 
+  const fetchBankAccounts = useCallback(async () => {
+    try {
+      const response = await fetch('/api/finance/bank_accounts');
+      if (response.ok) {
+        const result = await response.json();
+        setBankAccounts(result.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching bank accounts:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchBankAccounts();
+  }, [fetchBankAccounts]);
+
   useEffect(() => {
     if (invoice && open) {
       fetchPaymentHistory();
@@ -82,6 +109,7 @@ export function PaymentTrackingDialog({
 
     setLoading(true);
     try {
+      // First, record the payment
       const response = await fetch('/api/finance/payments', {
         method: 'POST',
         headers: {
@@ -100,6 +128,27 @@ export function PaymentTrackingDialog({
       });
 
       if (response.ok) {
+        // If payment method involves a bank account, create bank transaction
+        if (paymentData.bank_account_id && ['bank_transfer', 'check'].includes(paymentData.method)) {
+          try {
+            await fetch('/api/finance/bank_accounts/transactions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                bank_account_id: paymentData.bank_account_id,
+                type: 'credit', // Payment received
+                amount: paymentData.amount,
+                description: `Payment received for Invoice ${invoice.id.slice(0, 8)} - ${paymentData.method}`,
+                reference: paymentData.reference || `INV-${invoice.id.slice(0, 8)}`,
+                transaction_date: paymentData.date
+              })
+            });
+          } catch (bankError) {
+            console.warn('Bank transaction creation failed:', bankError);
+            // Don't fail the payment if bank transaction fails
+          }
+        }
+
         toast.success('Payment recorded successfully');
         fetchPaymentHistory();
         onSuccess();
@@ -109,6 +158,7 @@ export function PaymentTrackingDialog({
         setPaymentData({
           amount: 0,
           method: 'cash',
+          bank_account_id: '',
           reference: '',
           notes: '',
           date: new Date().toISOString().split('T')[0]
@@ -155,6 +205,7 @@ export function PaymentTrackingDialog({
 
   const remainingAmount = invoice.total - invoice.paid_amount;
   const paymentProgress = (invoice.paid_amount / invoice.total) * 100;
+  const requiresBankAccount = ['bank_transfer', 'check'].includes(paymentData.method);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -294,7 +345,9 @@ export function PaymentTrackingDialog({
                             value={paymentData.method}
                             onValueChange={(value: "cash" | "card" | "bank_transfer" | "check") => setPaymentData(prev => ({ 
                               ...prev, 
-                              method: value 
+                              method: value,
+                              // Reset bank account when method changes
+                              bank_account_id: ['bank_transfer', 'check'].includes(value) ? prev.bank_account_id : ''
                             }))}
                           >
                             <SelectTrigger>
@@ -309,6 +362,39 @@ export function PaymentTrackingDialog({
                           </Select>
                         </div>
                       </div>
+
+                      {/* Bank Account Selection - only show for bank transfer and check */}
+                      {requiresBankAccount && (
+                        <div>
+                          <Label htmlFor="bank_account_id">Bank Account *</Label>
+                          <Select
+                            value={paymentData.bank_account_id}
+                            onValueChange={(value: string) => setPaymentData(prev => ({ 
+                              ...prev, 
+                              bank_account_id: value 
+                            }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select bank account" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {bankAccounts.map((account) => (
+                                <SelectItem key={account.id} value={account.id}>
+                                  <div className="flex items-center gap-2">
+                                    <Building2 className="h-4 w-4" />
+                                    <span>{account.name}</span>
+                                    {account.account_number && (
+                                      <span className="text-gray-500 text-xs">
+                                        (****{account.account_number.slice(-4)})
+                                      </span>
+                                    )}
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
 
                       <div className="grid grid-cols-2 gap-4">
                         <div>

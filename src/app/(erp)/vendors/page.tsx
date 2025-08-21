@@ -61,24 +61,21 @@ export default function VendorsPage() {
       if (!response.ok) throw new Error('Failed to fetch vendors');
       const data = await response.json();
       
-      // Fetch detailed inventory for each vendor
-      const vendorsWithInventory = await Promise.all(
-        data.map(async (vendor: VendorStats) => {
-          try {
-            const inventoryResponse = await fetch(`/api/suppliers/${vendor.id}/inventory`);
-            if (inventoryResponse.ok) {
-              const inventoryData = await inventoryResponse.json();
-              return {
-                ...vendor,
-                inventory_summary: inventoryData.summary
-              };
-            }
-          } catch (error) {
-            console.error(`Error fetching inventory for vendor ${vendor.id}:`, error);
-          }
-          return vendor;
-        })
-      );
+      // Map vendor stats data to include inventory_summary for backward compatibility
+      const vendorsWithInventory = data.map((vendor: VendorStats) => ({
+        ...vendor,
+        inventory_summary: {
+          total_products: vendor.products_count,
+          total_quantity: vendor.current_stock_quantity,
+          total_stock_value: vendor.current_stock_value,
+          total_stock_cost: vendor.total_cost_inr,
+          total_profit: vendor.profit_margin_inr,
+          low_stock_items: 0, // Not available in current stats, can be added later if needed
+          out_of_stock_items: 0, // Not available in current stats, can be added later if needed
+          categories: [], // Not available in current stats, can be added later if needed
+          overall_profit_margin: vendor.profit_percentage
+        }
+      }));
       
       setVendors(vendorsWithInventory);
     } catch (error) {

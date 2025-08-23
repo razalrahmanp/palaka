@@ -106,7 +106,7 @@ export async function GET() {
 
     // Fetch order items separately
     const { data: orderItems, error: itemsError } = await supabase
-      .from("order_items")
+      .from("sales_order_items")
       .select(`
         order_id,
         quantity,
@@ -234,16 +234,19 @@ export async function GET() {
         paymentStatus = 'partial';
       }
 
-      // Get customer name from the customers relation
-      const customerName = (order as any).customers && Array.isArray((order as any).customers) && (order as any).customers.length > 0 
-        ? (order as any).customers[0].name 
-        : 'Unknown Customer';
+      // Get customer data from the customers relation
+      const customerData = (order as any).customers;
+      const customerName = customerData?.name || 'Unknown Customer';
+      const customerPhone = customerData?.phone || '';
+      const customerEmail = customerData?.email || '';
 
       return {
         id: order.id,
         quote_id: order.quote_id,
         customer: {
-          name: customerName
+          name: customerName,
+          phone: customerPhone,
+          email: customerEmail
         },
         date: order.created_at.split('T')[0], // Convert timestamp to date
         status: order.status,

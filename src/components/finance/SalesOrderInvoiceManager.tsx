@@ -920,7 +920,14 @@ export function SalesOrderInvoiceManager() {
                                   <User className="h-4 w-4 text-gray-500" />
                                   <span className="font-medium text-gray-900">{order.customer?.name || 'Unknown Customer'}</span>
                                 </div>
-                                <span className="text-xs text-gray-500 mt-1">{order.customer?.phone || order.customer?.email || 'No contact'}</span>
+                                <span className="text-xs text-gray-500 mt-1">
+                                  {order.customer?.phone ? 
+                                    `📞 ${order.customer.phone}` : 
+                                    order.customer?.email ? 
+                                      `📧 ${order.customer.email}` : 
+                                      '⚠️ No contact info'
+                                  }
+                                </span>
                               </div>
                             </TableCell>
                             <TableCell>

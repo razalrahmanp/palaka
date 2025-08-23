@@ -10,7 +10,6 @@ import {
   FileText, 
   ShoppingCart, 
   DollarSign, 
-  TrendingUp, 
   Plus, 
   Search, 
   Filter,
@@ -33,7 +32,6 @@ import { SalesModals } from '@/components/sales/SalesModals';
 import QuoteDetails from '@/components/sales/QuoteDetails';
 import { Order, Quote } from '@/types';
 import { AssignSalesRepModal } from '@/components/sales/AssignSalesRepModal';
-import { SalesPerformanceSection } from '@/components/sales/representative/SalesPerformanceSection';
 import { hasPermission } from '@/lib/auth';
 
 export default function RedesignedSalesPage() {
@@ -318,7 +316,7 @@ export default function RedesignedSalesPage() {
                 <p className="text-orange-100 text-xs">Quote to order</p>
               </div>
               <div className="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center">
-                <TrendingUp className="h-4 w-4" />
+                <BarChart3 className="h-4 w-4" />
               </div>
             </div>
           </CardContent>
@@ -362,7 +360,7 @@ export default function RedesignedSalesPage() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           {/* Enterprise Tab Navigation */}
           <div className="bg-gray-50 border-b border-gray-200">
-            <TabsList className="grid w-full grid-cols-4 bg-transparent p-0 h-auto">
+            <TabsList className="grid w-full grid-cols-3 bg-transparent p-0 h-auto">
               <TabsTrigger 
                 value="quotes" 
                 className="relative flex items-center justify-center gap-2 px-6 py-4 text-sm font-medium 
@@ -411,22 +409,7 @@ export default function RedesignedSalesPage() {
                   New
                 </Badge>
               </TabsTrigger>
-              <TabsTrigger 
-                value="performance" 
-                className="relative flex items-center justify-center gap-2 px-6 py-4 text-sm font-medium 
-                          text-gray-600 hover:text-gray-900 hover:bg-white/50
-                          data-[state=active]:bg-white data-[state=active]:text-orange-600 
-                          data-[state=active]:border-b-2 data-[state=active]:border-orange-600
-                          data-[state=active]:shadow-sm transition-all duration-200
-                          border-b-2 border-transparent"
-              >
-                <TrendingUp className="h-4 w-4" />
-                <span>Sales Performance</span>
-                <Badge className="bg-orange-50 text-orange-700 border border-orange-200 text-xs px-2 py-0.5
-                               data-[state=active]:bg-orange-100 data-[state=active]:text-orange-800">
-                  Analytics
-                </Badge>
-              </TabsTrigger>
+
             </TabsList>
           </div>
 
@@ -529,14 +512,7 @@ export default function RedesignedSalesPage() {
               <CustomOrdersTabContent />
             </TabsContent>
 
-            <TabsContent value="performance" className="mt-0">
-              {currentUser && (
-                <SalesPerformanceSection 
-                  userId={currentUser.id} 
-                  onRefresh={refresh}
-                />
-              )}
-            </TabsContent>
+
           </div>
         </Tabs>
       </div>

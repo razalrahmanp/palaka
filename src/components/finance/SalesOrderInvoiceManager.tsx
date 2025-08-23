@@ -36,8 +36,41 @@ import { WhatsAppService, WhatsAppBillData } from '@/lib/whatsappService';
 // Component interfaces and types
 
 interface SalesOrderWithInvoice extends SalesOrder {
-  invoices?: Invoice[];
-  invoice_status?: 'not_invoiced' | 'partially_invoiced' | 'fully_invoiced';
+  // New API structure fields from /api/finance/sales-orders
+  customer?: { name?: string; phone?: string; email?: string };
+  total_paid?: number;
+  balance_due?: number;
+  payment_status?: 'paid' | 'partial' | 'pending';
+  payment_count?: number;
+  is_invoiced?: boolean;
+  invoice_status?: 'fully_paid' | 'partially_paid' | 'not_invoiced';
+  invoice_count?: number;
+  invoices?: Array<{
+    id: string;
+    total: number;
+    status: string;
+    created_at: string;
+    paid_amount: number;
+    actual_paid_amount: number;
+    payment_count: number;
+  }>;
+  payments?: Array<{
+    id: string;
+    invoice_id: string;
+    amount: number;
+    payment_date?: string;
+    date: string;
+    method: string;
+    reference?: string;
+    description?: string;
+  }>;
+  sales_representative?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  
+  // Legacy fields for backward compatibility
   total_invoiced?: number;
   remaining_to_invoice?: number;
   paid_amount?: number; // Amount already paid
@@ -94,6 +127,12 @@ export function SalesOrderInvoiceManager() {
   const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
   const [paymentTrackingOpen, setPaymentTrackingOpen] = useState(false);
   const [createExpenseOpen, setCreateExpenseOpen] = useState(false);
+  
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(20);
+  const [activeTab, setActiveTab] = useState('orders');
+  
   const [expenseForm, setExpenseForm] = useState({
     date: new Date().toISOString().split('T')[0],
     description: '',
@@ -101,7 +140,6 @@ export function SalesOrderInvoiceManager() {
     category: 'Other',
     payment_method: 'cash'
   });
-  const [activeTab, setActiveTab] = useState('orders');
 
   useEffect(() => {
     fetchData();
@@ -111,22 +149,24 @@ export function SalesOrderInvoiceManager() {
     try {
       setLoading(true);
       
-      // First fetch orders separately to ensure they are loaded
-      const ordersRes = await fetch('/api/sales/orders');
+      // Use the dedicated finance sales orders API for comprehensive data
+      const ordersRes = await fetch('/api/finance/sales-orders');
       if (!ordersRes.ok) {
-        console.error('Failed to fetch orders:', ordersRes.statusText);
-        throw new Error('Failed to fetch sales orders');
+        console.error('Failed to fetch finance sales orders:', ordersRes.statusText);
+        throw new Error('Failed to fetch finance sales orders');
       }
       
       const ordersData = await ordersRes.json();
-      console.log('Raw Sales Orders Data:', ordersData); // Enhanced debugging
+      console.log('🔍 Finance Sales Orders API Response:', ordersData);
       
-      // Handle the orders API response structure
-      const orders = Array.isArray(ordersData) ? ordersData : (ordersData.value || ordersData.data || []);
-      console.log('Processed Orders Array:', orders); // Enhanced debugging
-      console.log('Orders count:', orders?.length || 0); // Enhanced debugging
+      // Extract orders from the new API structure
+      const orders = ordersData.orders || [];
+      console.log('📦 Processed Orders Array:', orders);
+      console.log('📊 Orders count:', orders?.length || 0);
+      console.log('📋 First order sample:', orders[0]);
+      console.log('📈 Summary:', ordersData.summary);
       
-      // Then fetch the rest
+      // Fetch the rest separately for other components that might need them
       const [invoicesRes, paymentsRes, expensesRes] = await Promise.all([
         fetch('/api/finance/invoices'),
         fetch('/api/finance/payments'),
@@ -150,47 +190,23 @@ export function SalesOrderInvoiceManager() {
       console.log('Processed Payments:', payments); // Enhanced debugging
       console.log('Payments structure check:', payments.length > 0 ? payments[0] : 'No payments found'); // Check structure
 
-      // Process orders with invoice status
+      // Use the orders data directly since payment calculations are already done in the backend
       const processedOrders = orders.map((order: SalesOrder) => {
-        const orderInvoices = invoices.filter((inv: Invoice) => inv.sales_order_id === order.id);
-        const totalInvoiced = orderInvoices.reduce((sum: number, inv: Invoice) => sum + inv.total, 0);
+        // Ensure we have consistent field names and the payment data from backend is used
         const orderTotal = order.final_price || order.total || 0;
-        const remainingToInvoice = orderTotal - totalInvoiced;
         
-        // Calculate paid amount for each order by joining through invoices
-        const orderInvoiceIds = orderInvoices.map((inv: Invoice) => inv.id);
-        const orderPayments = payments.filter((payment: { invoice_id: string; amount: number }) => 
-          orderInvoiceIds.includes(payment.invoice_id)
-        );
-        const paidAmount = orderPayments.reduce((sum: number, payment: { amount: number }) => sum + payment.amount, 0);
-              
-        // Calculate payment status based on amounts
-        const calculatedPaymentStatus = paidAmount >= orderTotal ? 'paid' : paidAmount > 0 ? 'partially_paid' : 'unpaid';
-        
-        // Calculate payment balance (outstanding amount on invoices)
-        const paymentBalance = Math.max(0, totalInvoiced - paidAmount);
-        
-        let invoiceStatus: 'not_invoiced' | 'partially_invoiced' | 'fully_invoiced' = 'not_invoiced';
-        if (totalInvoiced > 0) {
-          invoiceStatus = remainingToInvoice <= 0 ? 'fully_invoiced' : 'partially_invoiced';
-        }
-
         return {
           ...order,
           // Ensure we have consistent field names
           total_price: orderTotal,
           created_at: order.created_at || (order.date ? `${order.date}T00:00:00.000Z` : new Date().toISOString()),
-          invoices: orderInvoices,
-          invoice_status: invoiceStatus,
-          total_invoiced: totalInvoiced,
-          remaining_to_invoice: remainingToInvoice,
-          paid_amount: paidAmount,
-          payment_balance: paymentBalance,
-          calculated_payment_status: calculatedPaymentStatus
+          // Keep the payment data that was calculated correctly in the backend
+          // paid_amount, payment_balance, invoice_status, etc. are already included from the API
         };
       });
 
-      console.log('Processed Orders:', processedOrders); // Debugging line
+      console.log('Processed Orders with Backend Payment Data:', processedOrders); // Debugging line
+      console.log('Final processed orders count:', processedOrders.length); // Debugging line
       setSalesOrders(processedOrders);
       setInvoices(invoices);
       setPayments(payments);
@@ -200,38 +216,6 @@ export function SalesOrderInvoiceManager() {
     } finally {
       setLoading(false);
     }
-  };
-
-  // Combined status showing invoice status with payment consideration
-  const getInvoicePaymentStatusBadge = (order: { 
-    invoice_status?: string; 
-    paid_amount?: number; 
-    total_invoiced?: number; 
-  }) => {
-    const invoiceStatus = order.invoice_status || 'not_invoiced';
-    const paidAmount = order.paid_amount || 0;
-    const totalInvoiced = order.total_invoiced || 0;
-    
-    if (invoiceStatus === 'not_invoiced') {
-      return <Badge variant="outline" className="text-red-600 border-red-200">Not Invoiced</Badge>;
-    }
-    
-    if (invoiceStatus === 'partially_invoiced') {
-      return <Badge variant="outline" className="text-yellow-600 border-yellow-200">Partially Invoiced</Badge>;
-    }
-    
-    // For fully invoiced, check payment status
-    if (invoiceStatus === 'fully_invoiced') {
-      if (paidAmount >= totalInvoiced) {
-        return <Badge variant="outline" className="text-blue-600 border-blue-200">Invoiced & Paid</Badge>;
-      } else if (paidAmount > 0) {
-        return <Badge variant="outline" className="text-purple-600 border-purple-200">Invoiced & Partial Payment</Badge>;
-      } else {
-        return <Badge variant="outline" className="text-green-600 border-green-200">Invoiced & Unpaid</Badge>;
-      }
-    }
-    
-    return <Badge variant="secondary">{invoiceStatus}</Badge>;
   };
 
   const getPaymentStatusBadge = (status: string) => {
@@ -245,8 +229,10 @@ export function SalesOrderInvoiceManager() {
       case 'Unpaid':
         return <Badge className="bg-red-100 text-red-800">Unpaid</Badge>;
       case 'partially_paid':
+      case 'partial':
       case 'PARTIAL':
       case 'Partially Paid':
+      case 'pending':
       case 'Pending':
         return <Badge className="bg-yellow-100 text-yellow-800">Partially Paid</Badge>;
       case 'overdue':
@@ -265,6 +251,114 @@ export function SalesOrderInvoiceManager() {
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-IN');
+  };
+
+  // Pagination logic
+  const getPaginatedData = <T,>(data: T[], page: number, perPage: number): T[] => {
+    const startIndex = (page - 1) * perPage;
+    const endIndex = startIndex + perPage;
+    return data.slice(startIndex, endIndex);
+  };
+
+  const getTotalPages = (dataLength: number, perPage: number) => {
+    return Math.ceil(dataLength / perPage);
+  };
+
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    setCurrentPage(1); // Reset to first page when changing tabs
+  };
+
+  // Get current data based on active tab
+  const getCurrentData = () => {
+    switch (activeTab) {
+      case 'orders':
+        return getPaginatedData(salesOrders, currentPage, itemsPerPage);
+      case 'invoices':
+        return getPaginatedData(invoices, currentPage, itemsPerPage);
+      case 'payments':
+        return getPaginatedData(payments, currentPage, itemsPerPage);
+      case 'expenses':
+        return getPaginatedData(expenses, currentPage, itemsPerPage);
+      default:
+        return [];
+    }
+  };
+
+  const getCurrentDataLength = () => {
+    switch (activeTab) {
+      case 'orders':
+        return salesOrders.length;
+      case 'invoices':
+        return invoices.length;
+      case 'payments':
+        return payments.length;
+      case 'expenses':
+        return expenses.length;
+      default:
+        return 0;
+    }
+  };
+
+  const PaginationComponent = () => {
+    const totalPages = getTotalPages(getCurrentDataLength(), itemsPerPage);
+    
+    if (totalPages <= 1) return null;
+
+    return (
+      <div className="flex items-center justify-between px-6 py-4 border-t">
+        <div className="text-sm text-gray-700">
+          Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, getCurrentDataLength())} of {getCurrentDataLength()} results
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+            disabled={currentPage === 1}
+          >
+            Previous
+          </Button>
+          
+          {/* Page numbers */}
+          <div className="flex gap-1">
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              let pageNumber;
+              if (totalPages <= 5) {
+                pageNumber = i + 1;
+              } else if (currentPage <= 3) {
+                pageNumber = i + 1;
+              } else if (currentPage >= totalPages - 2) {
+                pageNumber = totalPages - 4 + i;
+              } else {
+                pageNumber = currentPage - 2 + i;
+              }
+              
+              return (
+                <Button
+                  key={pageNumber}
+                  variant={currentPage === pageNumber ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setCurrentPage(pageNumber)}
+                  className="w-8 h-8 p-0"
+                >
+                  {pageNumber}
+                </Button>
+              );
+            })}
+          </div>
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+            disabled={currentPage === totalPages}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
+    );
   };
 
   const handlePrintBill = async (order: SalesOrderWithInvoice) => {
@@ -418,12 +512,25 @@ export function SalesOrderInvoiceManager() {
     }
   };
 
-  // Summary calculations
-  const totalOrderValue = salesOrders.reduce((sum, order) => sum + (order.final_price || order.total_price || order.total || 0), 0);
-  const totalInvoiced = salesOrders.reduce((sum, order) => sum + (order.total_invoiced || 0), 0);
-  const totalPaid = salesOrders.reduce((sum, order) => sum + (order.paid_amount || 0), 0);
-  const pendingInvoicing = totalOrderValue - totalInvoiced;
-  const pendingPayments = totalInvoiced - totalPaid;
+  // Summary calculations using new API structure
+  const totalOrderValue = salesOrders.reduce((sum, order) => sum + (order.final_price || order.total || 0), 0);
+  
+  // Calculate total invoiced from orders with invoices
+  const totalInvoiced = salesOrders
+    .filter(order => order.is_invoiced)
+    .reduce((sum, order) => {
+      return sum + (order.invoices?.reduce((invSum, inv) => invSum + inv.total, 0) || 0);
+    }, 0);
+  
+  // Calculate total paid from new API
+  const totalPaid = salesOrders.reduce((sum, order) => sum + (order.total_paid || 0), 0);
+  
+  // Calculate pending amounts
+  const pendingInvoicing = salesOrders
+    .filter(order => !order.is_invoiced)
+    .reduce((sum, order) => sum + (order.final_price || order.total || 0), 0);
+    
+  const pendingPayments = salesOrders.reduce((sum, order) => sum + (order.balance_due || 0), 0);
 
   // Debug stat calculations
   console.log('STAT CALCULATIONS:', {
@@ -432,7 +539,9 @@ export function SalesOrderInvoiceManager() {
     totalPaid,
     pendingInvoicing,
     pendingPayments,
-    ordersWithPayments: salesOrders.filter(order => (order.paid_amount || 0) > 0).length
+    ordersWithPayments: salesOrders.filter(order => (order.total_paid || 0) > 0).length,
+    invoicedOrders: salesOrders.filter(order => order.is_invoiced).length,
+    notInvoicedOrders: salesOrders.filter(order => !order.is_invoiced).length
   });
 
   if (loading) {
@@ -472,7 +581,7 @@ export function SalesOrderInvoiceManager() {
         </div>
         
         {/* Main Navigation Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
           <TabsList className="grid w-full grid-cols-4 h-12 bg-gray-50 rounded-none border-b">
             <TabsTrigger 
               value="orders" 
@@ -786,7 +895,7 @@ export function SalesOrderInvoiceManager() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {salesOrders.length === 0 ? (
+                        {getPaginatedData(salesOrders, currentPage, itemsPerPage).length === 0 ? (
                           <TableRow>
                             <TableCell colSpan={9} className="text-center py-8">
                               <div className="flex flex-col items-center gap-2">
@@ -797,7 +906,7 @@ export function SalesOrderInvoiceManager() {
                             </TableCell>
                           </TableRow>
                         ) : (
-                          salesOrders.map((order) => (
+                          getPaginatedData(salesOrders, currentPage, itemsPerPage).map((order) => (
                             <TableRow key={order.id} className="hover:bg-gray-50/75 transition-colors border-b">
                             <TableCell className="font-medium">
                               <div className="flex flex-col">
@@ -811,7 +920,7 @@ export function SalesOrderInvoiceManager() {
                                   <User className="h-4 w-4 text-gray-500" />
                                   <span className="font-medium text-gray-900">{order.customer?.name || 'Unknown Customer'}</span>
                                 </div>
-                                <span className="text-xs text-gray-500 mt-1">{order.customer?.phone || 'No contact'}</span>
+                                <span className="text-xs text-gray-500 mt-1">{order.customer?.phone || order.customer?.email || 'No contact'}</span>
                               </div>
                             </TableCell>
                             <TableCell>
@@ -838,81 +947,49 @@ export function SalesOrderInvoiceManager() {
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-col gap-1">
-                                {getInvoicePaymentStatusBadge(order)}
+                                {/* Use the new invoice_status field from our API */}
+                                {order.invoice_status === 'fully_paid' && (
+                                  <Badge className="bg-green-100 text-green-800">Fully Paid</Badge>
+                                )}
+                                {order.invoice_status === 'partially_paid' && (
+                                  <Badge className="bg-yellow-100 text-yellow-800">Partially Paid</Badge>
+                                )}
+                                {order.invoice_status === 'not_invoiced' && (
+                                  <Badge className="bg-gray-100 text-gray-800">Not Invoiced</Badge>
+                                )}
                                 <span className="text-xs text-gray-500">
-                                  {order.invoices?.length || 0} invoice(s)
+                                  {order.invoice_count || 0} invoice(s)
                                 </span>
                               </div>
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-col">
-                                <span className="font-medium text-green-600">{formatCurrency(order.paid_amount || 0)}</span>
+                                <span className="font-medium text-green-600">{formatCurrency(order.total_paid || 0)}</span>
                                 <span className="text-xs text-gray-500 mt-1">
-                                  {((order.total_invoiced || 0) / (order.final_price || order.total_price || order.total || 1) * 100).toFixed(0)}% invoiced
+                                  {order.is_invoiced ? `${order.invoice_count} invoice(s)` : '0 invoices'}
                                 </span>
                               </div>
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-col">
                                 <span className="font-medium text-orange-600">
-                                  {formatCurrency(order.payment_balance || 0)}
+                                  {formatCurrency(order.balance_due || 0)}
                                 </span>
                                 <span className="text-xs text-gray-500 mt-1">
-                                  {(() => {
-                                    if ((order.total_invoiced || 0) <= 0) return '0% outstanding';
-                                    const percentage = ((order.payment_balance || 0) / (order.total_invoiced || 1) * 100);
-                                    if (percentage === 0) return '0% outstanding';
-                                    if (percentage < 1) return `<1% outstanding`;
-                                    return `${percentage.toFixed(0)}% outstanding`;
-                                  })()}
+                                  {(order.balance_due || 0) > 0 ? 'Outstanding' : 'Settled'}
                                 </span>
                               </div>
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-col gap-1">
-                                {getPaymentStatusBadge(
-                                  ((order.paid_amount || 0) >= (order.final_price || order.total_price || order.total || 0) ? 'PAID' : 
-                                   (order.paid_amount || 0) > 0 ? 'PARTIAL' : 'UNPAID'))}
+                                {getPaymentStatusBadge(order.payment_status || 'pending')}
                                 <span className="text-xs text-gray-500">
-                                  {formatCurrency(order.paid_amount || 0)} received
+                                  {formatCurrency(order.total_paid || 0)} received
                                 </span>
                               </div>
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center justify-center gap-1">
-                                {/* Create Invoice Button - Only show if not fully invoiced */}
-                                {(order.remaining_to_invoice || 0) > 0 && (
-                                  <Button
-                                    size="sm"
-                                    className="bg-blue-600 hover:bg-blue-700 text-xs px-2 py-1"
-                                    onClick={() => {
-                                      setSelectedOrder(order);
-                                      setCreateInvoiceOpen(true);
-                                    }}
-                                    title="Create Invoice"
-                                  >
-                                    <Plus className="h-3 w-3 mr-1" />
-                                    Invoice
-                                  </Button>
-                                )}
-                                
-                                {/* View Invoices Button - Only show if invoices exist */}
-                                {(order.invoices?.length || 0) > 0 && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="text-xs px-2 py-1"
-                                    onClick={() => {
-                                      setSelectedOrder(order);
-                                      setActiveTab('invoices');
-                                    }}
-                                    title="View Invoices"
-                                  >
-                                    <Eye className="h-3 w-3 mr-1" />
-                                    View
-                                  </Button>
-                                )}
-
                                 {/* Print Bill Button */}
                                 <Button
                                   size="sm"
@@ -938,7 +1015,7 @@ export function SalesOrderInvoiceManager() {
                                 {/* Payment Tracker - Always show */}
                                 <SalesOrderPaymentTracker
                                   orderId={order.id}
-                                  orderTotal={order.final_price || order.total_price || order.total || 0}
+                                  orderTotal={order.final_price || order.total || 0}
                                   onPaymentAdded={() => {
                                     fetchData();
                                     console.log('Payment added successfully - Invoice auto-created/updated');
@@ -951,6 +1028,9 @@ export function SalesOrderInvoiceManager() {
                   </TableBody>
                 </Table>
                 </div>
+                
+                {/* Pagination */}
+                <PaginationComponent />
                 </TabsContent>
               </Tabs>
             </TabsContent>
@@ -986,7 +1066,7 @@ export function SalesOrderInvoiceManager() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {invoices.map((invoice) => (
+                    {getPaginatedData(invoices, currentPage, itemsPerPage).map((invoice) => (
                       <TableRow key={invoice.id} className="hover:bg-gray-50 transition-colors">
                         <TableCell className="font-medium text-blue-600">{invoice.id.slice(0, 8)}</TableCell>
                         <TableCell>{invoice.sales_order_id?.slice(0, 8) || 'N/A'}</TableCell>
@@ -1044,6 +1124,9 @@ export function SalesOrderInvoiceManager() {
                   </TableBody>
                 </Table>
               </div>
+              
+              {/* Pagination */}
+              <PaginationComponent />
             </TabsContent>
 
             {/* Payments Tab */}

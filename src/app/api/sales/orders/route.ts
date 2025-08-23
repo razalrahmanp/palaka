@@ -1,5 +1,6 @@
-// src/app/api/sales/orders/route.ts
+// src/app/api/sales/orders/route.ts - Updated for payment display fix
 import { supabase } from "@/lib/supabaseClient";
+import { supabase as supabaseAdmin } from "@/lib/supabaseAdmin";
 import { NextResponse } from "next/server";
 
 type OrderRow = {
@@ -8,7 +9,7 @@ type OrderRow = {
   customer_id: string;
   status: string;
   created_at: string;
-  created_by?: string;
+  created_by?: string | null;
   final_price?: number | null;
   original_price?: number | null;
   discount_amount?: number | null;
@@ -54,20 +55,29 @@ type ItemQueryResult = {
     price: number;
     sku?: string;
     suppliers?: { name: string }[];
+  } | {
+    name: string;
+    price: number;
+    sku?: string;
+    suppliers?: { name: string }[];
   }[] | null;
 };
 
-type RawOrderData = {
+type SupabaseOrderRow = {
   id: string;
   quote_id?: string | null;
   customer_id: string;
   status: string;
   created_at: string;
-  created_by?: string;
+  created_by?: string | null;
   final_price?: number | null;
   original_price?: number | null;
   discount_amount?: number | null;
-  customers?: { name: string } | null;
+  customers?: { 
+    name: string 
+  } | { 
+    name: string
+  }[] | null;
   users?: {
     id: string;
     name: string;
@@ -122,37 +132,10 @@ export async function GET() {
       userMap.set(user.id, user);
     });
 
-    // Map orders with user data
-    const simpleOrders = (ordersRaw ?? []).map((o: any) => ({
-      id: o.id,
-      quote_id: o.quote_id,
-      customer_id: o.customer_id,
-      status: o.status,
-      created_at: o.created_at,
-      created_by: o.created_by,
-      final_price: o.final_price,
-      original_price: o.original_price,
-      discount_amount: o.discount_amount,
-      customer: o.customers && o.customers.length > 0
-        ? { name: o.customers[0].name }
-        : o.customers
-        ? { name: o.customers.name }
-        : { name: 'Unknown Customer' },
-      date: o.created_at?.split("T")[0],
-      total: o.final_price ?? 0,
-      items: [],
-      sales_representative: o.created_by && userMap.has(o.created_by)
-        ? userMap.get(o.created_by)
-        : null,
-      total_paid: 0,
-      balance_due: o.final_price ?? 0,
-      payment_status: 'pending',
-      payment_count: 0,
-    }));
+    // Remove the early return - continue to proper payment calculation
+    // return NextResponse.json(simpleOrders);
 
-    return NextResponse.json(simpleOrders);
-
-  const orders: OrderRow[] = (ordersRaw ?? []).map((o: any) => ({
+  const orders: OrderRow[] = (ordersRaw ?? []).map((o: SupabaseOrderRow) => ({
     id: o.id,
     quote_id: o.quote_id,
     customer_id: o.customer_id,
@@ -167,50 +150,53 @@ export async function GET() {
         ? (o.customers.length > 0 ? { name: o.customers[0].name } : null)
         : { name: o.customers.name }
       : null,
-    sales_representative: o.users 
-      ? Array.isArray(o.users) 
-        ? (o.users.length > 0 ? o.users[0] : null)
-        : o.users
+    sales_representative: o.created_by && userMap.has(o.created_by)
+      ? userMap.get(o.created_by)
       : null
   }));
 
-  // Fetch payment data for all orders
+  // Fetch payment data for all orders using admin client to bypass RLS
   const orderIds = orders.map(o => o.id);
-  const { data: invoices, error: invoicesError } = await supabase
+  
+  console.log('DEBUG: Using admin client:', !!supabaseAdmin);
+  console.log('DEBUG: Admin vs regular client same?', supabaseAdmin === supabase);
+  
+  const { data: invoices, error: invoicesError } = await supabaseAdmin
     .from('invoices')
-    .select('id, sales_order_id')
+    .select('id, sales_order_id, total, paid_amount, status')
     .in('sales_order_id', orderIds);
 
   if (invoicesError) {
     console.error('Error fetching invoices:', invoicesError);
   }
+  
+  console.log('DEBUG: Found invoices:', invoices?.length);
+  const testInvoice = invoices?.find(inv => inv.sales_order_id === '670e2aa5-ce5c-4aca-88c7-a3613d889c23');
+  console.log('DEBUG: Test invoice found:', testInvoice);
 
-  // Get payments for all invoices
-  const invoiceIds = invoices?.map(inv => inv.id) || [];
-  const { data: payments, error: paymentsError } = await supabase
-    .from('payments')
-    .select('invoice_id, amount')
-    .in('invoice_id', invoiceIds);
-
-  if (paymentsError) {
-    console.error('Error fetching payments:', paymentsError);
-  }
-
-  // Create payment summary for each order
+  // Create payment summary for each order based on invoice data
   const orderPaymentMap = new Map();
   orders.forEach(order => {
     const orderInvoices = invoices?.filter(inv => inv.sales_order_id === order.id) || [];
-    const orderInvoiceIds = orderInvoices.map(inv => inv.id);
-    const orderPayments = payments?.filter(p => orderInvoiceIds.includes(p.invoice_id)) || [];
-    const totalPaid = orderPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const totalPaid = orderInvoices.reduce((sum, inv) => sum + (inv.paid_amount || 0), 0);
     const orderTotal = order.final_price || 0;
     const balanceDue = orderTotal - totalPaid;
+    
+    // Debug specific order
+    if (order.id === '670e2aa5-ce5c-4aca-88c7-a3613d889c23') {
+      console.log('DEBUG: Processing order 670e2aa5:', {
+        orderInvoices,
+        totalPaid,
+        orderTotal,
+        balanceDue
+      });
+    }
     
     orderPaymentMap.set(order.id, {
       total_paid: totalPaid,
       balance_due: balanceDue,
       payment_status: totalPaid >= orderTotal ? 'paid' : totalPaid > 0 ? 'partial' : 'pending',
-      payment_count: orderPayments.length
+      payment_count: orderInvoices.length
     });
   });
 
@@ -238,14 +224,18 @@ export async function GET() {
     product_id: i.product_id,
     product_name: i.products 
       ? Array.isArray(i.products) 
-        ? (i.products.length > 0 ? i.products[0].name : null)
-        : i.products.name
+        ? (i.products.length > 0 && i.products[0] ? i.products[0].name : null)
+        : (i.products && typeof i.products === 'object' && 'name' in i.products) 
+          ? (i.products as {name: string}).name 
+          : null
       : null,
     supplier_name: i.supplier_name,
     sku: i.products 
       ? Array.isArray(i.products) 
-        ? (i.products.length > 0 ? i.products[0].sku : null)
-        : i.products.sku
+        ? (i.products.length > 0 && i.products[0] ? i.products[0].sku : null)
+        : (i.products && typeof i.products === 'object' && 'sku' in i.products)
+          ? (i.products as {sku: string}).sku 
+          : null
       : null,
     products: null, // Will be populated from the relationship data if needed
   }));

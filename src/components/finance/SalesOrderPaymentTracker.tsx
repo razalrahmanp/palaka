@@ -78,8 +78,15 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
 
   useEffect(() => {
     fetchPayments();
-    fetchBankAccounts();
-  }, [fetchPayments, fetchBankAccounts]);
+  }, [fetchPayments]);
+
+  // Fetch bank accounts only once when dialog opens
+  useEffect(() => {
+    if (open && bankAccounts.length === 0) {
+      fetchBankAccounts();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));

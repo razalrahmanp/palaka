@@ -88,8 +88,11 @@ export function PaymentTrackingDialog({
   }, []);
 
   useEffect(() => {
-    fetchBankAccounts();
-  }, [fetchBankAccounts]);
+    if (open && bankAccounts.length === 0) {
+      fetchBankAccounts();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useEffect(() => {
     if (invoice && open) {

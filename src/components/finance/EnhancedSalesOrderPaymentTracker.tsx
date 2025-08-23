@@ -56,8 +56,11 @@ export function EnhancedSalesOrderPaymentTracker({
   });
 
   useEffect(() => {
-    fetchBankAccounts();
-  }, []);
+    if (open && bankAccounts.length === 0) {
+      fetchBankAccounts();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const fetchBankAccounts = async () => {
     try {

@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { 
   Dialog, 
   DialogContent, 
@@ -28,10 +29,8 @@ import {
   CreditCard, 
   ArrowUpCircle, 
   ArrowDownCircle,
-  Banknote,
-  Wallet,
   Receipt,
-  Calendar
+  Wallet
 } from 'lucide-react';
 
 interface BankAccount {
@@ -52,27 +51,13 @@ interface BankTransaction {
   reference: string;
 }
 
-interface AllPaymentTransaction {
-  id: string;
-  payment_number: string;
-  payment_date: string;
-  amount: number;
-  method: string;
-  reference: string;
-  description: string;
-  customer_name: string;
-  invoice_id: string;
-  sales_order_id: string;
-}
-
 export function BankAccountManager() {
+  const router = useRouter();
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
-  const [allPaymentTransactions, setAllPaymentTransactions] = useState<AllPaymentTransaction[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<BankAccount | null>(null);
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [showTransactions, setShowTransactions] = useState(false);
-  const [showAllTransactions, setShowAllTransactions] = useState(false);
   const [loading, setLoading] = useState(true);
   
   const [newAccount, setNewAccount] = useState({
@@ -84,7 +69,6 @@ export function BankAccountManager() {
 
   useEffect(() => {
     fetchBankAccounts();
-    fetchAllPaymentTransactions();
   }, []);
 
   const fetchBankAccounts = async () => {
@@ -110,44 +94,6 @@ export function BankAccountManager() {
       }
     } catch (error) {
       console.error('Error fetching bank transactions:', error);
-    }
-  };
-
-  const fetchAllPaymentTransactions = async () => {
-    try {
-      const response = await fetch('/api/finance/payments');
-      if (response.ok) {
-        const result = await response.json();
-        // Transform the data to include customer information
-        const transformedData = result.map((payment: { 
-          id: string; 
-          payment_number?: string; 
-          payment_date?: string; 
-          created_at?: string; 
-          amount: number; 
-          method: string; 
-          reference?: string; 
-          description?: string; 
-          notes?: string; 
-          customer_name?: string; 
-          invoice_id?: string; 
-          sales_order_id?: string; 
-        }) => ({
-          id: payment.id,
-          payment_number: payment.payment_number || `PAY-${payment.id.slice(0, 8)}`,
-          payment_date: payment.payment_date || payment.created_at,
-          amount: payment.amount,
-          method: payment.method,
-          reference: payment.reference || 'N/A',
-          description: payment.description || payment.notes || `Payment via ${payment.method}`,
-          customer_name: payment.customer_name || 'Unknown Customer',
-          invoice_id: payment.invoice_id || '',
-          sales_order_id: payment.sales_order_id || ''
-        }));
-        setAllPaymentTransactions(transformedData);
-      }
-    } catch (error) {
-      console.error('Error fetching all payment transactions:', error);
     }
   };
 
@@ -181,7 +127,7 @@ export function BankAccountManager() {
   };
 
   const handleViewAllTransactions = () => {
-    setShowAllTransactions(true);
+    router.push('/finance/transactions');
   };
 
   const formatCurrency = (amount: number, currency: string = 'INR') => {
@@ -230,43 +176,6 @@ export function BankAccountManager() {
         />
       );
     }
-  };
-
-  const getPaymentMethodIcon = (method: string) => {
-    switch (method.toLowerCase()) {
-      case 'cash':
-        return <Banknote className="h-4 w-4 text-green-600" />;
-      case 'card':
-      case 'credit_card':
-      case 'debit_card':
-        return <CreditCard className="h-4 w-4 text-blue-600" />;
-      case 'bank_transfer':
-        return <Building2 className="h-4 w-4 text-purple-600" />;
-      case 'upi':
-        return <Wallet className="h-4 w-4 text-orange-600" />;
-      case 'cheque':
-      case 'check':
-        return <Receipt className="h-4 w-4 text-indigo-600" />;
-      default:
-        return <CreditCard className="h-4 w-4 text-gray-600" />;
-    }
-  };
-
-  const getPaymentMethodBadge = (method: string) => {
-    const colors = {
-      cash: 'bg-green-100 text-green-800',
-      card: 'bg-blue-100 text-blue-800',
-      bank_transfer: 'bg-purple-100 text-purple-800',
-      upi: 'bg-orange-100 text-orange-800',
-      cheque: 'bg-indigo-100 text-indigo-800',
-      check: 'bg-indigo-100 text-indigo-800'
-    };
-    
-    return (
-      <Badge className={colors[method as keyof typeof colors] || 'bg-gray-100 text-gray-800'}>
-        {method.replace('_', ' ').toUpperCase()}
-      </Badge>
-    );
   };
 
   if (loading) {
@@ -338,7 +247,7 @@ export function BankAccountManager() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-purple-600">Total Payments</p>
-                <p className="text-2xl font-bold text-purple-900">{allPaymentTransactions.length}</p>
+                <p className="text-2xl font-bold text-purple-900">-</p>
               </div>
               <div className="p-3 bg-purple-500 rounded-lg">
                 <CreditCard className="h-6 w-6 text-white" />
@@ -352,9 +261,7 @@ export function BankAccountManager() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-orange-600">Payment Methods</p>
-                <p className="text-2xl font-bold text-orange-900">
-                  {[...new Set(allPaymentTransactions.map(t => t.method))].length}
-                </p>
+                <p className="text-2xl font-bold text-orange-900">-</p>
               </div>
               <div className="p-3 bg-orange-500 rounded-lg">
                 <Receipt className="h-6 w-6 text-white" />
@@ -467,153 +374,76 @@ export function BankAccountManager() {
 
       {/* Bank Account Transactions Dialog */}
       <Dialog open={showTransactions} onOpenChange={setShowTransactions}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {selectedAccount && getBankIcon(selectedAccount.name)}
-              {selectedAccount?.name} - Bank Transactions
-            </DialogTitle>
-            <p className="text-sm text-gray-600">
-              Current Balance: {selectedAccount && formatCurrency(selectedAccount.current_balance, selectedAccount.currency)}
-            </p>
-          </DialogHeader>
-          <div className="space-y-4">
-            {transactions.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Reference</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {transactions.map((transaction) => (
-                    <TableRow key={transaction.id}>
-                      <TableCell>{new Date(transaction.date).toLocaleDateString()}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {transaction.type === 'deposit' ? (
-                            <ArrowUpCircle className="h-4 w-4 text-green-600" />
-                          ) : (
-                            <ArrowDownCircle className="h-4 w-4 text-red-600" />
-                          )}
-                          <Badge variant={transaction.type === 'deposit' ? 'default' : 'destructive'}>
-                            {transaction.type === 'deposit' ? 'Credit' : 'Debit'}
-                          </Badge>
-                        </div>
-                      </TableCell>
-                      <TableCell>{transaction.description}</TableCell>
-                      <TableCell>{transaction.reference || 'N/A'}</TableCell>
-                      <TableCell className="text-right">
-                        <span className={transaction.type === 'deposit' ? 'text-green-600' : 'text-red-600'}>
-                          {transaction.type === 'deposit' ? '+' : '-'}
-                          {formatCurrency(transaction.amount, selectedAccount?.currency)}
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                <CreditCard className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>No bank transactions found</p>
+        <DialogContent className="max-w-[95vw] w-[95vw] max-h-[90vh] h-[90vh] p-0">
+          <div className="flex flex-col h-full">
+            <DialogHeader className="px-6 py-4 border-b">
+              <DialogTitle className="flex items-center gap-2">
+                {selectedAccount && getBankIcon(selectedAccount.name)}
+                {selectedAccount?.name} - Bank Transactions
+              </DialogTitle>
+              <p className="text-sm text-gray-600">
+                Current Balance: {selectedAccount && formatCurrency(selectedAccount.current_balance, selectedAccount.currency)}
+              </p>
+            </DialogHeader>
+            
+            <div className="flex-1 overflow-auto px-6 py-4">
+              <div className="space-y-4">
+                {transactions.length > 0 ? (
+                  <div className="border rounded-lg overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <Table className="w-full">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-[120px]">Date</TableHead>
+                            <TableHead className="w-[150px]">Type</TableHead>
+                            <TableHead className="min-w-[200px]">Description</TableHead>
+                            <TableHead className="w-[150px]">Reference</TableHead>
+                            <TableHead className="text-right w-[120px]">Amount</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                      <TableBody>
+                        {transactions.map((transaction) => (
+                          <TableRow key={transaction.id}>
+                            <TableCell>
+                              {(() => {
+                                const date = new Date(transaction.date);
+                                return isNaN(date.getTime()) ? 'No Date' : date.toLocaleDateString();
+                              })()}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                {transaction.type === 'deposit' ? (
+                                  <ArrowUpCircle className="h-4 w-4 text-green-600" />
+                                ) : (
+                                  <ArrowDownCircle className="h-4 w-4 text-red-600" />
+                                )}
+                                <Badge variant={transaction.type === 'deposit' ? 'default' : 'destructive'}>
+                                  {transaction.type === 'deposit' ? 'Credit' : 'Debit'}
+                                </Badge>
+                              </div>
+                            </TableCell>
+                            <TableCell>{transaction.description}</TableCell>
+                            <TableCell>{transaction.reference || 'N/A'}</TableCell>
+                            <TableCell className="text-right">
+                              <span className={transaction.type === 'deposit' ? 'text-green-600' : 'text-red-600'}>
+                                {transaction.type === 'deposit' ? '+' : '-'}
+                                {formatCurrency(transaction.amount, selectedAccount?.currency)}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <CreditCard className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No bank transactions found</p>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* All Payment Transactions Dialog */}
-      <Dialog open={showAllTransactions} onOpenChange={setShowAllTransactions}>
-        <DialogContent className="max-w-6xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Receipt className="h-5 w-5" />
-              All Payment Transactions
-            </DialogTitle>
-            <p className="text-sm text-gray-600">
-              Complete view of all payments by method: Cash, UPI, Card, Cheque, Bank Transfer
-            </p>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            {/* Payment Method Summary */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              {[...new Set(allPaymentTransactions.map(t => t.method))].map((method) => {
-                const methodTransactions = allPaymentTransactions.filter(t => t.method === method);
-                const methodTotal = methodTransactions.reduce((sum, t) => sum + t.amount, 0);
-                
-                return (
-                  <Card key={method} className="border-l-4 border-l-blue-500">
-                    <CardContent className="p-3">
-                      <div className="flex items-center gap-2 mb-1">
-                        {getPaymentMethodIcon(method)}
-                        <span className="text-sm font-medium">{method.replace('_', ' ').toUpperCase()}</span>
-                      </div>
-                      <p className="text-lg font-bold">{formatCurrency(methodTotal)}</p>
-                      <p className="text-xs text-gray-600">{methodTransactions.length} transactions</p>
-                    </CardContent>
-                  </Card>
-                );
-              })}
             </div>
-
-            {/* All Transactions Table */}
-            {allPaymentTransactions.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Payment #</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Method</TableHead>
-                    <TableHead>Reference</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {allPaymentTransactions.map((payment) => (
-                    <TableRow key={payment.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Calendar className="h-4 w-4 text-gray-500" />
-                          {new Date(payment.payment_date).toLocaleDateString()}
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {payment.payment_number}
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {payment.customer_name}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {getPaymentMethodIcon(payment.method)}
-                          {getPaymentMethodBadge(payment.method)}
-                        </div>
-                      </TableCell>
-                      <TableCell>{payment.reference}</TableCell>
-                      <TableCell className="max-w-xs truncate">
-                        {payment.description}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold text-green-600">
-                        {formatCurrency(payment.amount)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                <CreditCard className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>No payment transactions found</p>
-              </div>
-            )}
           </div>
         </DialogContent>
       </Dialog>

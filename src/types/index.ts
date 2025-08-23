@@ -284,6 +284,8 @@ export interface Invoice {
   total: number;
   paid_amount: number;
   amount: number;
+  waived_amount?: number;
+  balance_due?: number;
   date?: string;
   created_at: string;
   due_date: string;

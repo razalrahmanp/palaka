@@ -28,14 +28,14 @@ import {
   Minus
 } from 'lucide-react';
 import { SalesOrder, Invoice } from '@/types';
-import { CreateInvoiceDialog } from './CreateInvoiceDialog';
 import { PaymentTrackingDialog } from './PaymentTrackingDialog';
 import { SalesOrderPaymentTracker } from './SalesOrderPaymentTracker';
 import { WhatsAppService, WhatsAppBillData } from '@/lib/whatsappService';
+import { WaiveOffDialog } from './WaiveOffDialog';
 
 // Component interfaces and types
 
-interface SalesOrderWithInvoice extends SalesOrder {
+interface SalesOrderWithInvoice extends Omit<SalesOrder, 'customer' | 'invoices'> {
   // New API structure fields from /api/finance/sales-orders
   customer?: { name?: string; phone?: string; email?: string };
   total_paid?: number;
@@ -45,6 +45,7 @@ interface SalesOrderWithInvoice extends SalesOrder {
   is_invoiced?: boolean;
   invoice_status?: 'fully_paid' | 'partially_paid' | 'not_invoiced';
   invoice_count?: number;
+  waived_amount?: number; // Added waived amount support
   invoices?: Array<{
     id: string;
     total: number;
@@ -53,6 +54,7 @@ interface SalesOrderWithInvoice extends SalesOrder {
     paid_amount: number;
     actual_paid_amount: number;
     payment_count: number;
+    waived_amount?: number; // Added waived amount support
   }>;
   payments?: Array<{
     id: string;
@@ -122,11 +124,15 @@ export function SalesOrderInvoiceManager() {
   const [payments, setPayments] = useState<PaymentDetails[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedOrder, setSelectedOrder] = useState<SalesOrderWithInvoice | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
-  const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
   const [paymentTrackingOpen, setPaymentTrackingOpen] = useState(false);
   const [createExpenseOpen, setCreateExpenseOpen] = useState(false);
+  
+  // Waive-off states
+  const [waiveOffOpen, setWaiveOffOpen] = useState(false);
+  const [selectedOrderForWaiveOff, setSelectedOrderForWaiveOff] = useState<SalesOrderWithInvoice | null>(null);
+  const [selectedInvoiceForWaiveOff, setSelectedInvoiceForWaiveOff] = useState<Invoice | null>(null);
+  const [waiveOffType, setWaiveOffType] = useState<'order' | 'invoice'>('order');
   
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -253,6 +259,26 @@ export function SalesOrderInvoiceManager() {
     return new Date(dateString).toLocaleDateString('en-IN');
   };
 
+  // Waive-off handlers
+  const handleWaiveOffOrder = (order: SalesOrderWithInvoice) => {
+    setSelectedOrderForWaiveOff(order);
+    setSelectedInvoiceForWaiveOff(null);
+    setWaiveOffType('order');
+    setWaiveOffOpen(true);
+  };
+
+  const handleWaiveOffInvoice = (invoice: Invoice) => {
+    setSelectedInvoiceForWaiveOff(invoice);
+    setSelectedOrderForWaiveOff(null);
+    setWaiveOffType('invoice');
+    setWaiveOffOpen(true);
+  };
+
+  const handleWaiveOffSuccess = () => {
+    // Refresh data after successful waive-off
+    fetchData();
+  };
+
   // Pagination logic
   const getPaginatedData = <T,>(data: T[], page: number, perPage: number): T[] => {
     const startIndex = (page - 1) * perPage;
@@ -267,22 +293,6 @@ export function SalesOrderInvoiceManager() {
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
     setCurrentPage(1); // Reset to first page when changing tabs
-  };
-
-  // Get current data based on active tab
-  const getCurrentData = () => {
-    switch (activeTab) {
-      case 'orders':
-        return getPaginatedData(salesOrders, currentPage, itemsPerPage);
-      case 'invoices':
-        return getPaginatedData(invoices, currentPage, itemsPerPage);
-      case 'payments':
-        return getPaginatedData(payments, currentPage, itemsPerPage);
-      case 'expenses':
-        return getPaginatedData(expenses, currentPage, itemsPerPage);
-      default:
-        return [];
-    }
   };
 
   const getCurrentDataLength = () => {
@@ -565,17 +575,6 @@ export function SalesOrderInvoiceManager() {
                 Sales Orders & Invoice Management
               </h1>
               <p className="text-gray-600 mt-1">Manage sales orders, create invoices, and track payments</p>
-            </div>
-            <div className="flex gap-3">
-              <Button
-                onClick={() => {
-                  setCreateInvoiceOpen(true);
-                }}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Create Invoice
-              </Button>
             </div>
           </div>
         </div>
@@ -889,6 +888,7 @@ export function SalesOrderInvoiceManager() {
                           <TableHead className="font-semibold w-[150px]">Order Value</TableHead>
                           <TableHead className="font-semibold w-[140px]">Status</TableHead>
                           <TableHead className="font-semibold w-[130px]">Paid Amt</TableHead>
+                          <TableHead className="font-semibold w-[120px]">Waived</TableHead>
                           <TableHead className="font-semibold w-[130px]">Balance</TableHead>
                           <TableHead className="font-semibold w-[120px]">Payment</TableHead>
                           <TableHead className="font-semibold text-center">Actions</TableHead>
@@ -897,7 +897,7 @@ export function SalesOrderInvoiceManager() {
                       <TableBody>
                         {getPaginatedData(salesOrders, currentPage, itemsPerPage).length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={9} className="text-center py-8">
+                            <TableCell colSpan={10} className="text-center py-8">
                               <div className="flex flex-col items-center gap-2">
                                 <Package className="h-8 w-8 text-gray-400" />
                                 <p className="text-gray-500">No sales orders found</p>
@@ -972,6 +972,16 @@ export function SalesOrderInvoiceManager() {
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-col">
+                                <span className="font-medium text-purple-600">
+                                  {formatCurrency(order.waived_amount || 0)}
+                                </span>
+                                <span className="text-xs text-gray-500 mt-1">
+                                  {(order.waived_amount || 0) > 0 ? 'Waived off' : 'No waiver'}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col">
                                 <span className="font-medium text-orange-600">
                                   {formatCurrency(order.balance_due || 0)}
                                 </span>
@@ -1011,6 +1021,19 @@ export function SalesOrderInvoiceManager() {
                                 >
                                   <MessageCircle className="h-3 w-3" />
                                 </Button>
+
+                                {/* Waive Off Button - Only show if there's an outstanding balance */}
+                                {(order.balance_due || 0) > 0 && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-200 text-xs px-2 py-1"
+                                    onClick={() => handleWaiveOffOrder(order)}
+                                    title="Waive Off Amount"
+                                  >
+                                    <Minus className="h-3 w-3" />
+                                  </Button>
+                                )}
                                 
                                 {/* Payment Tracker - Always show */}
                                 <SalesOrderPaymentTracker
@@ -1061,6 +1084,8 @@ export function SalesOrderInvoiceManager() {
                       <TableHead className="font-semibold">Date</TableHead>
                       <TableHead className="font-semibold">Amount</TableHead>
                       <TableHead className="font-semibold">Paid</TableHead>
+                      <TableHead className="font-semibold">Waived</TableHead>
+                      <TableHead className="font-semibold">Balance</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
                       <TableHead className="font-semibold text-center">Actions</TableHead>
                     </TableRow>
@@ -1088,6 +1113,12 @@ export function SalesOrderInvoiceManager() {
                         <TableCell className="text-green-600 font-medium">
                           {formatCurrency(invoice.paid_amount)}
                         </TableCell>
+                        <TableCell className="text-orange-600 font-medium">
+                          {formatCurrency(invoice.waived_amount || 0)}
+                        </TableCell>
+                        <TableCell className="text-red-600 font-medium">
+                          {formatCurrency(invoice.balance_due || 0)}
+                        </TableCell>
                         <TableCell>
                           {getPaymentStatusBadge(invoice.status)}
                         </TableCell>
@@ -1110,13 +1141,27 @@ export function SalesOrderInvoiceManager() {
                               size="sm"
                               variant="outline"
                               onClick={() => {
-                                // TODO: Implement invoice view/download
+                                // TODO: Implement invoice view/download 
                                 console.log('View invoice:', invoice.id);
                               }}
                             >
                               <Eye className="h-4 w-4 mr-1" />
                               View
                             </Button>
+                            
+                            {/* Waive Off Button - Only show if there's a balance due */}
+                            {(invoice.balance_due || 0) > 0 && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-200"
+                                onClick={() => handleWaiveOffInvoice(invoice)}
+                                title="Waive Off Amount"
+                              >
+                                <Minus className="h-4 w-4 mr-1" />
+                                Waive
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1159,7 +1204,7 @@ export function SalesOrderInvoiceManager() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {payments.map((payment) => (
+                    {getPaginatedData(payments, currentPage, itemsPerPage).map((payment) => (
                       <TableRow key={payment.id} className="hover:bg-gray-50 transition-colors">
                         <TableCell className="font-medium text-blue-600">{payment.id.slice(0, 8)}</TableCell>
                         <TableCell>{payment.invoice_id?.slice(0, 8) || 'N/A'}</TableCell>
@@ -1187,6 +1232,9 @@ export function SalesOrderInvoiceManager() {
                   </TableBody>
                 </Table>
               </div>
+              
+              {/* Pagination */}
+              <PaginationComponent />
             </TabsContent>
 
             {/* Expenses Tab */}
@@ -1314,7 +1362,7 @@ export function SalesOrderInvoiceManager() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      expenses.map((expense) => (
+                      getPaginatedData(expenses, currentPage, itemsPerPage).map((expense) => (
                         <TableRow key={expense.id} className="hover:bg-gray-50 transition-colors">
                           <TableCell>
                             <div className="flex items-center gap-2">
@@ -1358,19 +1406,15 @@ export function SalesOrderInvoiceManager() {
                   </TableBody>
                 </Table>
               </div>
+              
+              {/* Pagination */}
+              <PaginationComponent />
             </TabsContent>
           </div>
         </Tabs>
       </div>
 
       {/* Dialogs */}
-      <CreateInvoiceDialog
-        open={createInvoiceOpen}
-        onOpenChange={setCreateInvoiceOpen}
-        salesOrder={selectedOrder}
-        onSuccess={fetchData}
-      />
-
       <PaymentTrackingDialog
         open={paymentTrackingOpen}
         onOpenChange={setPaymentTrackingOpen}
@@ -1480,6 +1524,26 @@ export function SalesOrderInvoiceManager() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Waive Off Dialog */}
+      <WaiveOffDialog
+        isOpen={waiveOffOpen}
+        onClose={() => setWaiveOffOpen(false)}
+        onSuccess={handleWaiveOffSuccess}
+        orderId={selectedOrderForWaiveOff?.id}
+        invoiceId={selectedInvoiceForWaiveOff?.id}
+        availableBalance={
+          waiveOffType === 'order' 
+            ? (selectedOrderForWaiveOff?.balance_due || 0)
+            : (selectedInvoiceForWaiveOff?.balance_due || 0)
+        }
+        customerName={
+          waiveOffType === 'order'
+            ? (selectedOrderForWaiveOff?.customer?.name || 'Unknown Customer')
+            : (selectedInvoiceForWaiveOff?.customer_name || 'Unknown Customer')
+        }
+        type={waiveOffType}
+      />
     </div>
   );
 }

@@ -1,59 +1,137 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseAdmin";
-import type { PostgrestError } from "@supabase/supabase-js";
 
-interface InvoiceRow {
+interface Payment {
   id: string;
-  customer_id: string;
-  sales_order_id: string;
-  total: number;
-  paid_amount: number;
-  status: string;
-  customers: {
-    name: string | null;
-  } | null;
+  invoice_id: string;
+  amount: number;
+  payment_date?: string;
+  date: string;
+  method: string;
+  reference?: string;
+  description?: string;
 }
 
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const limit = parseInt(searchParams.get("limit") || "10", 10);
-  const offset = parseInt(searchParams.get("offset") || "0", 10);
-  const search = searchParams.get("search")?.toLowerCase() || "";
+export async function GET() {
+  try {
+    console.log('🧾 Fetching ALL invoices for finance management...');
 
-  let query = supabase
-    .from("invoices")
-    .select("*, customers(name)", { count: "exact" })
-    .order("created_at", { ascending: false })
-    .range(offset, offset + limit - 1);
+    // First fetch invoices without complex joins to avoid schema issues
+    const { data: invoices, error } = await supabase
+      .from("invoices")
+      .select(`
+        id,
+        sales_order_id,
+        customer_id,
+        total,
+        paid_amount,
+        status,
+        created_at,
+        customer_name,
+        waived_amount
+      `)
+      .order("created_at", { ascending: false });
 
-  if (search) query = query.ilike("id", `%${search}%`);
+    if (error) {
+      console.error('❌ Error fetching invoices:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
 
-  const {
-    data,
-    count,
-    error,
-  }: {
-    data: InvoiceRow[] | null;
-    count: number | null;
-    error: PostgrestError | null;
-  } = await query;
+    console.log(`📋 Found ${invoices?.length || 0} invoices`);
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // Fetch customer and sales order data separately
+    const customerIds = invoices ? [...new Set(invoices.map(inv => inv.customer_id).filter(Boolean))] : [];
+    const salesOrderIds = invoices ? [...new Set(invoices.map(inv => inv.sales_order_id).filter(Boolean))] : [];
+
+    // Fetch customers
+    const { data: customers } = await supabase
+      .from("customers")
+      .select("id, name, phone, email")
+      .in("id", customerIds);
+
+    // Fetch sales orders
+    const { data: salesOrders } = await supabase
+      .from("sales_orders")
+      .select("id, final_price, status")
+      .in("id", salesOrderIds);
+
+    // Create lookup maps
+    const customersMap = new Map(customers?.map(c => [c.id, c]) || []);
+    const salesOrdersMap = new Map(salesOrders?.map(so => [so.id, so]) || []);
+
+    // Fetch all payments for these invoices
+    const invoiceIds = invoices?.map(inv => inv.id) || [];
+    const { data: payments, error: paymentsError } = await supabase
+      .from("payments")
+      .select(`
+        id,
+        invoice_id,
+        amount,
+        payment_date,
+        date,
+        method,
+        reference,
+        description
+      `)
+      .in("invoice_id", invoiceIds);
+
+    if (paymentsError) {
+      console.error('❌ Error fetching payments:', paymentsError);
+    }
+
+    // Group payments by invoice
+    const paymentsByInvoice = new Map();
+    payments?.forEach((payment: Payment) => {
+      if (!paymentsByInvoice.has(payment.invoice_id)) {
+        paymentsByInvoice.set(payment.invoice_id, []);
+      }
+      paymentsByInvoice.get(payment.invoice_id).push(payment);
+    });
+
+    // Enhance invoices with payment data and calculated amounts
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const enhancedInvoices = invoices?.map((invoice: any) => {
+      const invoicePayments = paymentsByInvoice.get(invoice.id) || [];
+      const actualPaidAmount = invoicePayments.reduce((sum: number, payment: Payment) => sum + (Number(payment.amount) || 0), 0);
+      const waived = Number(invoice.waived_amount) || 0;
+      const totalInvoice = Number(invoice.total) || 0;
+      const balance = totalInvoice - actualPaidAmount - waived;
+
+      // Get customer and sales order from maps
+      const customer = customersMap.get(invoice.customer_id);
+      const salesOrder = salesOrdersMap.get(invoice.sales_order_id);
+      const customerName = customer?.name || invoice.customer_name || 'Unknown Customer';
+
+      return {
+        id: invoice.id,
+        sales_order_id: invoice.sales_order_id,
+        customer_id: invoice.customer_id,
+        customer_name: customerName,
+        customer_phone: customer?.phone || '',
+        customer_email: customer?.email || '',
+        total: totalInvoice,
+        paid_amount: actualPaidAmount,
+        waived_amount: waived,
+        balance_due: balance > 0 ? balance : 0,
+        status: invoice.status,
+        created_at: invoice.created_at,
+        payment_count: invoicePayments.length,
+        sales_order: salesOrder,
+        payments: invoicePayments
+      };
+    }) || [];
+
+    console.log(`✅ Enhanced ${enhancedInvoices.length} invoices with payment data`);
+
+    return NextResponse.json(enhancedInvoices);
+  } catch (error) {
+    console.error('💥 Invoices API Error:', error);
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
-
-  const formatted = (data || []).map((i) => ({
-    id: i.id,
-    customer_name: i.customers?.name ?? "(unknown)",
-    total: i.total,
-    paid_amount: i.paid_amount,
-    status: i.status,
-    sales_order_id: i.sales_order_id,
-  }));
-
-  return NextResponse.json({ data: formatted, count });
 }
-
 
 export async function POST(req: Request) {
   const body = await req.json();

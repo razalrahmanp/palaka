@@ -1,31 +1,74 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseAdmin";
-import type { PostgrestError } from "@supabase/supabase-js";
 
-interface PaymentRow {
-  id: string;
-  invoice_id: string;
-  amount: number;
-  date: string;
-  method: string;
-}
+export async function GET() {
+  try {
+    console.log('💰 Fetching ALL payments for finance management...');
 
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const limit = parseInt(searchParams.get("limit") || "10", 10);
-  const offset = parseInt(searchParams.get("offset") || "0", 10);
+    // Fetch ALL payments with comprehensive data - no pagination since frontend handles it
+    const { data: payments, error } = await supabase
+      .from("payments")
+      .select(`
+        id,
+        invoice_id,
+        amount,
+        payment_date,
+        date,
+        method,
+        reference,
+        description,
+        invoices!invoice_id(
+          id,
+          sales_order_id,
+          customer_name,
+          total,
+          customers!customer_id(name, phone, email)
+        )
+      `)
+      .order("date", { ascending: false });
 
-  const { data, error }: { data: PaymentRow[] | null; error: PostgrestError | null } = await supabase
-    .from("payments")
-    .select("*")
-    .order("date", { ascending: false })
-    .range(offset, offset + limit - 1);
+    if (error) {
+      console.error('❌ Error fetching payments:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.log(`💸 Found ${payments?.length || 0} payments`);
+
+    // Enhance payments with customer and invoice data
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const enhancedPayments = payments?.map((payment: any) => {
+      const invoice = payment.invoices;
+      const customer = invoice?.customers;
+      
+      return {
+        id: payment.id,
+        invoice_id: payment.invoice_id,
+        amount: Number(payment.amount) || 0,
+        payment_date: payment.payment_date,
+        date: payment.date,
+        method: payment.method || 'Unknown',
+        reference: payment.reference || '',
+        description: payment.description || '',
+        // Invoice information
+        invoice_total: Number(invoice?.total) || 0,
+        sales_order_id: invoice?.sales_order_id || '',
+        // Customer information
+        customer_name: customer?.name || invoice?.customer_name || 'Unknown Customer',
+        customer_phone: customer?.phone || '',
+        customer_email: customer?.email || ''
+      };
+    }) || [];
+
+    console.log(`✅ Enhanced ${enhancedPayments.length} payments with invoice/customer data`);
+
+    return NextResponse.json(enhancedPayments);
+  } catch (error) {
+    console.error('💥 Payments API Error:', error);
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
-
-  return NextResponse.json({ data });
 }
 
 export async function POST(req: Request) {
@@ -60,7 +103,7 @@ export async function POST(req: Request) {
 
     const totalPaid = (payments || []).reduce((sum, p) => sum + p.amount, 0);
 
-    const { data: invoice, error: updateError } = await supabase
+    const { error: updateError } = await supabase
       .from("invoices")
       .update({ paid_amount: totalPaid })
       .eq("id", invoice_id)

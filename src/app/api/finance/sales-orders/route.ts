@@ -41,6 +41,7 @@ export async function GET() {
         final_price,
         original_price,
         discount_amount,
+        waived_amount,
         customers!customer_id(name, phone, email)
       `)
       .order("created_at", { ascending: false });
@@ -223,7 +224,8 @@ export async function GET() {
       }
 
       const finalPrice = Number(order.final_price) || 0;
-      const balanceDue = finalPrice - totalPaid;
+      const waivedAmount = Number(order.waived_amount) || 0;
+      const balanceDue = finalPrice - totalPaid; // waived amount is already deducted from final_price
 
       let paymentStatus = 'pending';
       if (totalPaid >= finalPrice) {
@@ -250,6 +252,7 @@ export async function GET() {
         final_price: finalPrice,
         original_price: Number(order.original_price) || 0,
         discount_amount: Number(order.discount_amount) || 0,
+        waived_amount: waivedAmount,
         items: orderItemsList,
         
         // Enhanced payment and invoice information

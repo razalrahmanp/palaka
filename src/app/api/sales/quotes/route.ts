@@ -39,14 +39,24 @@ export async function POST(req: NextRequest) {
 
   // 2) Insert any custom‐configured lines into quote_custom_items
   //    We assume items with a non‐empty `configuration` field are "custom".
- const customLines = Array.isArray(body.items)
-  ? body.items.filter((i: any) => i.type === "custom")
+interface CustomLineItem {
+  type: string;
+  name: string;
+  quantity: number;
+  price: number;
+  configuration?: Record<string, unknown>;
+  product_id?: string;
+  supplier_id?: string;
+  supplier_name?: string;
+}
+
+const customLines: CustomLineItem[] = Array.isArray(body.items)
+  ? body.items.filter((i: CustomLineItem) => i.type === "custom")
   : [];
 
 if (customLines.length) {
 
-  
-const insertPayload = customLines.map((i: any) => ({
+const insertPayload = customLines.map((i: CustomLineItem) => ({
   quote_id: quote.id,
   name: i.name,
   quantity: i.quantity,

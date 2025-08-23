@@ -11,8 +11,14 @@ export function useSalesData() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/sales/quotes').then((r) => r.json()).then(setQuotes),
-      fetch('/api/sales/orders').then((r) => r.json()).then(setOrders),
+      fetch('/api/sales/quotes').then((r) => r.json()).then(data => {
+        // Ensure we always set an array
+        setQuotes(Array.isArray(data) ? data : []);
+      }),
+      fetch('/api/sales/orders').then((r) => r.json()).then(data => {
+        // Ensure we always set an array
+        setOrders(Array.isArray(data) ? data : []);
+      }),
       fetch('/api/products?limit=1000')
         .then((r) => r.json())
         .then((data) => {
@@ -34,16 +40,31 @@ export function useSalesData() {
             )
           );
         }),
-      fetch('/api/crm/customers').then((r) => r.json()).then(setCustomers),
-    ]);
+      fetch('/api/crm/customers').then((r) => r.json()).then(data => {
+        // Ensure we always set an array
+        setCustomers(Array.isArray(data) ? data : []);
+      }),
+    ]).catch(error => {
+      console.error('Error loading sales data:', error);
+      // Set empty arrays on error to prevent filter errors
+      setQuotes([]);
+      setOrders([]);
+      setProducts([]);
+      setCustomers([]);
+    });
 
     const u = localStorage.getItem('user');
     if (u) setCurrentUser(JSON.parse(u));
   }, []);
 
   const refresh = () => {
-    fetch('/api/sales/quotes').then((r) => r.json()).then(setQuotes);
-    fetch('/api/sales/orders').then((r) => r.json()).then(setOrders);
+    fetch('/api/sales/quotes').then((r) => r.json()).then(data => {
+      setQuotes(Array.isArray(data) ? data : []);
+    }).catch(() => setQuotes([]));
+    
+    fetch('/api/sales/orders').then((r) => r.json()).then(data => {
+      setOrders(Array.isArray(data) ? data : []);
+    }).catch(() => setOrders([]));
   };
 
   return {

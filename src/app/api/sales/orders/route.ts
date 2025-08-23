@@ -8,10 +8,16 @@ type OrderRow = {
   customer_id: string;
   status: string;
   created_at: string;
+  created_by?: string;
   final_price?: number | null;
   original_price?: number | null;
   discount_amount?: number | null;
   customer: { name: string } | null;
+  sales_representative?: {
+    id: string;
+    name: string;
+    email: string;
+  } | null;
 };
 
 type ItemRow = {
@@ -37,18 +43,6 @@ type OrderItemInput = {
   unit_price: number;
 };
 
-type OrderQueryResult = {
-  id: string;
-  quote_id?: string | null;
-  customer_id: string;
-  status: string;
-  created_at: string;
-  final_price?: number | null;
-  original_price?: number | null;
-  discount_amount?: number | null;
-  customers?: { name: string } | { name: string }[] | null;
-};
-
 type ItemQueryResult = {
   order_id: string;
   quantity: number;
@@ -60,40 +54,111 @@ type ItemQueryResult = {
     price: number;
     sku?: string;
     suppliers?: { name: string }[];
-  } | {
+  }[] | null;
+};
+
+type RawOrderData = {
+  id: string;
+  quote_id?: string | null;
+  customer_id: string;
+  status: string;
+  created_at: string;
+  created_by?: string;
+  final_price?: number | null;
+  original_price?: number | null;
+  discount_amount?: number | null;
+  customers?: { name: string } | null;
+  users?: {
+    id: string;
     name: string;
-    price: number;
-    sku?: string;
-    suppliers?: { name: string }[];
+    email: string;
+  } | {
+    id: string;
+    name: string;
+    email: string;
   }[] | null;
 };
 
 export async function GET() {
-  const { data: ordersRaw, error: ordersError } = await supabase
-    .from("sales_orders")
-    .select(`
-      id,
-      quote_id,
-      customer_id,
-      status,
-      created_at,
-      final_price,
-      original_price,
-      discount_amount,
-      customers:customer_id(name)
-    `)
-    .order('created_at', { ascending: false });
+  try {
+    // Get orders first
+    const { data: ordersRaw, error: ordersError } = await supabase
+      .from("sales_orders")
+      .select(`
+        id,
+        quote_id,
+        customer_id,
+        status,
+        created_at,
+        created_by,
+        final_price,
+        original_price,
+        discount_amount,
+        customers!customer_id(name)
+      `)
+      .order('created_at', { ascending: false });
 
-  if (ordersError) {
-    return NextResponse.json({ error: ordersError.message }, { status: 500 });
-  }
+    if (ordersError) {
+      console.error('Supabase orders error:', ordersError);
+      return NextResponse.json({ error: ordersError.message }, { status: 500 });
+    }
 
-  const orders: OrderRow[] = (ordersRaw ?? []).map((o: OrderQueryResult) => ({
+    // Get unique user IDs from created_by
+    const userIds = [...new Set((ordersRaw ?? []).map(o => o.created_by).filter(Boolean))];
+    
+    // Fetch users separately
+    const { data: usersRaw, error: usersError } = await supabase
+      .from("users")
+      .select("id, name, email")
+      .in('id', userIds);
+
+    if (usersError) {
+      console.error('Users fetch error:', usersError);
+    }
+
+    // Create a user lookup map
+    const userMap = new Map();
+    (usersRaw ?? []).forEach(user => {
+      userMap.set(user.id, user);
+    });
+
+    // Map orders with user data
+    const simpleOrders = (ordersRaw ?? []).map((o: any) => ({
+      id: o.id,
+      quote_id: o.quote_id,
+      customer_id: o.customer_id,
+      status: o.status,
+      created_at: o.created_at,
+      created_by: o.created_by,
+      final_price: o.final_price,
+      original_price: o.original_price,
+      discount_amount: o.discount_amount,
+      customer: o.customers && o.customers.length > 0
+        ? { name: o.customers[0].name }
+        : o.customers
+        ? { name: o.customers.name }
+        : { name: 'Unknown Customer' },
+      date: o.created_at?.split("T")[0],
+      total: o.final_price ?? 0,
+      items: [],
+      sales_representative: o.created_by && userMap.has(o.created_by)
+        ? userMap.get(o.created_by)
+        : null,
+      total_paid: 0,
+      balance_due: o.final_price ?? 0,
+      payment_status: 'pending',
+      payment_count: 0,
+    }));
+
+    return NextResponse.json(simpleOrders);
+
+  const orders: OrderRow[] = (ordersRaw ?? []).map((o: any) => ({
     id: o.id,
     quote_id: o.quote_id,
     customer_id: o.customer_id,
     status: o.status,
     created_at: o.created_at,
+    created_by: o.created_by,
     final_price: o.final_price,
     original_price: o.original_price,
     discount_amount: o.discount_amount,
@@ -101,6 +166,11 @@ export async function GET() {
       ? Array.isArray(o.customers) 
         ? (o.customers.length > 0 ? { name: o.customers[0].name } : null)
         : { name: o.customers.name }
+      : null,
+    sales_representative: o.users 
+      ? Array.isArray(o.users) 
+        ? (o.users.length > 0 ? o.users[0] : null)
+        : o.users
       : null
   }));
 
@@ -156,7 +226,9 @@ export async function GET() {
     `);
 
   if (itemsError) {
-    return NextResponse.json({ error: itemsError.message }, { status: 500 });
+    return NextResponse.json({ 
+      error: itemsError?.message || 'Failed to fetch order items' 
+    }, { status: 500 });
   }
 
   const items: ItemRow[] = (itemsRaw ?? []).map((i: ItemQueryResult) => ({
@@ -221,10 +293,16 @@ export async function GET() {
       balance_due: paymentInfo.balance_due,
       payment_status: paymentInfo.payment_status,
       payment_count: paymentInfo.payment_count,
+      // Add sales representative information
+      sales_representative: order.sales_representative,
     };
   });
 
   return NextResponse.json(grouped);
+  } catch (error) {
+    console.error('Error in GET /api/sales/orders:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
 }
 
 

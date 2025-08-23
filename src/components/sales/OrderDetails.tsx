@@ -25,6 +25,8 @@ import {
 
 interface OrderDetailsProps {
   order: Order;
+  showSalesRepChangeButton?: boolean;
+  onSalesRepChange?: (orderId: string) => void;
 }
 
 interface OrderItemDetailed {
@@ -114,7 +116,7 @@ const getStatusColor = (status: string) => {
   }
 };
 
-export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder }) => {
+export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder, showSalesRepChangeButton = false, onSalesRepChange }) => {
   const printRef = useRef<HTMLDivElement>(null);
   const [order, setOrder] = useState<DetailedOrder>(initialOrder as unknown as DetailedOrder);
   const [loading, setLoading] = useState(false);
@@ -630,12 +632,24 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
 
             {order.sales_representative && (
               <div className="bg-orange-50 rounded-lg p-3">
-                <div className="flex items-center space-x-2">
-                  <UserCheck className="h-4 w-4 text-orange-600" />
-                  <div>
-                    <p className="text-xs text-gray-600">Sales Rep</p>
-                    <p className="text-xs font-medium">{order.sales_representative.name}</p>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <UserCheck className="h-4 w-4 text-orange-600" />
+                    <div>
+                      <p className="text-xs text-gray-600">Sales Rep</p>
+                      <p className="text-xs font-medium">{order.sales_representative.name}</p>
+                    </div>
                   </div>
+                  {showSalesRepChangeButton && onSalesRepChange && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs h-6 px-2 no-print"
+                      onClick={() => onSalesRepChange(initialOrder.id)}
+                    >
+                      Change
+                    </Button>
+                  )}
                 </div>
               </div>
             )}

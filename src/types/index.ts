@@ -201,6 +201,13 @@ export interface Order {
   balance_due?: number;
   payment_status?: 'paid' | 'partial' | 'pending' | 'overdue';
   payment_count?: number;
+  // Sales representative information
+  created_by?: string;
+  sales_representative?: {
+    id: string;
+    name: string;
+    email: string;
+  };
 }
 
 

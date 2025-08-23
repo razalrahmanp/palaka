@@ -1,5 +1,6 @@
 'use client';
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -22,15 +23,21 @@ import {
   Percent,
   Truck,
   User,
-  Package
+  Package,
+  Settings,
+  BarChart3
 } from 'lucide-react';
 import { useSalesData } from '@/components/sales/SalesDataLoader';
 import { createSalesHandlers } from '@/components/sales/SalesHandlers';
 import { SalesModals } from '@/components/sales/SalesModals';
 import QuoteDetails from '@/components/sales/QuoteDetails';
 import { Order, Quote } from '@/types';
+import { AssignSalesRepModal } from '@/components/sales/AssignSalesRepModal';
+import { SalesPerformanceSection } from '@/components/sales/representative/SalesPerformanceSection';
+import { hasPermission } from '@/lib/auth';
 
 export default function RedesignedSalesPage() {
+  const router = useRouter();
   const {
     quotes,
     orders,
@@ -49,6 +56,8 @@ export default function RedesignedSalesPage() {
   const [isQuoteDetailsOpen, setIsQuoteDetailsOpen] = useState(false);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [isOrderEditModalOpen, setIsOrderEditModalOpen] = useState(false);
+  const [isAssignRepModalOpen, setIsAssignRepModalOpen] = useState(false);
+  const [selectedOrderForRepAssignment, setSelectedOrderForRepAssignment] = useState<Order | null>(null);
   
   // Search and filter states
   const [searchTerm, setSearchTerm] = useState('');
@@ -60,6 +69,32 @@ export default function RedesignedSalesPage() {
     refresh,
     setIsQuoteModalOpen
   );
+
+  // Check if current user is admin
+  const isAdmin = hasPermission('user:manage') || hasPermission('sales_order:approve');
+
+  // Handler for opening assign rep modal
+  const handleAssignRep = (order: Order | string) => {
+    // If it's a string (order ID), find the order from the list
+    if (typeof order === 'string') {
+      const foundOrder = orders.find(o => o.id === order);
+      if (foundOrder) {
+        setSelectedOrderForRepAssignment(foundOrder);
+        setIsAssignRepModalOpen(true);
+      }
+    } else {
+      // If it's an order object, use directly
+      setSelectedOrderForRepAssignment(order);
+      setIsAssignRepModalOpen(true);
+    }
+  };
+
+  // Handler for successful rep assignment
+  const handleRepAssignmentSuccess = () => {
+    setIsAssignRepModalOpen(false);
+    setSelectedOrderForRepAssignment(null);
+    refresh(); // Refresh the sales data to show updated rep
+  };
 
   // Filter data based on search and status
   const filteredQuotes = quotes.filter(quote => {
@@ -208,6 +243,15 @@ export default function RedesignedSalesPage() {
             <div className="flex items-center gap-2">
               <Button 
                 size="sm"
+                variant="outline"
+                className="border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300 shadow-sm hover:shadow-md transition-all duration-300"
+                onClick={() => router.push('/sales/representative')}
+              >
+                <BarChart3 className="mr-2 h-4 w-4" />
+                Sales Dashboard
+              </Button>
+              <Button 
+                size="sm"
                 className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transition-all duration-300"
               >
                 <Download className="mr-2 h-4 w-4" />
@@ -318,7 +362,7 @@ export default function RedesignedSalesPage() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           {/* Enterprise Tab Navigation */}
           <div className="bg-gray-50 border-b border-gray-200">
-            <TabsList className="grid w-full grid-cols-3 bg-transparent p-0 h-auto">
+            <TabsList className="grid w-full grid-cols-4 bg-transparent p-0 h-auto">
               <TabsTrigger 
                 value="quotes" 
                 className="relative flex items-center justify-center gap-2 px-6 py-4 text-sm font-medium 
@@ -367,6 +411,22 @@ export default function RedesignedSalesPage() {
                   New
                 </Badge>
               </TabsTrigger>
+              <TabsTrigger 
+                value="performance" 
+                className="relative flex items-center justify-center gap-2 px-6 py-4 text-sm font-medium 
+                          text-gray-600 hover:text-gray-900 hover:bg-white/50
+                          data-[state=active]:bg-white data-[state=active]:text-orange-600 
+                          data-[state=active]:border-b-2 data-[state=active]:border-orange-600
+                          data-[state=active]:shadow-sm transition-all duration-200
+                          border-b-2 border-transparent"
+              >
+                <TrendingUp className="h-4 w-4" />
+                <span>Sales Performance</span>
+                <Badge className="bg-orange-50 text-orange-700 border border-orange-200 text-xs px-2 py-0.5
+                               data-[state=active]:bg-orange-100 data-[state=active]:text-orange-800">
+                  Analytics
+                </Badge>
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -413,11 +473,16 @@ export default function RedesignedSalesPage() {
                     } else if (activeTab === 'orders') {
                       setSelectedOrder(null);
                       setIsOrderModalOpen(true);
+                    } else if (activeTab === 'custom') {
+                      // Handle custom order creation
+                      console.log('Create custom order functionality to be implemented');
                     }
+                    // No action for performance tab
                   }}
+                  disabled={activeTab === 'performance'}
                 >
                   <Plus className="mr-2 h-5 w-5" />
-                  {activeTab === 'quotes' ? 'New Quote' : activeTab === 'orders' ? 'New Order' : 'Create Custom Order'}
+                  {activeTab === 'quotes' ? 'New Quote' : activeTab === 'orders' ? 'New Order' : activeTab === 'custom' ? 'Create Custom Order' : 'View Analytics'}
                 </Button>
               </div>
             </div>
@@ -454,6 +519,7 @@ export default function RedesignedSalesPage() {
                   setIsOrderEditModalOpen(true);
                 }}
                 onDelete={handleDeleteOrder}
+                onAssignRep={isAdmin ? handleAssignRep : undefined}
                 formatCurrency={formatCurrency}
                 getStatusColor={getStatusColor}
               />
@@ -461,6 +527,15 @@ export default function RedesignedSalesPage() {
 
             <TabsContent value="custom" className="mt-0">
               <CustomOrdersTabContent />
+            </TabsContent>
+
+            <TabsContent value="performance" className="mt-0">
+              {currentUser && (
+                <SalesPerformanceSection 
+                  userId={currentUser.id} 
+                  onRefresh={refresh}
+                />
+              )}
             </TabsContent>
           </div>
         </Tabs>
@@ -481,6 +556,8 @@ export default function RedesignedSalesPage() {
         currentUser={currentUser}
         handleSaveQuote={handleSaveQuote}
         refresh={refresh}
+        showSalesRepChangeButton={isAdmin}
+        onSalesRepChange={handleAssignRep}
       />
 
       {/* Quote Details Modal */}
@@ -495,6 +572,14 @@ export default function RedesignedSalesPage() {
         }}
         formatCurrency={formatCurrency}
         getStatusColor={getStatusColor}
+      />
+
+      {/* Assign Sales Rep Modal */}
+      <AssignSalesRepModal
+        open={isAssignRepModalOpen}
+        onOpenChange={setIsAssignRepModalOpen}
+        order={selectedOrderForRepAssignment}
+        onSuccess={handleRepAssignmentSuccess}
       />
     </div>
   );
@@ -648,11 +733,18 @@ function QuotesTabContent({
                           <span className="text-red-600">Balance: {formatCurrency(quote.remaining_balance || 0)}</span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div 
-                            className="bg-gradient-to-r from-green-400 to-green-600 h-2 rounded-full transition-all duration-300"
-                            style={{
-                              width: `${Math.min(100, Math.max(0, ((quote.total_paid || 0) / ((quote.final_price || quote.total_price) || 1)) * 100))}%`
-                            }}
+                          <div
+                            className={`bg-gradient-to-r from-green-400 to-green-600 h-2 rounded-full transition-all duration-300 ${
+                              (() => {
+                                const percent = Math.min(100, Math.max(0, ((quote.total_paid || 0) / ((quote.final_price || quote.total_price) || 1)) * 100));
+                                if (percent >= 100) return 'w-full';
+                                if (percent >= 75) return 'w-3/4';
+                                if (percent >= 50) return 'w-1/2';
+                                if (percent >= 25) return 'w-1/4';
+                                if (percent > 0) return 'w-1/12';
+                                return 'w-0';
+                              })()
+                            }`}
                           ></div>
                         </div>
                       </div>
@@ -721,6 +813,7 @@ function OrdersTabContent({
   onView,
   onEdit, 
   onDelete, 
+  onAssignRep,
   formatCurrency, 
   getStatusColor 
 }: {
@@ -728,6 +821,7 @@ function OrdersTabContent({
   onView: (order: Order) => void;
   onEdit: (order: Order) => void;
   onDelete: (orderId: string) => void;
+  onAssignRep?: (order: Order) => void;
   formatCurrency: (amount: number) => string;
   getStatusColor: (status: string) => string;
 }) {
@@ -749,6 +843,12 @@ function OrdersTabContent({
               <User className="mr-1 h-3 w-3" />
               {order.customer?.name || 'Unknown Customer'}
             </p>
+            {order.sales_representative && (
+              <p className="text-xs text-blue-600 flex items-center">
+                <User className="mr-1 h-3 w-3" />
+                Sales Rep: {order.sales_representative.name}
+              </p>
+            )}
             {order.date && (
               <p className="text-xs text-gray-500 flex items-center">
                 <Calendar className="mr-1 h-2.5 w-2.5" />
@@ -980,6 +1080,19 @@ function OrdersTabContent({
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
+                
+                {/* Admin Only: Assign Sales Rep Button */}
+                {onAssignRep && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full rounded-lg hover:bg-orange-50 hover:border-orange-300 hover:text-orange-700"
+                    onClick={() => onAssignRep(order)}
+                  >
+                    <Settings className="mr-1 h-4 w-4" />
+                    Change Sales Rep
+                  </Button>
+                )}
               </div>
             </div>
           </CardContent>

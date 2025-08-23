@@ -27,6 +27,8 @@ type Props = {
   currentUser: User | null;
 handleSaveQuote: (q: QuoteFormData, i: OrderItem[]) => Promise<void>;
   refresh: () => void;
+  showSalesRepChangeButton?: boolean;
+  onSalesRepChange?: (orderId: string) => void;
 };
 
 
@@ -44,6 +46,8 @@ export function SalesModals({
   currentUser,
   handleSaveQuote,
   refresh,
+  showSalesRepChangeButton = false,
+  onSalesRepChange,
 }: Props) {
   return (
     <>
@@ -89,7 +93,7 @@ export function SalesModals({
           <DialogDescription className="sr-only">
             Order details view with invoice information, customer details, and action buttons for printing and sharing.
           </DialogDescription>
-          {selectedOrder && <OrderDetails order={selectedOrder} />}
+          {selectedOrder && <OrderDetails order={selectedOrder} showSalesRepChangeButton={showSalesRepChangeButton} onSalesRepChange={onSalesRepChange} />}
         </DialogContent>
       </Dialog>
 

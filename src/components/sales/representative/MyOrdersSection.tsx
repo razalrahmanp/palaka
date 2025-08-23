@@ -11,6 +11,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Eye, Edit, Search, Filter, RotateCcw, ShoppingCart } from 'lucide-react'
 import { toast } from 'sonner'
 
+interface ApiOrder {
+  id: string
+  customer_id: string
+  status: string
+  created_at: string
+  delivery_date?: string
+  items_count: number
+  has_returns?: boolean
+  has_complaints?: boolean
+  quote_id?: string
+  customer?: {
+    name: string
+    email?: string
+  } | null
+  display_total?: number
+  calculated_total?: number
+}
+
 interface MyOrder {
   id: string
   customer_name: string
@@ -78,8 +96,14 @@ export function MyOrdersSection({ userId, onRefresh }: MyOrdersSectionProps) {
       const response = await fetch(`/api/sales/representative/${userId}/orders?${params}`)
       if (response.ok) {
         const data = await response.json()
-        setOrders(data.orders || [])
-        setTotalPages(data.totalPages || 1)
+        // Transform the data to match expected interface
+        const transformedOrders = (data.orders || []).map((order: ApiOrder) => ({
+          ...order,
+          customer_name: order.customer?.name || 'Unknown Customer',
+          total_amount: order.display_total || order.calculated_total || 0
+        }))
+        setOrders(transformedOrders)
+        setTotalPages(data.pagination?.totalPages || data.totalPages || 1)
       } else {
         toast.error('Failed to fetch orders')
       }
@@ -153,9 +177,9 @@ export function MyOrdersSection({ userId, onRefresh }: MyOrdersSectionProps) {
     }).format(amount)
   }
 
-  const filteredOrders = orders.filter(order =>
-    order.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    order.id.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredOrders = (Array.isArray(orders) ? orders : []).filter(order =>
+    (order.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) || false) ||
+    (order.id?.toLowerCase().includes(searchTerm.toLowerCase()) || false)
   )
 
   return (
@@ -242,7 +266,7 @@ export function MyOrdersSection({ userId, onRefresh }: MyOrdersSectionProps) {
                       #{order.id.slice(0, 8)}
                     </TableCell>
                     <TableCell className="font-medium">
-                      {order.customer_name}
+                      {order.customer_name || 'Unknown Customer'}
                     </TableCell>
                     <TableCell className="font-semibold">
                       {formatCurrency(order.total_amount)}

@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { 
   DollarSign, 
-  Plus
+  Plus,
+  Smartphone
 } from 'lucide-react';
 
 // Aligned with actual database structure
@@ -24,6 +25,19 @@ interface BankAccount {
   id: string;
   name: string;
   account_number: string;
+  account_type?: 'BANK' | 'UPI';
+  upi_id?: string;
+  linked_bank_account_id?: string;
+  is_active?: boolean;
+}
+
+interface UpiAccount {
+  id: string;
+  name: string;
+  upi_id: string;
+  current_balance: number;
+  linked_bank_account_id: string | null;
+  is_active: boolean;
 }
 
 interface SalesOrderPaymentTrackerProps {
@@ -38,6 +52,7 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
   const [payments, setPayments] = useState<Payment[]>([]);
   const [totalPaid, setTotalPaid] = useState(0);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [upiAccounts, setUpiAccounts] = useState<UpiAccount[]>([]);
   
   // Simplified form data that matches database schema
   const [formData, setFormData] = useState({
@@ -45,6 +60,7 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
     amount: '',
     method: '',
     bank_account_id: '',
+    upi_account_id: '',
     reference: '',
     description: ''
   });
@@ -66,7 +82,7 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
   // Fetch bank accounts for the form
   const fetchBankAccounts = useCallback(async () => {
     try {
-      const response = await fetch('/api/finance/bank_accounts');
+      const response = await fetch('/api/finance/bank_accounts?type=BANK');
       if (response.ok) {
         const data = await response.json();
         setBankAccounts(data.data || []);
@@ -76,14 +92,28 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
     }
   }, []);
 
+  // Fetch UPI accounts for the form
+  const fetchUpiAccounts = useCallback(async () => {
+    try {
+      const response = await fetch('/api/finance/bank_accounts?type=UPI');
+      if (response.ok) {
+        const data = await response.json();
+        setUpiAccounts(data.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching UPI accounts:', error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchPayments();
   }, [fetchPayments]);
 
-  // Fetch bank accounts only once when dialog opens
+  // Fetch bank accounts and UPI accounts only once when dialog opens
   useEffect(() => {
-    if (open && bankAccounts.length === 0) {
+    if (open && (bankAccounts.length === 0 || upiAccounts.length === 0)) {
       fetchBankAccounts();
+      fetchUpiAccounts();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -109,12 +139,74 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
         throw new Error(errorData.error || 'Failed to add payment');
       }
 
+      // If payment method involves a bank account, create bank transaction
+      if (formData.bank_account_id && (formData.method === 'bank_transfer' || formData.method === 'cheque')) {
+        try {
+          await fetch('/api/finance/bank_accounts/transactions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              bank_account_id: formData.bank_account_id,
+              type: 'deposit',
+              amount: parseFloat(formData.amount),
+              description: `Payment received for Order ${orderId}`,
+              reference: formData.reference || `Order-${orderId}`,
+              transaction_date: formData.payment_date
+            })
+          });
+        } catch (bankError) {
+          console.warn('Bank transaction creation failed:', bankError);
+          // Don't fail the payment if bank transaction fails
+        }
+      }
+
+      // If payment method is UPI, create UPI transaction and linked bank transaction
+      if (formData.upi_account_id && formData.method === 'upi') {
+        try {
+          // Create UPI account transaction
+          await fetch('/api/finance/bank_accounts/transactions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              bank_account_id: formData.upi_account_id,
+              type: 'deposit',
+              amount: parseFloat(formData.amount),
+              description: `UPI Payment received for Order ${orderId}`,
+              reference: formData.reference || `Order-${orderId}`,
+              transaction_date: formData.payment_date
+            })
+          });
+
+          // Find the UPI account and check if it has a linked bank account
+          const upiAccount = upiAccounts.find(acc => acc.id === formData.upi_account_id);
+          if (upiAccount?.linked_bank_account_id) {
+            // Create corresponding bank account transaction
+            await fetch('/api/finance/bank_accounts/transactions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                bank_account_id: upiAccount.linked_bank_account_id,
+                type: 'deposit',
+                amount: parseFloat(formData.amount),
+                description: `UPI Transfer from ${upiAccount.name} for Order ${orderId}`,
+                reference: `UPI-${formData.reference || orderId}`,
+                transaction_date: formData.payment_date
+              })
+            });
+          }
+        } catch (upiError) {
+          console.warn('UPI transaction creation failed:', upiError);
+          // Don't fail the payment if UPI transaction fails
+        }
+      }
+
       // Reset form and close dialog
       setFormData({
         payment_date: new Date().toISOString().split('T')[0],
         amount: '',
         method: '',
         bank_account_id: '',
+        upi_account_id: '',
         reference: '',
         description: ''
       });
@@ -234,6 +326,36 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+
+            {formData.method === 'upi' && (
+              <div>
+                <Label htmlFor="upi_account">UPI Account *</Label>
+                <Select 
+                  value={formData.upi_account_id} 
+                  onValueChange={(value) => handleInputChange('upi_account_id', value)}
+                >
+                  <SelectTrigger id="upi_account">
+                    <SelectValue placeholder="Select UPI account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {upiAccounts.map((account) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        <div className="flex items-center gap-2">
+                          <Smartphone className="h-4 w-4" />
+                          <span>{account.name}</span>
+                          <span className="text-gray-500 text-xs">({account.upi_id})</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {upiAccounts.length === 0 && (
+                  <p className="text-xs text-orange-600 mt-1">
+                    No UPI accounts found. Please add a UPI account first.
+                  </p>
+                )}
               </div>
             )}
 

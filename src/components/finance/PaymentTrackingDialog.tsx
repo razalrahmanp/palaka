@@ -22,7 +22,8 @@ import {
   Plus,
   CheckCircle,
   AlertCircle,
-  Building2
+  Building2,
+  Smartphone
 } from 'lucide-react';
 import { Invoice, Payment } from '@/types';
 import { toast } from 'sonner';
@@ -33,6 +34,19 @@ interface BankAccount {
   account_number: string;
   current_balance: number;
   currency: string;
+  account_type?: 'BANK' | 'UPI';
+  upi_id?: string;
+  linked_bank_account_id?: string;
+  is_active?: boolean;
+}
+
+interface UpiAccount {
+  id: string;
+  name: string;
+  upi_id: string;
+  current_balance: number;
+  linked_bank_account_id: string | null;
+  is_active: boolean;
 }
 
 interface PaymentTrackingDialogProps {
@@ -52,10 +66,12 @@ export function PaymentTrackingDialog({
   const [paymentHistory, setPaymentHistory] = useState<Payment[]>([]);
   const [showAddPayment, setShowAddPayment] = useState(false);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [upiAccounts, setUpiAccounts] = useState<UpiAccount[]>([]);
   const [paymentData, setPaymentData] = useState({
     amount: 0,
-    method: 'cash' as 'cash' | 'card' | 'bank_transfer' | 'check',
+    method: 'cash' as 'cash' | 'card' | 'bank_transfer' | 'check' | 'upi',
     bank_account_id: '',
+    upi_account_id: '',
     reference: '',
     notes: '',
     date: new Date().toISOString().split('T')[0]
@@ -77,7 +93,7 @@ export function PaymentTrackingDialog({
 
   const fetchBankAccounts = useCallback(async () => {
     try {
-      const response = await fetch('/api/finance/bank_accounts');
+      const response = await fetch('/api/finance/bank_accounts?type=BANK');
       if (response.ok) {
         const result = await response.json();
         setBankAccounts(result.data || []);
@@ -87,9 +103,22 @@ export function PaymentTrackingDialog({
     }
   }, []);
 
+  const fetchUpiAccounts = useCallback(async () => {
+    try {
+      const response = await fetch('/api/finance/bank_accounts?type=UPI');
+      if (response.ok) {
+        const result = await response.json();
+        setUpiAccounts(result.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching UPI accounts:', error);
+    }
+  }, []);
+
   useEffect(() => {
-    if (open && bankAccounts.length === 0) {
+    if (open && (bankAccounts.length === 0 || upiAccounts.length === 0)) {
       fetchBankAccounts();
+      fetchUpiAccounts();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -126,7 +155,9 @@ export function PaymentTrackingDialog({
           method: paymentData.method,
           reference: paymentData.reference,
           notes: paymentData.notes,
-          date: paymentData.date
+          date: paymentData.date,
+          bank_account_id: paymentData.bank_account_id || null,
+          upi_account_id: paymentData.upi_account_id || null
         }),
       });
 
@@ -152,6 +183,46 @@ export function PaymentTrackingDialog({
           }
         }
 
+        // If payment method is UPI, create UPI transaction and linked bank transaction
+        if (paymentData.upi_account_id && paymentData.method === 'upi') {
+          try {
+            // Create UPI account transaction
+            await fetch('/api/finance/bank_accounts/transactions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                bank_account_id: paymentData.upi_account_id,
+                type: 'credit', // Payment received
+                amount: paymentData.amount,
+                description: `UPI Payment received for Invoice ${invoice.id.slice(0, 8)}`,
+                reference: paymentData.reference || `INV-${invoice.id.slice(0, 8)}`,
+                transaction_date: paymentData.date
+              })
+            });
+
+            // Find the UPI account and check if it has a linked bank account
+            const upiAccount = upiAccounts.find(acc => acc.id === paymentData.upi_account_id);
+            if (upiAccount?.linked_bank_account_id) {
+              // Create corresponding bank account transaction
+              await fetch('/api/finance/bank_accounts/transactions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  bank_account_id: upiAccount.linked_bank_account_id,
+                  type: 'credit', // Deposit from UPI
+                  amount: paymentData.amount,
+                  description: `UPI Transfer from ${upiAccount.name} for Invoice ${invoice.id.slice(0, 8)}`,
+                  reference: `UPI-${paymentData.reference || invoice.id.slice(0, 8)}`,
+                  transaction_date: paymentData.date
+                })
+              });
+            }
+          } catch (upiError) {
+            console.warn('UPI transaction creation failed:', upiError);
+            // Don't fail the payment if UPI transaction fails
+          }
+        }
+
         toast.success('Payment recorded successfully');
         fetchPaymentHistory();
         onSuccess();
@@ -162,6 +233,7 @@ export function PaymentTrackingDialog({
           amount: 0,
           method: 'cash',
           bank_account_id: '',
+          upi_account_id: '',
           reference: '',
           notes: '',
           date: new Date().toISOString().split('T')[0]
@@ -194,7 +266,8 @@ export function PaymentTrackingDialog({
       cash: 'bg-green-100 text-green-800',
       card: 'bg-blue-100 text-blue-800',
       bank_transfer: 'bg-purple-100 text-purple-800',
-      check: 'bg-orange-100 text-orange-800'
+      check: 'bg-orange-100 text-orange-800',
+      upi: 'bg-indigo-100 text-indigo-800'
     };
     
     return (
@@ -209,6 +282,7 @@ export function PaymentTrackingDialog({
   const remainingAmount = invoice.total - invoice.paid_amount;
   const paymentProgress = (invoice.paid_amount / invoice.total) * 100;
   const requiresBankAccount = ['bank_transfer', 'check'].includes(paymentData.method);
+  const requiresUpiAccount = paymentData.method === 'upi';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -346,11 +420,13 @@ export function PaymentTrackingDialog({
                           <Label htmlFor="method">Payment Method</Label>
                           <Select
                             value={paymentData.method}
-                            onValueChange={(value: "cash" | "card" | "bank_transfer" | "check") => setPaymentData(prev => ({ 
+                            onValueChange={(value: "cash" | "card" | "bank_transfer" | "check" | "upi") => setPaymentData(prev => ({ 
                               ...prev, 
                               method: value,
                               // Reset bank account when method changes
-                              bank_account_id: ['bank_transfer', 'check'].includes(value) ? prev.bank_account_id : ''
+                              bank_account_id: ['bank_transfer', 'check'].includes(value) ? prev.bank_account_id : '',
+                              // Reset UPI account when method changes
+                              upi_account_id: value === 'upi' ? prev.upi_account_id : ''
                             }))}
                           >
                             <SelectTrigger>
@@ -361,6 +437,7 @@ export function PaymentTrackingDialog({
                               <SelectItem value="card">Card</SelectItem>
                               <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
                               <SelectItem value="check">Check</SelectItem>
+                              <SelectItem value="upi">UPI</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -396,6 +473,42 @@ export function PaymentTrackingDialog({
                               ))}
                             </SelectContent>
                           </Select>
+                        </div>
+                      )}
+
+                      {/* UPI Account Selection - only show for UPI */}
+                      {requiresUpiAccount && (
+                        <div>
+                          <Label htmlFor="upi_account_id">UPI Account *</Label>
+                          <Select
+                            value={paymentData.upi_account_id}
+                            onValueChange={(value: string) => setPaymentData(prev => ({ 
+                              ...prev, 
+                              upi_account_id: value 
+                            }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select UPI account" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {upiAccounts.map((account) => (
+                                <SelectItem key={account.id} value={account.id}>
+                                  <div className="flex items-center gap-2">
+                                    <Smartphone className="h-4 w-4" />
+                                    <span>{account.name}</span>
+                                    <span className="text-gray-500 text-xs">
+                                      ({account.upi_id})
+                                    </span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {upiAccounts.length === 0 && (
+                            <p className="text-xs text-orange-600 mt-1">
+                              No UPI accounts found. Please add a UPI account first.
+                            </p>
+                          )}
                         </div>
                       )}
 

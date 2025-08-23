@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import { Header } from '@/components/Header';
@@ -9,6 +9,7 @@ import { Sidebar } from '@/components/Sidebar';
 export default function ErpLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(true); // Sidebar open by default
+  const sidebarRef = useRef<HTMLDivElement>(null);
 
   // Check for user and redirect to login if not authenticated
   useEffect(() => {
@@ -17,6 +18,25 @@ export default function ErpLayout({ children }: { children: React.ReactNode }) {
       router.replace('/login');
     }
   }, [router]);
+
+  // Click outside to close sidebar
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        sidebarOpen &&
+        sidebarRef.current &&
+        !sidebarRef.current.contains(event.target as Node) &&
+        window.innerWidth >= 768 // Only for desktop (md breakpoint)
+      ) {
+        setSidebarOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [sidebarOpen]);
 
   return (
     <div className="flex h-screen bg-gray-100 font-sans">
@@ -29,7 +49,9 @@ export default function ErpLayout({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Sidebar - toggles for both mobile and desktop */}
-      <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
+      <div ref={sidebarRef}>
+        <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
+      </div>
 
       {/* Main content - expands when sidebar is hidden */}
       <div className={`transition-all duration-300 flex-1 relative ${sidebarOpen ? 'md:ml-64' : 'md:ml-0'} w-full`}>

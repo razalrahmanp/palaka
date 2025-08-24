@@ -113,7 +113,8 @@ export async function GET(request: NextRequest) {
 
   // Apply filters
   if (search) {
-    query = query.or(`products.name.ilike.%${search}%,products.sku.ilike.%${search}%,products.description.ilike.%${search}%`);
+    // Simple text search in product name first, then extend if needed
+    query = query.filter('products.name', 'ilike', `%${search}%`);
   }
   if (category) {
     query = query.eq('category', category);
@@ -121,6 +122,9 @@ export async function GET(request: NextRequest) {
   if (supplier) {
     query = query.eq('supplier_id', supplier);
   }
+
+  // Apply ordering - show recently updated inventory items first
+  query = query.order('updated_at', { ascending: false });
 
   // Apply pagination
   query = query.range(offset, offset + limit - 1);

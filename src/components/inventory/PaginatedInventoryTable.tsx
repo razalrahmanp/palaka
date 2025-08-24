@@ -45,7 +45,7 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
   const [items, setItems] = useState<ProductWithInventory[]>([])
   const [pagination, setPagination] = useState<PaginationData>({
     page: 1,
-    limit: 20,
+    limit: 50, // Increased from 20 to 50 to show more recent products
     total: 0,
     totalPages: 0,
     hasNext: false,
@@ -75,6 +75,7 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
       const params = new URLSearchParams({
         page: pagination.page.toString(),
         limit: pagination.limit.toString(),
+        _t: Date.now().toString(), // Cache buster to ensure fresh data
         ...(search && { search }),
         ...(category && { category }),
         ...(supplier && { supplier })

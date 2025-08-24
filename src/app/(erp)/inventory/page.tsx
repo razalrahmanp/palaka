@@ -22,12 +22,13 @@ export default function InventoryPage() {
   const [manageMarginsOpen, setManageMarginsOpen] = useState(false)
 
   const fetchAll = useCallback(() => {
-    fetch('/api/products?limit=1000').then(r => r.json()).then(data => {
+    const timestamp = Date.now(); // Cache buster
+    fetch(`/api/products?limit=1000&_t=${timestamp}`).then(r => r.json()).then(data => {
       // Handle both old format (array) and new format (object with products array)
       const productsArray = Array.isArray(data) ? data : data.products || [];
       setItems(productsArray);
     })
-    fetch('/api/suppliers').then(r => r.json()).then(setSuppliers)
+    fetch(`/api/suppliers?_t=${timestamp}`).then(r => r.json()).then(setSuppliers)
   }, [])
 
   useEffect(fetchAll, [fetchAll])

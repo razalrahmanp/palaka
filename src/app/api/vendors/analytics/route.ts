@@ -1,67 +1,147 @@
-// app/api/vendors/analytics/route.ts
-import { supabase } from '@/lib/supabaseAdmin'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
-export async function GET() {
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export async function GET(request: NextRequest) {
   try {
-    // Get all vendors with basic stats
-    const { data: vendors, error: vendorsError } = await supabase
-      .from('suppliers')
-      .select('id, name')
-      .order('name', { ascending: true });
+    const { searchParams } = new URL(request.url);
+    const vendorId = searchParams.get('vendorId');
+    const range = searchParams.get('range') || '3m';
+    
+    // Calculate date range
+    const endDate = new Date();
+    const startDate = new Date();
+    
+    switch (range) {
+      case '1m':
+        startDate.setMonth(startDate.getMonth() - 1);
+        break;
+      case '3m':
+        startDate.setMonth(startDate.getMonth() - 3);
+        break;
+      case '6m':
+        startDate.setMonth(startDate.getMonth() - 6);
+        break;
+      case '1y':
+        startDate.setFullYear(startDate.getFullYear() - 1);
+        break;
+      default:
+        startDate.setMonth(startDate.getMonth() - 3);
+    }
 
-    if (vendorsError) throw vendorsError;
+    // Call the comprehensive vendor analytics function
+    const { data, error } = await supabase.rpc('get_vendor_analytics_api', {
+      p_vendor_id: vendorId || null,
+      p_start_date: startDate.toISOString().split('T')[0],
+      p_end_date: endDate.toISOString().split('T')[0]
+    });
 
-    // Get performance data for each vendor
-    const vendorAnalytics = await Promise.all(
-      vendors.slice(0, 5).map(async (vendor) => { // Limit to top 5 for performance
-        // Purchase orders stats
-        const { data: purchaseOrders } = await supabase
-          .from('purchase_orders')
-          .select('id, quantity, status, total, created_at')
-          .eq('supplier_id', vendor.id);
+    if (error) {
+      console.error('Database error:', error);
+      return NextResponse.json(
+        { success: false, error: 'Failed to fetch vendor analytics', details: error.message },
+        { status: 500 }
+      );
+    }
 
-        // Calculate metrics
-        const totalOrders = purchaseOrders?.length || 0;
-        const totalSpent = purchaseOrders?.reduce((sum, po) => sum + (po.total || 0), 0) || 0;
-        const avgOrderValue = totalOrders > 0 ? totalSpent / totalOrders : 0;
+    // If the function returns a JSON object with success/data structure, use it directly
+    if (data && typeof data === 'object' && 'success' in data) {
+      return NextResponse.json(data);
+    }
 
-        // Last 30 days orders
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        
-        const last30DaysOrders = purchaseOrders?.filter(po => 
-          new Date(po.created_at || '') > thirtyDaysAgo
-        ).length || 0;
+    // Otherwise, wrap the data
+    return NextResponse.json({
+      success: true,
+      data: data || {
+        summary: {
+          totalVendors: 0,
+          activeVendors: 0,
+          totalOrders: 0,
+          totalAmount: 0,
+          averageDeliveryTime: 0,
+          onTimeDeliveryRate: 0
+        },
+        topVendors: [],
+        monthlyTrends: [],
+        categoryDistribution: [],
+        performanceMetrics: []
+      }
+    });
 
-        // Mock performance scores (in real implementation, these would come from actual tracking)
-        const onTimeDeliveryRate = Math.floor(Math.random() * 30) + 70; // 70-100%
-        const qualityScore = Math.floor(Math.random() * 30) + 70; // 70-100%
-        
-        // Determine trend based on recent activity
-        const trend = last30DaysOrders > totalOrders * 0.1 ? 'up' : 
-                     last30DaysOrders === 0 ? 'down' : 'stable';
+  } catch (error) {
+    console.error('Vendor analytics error:', error);
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: 'Internal server error', 
+        details: error instanceof Error ? error.message : 'Unknown error' 
+      },
+      { status: 500 }
+    );
+  }
+}
 
-        return {
-          vendor_id: vendor.id,
-          vendor_name: vendor.name,
-          total_orders: totalOrders,
-          total_spent: totalSpent,
-          avg_order_value: avgOrderValue,
-          on_time_delivery_rate: onTimeDeliveryRate,
-          quality_score: qualityScore,
-          last_30_days_orders: last30DaysOrders,
-          trend
-        };
-      })
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { action, vendorId } = body;
+
+    if (action === 'refresh_analytics') {
+      // Refresh analytics data
+      const { error } = await supabase.rpc('refresh_comprehensive_analytics');
+      
+      if (error) {
+        console.error('Analytics refresh error:', error);
+        return NextResponse.json(
+          { success: false, error: 'Failed to refresh analytics' },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({ 
+        success: true, 
+        message: 'Analytics refreshed successfully' 
+      });
+    }
+
+    if (action === 'get_vendor_performance' && vendorId) {
+      // Get detailed vendor performance
+      const { data, error } = await supabase.rpc('get_vendor_performance_details', {
+        vendor_id_in: vendorId
+      });
+
+      if (error) {
+        console.error('Vendor performance error:', error);
+        return NextResponse.json(
+          { success: false, error: 'Failed to fetch vendor performance' },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: data
+      });
+    }
+
+    return NextResponse.json(
+      { success: false, error: 'Invalid action' },
+      { status: 400 }
     );
 
-    // Sort by total spent (descending)
-    vendorAnalytics.sort((a, b) => b.total_spent - a.total_spent);
-
-    return NextResponse.json(vendorAnalytics);
   } catch (error) {
-    console.error('GET /api/vendors/analytics error', error);
-    return NextResponse.json({ error: 'Failed to fetch vendor analytics' }, { status: 500 });
+    console.error('POST vendor analytics error:', error);
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: 'Internal server error', 
+        details: error instanceof Error ? error.message : 'Unknown error' 
+      },
+      { status: 500 }
+    );
   }
 }

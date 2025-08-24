@@ -7,10 +7,10 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const supabaseAdmin = createClient(supabaseUrl, supabaseKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
-  }
+    auth: {
+        autoRefreshToken: false,
+        persistSession: false
+    }
 });
 
 const createViewSQL = `
@@ -48,41 +48,41 @@ ORDER BY
 `;
 
 async function createView() {
-  try {
-    console.log('Creating sales_order_payment_summary view...');
-    
-    const { data, error } = await supabaseAdmin.rpc('exec_sql', {
-      sql: createViewSQL
-    });
-    
-    if (error) {
-      console.error('Error creating view:', error);
-      
-      // Try alternative method using raw SQL
-      const { error: rawError } = await supabaseAdmin
-        .from('sales_orders')
-        .select('*')
-        .limit(1);
-        
-      if (rawError) {
-        console.error('Database connection error:', rawError);
-        return;
-      }
-      
-      console.log('Connected to database successfully, but view creation failed.');
-      console.log('You may need to run the SQL manually in your database admin panel.');
-      console.log('\nSQL to execute:');
-      console.log(createViewSQL);
-      
-    } else {
-      console.log('✅ View created successfully:', data);
+    try {
+        console.log('Creating sales_order_payment_summary view...');
+
+        const { data, error } = await supabaseAdmin.rpc('exec_sql', {
+            sql: createViewSQL
+        });
+
+        if (error) {
+            console.error('Error creating view:', error);
+
+            // Try alternative method using raw SQL
+            const { error: rawError } = await supabaseAdmin
+                .from('sales_orders')
+                .select('*')
+                .limit(1);
+
+            if (rawError) {
+                console.error('Database connection error:', rawError);
+                return;
+            }
+
+            console.log('Connected to database successfully, but view creation failed.');
+            console.log('You may need to run the SQL manually in your database admin panel.');
+            console.log('\nSQL to execute:');
+            console.log(createViewSQL);
+
+        } else {
+            console.log('✅ View created successfully:', data);
+        }
+
+    } catch (error) {
+        console.error('Unexpected error:', error);
+        console.log('\nPlease run this SQL manually in your Supabase SQL editor:');
+        console.log(createViewSQL);
     }
-    
-  } catch (error) {
-    console.error('Unexpected error:', error);
-    console.log('\nPlease run this SQL manually in your Supabase SQL editor:');
-    console.log(createViewSQL);
-  }
 }
 
 createView();

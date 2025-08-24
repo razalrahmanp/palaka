@@ -28,7 +28,8 @@ export default function ProductsSalesPage() {
   const user = getCurrentUser();
 
   useEffect(() => {
-    fetch("/api/products?limit=1000") // Get all products for the sales page
+    const timestamp = Date.now(); // Cache buster
+    fetch(`/api/products?limit=1000&_t=${timestamp}`) // Get all products for the sales page
       .then((r) => r.json())
       .then((data) => {
         // Handle both old format (array) and new format (object with products array)
@@ -52,7 +53,7 @@ export default function ProductsSalesPage() {
         console.error('Error fetching customers:', error);
       });
 
-    fetch("/api/suppliers")
+    fetch(`/api/suppliers?_t=${timestamp}`)
       .then((r) => r.json())
       .then((data: Supplier[]) => setSuppliers(data))
       .catch((error) => {

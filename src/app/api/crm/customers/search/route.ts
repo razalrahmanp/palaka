@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { supabase } from '@/lib/supabaseAdmin';
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
     const { searchParams } = new URL(request.url);
     
     const query = searchParams.get('q');

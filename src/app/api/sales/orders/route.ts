@@ -26,9 +26,11 @@ type ItemRow = {
   quantity: number;
   unit_price: number | null;
   product_id?: string | null;
+  custom_product_id?: string | null;
   product_name?: string | null;
   supplier_name?: string | null;
   sku?: string | null;
+  is_custom?: boolean;
   products?: {
     name: string;
     price: number;
@@ -49,6 +51,8 @@ type ItemQueryResult = {
   quantity: number;
   unit_price: number | null;
   product_id?: string | null;
+  custom_product_id?: string | null;
+  name?: string | null;
   supplier_name?: string | null;
   products?: {
     name: string;
@@ -60,6 +64,17 @@ type ItemQueryResult = {
     price: number;
     sku?: string;
     suppliers?: { name: string }[];
+  }[] | null;
+  custom_products?: {
+    name: string;
+    price: number;
+    sku?: string;
+    supplier?: { name: string }[] | { name: string };
+  } | {
+    name: string;
+    price: number;
+    sku?: string;
+    supplier?: { name: string }[] | { name: string };
   }[] | null;
 };
 
@@ -207,8 +222,11 @@ export async function GET() {
       quantity,
       unit_price,
       product_id,
+      custom_product_id,
+      name,
       supplier_name,
-      products:product_id(name, sku, price, suppliers(name))
+      products:product_id(name, sku, price, suppliers(name)),
+      custom_products:custom_product_id(name, sku, price, supplier:supplier_id(name))
     `);
 
   if (itemsError) {
@@ -217,28 +235,65 @@ export async function GET() {
     }, { status: 500 });
   }
 
-  const items: ItemRow[] = (itemsRaw ?? []).map((i: ItemQueryResult) => ({
-    order_id: i.order_id,
-    quantity: i.quantity,
-    unit_price: i.unit_price,
-    product_id: i.product_id,
-    product_name: i.products 
-      ? Array.isArray(i.products) 
-        ? (i.products.length > 0 && i.products[0] ? i.products[0].name : null)
+  const items: ItemRow[] = (itemsRaw ?? []).map((i: ItemQueryResult) => {
+    // Determine if this is a custom product or regular product
+    const isCustomProduct = Boolean(i.custom_product_id && !i.product_id);
+    
+    let productName = null;
+    let sku = null;
+    let supplierName = i.supplier_name;
+
+    if (isCustomProduct && i.custom_products) {
+      // Handle custom product
+      const customProduct = Array.isArray(i.custom_products) 
+        ? (i.custom_products.length > 0 ? i.custom_products[0] : null)
+        : i.custom_products;
+      
+      if (customProduct) {
+        productName = customProduct.name;
+        sku = customProduct.sku;
+        
+        // Handle supplier from custom product
+        if (customProduct.supplier) {
+          if (Array.isArray(customProduct.supplier)) {
+            supplierName = customProduct.supplier.length > 0 ? customProduct.supplier[0].name : supplierName;
+          } else {
+            supplierName = customProduct.supplier.name;
+          }
+        }
+      }
+      
+      // Fallback to the name field if no custom product data
+      if (!productName && i.name) {
+        productName = i.name;
+      }
+    } else if (i.products) {
+      // Handle regular product
+      const product = Array.isArray(i.products) 
+        ? (i.products.length > 0 && i.products[0] ? i.products[0] : null)
         : (i.products && typeof i.products === 'object' && 'name' in i.products) 
-          ? (i.products as {name: string}).name 
-          : null
-      : null,
-    supplier_name: i.supplier_name,
-    sku: i.products 
-      ? Array.isArray(i.products) 
-        ? (i.products.length > 0 && i.products[0] ? i.products[0].sku : null)
-        : (i.products && typeof i.products === 'object' && 'sku' in i.products)
-          ? (i.products as {sku: string}).sku 
-          : null
-      : null,
-    products: null, // Will be populated from the relationship data if needed
-  }));
+          ? (i.products as {name: string, sku?: string}) 
+          : null;
+      
+      if (product) {
+        productName = product.name;
+        sku = product.sku;
+      }
+    }
+
+    return {
+      order_id: i.order_id,
+      quantity: i.quantity,
+      unit_price: i.unit_price,
+      product_id: i.product_id,
+      product_name: productName,
+      supplier_name: supplierName,
+      sku: sku,
+      products: null, // Will be populated from the relationship data if needed
+      custom_product_id: i.custom_product_id,
+      is_custom: isCustomProduct
+    };
+  });
 
   const grouped = orders.map((order) => {
     const orderItems = items
@@ -250,6 +305,8 @@ export async function GET() {
         supplier_name: i.supplier_name || "N/A",
         sku: i.sku || null,
         product_id: i.product_id || null,
+        custom_product_id: i.custom_product_id || null,
+        is_custom: i.is_custom || false
       }));
 
     const calculatedTotal = orderItems.reduce(
@@ -345,7 +402,39 @@ export async function POST(req: Request) {
 
   const orderId = orderData.id;
 
-  const itemsToInsert = items.map((item) => ({
+  // Deduplicate items before inserting
+  const itemsMap = new Map();
+  const deduplicatedItems = items.filter((item) => {
+    const key = item.product_id ? `product_${item.product_id}` : `custom_${item.custom_product_id}`;
+    
+    if (!key || key === 'product_' || key === 'custom_') {
+      console.warn('Skipping item with no valid product_id or custom_product_id:', item);
+      return false;
+    }
+
+    if (itemsMap.has(key)) {
+      // If duplicate found, combine quantities
+      const existingItem = itemsMap.get(key);
+      existingItem.quantity += item.quantity;
+      console.log(`Merged duplicate item ${key}: new quantity ${existingItem.quantity}`);
+      return false;
+    } else {
+      itemsMap.set(key, item);
+      return true;
+    }
+  });
+
+  // Add back the merged items
+  itemsMap.forEach((item, key) => {
+    if (!deduplicatedItems.some(di => {
+      const diKey = di.product_id ? `product_${di.product_id}` : `custom_${di.custom_product_id}`;
+      return diKey === key;
+    })) {
+      deduplicatedItems.push(item);
+    }
+  });
+
+  const itemsToInsert = deduplicatedItems.map((item) => ({
     order_id: orderId,
     product_id: item.product_id ?? null,
     custom_product_id: item.custom_product_id ?? null,
@@ -516,25 +605,93 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
-  const { error: deleteItemsError } = await supabase
-    .from("sales_order_items")
-    .delete()
-    .eq("order_id", id);
+  try {
+    // Delete all related records in order to avoid foreign key constraint violations
+    
+    // 1. Delete warranty claims
+    const { error: deleteWarrantyError } = await supabase
+      .from("warranty_claims")
+      .delete()
+      .eq("order_id", id);
 
-  if (deleteItemsError) {
-    console.error("Error deleting order items:", deleteItemsError);
-    return NextResponse.json({ error: deleteItemsError.message }, { status: 500 });
+    if (deleteWarrantyError) {
+      console.error("Error deleting warranty claims:", deleteWarrantyError);
+      return NextResponse.json({ error: deleteWarrantyError.message }, { status: 500 });
+    }
+
+    // 2. Delete returns
+    const { error: deleteReturnsError } = await supabase
+      .from("returns")
+      .delete()
+      .eq("order_id", id);
+
+    if (deleteReturnsError) {
+      console.error("Error deleting returns:", deleteReturnsError);
+      return NextResponse.json({ error: deleteReturnsError.message }, { status: 500 });
+    }
+
+    // 3. Delete partial delivery tracking
+    const { error: deletePartialDeliveryError } = await supabase
+      .from("partial_delivery_tracking")
+      .delete()
+      .eq("sales_order_id", id);
+
+    if (deletePartialDeliveryError) {
+      console.error("Error deleting partial delivery tracking:", deletePartialDeliveryError);
+      return NextResponse.json({ error: deletePartialDeliveryError.message }, { status: 500 });
+    }
+
+    // 4. Delete deliveries
+    const { error: deleteDeliveriesError } = await supabase
+      .from("deliveries")
+      .delete()
+      .eq("sales_order_id", id);
+
+    if (deleteDeliveriesError) {
+      console.error("Error deleting deliveries:", deleteDeliveriesError);
+      return NextResponse.json({ error: deleteDeliveriesError.message }, { status: 500 });
+    }
+
+    // 5. Delete order modifications
+    const { error: deleteModificationsError } = await supabase
+      .from("order_modifications")
+      .delete()
+      .eq("order_id", id);
+
+    if (deleteModificationsError) {
+      console.error("Error deleting order modifications:", deleteModificationsError);
+      return NextResponse.json({ error: deleteModificationsError.message }, { status: 500 });
+    }
+
+    // 6. Delete sales order items
+    const { error: deleteItemsError } = await supabase
+      .from("sales_order_items")
+      .delete()
+      .eq("order_id", id);
+
+    if (deleteItemsError) {
+      console.error("Error deleting order items:", deleteItemsError);
+      return NextResponse.json({ error: deleteItemsError.message }, { status: 500 });
+    }
+
+    // 7. Finally, delete the sales order itself
+    const { error: deleteOrderError } = await supabase
+      .from("sales_orders")
+      .delete()
+      .eq("id", id);
+
+    if (deleteOrderError) {
+      console.error("Error deleting sales order:", deleteOrderError);
+      return NextResponse.json({ error: deleteOrderError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      message: "Sales order and all related records deleted successfully" 
+    });
+    
+  } catch (error) {
+    console.error("Unexpected error during order deletion:", error);
+    return NextResponse.json({ error: "Failed to delete order" }, { status: 500 });
   }
-
-  const { error: deleteOrderError } = await supabase
-    .from("sales_orders")
-    .delete()
-    .eq("id", id);
-
-  if (deleteOrderError) {
-    console.error("Error deleting sales order:", deleteOrderError);
-    return NextResponse.json({ error: deleteOrderError.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ success: true });
 }

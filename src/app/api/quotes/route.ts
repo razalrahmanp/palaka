@@ -8,11 +8,7 @@ export async function POST(request: NextRequest) {
     // Insert quote record
     const { data: quote, error: quoteError } = await supabase
       .from('quotes')
-      .insert({
-        ...quoteData,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
+      .insert(quoteData)
       .select()
       .single();
 

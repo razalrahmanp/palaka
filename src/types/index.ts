@@ -566,3 +566,84 @@ export interface SystemSetting {
   updated_at: string;
 }
 
+// Billing System Interfaces
+export interface BillingCustomer {
+  customer_id: string;
+  id?: string; // Additional compatibility field
+  name: string; // Required field as per DB schema
+  full_name?: string; // Alias for compatibility
+  phone?: string;
+  email?: string;
+  address?: string; // Required field
+  floor?: string; // Required field as per DB schema
+  city?: string;
+  state?: string;
+  pincode?: string;
+  gst_number?: string;
+  company_name?: string;
+  first_name?: string;
+  last_name?: string;
+  status?: string;
+  customer_type?: string;
+  notes?: string;
+  latitude?: number;
+  longitude?: number;
+  geocoded_at?: string;
+  formatted_address?: string;
+}
+
+export interface CustomProduct {
+  id?: string;
+  name: string;
+  description: string;
+  price: number;
+  category?: string;
+  material?: string;
+  lead_time_days?: number;
+  subcategory?: string;
+  supplier_name?: string;
+  supplier_id?: string;
+  config_schema?: Record<string, unknown>;
+  sku?: string;
+}
+
+export interface BillingItem {
+  id: string;
+  product?: ProductWithInventory;
+  customProduct?: CustomProduct;
+  quantity: number;
+  originalPrice: number;
+  finalPrice: number;
+  totalPrice: number;
+  discountAmount: number;
+  discountPercentage: number;
+  tax: number;
+  isCustom: boolean;
+}
+
+export interface PaymentMethod {
+  id: string;
+  type: 'cash' | 'card' | 'upi' | 'bank_transfer' | 'cheque' | 'emi';
+  amount: number;
+  reference?: string;
+}
+
+export interface BillingData {
+  customer: BillingCustomer | null;
+  items: BillingItem[];
+  paymentMethods: PaymentMethod[];
+  finalTotal: number;
+  notes: string;
+  selectedSalesman?: { id: string; name: string; email?: string; user_id?: string } | null;
+  totals: {
+    original_price: number;
+    total_price: number;
+    final_price: number;
+    discount_amount: number;
+    subtotal: number;
+    tax: number;
+    freight_charges: number;
+    grandTotal: number;
+  };
+}
+

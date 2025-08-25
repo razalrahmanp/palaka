@@ -9,6 +9,9 @@ interface OrderItemWithProducts {
   custom_product_id?: string | null;
   name?: string | null;
   supplier_name?: string | null;
+  discount_percentage?: number | null;
+  final_price?: number | null;
+  cost?: number | null;
   products?: {
     id: string;
     name: string;
@@ -166,9 +169,17 @@ export async function GET(
     }
 
     // Map items to include comprehensive product information
-    const mappedItems = (itemsData || []).map((item: OrderItemWithProducts) => {
+    const rawMappedItems = (itemsData || []).map((item: OrderItemWithProducts) => {
       const isCustomProduct = !!item.custom_product_id;
       const needsManufacturing = item.products?.boms && item.products.boms.length > 0;
+      
+      // Calculate final price considering discount
+      const unitPrice = item.unit_price || 0;
+      const quantity = item.quantity || 1;
+      const discountPercentage = item.discount_percentage || 0;
+      const lineTotal = unitPrice * quantity;
+      const discountAmount = lineTotal * (discountPercentage / 100);
+      const finalPrice = lineTotal - discountAmount;
       
       return {
         ...item,
@@ -179,6 +190,11 @@ export async function GET(
           (item.products?.suppliers && item.products.suppliers.length > 0 
             ? item.products.suppliers[0].name 
             : item.custom_products?.supplier_name || null),
+        
+        // Price calculations
+        final_price: finalPrice,
+        line_total: lineTotal,
+        discount_amount: discountAmount,
         
         // Manufacturing and customization flags
         is_custom_product: isCustomProduct,
@@ -192,6 +208,46 @@ export async function GET(
         // Additional details
         description: item.custom_products?.description || null
       };
+    });
+
+    // Deduplicate items that have the same product_id or custom_product_id
+    const itemsMap = new Map();
+    const mappedItems = rawMappedItems.filter((item) => {
+      const key = item.product_id ? `product_${item.product_id}` : `custom_${item.custom_product_id}`;
+      
+      if (!key || key === 'product_' || key === 'custom_') {
+        // If no valid identifier, keep the item (shouldn't happen but safety check)
+        return true;
+      }
+
+      if (itemsMap.has(key)) {
+        // If duplicate found, merge quantities and calculate weighted average price
+        const existingItem = itemsMap.get(key);
+        const totalQuantity = existingItem.quantity + item.quantity;
+        const existingPrice = existingItem.unit_price || 0;
+        const itemPrice = item.unit_price || 0;
+        const totalValue = (existingItem.quantity * existingPrice) + (item.quantity * itemPrice);
+        const averagePrice = totalQuantity > 0 ? totalValue / totalQuantity : 0;
+        
+        // Recalculate final price for merged item
+        const discountPercentage = existingItem.discount_percentage || 0;
+        const lineTotal = averagePrice * totalQuantity;
+        const discountAmount = lineTotal * (discountPercentage / 100);
+        const finalPrice = lineTotal - discountAmount;
+        
+        // Update the existing item with merged values
+        existingItem.quantity = totalQuantity;
+        existingItem.unit_price = Math.round(averagePrice * 100) / 100; // Round to 2 decimal places
+        existingItem.final_price = Math.round(finalPrice * 100) / 100;
+        existingItem.line_total = Math.round(lineTotal * 100) / 100;
+        existingItem.discount_amount = Math.round(discountAmount * 100) / 100;
+        
+        console.log(`Merged duplicate item ${key}: new quantity ${totalQuantity}, average price ${existingItem.unit_price}, final price ${existingItem.final_price}`);
+        return false; // Don't include this duplicate
+      } else {
+        itemsMap.set(key, item);
+        return true; // Include this item
+      }
     });
 
     // Calculate payment totals (using invoice paid amounts)
@@ -286,7 +342,11 @@ export async function PUT(
   // Update sales_orders
   const { error: updateError } = await supabase
     .from('sales_orders')
-    .update({ status, total })
+    .update({ 
+      status, 
+      final_price: total,
+      original_price: total // Update both final_price and original_price
+    })
     .eq('id', id);
 
   if (updateError) {
@@ -294,30 +354,69 @@ export async function PUT(
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
 
-  // Delete old order_items
+  // Delete old sales_order_items
   const { error: deleteItemsError } = await supabase
-    .from('order_items')
+    .from('sales_order_items')
     .delete()
     .eq('order_id', id);
 
   if (deleteItemsError) {
-    console.error('Error deleting order items:', deleteItemsError);
+    console.error('Error deleting sales order items:', deleteItemsError);
     return NextResponse.json({ error: deleteItemsError.message }, { status: 500 });
   }
 
-  // Insert new order_items
+  // Validate and deduplicate items before inserting
+  const itemsMap = new Map();
+  const processedItems = items.filter((item: {
+    product_id?: string;
+    custom_product_id?: string;
+    quantity: number;
+    unit_price: number;
+    name?: string;
+    supplier_name?: string;
+  }) => {
+    // Create a unique key for each item
+    const key = item.product_id ? `product_${item.product_id}` : `custom_${item.custom_product_id}`;
+    
+    if (!key || key === 'product_' || key === 'custom_') {
+      console.warn('Skipping item with no valid product_id or custom_product_id:', item);
+      return false;
+    }
+
+    if (itemsMap.has(key)) {
+      // If duplicate found, combine quantities
+      const existingItem = itemsMap.get(key);
+      existingItem.quantity += item.quantity;
+      console.log(`Merged duplicate item ${key}: new quantity ${existingItem.quantity}`);
+      return false;
+    } else {
+      itemsMap.set(key, item);
+      return true;
+    }
+  });
+
+  // Add back the merged items
+  itemsMap.forEach((item, key) => {
+    if (!processedItems.some(pi => {
+      const piKey = pi.product_id ? `product_${pi.product_id}` : `custom_${pi.custom_product_id}`;
+      return piKey === key;
+    })) {
+      processedItems.push(item);
+    }
+  });
+
+  // Insert new sales_order_items
   const { error: insertItemsError } = await supabase
-    .from('order_items')
+    .from('sales_order_items')
     .insert(
-      items.map((i: {
-        product_id: string;
-        quantity: number;
-        unit_price: number;
-      }) => ({
+      processedItems.map((i) => ({
         order_id: id,
-        product_id: i.product_id,
+        product_id: i.product_id || null,
+        custom_product_id: i.custom_product_id || null,
         quantity: i.quantity,
         unit_price: i.unit_price,
+        name: i.name || null,
+        supplier_name: i.supplier_name || null,
       }))
     );
 

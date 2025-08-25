@@ -2,21 +2,17 @@
 
 import React, { useState, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { 
-  Search, 
   Filter, 
   Grid3X3, 
   List, 
-  Package, 
-  SortAsc, 
-  SortDesc,
-  X
+  Package
 } from 'lucide-react';
 import { Product } from '@/types';
 import { ProductCard } from './ProductCard';
+import EnhancedSearchFilter, { FilterOption } from '@/components/ui/enhanced-search-filter';
 
 interface ProductSelectionProps {
   products: Product[];
@@ -41,12 +37,12 @@ export const ProductSelection: React.FC<ProductSelectionProps> = ({
 
   // Get unique categories and suppliers for filters
   const categories = useMemo(() => {
-    const cats = products.map(p => p.category).filter(Boolean);
+    const cats = products.map(p => p.category).filter((cat): cat is string => Boolean(cat));
     return [...new Set(cats)].sort();
   }, [products]);
 
   const suppliers = useMemo(() => {
-    const sups = products.map(p => p.supplier_name).filter(Boolean);
+    const sups = products.map(p => p.supplier_name).filter((sup): sup is string => Boolean(sup));
     return [...new Set(sups)].sort();
   }, [products]);
 
@@ -114,137 +110,105 @@ export const ProductSelection: React.FC<ProductSelectionProps> = ({
             <CardTitle className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
               Product Selection
             </CardTitle>
-            <div className="flex items-center gap-2">
+          </div>
+
+          {/* Enhanced Search and Filters */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <EnhancedSearchFilter
+                  searchValue={searchTerm}
+                  onSearchChange={setSearchTerm}
+                  searchPlaceholder="Search products by name, SKU, or description..."
+                  filters={[
+                    {
+                      key: 'category',
+                      label: 'Category',
+                      value: categoryFilter,
+                      options: categories.map((cat): FilterOption => ({
+                        label: cat,
+                        value: cat,
+                        count: products.filter(p => p.category === cat).length
+                      })),
+                      placeholder: 'All Categories'
+                    },
+                    {
+                      key: 'supplier',
+                      label: 'Supplier',
+                      value: supplierFilter,
+                      options: suppliers.map((sup): FilterOption => ({
+                        label: sup,
+                        value: sup,
+                        count: products.filter(p => p.supplier_name === sup).length
+                      })),
+                      placeholder: 'All Suppliers'
+                    },
+                    {
+                      key: 'stock',
+                      label: 'Stock Level',
+                      value: stockFilter === 'all' ? '' : stockFilter,
+                      options: [
+                        {
+                          label: 'In Stock (10+)',
+                          value: 'in-stock',
+                          count: products.filter(p => p.stock > 10).length
+                        },
+                        {
+                          label: 'Low Stock (1-10)',
+                          value: 'low-stock',
+                          count: products.filter(p => p.stock > 0 && p.stock <= 10).length
+                        },
+                        {
+                          label: 'Out of Stock',
+                          value: 'out-of-stock',
+                          count: products.filter(p => p.stock === 0).length
+                        }
+                      ],
+                      placeholder: 'All Stock Levels'
+                    },
+                    {
+                      key: 'sort',
+                      label: 'Sort By',
+                      value: `${sortBy}-${sortOrder}`,
+                      options: [
+                        { label: 'Name (A-Z)', value: 'name-asc', count: 0 },
+                        { label: 'Name (Z-A)', value: 'name-desc', count: 0 },
+                        { label: 'Price (Low-High)', value: 'price-asc', count: 0 },
+                        { label: 'Price (High-Low)', value: 'price-desc', count: 0 },
+                        { label: 'Stock (Low-High)', value: 'stock-asc', count: 0 },
+                        { label: 'Stock (High-Low)', value: 'stock-desc', count: 0 }
+                      ],
+                      placeholder: 'Sort by Name (A-Z)'
+                    }
+                  ]}
+                  onFilterChange={(key, value) => {
+                    if (key === 'category') {
+                      setCategoryFilter(value);
+                    } else if (key === 'supplier') {
+                      setSupplierFilter(value);
+                    } else if (key === 'stock') {
+                      setStockFilter(value || 'all');
+                    } else if (key === 'sort') {
+                      const [sortField, sortDirection] = value.split('-');
+                      setSortBy(sortField);
+                      setSortOrder(sortDirection as 'asc' | 'desc');
+                    }
+                  }}
+                  onClearFilters={clearFilters}
+                  theme="glass"
+                  className="w-full"
+                />
+              </div>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-                className="h-8 w-8 p-0"
+                className="h-9 px-3 shrink-0"
               >
-                {viewMode === 'grid' ? <List className="h-4 w-4" /> : <Grid3X3 className="h-4 w-4" />}
+                {viewMode === 'grid' ? <List className="h-4 w-4 mr-2" /> : <Grid3X3 className="h-4 w-4 mr-2" />}
+                {viewMode === 'grid' ? 'List' : 'Grid'}
               </Button>
             </div>
-          </div>
-
-          {/* Search and Filters */}
-          <div className="space-y-3">
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Search products by name, SKU, or description..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 bg-white/60 backdrop-blur-sm border border-white/30"
-              />
-            </div>
-
-            {/* Filters Row */}
-            <div className="flex flex-wrap gap-3">
-              {/* Category Filter */}
-              <select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className="px-3 py-2 text-sm bg-white/60 border border-white/30 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                title="Filter by category"
-                aria-label="Filter by category"
-              >
-                <option value="">All Categories</option>
-                {categories.map(category => (
-                  <option key={category} value={category}>{category}</option>
-                ))}
-              </select>
-
-              {/* Supplier Filter */}
-              <select
-                value={supplierFilter}
-                onChange={(e) => setSupplierFilter(e.target.value)}
-                className="px-3 py-2 text-sm bg-white/60 border border-white/30 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                title="Filter by supplier"
-                aria-label="Filter by supplier"
-              >
-                <option value="">All Suppliers</option>
-                {suppliers.map(supplier => (
-                  <option key={supplier} value={supplier}>{supplier}</option>
-                ))}
-              </select>
-
-              {/* Stock Filter */}
-              <select
-                value={stockFilter}
-                onChange={(e) => setStockFilter(e.target.value)}
-                className="px-3 py-2 text-sm bg-white/60 border border-white/30 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                title="Filter by stock level"
-                aria-label="Filter by stock level"
-              >
-                <option value="all">All Stock Levels</option>
-                <option value="in-stock">In Stock (10+)</option>
-                <option value="low-stock">Low Stock (1-10)</option>
-                <option value="out-of-stock">Out of Stock</option>
-              </select>
-
-              {/* Sort */}
-              <div className="flex items-center gap-1">
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                  className="px-3 py-2 text-sm bg-white/60 border border-white/30 rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  title="Sort products by"
-                  aria-label="Sort products by"
-                >
-                  <option value="name">Sort by Name</option>
-                  <option value="price">Sort by Price</option>
-                  <option value="stock">Sort by Stock</option>
-                </select>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                  className="h-10 w-10 p-0 rounded-l-none border-l-0"
-                >
-                  {sortOrder === 'asc' ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />}
-                </Button>
-              </div>
-
-              {/* Clear Filters */}
-              {hasActiveFilters && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={clearFilters}
-                  className="px-3 text-sm"
-                >
-                  <X className="h-4 w-4 mr-1" />
-                  Clear Filters
-                </Button>
-              )}
-            </div>
-
-            {/* Active Filters Display */}
-            {hasActiveFilters && (
-              <div className="flex flex-wrap gap-2">
-                {searchTerm && (
-                  <Badge variant="secondary" className="text-xs">
-                    Search: &ldquo;{searchTerm}&rdquo;
-                  </Badge>
-                )}
-                {categoryFilter && (
-                  <Badge variant="secondary" className="text-xs">
-                    Category: {categoryFilter}
-                  </Badge>
-                )}
-                {supplierFilter && (
-                  <Badge variant="secondary" className="text-xs">
-                    Supplier: {supplierFilter}
-                  </Badge>
-                )}
-                {stockFilter !== 'all' && (
-                  <Badge variant="secondary" className="text-xs">
-                    Stock: {stockFilter.replace('-', ' ')}
-                  </Badge>
-                )}
-              </div>
-            )}
           </div>
         </div>
       </CardHeader>

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { NavLink } from './NavLink';
-import { Home, Users, Package, Warehouse, ShoppingCart, Wrench, Truck, DollarSign, Bell, Settings, Star, Users2, Building2 } from 'lucide-react';
+import { Home, Users, Receipt, Warehouse, ShoppingCart, Wrench, Truck, DollarSign, Bell, Settings, Star, Users2, Building2, Package } from 'lucide-react';
 import { hasPermission, hasAnyPermission } from '@/lib/auth';
 
 // Nav item definition
@@ -18,7 +18,7 @@ const navItems: NavItem[] = [
   { href: "/dashboard", icon: Home, label: "Dashboard", permission: 'dashboard:read' },
   { href: "/crm", icon: Users, label: "CRM", permission: ['customer:read','customer:read_own'] },
   { href: "/sales", icon: ShoppingCart, label: "Sales", permission: ['sales_order:read','sales_order:read_own'] },
-  { href: "/products", icon: Package, label: "Products", permission: 'product:read' },
+  { href: "/billing", icon: Receipt, label: "Billing", permission: 'product:read' },
   { href: "/inventory", icon: Warehouse, label: "Inventory", permission: 'inventory:read' },
   { href: "/vendors", icon: Building2, label: "Vendors", permission: 'purchase_order:read' },
   { href: "/manufacturing", icon: Wrench, label: "Manufacturing", permission: 'bom:manage' },

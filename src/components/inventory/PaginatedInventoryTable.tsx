@@ -8,10 +8,9 @@ import {
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { SlidersHorizontal, AlertCircle, Settings, Search, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
+import { SlidersHorizontal, AlertCircle, Settings, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
 import { ProductWithInventory, Supplier } from '@/types'
+import EnhancedSearchFilter, { FilterOption } from '@/components/ui/enhanced-search-filter'
 
 interface PaginationData {
   page: number;
@@ -157,43 +156,51 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
         </div>
       </CardHeader>
       
-      {/* Filters */}
+      {/* Enhanced Search and Filters */}
       <CardContent className="space-y-4">
-        <div className="flex gap-4 items-center">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-            <Input
-              placeholder="Search products, SKU, or description..."
-              value={search}
-              onChange={(e) => handleSearch(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          
-          <Select value={category || 'all'} onValueChange={handleCategoryFilter}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Filter by category" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              {categories.map(cat => (
-                <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={supplier || 'all'} onValueChange={handleSupplierFilter}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Filter by supplier" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Suppliers</SelectItem>
-              {suppliers.map(sup => (
-                <SelectItem key={sup.id} value={sup.id}>{sup.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <EnhancedSearchFilter
+          searchValue={search}
+          onSearchChange={handleSearch}
+          searchPlaceholder="Search products, SKU, or description..."
+          filters={[
+            {
+              key: 'category',
+              label: 'Categories',
+              value: category || 'all',
+              options: categories.map((cat): FilterOption => ({
+                label: cat,
+                value: cat,
+                count: items.filter(item => item.category === cat).length
+              })),
+              placeholder: 'Filter by category'
+            },
+            {
+              key: 'supplier',
+              label: 'Suppliers',
+              value: supplier || 'all',
+              options: suppliers.map((sup): FilterOption => ({
+                label: sup.name,
+                value: sup.id,
+                count: items.filter(item => item.supplier_id === sup.id).length
+              })),
+              placeholder: 'Filter by supplier'
+            }
+          ]}
+          onFilterChange={(key, value) => {
+            if (key === 'category') {
+              handleCategoryFilter(value === 'all' ? 'all' : value);
+            } else if (key === 'supplier') {
+              handleSupplierFilter(value === 'all' ? 'all' : value);
+            }
+          }}
+          onClearFilters={() => {
+            handleSearch('');
+            handleCategoryFilter('all');
+            handleSupplierFilter('all');
+          }}
+          theme="glass"
+          className="mb-6"
+        />
 
         {/* Table */}
         <div className="relative">

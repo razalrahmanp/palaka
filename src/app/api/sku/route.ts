@@ -12,8 +12,8 @@ export async function POST(req: NextRequest) {
   try {
     const sku = await generateSku(productName, supplierName);
     return NextResponse.json({ sku });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error(err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown error' }, { status: 500 });
   }
 }

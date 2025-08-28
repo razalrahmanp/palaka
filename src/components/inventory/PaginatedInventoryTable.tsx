@@ -80,7 +80,7 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
         ...(supplier && { supplier })
       })
 
-      const response = await fetch(`/api/products?${params}`)
+      const response = await fetch(`/api/inventory/products?${params}`)
       const data: InventoryResponse = await response.json()
       
       setItems(data.products)

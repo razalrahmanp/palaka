@@ -15,9 +15,190 @@ const s3 = new S3Client({
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!
   }
 });
-export async function GET() {
-  // you no longer need this; front‑end hits /api/products instead
-  return NextResponse.json({ error: 'Use /api/products' }, { status: 400 })
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const pageParam = searchParams.get('page');
+    const limit = parseInt(searchParams.get('limit') || '50');
+    const search = searchParams.get('search') || '';
+    const category = searchParams.get('category') || '';
+    const supplier = searchParams.get('supplier') || '';
+    
+    // If page parameter is provided, use pagination format
+    const usePagination = pageParam !== null;
+    const page = parseInt(pageParam || '1');
+    const offset = (page - 1) * limit;
+
+    // Build the query to join inventory_items with products
+    let query = supabase
+      .from('inventory_items')
+      .select(`
+        *,
+        products!inner (
+          id,
+          name,
+          sku,
+          price,
+          cost,
+          category,
+          description,
+          supplier_id,
+          image_url,
+          created_at
+        )
+      `, { count: usePagination ? 'exact' : undefined });
+
+    // Apply filters
+    if (search) {
+      query = query.or(`products.name.ilike.%${search}%,products.sku.ilike.%${search}%,products.description.ilike.%${search}%`);
+    }
+    
+    if (category) {
+      query = query.eq('products.category', category);
+    }
+    
+    if (supplier) {
+      query = query.eq('products.supplier_id', supplier);
+    }
+
+    // Apply pagination and ordering
+    if (usePagination) {
+      // First get the count with exact counting enabled
+      let countQuery = supabase
+        .from('inventory_items')
+        .select(`
+          id,
+          products!inner(
+            id,
+            name,
+            sku,
+            description,
+            category,
+            price,
+            cost,
+            supplier_id,
+            created_at,
+            image_url
+          )
+        `, { count: 'exact', head: true });
+
+      // Apply the same filters for count
+      if (search) {
+        countQuery = countQuery.or(`products.name.ilike.%${search}%,products.sku.ilike.%${search}%,products.description.ilike.%${search}%`);
+      }
+      
+      if (category) {
+        countQuery = countQuery.eq('products.category', category);
+      }
+      
+      if (supplier) {
+        countQuery = countQuery.eq('products.supplier_id', supplier);
+      }
+
+      const { count: totalCount, error: countError } = await countQuery;
+      
+      if (countError) {
+        console.error('Error getting count:', countError);
+        return NextResponse.json({ error: countError.message }, { status: 500 });
+      }
+
+      // Now get the actual data
+      const { data: inventoryItems, error } = await query
+        .range(offset, offset + limit - 1)
+        .order('updated_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching inventory data:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      const total = totalCount || 0;
+
+      // Transform to ProductWithInventory format
+      const transformedItems = inventoryItems?.map(item => {
+        const product = Array.isArray(item.products) ? item.products[0] : item.products;
+        
+        return {
+          inventory_id: item.id,
+          product_id: product?.id || '',
+          category: item.category,
+          subcategory: item.subcategory,
+          material: item.material,
+          location: item.location,
+          quantity: item.quantity,
+          reorder_point: item.reorder_point,
+          updated_at: item.updated_at,
+          product_created_at: product?.created_at,
+          supplier_name: `Supplier ${product?.supplier_id || 'Unknown'}`, // We'll improve this later
+          supplier_id: product?.supplier_id,
+          price: product?.price,
+          product_name: product?.name || '',
+          product_description: product?.description,
+          product_category: product?.category,
+          product_image_url: product?.image_url,
+          sku: product?.sku,
+          applied_margin: 0, // Default value
+          cost: product?.cost || 0
+        };
+      }) || [];
+
+      const totalPages = Math.ceil(total / limit);
+
+      return NextResponse.json({
+        products: transformedItems,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages,
+          hasNext: page < totalPages,
+          hasPrev: page > 1
+        }
+      });
+    } else {
+      // For backward compatibility, return simple array when no pagination
+      const { data: inventoryItems, error } = await query
+        .order('updated_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching inventory data:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      // Transform to ProductWithInventory format
+      const transformedItems = inventoryItems?.map(item => {
+        const product = Array.isArray(item.products) ? item.products[0] : item.products;
+        
+        return {
+          inventory_id: item.id,
+          product_id: product?.id || '',
+          category: item.category,
+          subcategory: item.subcategory,
+          material: item.material,
+          location: item.location,
+          quantity: item.quantity,
+          reorder_point: item.reorder_point,
+          updated_at: item.updated_at,
+          product_created_at: product?.created_at,
+          supplier_name: `Supplier ${product?.supplier_id || 'Unknown'}`, // We'll improve this later
+          supplier_id: product?.supplier_id,
+          price: product?.price,
+          product_name: product?.name || '',
+          product_description: product?.description,
+          product_category: product?.category,
+          product_image_url: product?.image_url,
+          sku: product?.sku,
+          applied_margin: 0, // Default value
+          cost: product?.cost || 0
+        };
+      }) || [];
+
+      return NextResponse.json(transformedItems);
+    }
+  } catch (error) {
+    console.error('GET /api/inventory/products error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
 }
 
 // create a new inventory_item

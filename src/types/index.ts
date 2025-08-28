@@ -584,6 +584,7 @@ export interface BillingCustomer {
   first_name?: string;
   last_name?: string;
   status?: string;
+  source?: string; // Added for database compatibility
   customer_type?: string;
   notes?: string;
   latitude?: number;
@@ -634,6 +635,7 @@ export interface BillingData {
   paymentMethods: PaymentMethod[];
   finalTotal: number;
   notes: string;
+  deliveryDate?: string;
   selectedSalesman?: { id: string; name: string; email?: string; user_id?: string } | null;
   totals: {
     original_price: number;

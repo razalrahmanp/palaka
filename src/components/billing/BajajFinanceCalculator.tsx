@@ -9,13 +9,16 @@ import {
   Calculator,
   CreditCard,
   AlertTriangle,
-  CheckCircle,
-  Percent
+  CheckCircle
 } from "lucide-react";
 
 interface EMIPlan {
+  code: '6/0' | '10/2';
+  name: string;
+  description: string;
   months: number;
   interestRate: number;
+  downPaymentMonths: number; // 0 for 6/0, 2 for 10/2
   processingFee: number;
   minAmount: number;
   maxAmount: number;
@@ -30,6 +33,12 @@ export interface BajajFinanceData {
   totalAmount: number;
   totalInterest: number;
   processingFee: number;
+  additionalCharges: number; // ₹530 if no Bajaj card
+  hasBajajCard: boolean;
+  grandTotal: number; // Total including all charges
+  approvedAmount: number; // Amount approved by Bajaj for the client
+  finalBillAmount: number; // Bill amount after discount/MRP logic + 8%
+  bajajServiceCharge: number; // 8% added to bill amount
 }
 
 interface BajajFinanceCalculatorProps {
@@ -41,12 +50,28 @@ interface BajajFinanceCalculatorProps {
 }
 
 const EMI_PLANS: EMIPlan[] = [
-  { months: 3, interestRate: 12, processingFee: 299, minAmount: 5000, maxAmount: 100000 },
-  { months: 6, interestRate: 13, processingFee: 399, minAmount: 10000, maxAmount: 150000 },
-  { months: 9, interestRate: 14, processingFee: 499, minAmount: 15000, maxAmount: 200000 },
-  { months: 12, interestRate: 15, processingFee: 599, minAmount: 20000, maxAmount: 300000 },
-  { months: 18, interestRate: 16, processingFee: 799, minAmount: 30000, maxAmount: 400000 },
-  { months: 24, interestRate: 17, processingFee: 999, minAmount: 40000, maxAmount: 500000 }
+  {
+    code: '6/0',
+    name: '6 Months / 0 Down Payment',
+    description: '6 months EMI with zero down payment',
+    months: 6,
+    interestRate: 0, // No interest - only processing fee
+    downPaymentMonths: 0,
+    processingFee: 768,
+    minAmount: 10000,
+    maxAmount: 500000
+  },
+  {
+    code: '10/2',
+    name: '10 Months / 2 Months Advance',
+    description: '10 months EMI with 2 months advance as down payment',
+    months: 10,
+    interestRate: 0, // No interest - only processing fee
+    downPaymentMonths: 2,
+    processingFee: 768,
+    minAmount: 10000,
+    maxAmount: 500000
+  }
 ];
 
 export function BajajFinanceCalculator({ 
@@ -60,45 +85,77 @@ export function BajajFinanceCalculator({
   const [downPayment, setDownPayment] = useState(0);
   const [financeData, setFinanceData] = useState<BajajFinanceData | null>(null);
   const [eligibilityStatus, setEligibilityStatus] = useState<'checking' | 'eligible' | 'ineligible' | null>(null);
+  const [hasBajajCard, setHasBajajCard] = useState(false);
+  const [approvedAmount, setApprovedAmount] = useState(0);
 
-  // Calculate EMI details
+  // Calculate EMI details with real Bajaj Finance logic
   const calculateEMI = useCallback(() => {
-    if (!selectedPlan) return;
+    if (!selectedPlan || !approvedAmount) return;
 
-    const financeAmount = Math.max(0, orderAmount - downPayment);
-    
-    // Check if finance amount is within plan limits
-    if (financeAmount < selectedPlan.minAmount || financeAmount > selectedPlan.maxAmount) {
+    // Calculate bill amount with 8% service charge for Bajaj Finance
+    const bajajServiceCharge = Math.round(orderAmount * 0.08);
+    const finalBillAmount = orderAmount + bajajServiceCharge;
+
+    // Calculate down payment based on plan type
+    let calculatedDownPayment = 0;
+    let financeAmount = finalBillAmount;
+
+    if (selectedPlan.code === '10/2') {
+      // For 10/2 plan: 2 months EMI advance as down payment
+      // Since there's no interest, EMI = financeAmount / months
+      const monthlyEmi = finalBillAmount / selectedPlan.months;
+      calculatedDownPayment = Math.round(monthlyEmi * selectedPlan.downPaymentMonths);
+      financeAmount = finalBillAmount - calculatedDownPayment;
+    }
+    // For 6/0 plan: zero down payment
+    else if (selectedPlan.code === '6/0') {
+      calculatedDownPayment = 0;
+      financeAmount = finalBillAmount;
+    }
+
+    // Update down payment state
+    setDownPayment(calculatedDownPayment);
+
+    // Check if finance amount is within approved limits
+    if (financeAmount > approvedAmount) {
       setFinanceData(null);
       return;
     }
 
-    // EMI calculation using reducing balance method
-    const monthlyRate = selectedPlan.interestRate / 100 / 12;
-    const emi = financeAmount * monthlyRate * Math.pow(1 + monthlyRate, selectedPlan.months) / 
-                (Math.pow(1 + monthlyRate, selectedPlan.months) - 1);
-    
+    // EMI calculation with no interest - simple division
+    const emi = financeAmount / selectedPlan.months;
     const totalAmount = emi * selectedPlan.months;
-    const totalInterest = totalAmount - financeAmount;
+    const totalInterest = 0; // No interest for Bajaj Finance
+
+    // Calculate additional charges
+    const additionalCharges = hasBajajCard ? 0 : 530;
+    const processingFee = selectedPlan.processingFee;
+    const grandTotal = totalAmount + processingFee + additionalCharges;
 
     setFinanceData({
       orderAmount,
       financeAmount,
-      downPayment,
+      downPayment: calculatedDownPayment,
       plan: selectedPlan,
       monthlyEMI: Math.round(emi),
       totalAmount: Math.round(totalAmount),
       totalInterest: Math.round(totalInterest),
-      processingFee: selectedPlan.processingFee
+      processingFee,
+      additionalCharges,
+      hasBajajCard,
+      grandTotal: Math.round(grandTotal),
+      approvedAmount,
+      finalBillAmount,
+      bajajServiceCharge
     });
-  }, [selectedPlan, orderAmount, downPayment]);
+  }, [selectedPlan, orderAmount, hasBajajCard, approvedAmount]);
 
-  // Calculate EMI when plan or down payment changes
+  // Calculate EMI when plan or card status changes
   useEffect(() => {
     if (selectedPlan && orderAmount > 0) {
       calculateEMI();
     }
-  }, [selectedPlan, downPayment, orderAmount, calculateEMI]);
+  }, [selectedPlan, orderAmount, hasBajajCard, calculateEMI]);
 
   // Check customer eligibility
   const checkEligibility = useCallback(async () => {
@@ -129,7 +186,7 @@ export function BajajFinanceCalculator({
   // Handle plan selection
   const selectPlan = (plan: EMIPlan) => {
     setSelectedPlan(plan);
-    setDownPayment(Math.max(0, orderAmount - plan.maxAmount)); // Ensure within limits
+    // Down payment will be calculated automatically based on plan type
   };
 
   // Handle EMI selection
@@ -145,6 +202,7 @@ export function BajajFinanceCalculator({
     setDownPayment(0);
     setFinanceData(null);
     setEligibilityStatus(null);
+    setHasBajajCard(false);
   };
 
   // Handle close
@@ -215,21 +273,85 @@ export function BajajFinanceCalculator({
 
           {eligibilityStatus === 'eligible' && (
             <>
+              {/* Bajaj Card Status */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Bajaj Finance Card Status</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <p className="text-sm text-gray-600">
+                      Do you have a Bajaj Finance Card? (₹530 additional charge if you don&apos;t have one)
+                    </p>
+                    
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        variant={hasBajajCard ? "default" : "outline"}
+                        onClick={() => setHasBajajCard(true)}
+                        className="flex flex-col h-16"
+                      >
+                        <span className="text-sm font-medium">Yes, I have</span>
+                        <span className="text-xs text-gray-500">Bajaj Finance Card</span>
+                      </Button>
+                      
+                      <Button
+                        variant={!hasBajajCard ? "default" : "outline"}
+                        onClick={() => setHasBajajCard(false)}
+                        className="flex flex-col h-16"
+                      >
+                        <span className="text-sm font-medium">No, I don&apos;t have</span>
+                        <span className="text-xs text-gray-500">+₹530 charges</span>
+                      </Button>
+                    </div>
+                    
+                    {!hasBajajCard && (
+                      <div className="p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+                        <AlertTriangle className="h-4 w-4 inline mr-2" />
+                        Additional charge of ₹530 will be applied for new customers
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Approved Amount */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Bajaj Finance Approved Amount</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <Label htmlFor="approvedAmount">Enter amount approved by Bajaj Finance for this customer</Label>
+                    <Input
+                      id="approvedAmount"
+                      type="number"
+                      placeholder="Enter approved amount"
+                      value={approvedAmount || ''}
+                      onChange={(e) => setApprovedAmount(Number(e.target.value))}
+                      className="text-lg"
+                    />
+                    <p className="text-sm text-gray-600">
+                      This is the maximum amount Bajaj Finance has approved for financing for this customer.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* EMI Plans */}
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg">Available EMI Plans</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {EMI_PLANS.map((plan) => {
                       const isSelectable = orderAmount >= plan.minAmount;
                       
                       return (
                         <Card
-                          key={plan.months}
+                          key={plan.code}
                           className={`cursor-pointer transition-all ${
-                            selectedPlan?.months === plan.months
+                            selectedPlan?.code === plan.code
                               ? 'ring-2 ring-blue-500 bg-blue-50'
                               : isSelectable
                               ? 'hover:bg-gray-50'
@@ -238,28 +360,39 @@ export function BajajFinanceCalculator({
                           onClick={() => isSelectable && selectPlan(plan)}
                         >
                           <CardContent className="p-4">
-                            <div className="text-center space-y-2">
-                              <div className="text-2xl font-bold">{plan.months}</div>
-                              <div className="text-sm text-gray-600">Months</div>
+                            <div className="space-y-3">
+                              <div className="text-center">
+                                <div className="text-2xl font-bold text-blue-600">{plan.code}</div>
+                                <div className="text-sm font-medium">{plan.name}</div>
+                                <div className="text-xs text-gray-600">{plan.description}</div>
+                              </div>
                               
-                              <div className="space-y-1">
-                                <div className="flex items-center justify-center gap-1 text-sm">
-                                  <Percent className="h-3 w-3" />
-                                  <span>{plan.interestRate}% p.a.</span>
+                              <div className="space-y-2 text-sm">
+                                <div className="flex justify-between">
+                                  <span>Interest Rate:</span>
+                                  <span className="font-medium text-green-600">0% (No Interest)</span>
                                 </div>
                                 
-                                <div className="text-xs text-gray-500">
-                                  Processing Fee: ₹{plan.processingFee}
+                                <div className="flex justify-between">
+                                  <span>Processing Fee:</span>
+                                  <span className="font-medium">₹{plan.processingFee}</span>
                                 </div>
                                 
-                                <div className="text-xs text-gray-500">
-                                  Range: ₹{plan.minAmount.toLocaleString()} - ₹{plan.maxAmount.toLocaleString()}
+                                <div className="flex justify-between">
+                                  <span>Down Payment:</span>
+                                  <span className="font-medium">
+                                    {plan.downPaymentMonths === 0 ? 'Zero' : `${plan.downPaymentMonths} months advance`}
+                                  </span>
+                                </div>
+                                
+                                <div className="text-xs text-gray-500 text-center border-t pt-2">
+                                  Amount: ₹{plan.minAmount.toLocaleString()} - ₹{plan.maxAmount.toLocaleString()}
                                 </div>
                               </div>
 
                               {!isSelectable && (
-                                <Badge variant="destructive" className="text-xs">
-                                  Min ₹{plan.minAmount.toLocaleString()}
+                                <Badge variant="destructive" className="w-full justify-center">
+                                  Minimum ₹{plan.minAmount.toLocaleString()}
                                 </Badge>
                               )}
                             </div>
@@ -271,45 +404,89 @@ export function BajajFinanceCalculator({
                 </CardContent>
               </Card>
 
-              {/* Down Payment */}
+              {/* Down Payment Info */}
               {selectedPlan && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-lg">Down Payment</CardTitle>
+                    <CardTitle className="text-lg">Down Payment Information</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div>
-                      <Label htmlFor="downPayment">Down Payment Amount</Label>
-                      <Input
-                        id="downPayment"
-                        type="number"
-                        value={downPayment}
-                        onChange={(e) => setDownPayment(parseFloat(e.target.value) || 0)}
-                        min={Math.max(0, orderAmount - selectedPlan.maxAmount)}
-                        max={orderAmount - selectedPlan.minAmount}
-                        className="mt-1"
-                      />
-                      <div className="text-sm text-gray-600 mt-1">
-                        Range: ₹{Math.max(0, orderAmount - selectedPlan.maxAmount).toLocaleString()} - ₹{(orderAmount - selectedPlan.minAmount).toLocaleString()}
-                      </div>
+                    <div className="bg-blue-50 p-3 rounded">
+                      <p className="text-sm text-blue-800 mb-2">
+                        <strong>Down Payment for {selectedPlan.name}:</strong>
+                      </p>
+                      {selectedPlan.code === '6/0' && (
+                        <p className="text-sm text-blue-700">
+                          Zero down payment required for this plan.
+                        </p>
+                      )}
+                      {selectedPlan.code === '10/2' && (
+                        <p className="text-sm text-blue-700">
+                          Down payment will be automatically calculated as 2 months EMI advance.
+                        </p>
+                      )}
                     </div>
 
                     <div className="bg-gray-50 p-3 rounded">
                       <div className="text-sm space-y-1">
                         <div className="flex justify-between">
-                          <span>Order Amount:</span>
+                          <span>Original Order Amount:</span>
                           <span>₹{orderAmount.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span>Down Payment:</span>
+                          <span>Bajaj Service Charge (8%):</span>
+                          <span>+₹{Math.round(orderAmount * 0.08).toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between font-medium border-t pt-1">
+                          <span>Final Bill Amount:</span>
+                          <span>₹{(orderAmount + Math.round(orderAmount * 0.08)).toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Down Payment (Auto-calculated):</span>
                           <span>₹{downPayment.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between font-medium border-t pt-1">
                           <span>Finance Amount:</span>
-                          <span>₹{(orderAmount - downPayment).toLocaleString()}</span>
+                          <span>₹{(orderAmount + Math.round(orderAmount * 0.08) - downPayment).toLocaleString()}</span>
                         </div>
                       </div>
                     </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Approval Validation */}
+              {selectedPlan && approvedAmount > 0 && (
+                <Card className={`border-2 ${
+                  (orderAmount + Math.round(orderAmount * 0.08) - downPayment) > approvedAmount 
+                    ? 'border-red-200 bg-red-50' 
+                    : 'border-green-200 bg-green-50'
+                }`}>
+                  <CardContent className="pt-4">
+                    {(orderAmount + Math.round(orderAmount * 0.08) - downPayment) > approvedAmount ? (
+                      <div className="flex items-center gap-2 text-red-700">
+                        <AlertTriangle className="h-5 w-5" />
+                        <div>
+                          <p className="font-medium">Finance amount exceeds approved limit!</p>
+                          <p className="text-sm">
+                            Required: ₹{(orderAmount + Math.round(orderAmount * 0.08) - downPayment).toLocaleString()} | 
+                            Approved: ₹{approvedAmount.toLocaleString()}
+                          </p>
+                          <p className="text-sm">Please reduce order amount or increase down payment.</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-green-700">
+                        <CheckCircle className="h-5 w-5" />
+                        <div>
+                          <p className="font-medium">Finance amount within approved limit</p>
+                          <p className="text-sm">
+                            Required: ₹{(orderAmount + Math.round(orderAmount * 0.08) - downPayment).toLocaleString()} | 
+                            Approved: ₹{approvedAmount.toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               )}
@@ -339,12 +516,32 @@ export function BajajFinanceCalculator({
 
                     <div className="bg-white p-4 rounded space-y-2">
                       <div className="flex justify-between">
+                        <span>Original Order Amount:</span>
+                        <span>₹{financeData.orderAmount.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Bajaj Service Charge (8%):</span>
+                        <span className="text-orange-600">+₹{financeData.bajajServiceCharge.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between font-medium border-t pt-2">
+                        <span>Final Bill Amount:</span>
+                        <span>₹{financeData.finalBillAmount.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Down Payment:</span>
+                        <span>₹{financeData.downPayment.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
                         <span>Finance Amount:</span>
                         <span>₹{financeData.financeAmount.toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Total Interest:</span>
-                        <span className="text-red-600">₹{financeData.totalInterest.toLocaleString()}</span>
+                        <span>Approved Amount:</span>
+                        <span className="text-green-600">₹{financeData.approvedAmount.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Interest:</span>
+                        <span className="text-green-600">₹0 (No Interest)</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Processing Fee:</span>

@@ -362,6 +362,17 @@ export async function POST(req: Request) {
     status,
     created_by,
     items,
+    total_price,
+    original_price,
+    final_price,
+    discount_amount,
+    freight_charges,
+    delivery_date,
+    notes,
+    emi_enabled,
+    emi_plan,
+    emi_monthly,
+    bajaj_finance_amount
   }: {
     quote_id?: string;
     customer_id: string;
@@ -371,25 +382,76 @@ export async function POST(req: Request) {
     items: {
       product_id?: string;
       custom_product_id?: string;
+      name?: string;
       quantity: number;
       unit_price: number;
+      total_price?: number;
       supplier_name?: string;
+      supplier_id?: string;
+      type?: string;
+      discount_percentage?: number;
+      final_price?: number;
+      // Custom product fields
+      image_url?: string;
+      base_product_name?: string;
+      specifications?: string;
+      materials?: Record<string, unknown>[];
+      dimensions?: string;
+      finish?: string;
+      color?: string;
+      custom_instructions?: string;
+      estimated_delivery_days?: number;
+      complexity_level?: string;
+      notes?: string;
+      configuration?: Record<string, unknown>;
     }[];
+    total_price?: number;
+    original_price?: number;
+    final_price?: number;
+    discount_amount?: number;
+    freight_charges?: number;
+    delivery_date?: string;
+    notes?: string;
+    emi_enabled?: boolean;
+    emi_plan?: Record<string, unknown>;
+    emi_monthly?: number;
+    bajaj_finance_amount?: number;
   } = body;
 
   if (!customer_id || !Array.isArray(items) || items.length === 0 || !created_by) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
-  const { data: orderData, error: orderError } = await supabase
+  // Validate status - ensure it's a valid sales_order_status enum value
+  const validStatuses = ['draft', 'confirmed', 'shipped', 'delivered'];
+  const validatedStatus = validStatuses.includes(status) ? status : 'draft';
+
+  // 1. Create the sales order with all fields
+  const { data: orderData, error: orderError } = await supabaseAdmin
     .from("sales_orders")
     .insert([
       {
         quote_id: quote_id ?? null,
         customer_id,
-        status,
+        status: validatedStatus,
         created_by,
         created_at: date ?? new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        updated_by: created_by,
+        address: null, // Can be updated later
+        expected_delivery_date: delivery_date ? new Date(delivery_date).toISOString().split('T')[0] : null,
+        notes: notes || null,
+        final_price: final_price || total_price || 0,
+        original_price: original_price || total_price || 0,
+        discount_amount: discount_amount || 0,
+        emi_enabled: emi_enabled || false,
+        emi_plan: emi_plan || {},
+        emi_monthly: emi_monthly || 0,
+        bajaj_finance_amount: bajaj_finance_amount || 0,
+        freight_charges: freight_charges || 0,
+        sales_representative_id: created_by,
+        waived_amount: 0,
+        po_created: false
       },
     ])
     .select()
@@ -402,13 +464,48 @@ export async function POST(req: Request) {
 
   const orderId = orderData.id;
 
-  // Deduplicate items before inserting
+  // 2. Handle custom products - create them if they don't exist
+  const customItems = items.filter(item => item.type === 'new' || item.type === 'custom');
+  const customProductIds = new Map();
+
+  for (const item of customItems) {
+    if (!item.custom_product_id && item.name) {
+      // Create new custom product
+      const { data: customProduct, error: customProductError } = await supabaseAdmin
+        .from("custom_products")
+        .insert([
+          {
+            name: item.name,
+            description: item.specifications || item.custom_instructions || '',
+            price: item.unit_price || 0,
+            supplier_name: item.supplier_name || null,
+            supplier_id: item.supplier_id || null,
+            sku: null,
+            config_schema: item.configuration || {}
+          }
+        ])
+        .select()
+        .single();
+
+      if (customProductError) {
+        console.error("Error creating custom product:", customProductError);
+        return NextResponse.json({ error: customProductError.message }, { status: 500 });
+      }
+
+      customProductIds.set(item.name, customProduct.id);
+    }
+  }
+
+  // 3. Deduplicate and prepare items for insertion
   const itemsMap = new Map();
   const deduplicatedItems = items.filter((item) => {
-    const key = item.product_id ? `product_${item.product_id}` : `custom_${item.custom_product_id}`;
+    const key = item.product_id ? `product_${item.product_id}` : 
+                 item.custom_product_id ? `custom_${item.custom_product_id}` :
+                 customProductIds.has(item.name) ? `custom_${customProductIds.get(item.name)}` :
+                 `new_${item.name}`;
     
-    if (!key || key === 'product_' || key === 'custom_') {
-      console.warn('Skipping item with no valid product_id or custom_product_id:', item);
+    if (!key || key === 'product_' || key === 'custom_' || key === 'new_') {
+      console.warn('Skipping item with no valid identifier:', item);
       return false;
     }
 
@@ -427,23 +524,54 @@ export async function POST(req: Request) {
   // Add back the merged items
   itemsMap.forEach((item, key) => {
     if (!deduplicatedItems.some(di => {
-      const diKey = di.product_id ? `product_${di.product_id}` : `custom_${di.custom_product_id}`;
+      const diKey = di.product_id ? `product_${di.product_id}` : 
+                    di.custom_product_id ? `custom_${di.custom_product_id}` :
+                    customProductIds.has(di.name) ? `custom_${customProductIds.get(di.name)}` :
+                    `new_${di.name}`;
       return diKey === key;
     })) {
       deduplicatedItems.push(item);
     }
   });
 
-  const itemsToInsert = deduplicatedItems.map((item) => ({
-    order_id: orderId,
-    product_id: item.product_id ?? null,
-    custom_product_id: item.custom_product_id ?? null,
-    quantity: item.quantity,
-    unit_price: item.unit_price,
-    supplier_name: item.supplier_name ?? null,
-  }));
+  // 4. Insert sales order items with proper constraints
+  const itemsToInsert = deduplicatedItems.map((item) => {
+    let productId = item.product_id || null;
+    let customProductId = item.custom_product_id || null;
 
-  const { error: itemsError } = await supabase
+    // If no custom_product_id but it's a custom item, use the newly created one
+    if (!customProductId && (item.type === 'new' || item.type === 'custom') && item.name) {
+      customProductId = customProductIds.get(item.name) || null;
+    }
+
+    // Ensure constraint: exactly one of product_id or custom_product_id must be set
+    if (!productId && !customProductId) {
+      console.warn('Item has neither product_id nor custom_product_id:', item);
+      return null;
+    }
+
+    if (productId && customProductId) {
+      // Prefer custom_product_id if both are set
+      productId = null;
+    }
+
+    return {
+      order_id: orderId,
+      product_id: productId,
+      custom_product_id: customProductId,
+      name: item.name || null,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      discount_percentage: item.discount_percentage || 0,
+      supplier_name: item.supplier_name || null,
+      supplier_id: item.supplier_id || null,
+      final_price: item.final_price || item.total_price || (item.unit_price * item.quantity),
+      cost: 0, // Default cost
+      image_url: item.image_url || null
+    };
+  }).filter(Boolean); // Remove null items
+
+  const { error: itemsError } = await supabaseAdmin
     .from("sales_order_items")
     .insert(itemsToInsert);
 
@@ -452,7 +580,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: itemsError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ success: true, order_id: orderId });
+  return NextResponse.json({ 
+    success: true, 
+    order_id: orderId,
+    order: orderData 
+  });
 }
 
 export async function PUT(req: Request) {

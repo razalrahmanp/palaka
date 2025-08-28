@@ -87,9 +87,8 @@ export function InvoiceBillingDashboard({
     city: '',
     state: '',
     pincode: '',
-    gst_number: '',
-    full_name: '',
     notes: '',
+    tags: [], // Purpose of visit and other tags
     latitude: undefined,
     longitude: undefined,
     formatted_address: '',
@@ -418,18 +417,18 @@ export function InvoiceBillingDashboard({
         },
         body: JSON.stringify({
           name: customerForm.name,
-          email: customerForm.email,
+          email: customerForm.email || null, // Use null for empty emails
           phone: customerForm.phone,
           address: customerForm.address,
           floor: customerForm.floor,
           city: customerForm.city,
           state: customerForm.state,
           pincode: customerForm.pincode,
-          gst_number: customerForm.gst_number,
           notes: customerForm.notes,
-          status: 'Active',
-          source: 'billing_system',
-          created_by: selectedSalesman?.user_id || 'system'
+          status: customerForm.status || 'Lead',
+          source: customerForm.source || 'billing_system',
+          tags: customerForm.tags || [], // Purpose of visit and other tags
+          created_by: selectedSalesman?.user_id || null // Use null instead of 'system'
         }),
       });
 
@@ -439,7 +438,6 @@ export function InvoiceBillingDashboard({
           customer_id: newCustomerData[0]?.id || Date.now().toString(),
           id: newCustomerData[0]?.id,
           name: customerForm.name || '',
-          full_name: customerForm.full_name,
           email: customerForm.email,
           phone: customerForm.phone,
           address: customerForm.address,
@@ -447,8 +445,10 @@ export function InvoiceBillingDashboard({
           city: customerForm.city,
           state: customerForm.state,
           pincode: customerForm.pincode,
-          gst_number: customerForm.gst_number,
-          notes: customerForm.notes
+          notes: customerForm.notes,
+          tags: customerForm.tags,
+          status: customerForm.status || 'Lead',
+          source: customerForm.source || 'billing_system'
         };
         setCustomer(newCustomer);
         setShowCustomerForm(false);
@@ -463,15 +463,19 @@ export function InvoiceBillingDashboard({
           city: '',
           state: '',
           pincode: '',
-          gst_number: '',
-          full_name: '',
-          notes: ''
+          notes: '',
+          tags: [],
+          status: 'Lead',
+          source: 'billing_system'
         });
       } else {
-        console.error('Failed to create customer');
+        const errorText = await response.text();
+        console.error('Failed to create customer:', response.status, errorText);
+        alert(`Failed to create customer: ${response.status} - ${errorText}`);
       }
     } catch (error) {
       console.error('Error creating customer:', error);
+      alert(`Error creating customer: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsProcessing(false);
     }
@@ -1241,7 +1245,7 @@ export function InvoiceBillingDashboard({
                   />
                 </div>
                 <div>
-                  <Label htmlFor="customer-phone">Phone *</Label>
+                  <Label htmlFor="customer-phone">Phone</Label>
                   <Input
                     id="customer-phone"
                     value={customerForm.phone}
@@ -1260,18 +1264,65 @@ export function InvoiceBillingDashboard({
                   />
                 </div>
                 <div>
-                  <Label htmlFor="customer-gst">GST Number</Label>
-                  <Input
-                    id="customer-gst"
-                    value={customerForm.gst_number}
-                    onChange={(e) => setCustomerForm({...customerForm, gst_number: e.target.value})}
-                    placeholder="GST number"
-                  />
+                  <Label htmlFor="customer-source">Source</Label>
+                  <Select 
+                    value={customerForm.source || 'billing_system'} 
+                    onValueChange={(value) => setCustomerForm({...customerForm, source: value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select source" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="billing_system">Billing System</SelectItem>
+                      <SelectItem value="Website">Website</SelectItem>
+                      <SelectItem value="Referral">Referral</SelectItem>
+                      <SelectItem value="Social Media">Social Media</SelectItem>
+                      <SelectItem value="Walk-in">Walk-in</SelectItem>
+                      <SelectItem value="Phone">Phone</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               
               <div>
-                <Label htmlFor="customer-address">Address *</Label>
+                <Label htmlFor="customer-tags">Purpose of Visit</Label>
+                <Select 
+                  value={customerForm.tags?.[0] || ''} 
+                  onValueChange={(value) => setCustomerForm({...customerForm, tags: value ? [value] : []})}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select purpose of visit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Product Inquiry">Product Inquiry</SelectItem>
+                    <SelectItem value="Price Quote">Price Quote</SelectItem>
+                    <SelectItem value="Purchase">Purchase</SelectItem>
+                    <SelectItem value="Custom Order">Custom Order</SelectItem>
+                    <SelectItem value="After Sales Support">After Sales Support</SelectItem>
+                    <SelectItem value="Warranty Claim">Warranty Claim</SelectItem>
+                    <SelectItem value="Bulk Order">Bulk Order</SelectItem>
+                    <SelectItem value="Interior Design Consultation">Interior Design Consultation</SelectItem>
+                    <SelectItem value="Catalog Browsing">Catalog Browsing</SelectItem>
+                    <SelectItem value="Delivery Query">Delivery Query</SelectItem>
+                    <SelectItem value="Payment Query">Payment Query</SelectItem>
+                    <SelectItem value="Complaint">Complaint</SelectItem>
+                    <SelectItem value="Feedback">Feedback</SelectItem>
+                    <SelectItem value="Referral">Referral</SelectItem>
+                    <SelectItem value="Exchange/Return">Exchange/Return</SelectItem>
+                    <SelectItem value="Installation Service">Installation Service</SelectItem>
+                    <SelectItem value="Maintenance Service">Maintenance Service</SelectItem>
+                    <SelectItem value="Corporate Inquiry">Corporate Inquiry</SelectItem>
+                    <SelectItem value="Showroom Visit">Showroom Visit</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <Label htmlFor="customer-address">Address * 
+                  <span className="text-xs text-gray-500 ml-2">(Auto-geocoded for accurate location)</span>
+                </Label>
                 <Input
                   id="customer-address"
                   value={customerForm.address}

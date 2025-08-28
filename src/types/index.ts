@@ -587,6 +587,7 @@ export interface BillingCustomer {
   source?: string; // Added for database compatibility
   customer_type?: string;
   notes?: string;
+  tags?: string[]; // Purpose of visit and other tags
   latitude?: number;
   longitude?: number;
   geocoded_at?: string;

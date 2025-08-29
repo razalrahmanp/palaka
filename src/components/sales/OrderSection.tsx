@@ -163,7 +163,11 @@ export function OrderSection({
                             'bg-gray-100 text-gray-800 border-gray-200'
                           } border`}
                         >
-                          {o.status}
+                          {o.status === 'confirmed' ? 'Confirm' : 
+                           o.status === 'draft' ? 'Draft' : 
+                           o.status === 'shipped' ? 'Shipped' : 
+                           o.status === 'delivered' ? 'Delivered' : 
+                           String(o.status).charAt(0).toUpperCase() + String(o.status).slice(1)}
                         </Badge>
                         {o.deliveryAddress && (
                           <div className="flex items-center gap-1 text-xs text-gray-500">

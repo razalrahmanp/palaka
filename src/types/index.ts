@@ -599,6 +599,7 @@ export interface CustomProduct {
   name: string;
   description: string;
   price: number;
+  cost?: number;
   category?: string;
   material?: string;
   lead_time_days?: number;
@@ -637,6 +638,8 @@ export interface BillingData {
   finalTotal: number;
   notes: string;
   deliveryDate?: string;
+  deliveryFloor?: string; // New field for floor selection
+  isFirstFloorAwareness?: boolean; // New field for 1st floor awareness
   selectedSalesman?: { id: string; name: string; email?: string; user_id?: string } | null;
   totals: {
     original_price: number;

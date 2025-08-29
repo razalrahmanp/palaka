@@ -10,6 +10,8 @@ export async function PATCH(
     const body = await request.json();
     const { status } = body;
 
+    console.log(`Updating quote ${id} status to: ${status.charAt(0).toUpperCase() + status.slice(1)}`);
+
     if (!status) {
       return NextResponse.json(
         { error: 'Status is required' },
@@ -34,6 +36,8 @@ export async function PATCH(
         { status: 500 }
       );
     }
+
+    console.log(`Quote ${id} status updated successfully to: ${data.status.charAt(0).toUpperCase() + data.status.slice(1)}`);
 
     return NextResponse.json({
       message: 'Quote status updated successfully',

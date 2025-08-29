@@ -355,6 +355,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json();
+  
   const {
     quote_id,
     customer_id,
@@ -368,6 +369,8 @@ export async function POST(req: Request) {
     discount_amount,
     freight_charges,
     delivery_date,
+    delivery_floor,
+    first_floor_awareness,
     notes,
     emi_enabled,
     emi_plan,
@@ -411,6 +414,8 @@ export async function POST(req: Request) {
     discount_amount?: number;
     freight_charges?: number;
     delivery_date?: string;
+    delivery_floor?: string;
+    first_floor_awareness?: boolean;
     notes?: string;
     emi_enabled?: boolean;
     emi_plan?: Record<string, unknown>;
@@ -418,15 +423,39 @@ export async function POST(req: Request) {
     bajaj_finance_amount?: number;
   } = body;
 
-  if (!customer_id || !Array.isArray(items) || items.length === 0 || !created_by) {
-    return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+  if (!customer_id || !Array.isArray(items) || items.length === 0) {
+    const errorDetails = {
+      customer_id: !customer_id ? 'missing or empty' : 'valid',
+      items: !Array.isArray(items) ? 'not an array' : items.length === 0 ? 'empty array' : 'valid'
+    };
+    console.error('Validation failed:', { customer_id, items_is_array: Array.isArray(items), items_length: items ? items.length : 0, errorDetails });
+    return NextResponse.json({ 
+      error: "Invalid payload", 
+      details: errorDetails 
+    }, { status: 400 });
   }
+
+  // Provide a default created_by if not provided (use null instead of 'system' for UUID constraint)
+  const createdBy = created_by || null;
 
   // Validate status - ensure it's a valid sales_order_status enum value
   const validStatuses = ['draft', 'confirmed', 'shipped', 'delivered'];
-  const validatedStatus = validStatuses.includes(status) ? status : 'draft';
+  const validatedStatus = validStatuses.includes(status) ? status : 'confirmed';
 
   // 1. Create the sales order with all fields
+  console.log("Creating sales order with pricing data:", {
+    final_price: final_price,
+    original_price: original_price,
+    discount_amount: discount_amount,
+    freight_charges: freight_charges,
+    total_price: total_price,
+    // Debug the actual values and types
+    final_price_type: typeof final_price,
+    original_price_type: typeof original_price,
+    final_price_truthy: !!final_price,
+    original_price_nullish: original_price == null
+  });
+
   const { data: orderData, error: orderError } = await supabaseAdmin
     .from("sales_orders")
     .insert([
@@ -434,22 +463,24 @@ export async function POST(req: Request) {
         quote_id: quote_id ?? null,
         customer_id,
         status: validatedStatus,
-        created_by,
+        created_by: createdBy,
         created_at: date ?? new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        updated_by: created_by,
+        updated_by: createdBy,
         address: null, // Can be updated later
         expected_delivery_date: delivery_date ? new Date(delivery_date).toISOString().split('T')[0] : null,
+        delivery_floor: delivery_floor || 'ground',
+        first_floor_awareness: first_floor_awareness || false,
         notes: notes || null,
-        final_price: final_price || total_price || 0,
-        original_price: original_price || total_price || 0,
+        final_price: final_price ?? total_price ?? 0, // Use nullish coalescing
+        original_price: original_price ?? 0, // Use nullish coalescing to preserve 0 values
         discount_amount: discount_amount || 0,
         emi_enabled: emi_enabled || false,
         emi_plan: emi_plan || {},
         emi_monthly: emi_monthly || 0,
         bajaj_finance_amount: bajaj_finance_amount || 0,
         freight_charges: freight_charges || 0,
-        sales_representative_id: created_by,
+        sales_representative_id: createdBy,
         waived_amount: 0,
         po_created: false
       },
@@ -462,14 +493,32 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: orderError.message }, { status: 500 });
   }
 
+  console.log("Sales order created with stored values:", {
+    id: orderData.id,
+    final_price: orderData.final_price,
+    original_price: orderData.original_price,
+    discount_amount: orderData.discount_amount,
+    freight_charges: orderData.freight_charges
+  });
+
   const orderId = orderData.id;
 
   // 2. Handle custom products - create them if they don't exist
   const customItems = items.filter(item => item.type === 'new' || item.type === 'custom');
   const customProductIds = new Map();
 
+  console.log("Processing custom items:", customItems.length);
+  
   for (const item of customItems) {
+    console.log("Processing custom item:", {
+      name: item.name,
+      type: item.type,
+      has_custom_product_id: !!item.custom_product_id,
+      custom_product_id: item.custom_product_id
+    });
+    
     if (!item.custom_product_id && item.name) {
+      console.log("Creating new custom product for:", item.name);
       // Create new custom product
       const { data: customProduct, error: customProductError } = await supabaseAdmin
         .from("custom_products")
@@ -493,6 +542,46 @@ export async function POST(req: Request) {
       }
 
       customProductIds.set(item.name, customProduct.id);
+    } else if (item.custom_product_id) {
+      // Verify that the provided custom product exists
+      console.log("Verifying existing custom product:", item.custom_product_id);
+      const { data: existingCustomProduct, error: verifyError } = await supabaseAdmin
+        .from("custom_products")
+        .select("id, name")
+        .eq("id", item.custom_product_id)
+        .single();
+
+      if (verifyError || !existingCustomProduct) {
+        console.error("Custom product not found:", item.custom_product_id, verifyError);
+        console.log("Creating missing custom product for:", item.name);
+        
+        // Create the missing custom product with the expected ID
+        const { data: newCustomProduct, error: createError } = await supabaseAdmin
+          .from("custom_products")
+          .insert([
+            {
+              id: item.custom_product_id, // Use the provided ID
+              name: item.name,
+              description: item.specifications || item.custom_instructions || '',
+              price: item.unit_price || 0,
+              supplier_name: item.supplier_name || null,
+              supplier_id: item.supplier_id || null,
+              sku: null,
+              config_schema: item.configuration || {}
+            }
+          ])
+          .select()
+          .single();
+
+        if (createError) {
+          console.error("Error creating missing custom product:", createError);
+          return NextResponse.json({ error: createError.message }, { status: 500 });
+        }
+        
+        console.log("Successfully created missing custom product:", newCustomProduct.id);
+      } else {
+        console.log("Custom product exists:", existingCustomProduct.name);
+      }
     }
   }
 
@@ -571,6 +660,8 @@ export async function POST(req: Request) {
     };
   }).filter(Boolean); // Remove null items
 
+  console.log(`Inserting ${itemsToInsert.length} items for sales order ${orderId}:`, itemsToInsert);
+
   const { error: itemsError } = await supabaseAdmin
     .from("sales_order_items")
     .insert(itemsToInsert);
@@ -579,6 +670,8 @@ export async function POST(req: Request) {
     console.error("Error inserting order items:", itemsError);
     return NextResponse.json({ error: itemsError.message }, { status: 500 });
   }
+
+  console.log(`Successfully inserted ${itemsToInsert.length} items for sales order ${orderId}`);
 
   return NextResponse.json({ 
     success: true, 

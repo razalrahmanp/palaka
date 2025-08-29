@@ -39,6 +39,11 @@ export interface BajajFinanceData {
   approvedAmount: number; // Amount approved by Bajaj for the client
   finalBillAmount: number; // Bill amount after discount/MRP logic + 8%
   bajajServiceCharge: number; // 8% added to bill amount
+  // Split bill support
+  isSplitBill?: boolean;
+  splitBillBajajAmount?: number; // Amount to be financed through Bajaj
+  splitBillOtherAmount?: number; // Amount to be paid through other methods
+  splitBillOtherPaymentMethods?: string[]; // Other payment methods for remaining amount
 }
 
 interface BajajFinanceCalculatorProps {
@@ -87,6 +92,7 @@ export function BajajFinanceCalculator({
   const [eligibilityStatus, setEligibilityStatus] = useState<'checking' | 'eligible' | 'ineligible' | null>(null);
   const [hasBajajCard, setHasBajajCard] = useState(false);
   const [approvedAmount, setApprovedAmount] = useState(0);
+  const [splitBillData, setSplitBillData] = useState<BajajFinanceData | null>(null);
 
   // Calculate EMI details with real Bajaj Finance logic
   const calculateEMI = useCallback(() => {
@@ -118,7 +124,45 @@ export function BajajFinanceCalculator({
 
     // Check if finance amount is within approved limits
     if (financeAmount > approvedAmount) {
-      setFinanceData(null);
+      // Calculate split bill option
+      const bajajFinanceAmount = approvedAmount; // Max Bajaj can finance
+      const remainingAmount = financeAmount - approvedAmount; // Amount to pay by other methods
+      
+      // Calculate EMI for the approved amount only
+      const emi = bajajFinanceAmount / selectedPlan.months;
+      const totalAmount = emi * selectedPlan.months;
+      const totalInterest = 0; // No interest for Bajaj Finance
+      
+      // Calculate additional charges
+      const additionalCharges = hasBajajCard ? 0 : 530;
+      const processingFee = selectedPlan.processingFee;
+      const grandTotal = totalAmount + processingFee + additionalCharges + remainingAmount;
+      
+      // Create split bill data
+      const splitBillFinanceData: BajajFinanceData = {
+        orderAmount,
+        financeAmount: bajajFinanceAmount, // Only the approved amount
+        downPayment: calculatedDownPayment,
+        plan: selectedPlan,
+        monthlyEMI: Math.round(emi),
+        totalAmount: Math.round(totalAmount),
+        totalInterest: Math.round(totalInterest),
+        processingFee,
+        additionalCharges,
+        hasBajajCard,
+        grandTotal: Math.round(grandTotal),
+        approvedAmount,
+        finalBillAmount,
+        bajajServiceCharge,
+        // Split bill specific fields
+        isSplitBill: true,
+        splitBillBajajAmount: bajajFinanceAmount,
+        splitBillOtherAmount: remainingAmount,
+        splitBillOtherPaymentMethods: ['cash', 'card', 'bank_transfer']
+      };
+      
+      setSplitBillData(splitBillFinanceData);
+      setFinanceData(null); // Clear regular finance data
       return;
     }
 
@@ -146,8 +190,12 @@ export function BajajFinanceCalculator({
       grandTotal: Math.round(grandTotal),
       approvedAmount,
       finalBillAmount,
-      bajajServiceCharge
+      bajajServiceCharge,
+      isSplitBill: false
     });
+    
+    // Clear split bill data when regular finance is possible
+    setSplitBillData(null);
   }, [selectedPlan, orderAmount, hasBajajCard, approvedAmount]);
 
   // Calculate EMI when plan or card status changes
@@ -464,16 +512,50 @@ export function BajajFinanceCalculator({
                 }`}>
                   <CardContent className="pt-4">
                     {(orderAmount + Math.round(orderAmount * 0.08) - downPayment) > approvedAmount ? (
-                      <div className="flex items-center gap-2 text-red-700">
-                        <AlertTriangle className="h-5 w-5" />
-                        <div>
-                          <p className="font-medium">Finance amount exceeds approved limit!</p>
-                          <p className="text-sm">
-                            Required: ₹{(orderAmount + Math.round(orderAmount * 0.08) - downPayment).toLocaleString()} | 
-                            Approved: ₹{approvedAmount.toLocaleString()}
-                          </p>
-                          <p className="text-sm">Please reduce order amount or increase down payment.</p>
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2 text-red-700">
+                          <AlertTriangle className="h-5 w-5" />
+                          <div>
+                            <p className="font-medium">Finance amount exceeds approved limit!</p>
+                            <p className="text-sm">
+                              Required: ₹{(orderAmount + Math.round(orderAmount * 0.08) - downPayment).toLocaleString()} | 
+                              Approved: ₹{approvedAmount.toLocaleString()}
+                            </p>
+                          </div>
                         </div>
+                        
+                        {/* Split Bill Option */}
+                        {splitBillData && (
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <div className="flex items-center gap-2 text-blue-700 mb-3">
+                              <CreditCard className="h-5 w-5" />
+                              <h4 className="font-medium">Split Bill Available</h4>
+                            </div>
+                            <div className="space-y-2 text-sm">
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <p className="text-blue-600 font-medium">Bajaj Finance</p>
+                                  <p>₹{splitBillData.splitBillBajajAmount?.toLocaleString()}</p>
+                                  <p className="text-xs text-gray-600">
+                                    {splitBillData.monthlyEMI} x {splitBillData.plan.months} months
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-blue-600 font-medium">Other Payment</p>
+                                  <p>₹{splitBillData.splitBillOtherAmount?.toLocaleString()}</p>
+                                  <p className="text-xs text-gray-600">Cash/Card/Transfer</p>
+                                </div>
+                              </div>
+                              <Button 
+                                onClick={() => onSelect(splitBillData)}
+                                className="w-full mt-3"
+                                variant="outline"
+                              >
+                                Select Split Bill Option
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="flex items-center gap-2 text-green-700">

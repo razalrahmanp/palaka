@@ -18,13 +18,13 @@ import {
   Calendar,
   Hash,
   Printer,
-  FileText,
   ShoppingCart,
   Send,
   Save
 } from "lucide-react";
-import { ProductWithInventory, BillingCustomer, BillingItem, CustomProduct, PaymentMethod, BillingData } from "@/types";
+import { ProductWithInventory, BillingCustomer, BillingItem, CustomProduct, PaymentMethod, BillingData, Invoice } from "@/types";
 import { BajajFinanceCalculator, BajajFinanceData } from './BajajFinanceCalculator';
+import { PaymentTrackingDialog } from '../finance/PaymentTrackingDialog';
 
 interface Supplier {
   id: string;
@@ -44,9 +44,7 @@ interface EmployeeData {
 
 interface InvoiceBillingProps {
   onSave?: (data: BillingData) => void;
-  onGenerateQuote?: (data: BillingData) => void;
-  onGenerateInvoice?: (data: BillingData) => void;
-  onGenerateSalesOrder?: (data: BillingData) => void;
+  onCreateQuoteAndSalesOrder?: (data: BillingData) => void;
   isProcessing?: boolean;
   quoteGenerated?: boolean;
   quoteStatus?: string;
@@ -54,9 +52,7 @@ interface InvoiceBillingProps {
 
 export function InvoiceBillingDashboard({
   onSave,
-  onGenerateQuote,
-  onGenerateInvoice,
-  onGenerateSalesOrder,
+  onCreateQuoteAndSalesOrder,
   isProcessing: externalIsProcessing = false,
   quoteGenerated = false,
   quoteStatus = ''
@@ -124,6 +120,10 @@ export function InvoiceBillingDashboard({
   const [globalDiscountType, setGlobalDiscountType] = useState<'percentage' | 'amount'>('percentage');
   const [taxPercentage, setTaxPercentage] = useState(18);
   const [freightCharges, setFreightCharges] = useState(0);
+  const [deliveryFloor, setDeliveryFloor] = useState('ground'); // New floor selection
+  const [isFirstFloorAwareness, setIsFirstFloorAwareness] = useState(false); // Track 1st floor awareness
+  const [showPaymentTracker, setShowPaymentTracker] = useState(false); // Payment tracking modal
+  const [generatedInvoice, setGeneratedInvoice] = useState<Invoice | null>(null); // Store generated invoice for payment tracking
   
   // Payment States
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
@@ -142,14 +142,17 @@ export function InvoiceBillingDashboard({
   // UI States
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Calculations - Updated to use proper BillingItem structure
-  const subtotal = items.reduce((sum, item) => sum + (item.finalPrice * item.quantity), 0);
-  const discountAmount = globalDiscountType === 'percentage' 
-    ? subtotal * globalDiscount / 100 
+  // Calculations - Updated to use proper BillingItem structure with rounding
+  const subtotal = Math.round((items.reduce((sum, item) => sum + (item.finalPrice * item.quantity), 0)) * 100) / 100;
+  const originalTotal = Math.round((items.reduce((sum, item) => sum + (item.originalPrice * item.quantity), 0)) * 100) / 100;
+  const itemDiscountAmount = Math.round((originalTotal - subtotal) * 100) / 100; // Individual item discounts
+  const globalDiscountAmount = globalDiscountType === 'percentage' 
+    ? Math.round((subtotal * globalDiscount / 100) * 100) / 100
     : globalDiscount;
-  const taxableAmount = subtotal - discountAmount;
-  const taxAmount = taxableAmount * taxPercentage / 100;
-  const grandTotal = taxableAmount + taxAmount + freightCharges;
+  const totalDiscountAmount = Math.round((itemDiscountAmount + globalDiscountAmount) * 100) / 100;
+  const taxableAmount = Math.round((subtotal - globalDiscountAmount) * 100) / 100;
+  const taxAmount = Math.round((taxableAmount * taxPercentage / 100) * 100) / 100;
+  const grandTotal = Math.round((taxableAmount + taxAmount + freightCharges) * 100) / 100;
 
   // Helper function to get current billing data
   const getCurrentBillingData = (): BillingData => ({
@@ -159,12 +162,14 @@ export function InvoiceBillingDashboard({
     finalTotal: grandTotal,
     notes,
     deliveryDate,
+    deliveryFloor, // Include floor selection
+    isFirstFloorAwareness, // Include awareness flag
     selectedSalesman,
     totals: {
-      original_price: subtotal,
+      original_price: originalTotal,
       total_price: subtotal,
-      final_price: taxableAmount,
-      discount_amount: discountAmount,
+      final_price: grandTotal, // This is what customer actually pays
+      discount_amount: totalDiscountAmount,
       subtotal: taxableAmount,
       tax: taxAmount,
       freight_charges: freightCharges,
@@ -401,6 +406,49 @@ export function InvoiceBillingDashboard({
     }));
   };
 
+  // Update item original price
+  const updateItemOriginalPrice = (itemId: string, originalPrice: number) => {
+    setItems(items.map(item => {
+      if (item.id === itemId) {
+        const safeOriginalPrice = Math.max(0, originalPrice);
+        // Recalculate discount amount and final price
+        const discountAmount = safeOriginalPrice * (item.discountPercentage / 100);
+        const finalPrice = safeOriginalPrice - discountAmount;
+        const totalPrice = finalPrice * item.quantity;
+        return { 
+          ...item, 
+          originalPrice: safeOriginalPrice,
+          discountAmount: Math.round(discountAmount * 100) / 100,
+          finalPrice: Math.round(finalPrice * 100) / 100,
+          totalPrice: Math.round(totalPrice * 100) / 100,
+          tax: totalPrice * (taxPercentage / 100)
+        };
+      }
+      return item;
+    }));
+  };
+
+  // Update item discount percentage
+  const updateItemDiscountPercentage = (itemId: string, discountPercentage: number) => {
+    setItems(items.map(item => {
+      if (item.id === itemId) {
+        const safeDiscountPercentage = Math.max(0, Math.min(100, discountPercentage));
+        const discountAmount = item.originalPrice * (safeDiscountPercentage / 100);
+        const finalPrice = item.originalPrice - discountAmount;
+        const totalPrice = finalPrice * item.quantity;
+        return { 
+          ...item, 
+          discountPercentage: safeDiscountPercentage,
+          discountAmount: Math.round(discountAmount * 100) / 100,
+          finalPrice: Math.round(finalPrice * 100) / 100,
+          totalPrice: Math.round(totalPrice * 100) / 100,
+          tax: totalPrice * (taxPercentage / 100)
+        };
+      }
+      return item;
+    }));
+  };
+
   // Remove item
   const removeItem = (itemId: string) => {
     setItems(items.filter(item => item.id !== itemId));
@@ -542,26 +590,57 @@ export function InvoiceBillingDashboard({
     setBajajFinanceData(financeData);
     setShowBajajFinance(false);
     
-    // Add EMI payment method
-    const emiPayment: PaymentMethod = {
-      id: 'emi-' + Date.now(),
-      type: 'emi',
-      amount: financeData.financeAmount,
-      reference: `EMI-${financeData.plan.months}M-${financeData.monthlyEMI}`
-    };
+    if (financeData.isSplitBill) {
+      // Handle split bill scenario
+      const emiPayment: PaymentMethod = {
+        id: 'emi-' + Date.now(),
+        type: 'emi',
+        amount: financeData.splitBillBajajAmount || financeData.financeAmount,
+        reference: `Split-EMI-${financeData.plan.months}M-${financeData.monthlyEMI}`
+      };
 
-    // Add down payment method if down payment exists
-    const payments: PaymentMethod[] = [emiPayment];
-    if (financeData.downPayment > 0) {
-      payments.push({
-        id: 'down-payment-' + Date.now(),
-        type: 'cash',
-        amount: financeData.downPayment,
-        reference: 'Down Payment'
-      });
+      // Add the remaining amount as cash payment (can be changed to card/transfer)
+      const remainingPayment: PaymentMethod = {
+        id: 'remaining-' + Date.now(),
+        type: 'cash', // Default to cash, user can change
+        amount: financeData.splitBillOtherAmount || 0,
+        reference: 'Split Bill - Cash Payment'
+      };
+
+      // Add down payment method if down payment exists
+      const payments: PaymentMethod[] = [emiPayment, remainingPayment];
+      if (financeData.downPayment > 0) {
+        payments.push({
+          id: 'down-payment-' + Date.now(),
+          type: 'cash',
+          amount: financeData.downPayment,
+          reference: 'Down Payment'
+        });
+      }
+
+      setPaymentMethods(payments);
+    } else {
+      // Regular Bajaj Finance (full amount)
+      const emiPayment: PaymentMethod = {
+        id: 'emi-' + Date.now(),
+        type: 'emi',
+        amount: financeData.financeAmount,
+        reference: `EMI-${financeData.plan.months}M-${financeData.monthlyEMI}`
+      };
+
+      // Add down payment method if down payment exists
+      const payments: PaymentMethod[] = [emiPayment];
+      if (financeData.downPayment > 0) {
+        payments.push({
+          id: 'down-payment-' + Date.now(),
+          type: 'cash',
+          amount: financeData.downPayment,
+          reference: 'Down Payment'
+        });
+      }
+
+      setPaymentMethods(payments);
     }
-
-    setPaymentMethods(payments);
   };
 
   const openBajajFinanceCalculator = () => {
@@ -863,12 +942,15 @@ export function InvoiceBillingDashboard({
           {items.length > 0 ? (
             <div className="border border-gray-300">
               {/* Table Header */}
-              <div className="bg-gray-100 grid grid-cols-12 gap-2 p-3 font-medium text-sm border-b border-gray-300">
+              <div className="bg-gray-100 grid grid-cols-16 gap-2 p-3 font-medium text-sm border-b border-gray-300">
                 <div className="col-span-1 text-center">#</div>
-                <div className="col-span-5">Description</div>
+                <div className="col-span-4">Description</div>
+                <div className="col-span-2 text-center">Cost</div>
+                <div className="col-span-2 text-center">Rate</div>
                 <div className="col-span-2 text-center">Qty</div>
-                <div className="col-span-2 text-right">Rate</div>
-                <div className="col-span-2 text-right">Amount</div>
+                <div className="col-span-2 text-center">Discount</div>
+                <div className="col-span-2 text-center">Final Rate</div>
+                <div className="col-span-1 text-right">Amount</div>
               </div>
               
               {/* Table Rows */}
@@ -880,44 +962,105 @@ export function InvoiceBillingDashboard({
                 const displayDescription = item.isCustom 
                   ? item.customProduct?.description 
                   : item.product?.product_description;
+                const productCost = item.isCustom 
+                  ? item.customProduct?.cost || 0 
+                  : item.product?.cost || 0;
                 
                 return (
-                  <div key={item.id} className="grid grid-cols-12 gap-2 p-3 border-b border-gray-200 last:border-b-0">
+                  <div key={item.id} className="grid grid-cols-16 gap-2 p-3 border-b border-gray-200 last:border-b-0">
                     <div className="col-span-1 text-center text-sm">{index + 1}</div>
-                    <div className="col-span-5">
-                      <div className="font-medium">{displayName}</div>
+                    
+                    {/* Description */}
+                    <div className="col-span-4">
+                      <div className="font-medium text-sm">{displayName}</div>
                       {displayDescription && (
-                        <div className="text-sm text-gray-600">{displayDescription}</div>
+                        <div className="text-xs text-gray-600 mt-1">{displayDescription}</div>
                       )}
                       <div className="print:hidden mt-2 flex gap-1">
-                        <Input
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) => updateItemQuantity(item.id, Number(e.target.value))}
-                          className="w-20 h-8 text-xs"
-                          min="1"
-                        />
-                        <Input
-                          type="number"
-                          value={item.finalPrice}
-                          onChange={(e) => updateItemPrice(item.id, Number(e.target.value))}
-                          className="w-24 h-8 text-xs"
-                          min="0"
-                          step="0.01"
-                        />
                         <Button
                           onClick={() => removeItem(item.id)}
                           variant="outline"
                           size="sm"
-                          className="h-8 w-8 p-0"
+                          className="h-6 w-6 p-0"
                         >
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       </div>
                     </div>
-                    <div className="col-span-2 text-center">{item.quantity} pcs</div>
-                    <div className="col-span-2 text-right">₹{item.finalPrice.toFixed(2)}</div>
-                    <div className="col-span-2 text-right font-medium">₹{item.totalPrice.toFixed(2)}</div>
+                    
+                    {/* Cost */}
+                    <div className="col-span-2 text-center text-sm">
+                      <div className="text-gray-600">₹{productCost.toFixed(2)}</div>
+                    </div>
+                    
+                    {/* Original Rate */}
+                    <div className="col-span-2 text-center">
+                      <div className="text-sm">₹{item.originalPrice.toFixed(2)}</div>
+                      <div className="print:hidden mt-1">
+                        <Input
+                          type="number"
+                          value={item.originalPrice}
+                          onChange={(e) => updateItemOriginalPrice(item.id, Number(e.target.value))}
+                          className="w-20 h-6 text-xs"
+                          min="0"
+                          step="0.01"
+                        />
+                      </div>
+                    </div>
+                    
+                    {/* Quantity */}
+                    <div className="col-span-2 text-center">
+                      <div className="text-sm">{item.quantity} pcs</div>
+                      <div className="print:hidden mt-1">
+                        <Input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => updateItemQuantity(item.id, Number(e.target.value))}
+                          className="w-16 h-6 text-xs"
+                          min="1"
+                        />
+                      </div>
+                    </div>
+                    
+                    {/* Discount */}
+                    <div className="col-span-2 text-center">
+                      <div className="text-sm text-green-600">
+                        {item.discountPercentage > 0 ? `${item.discountPercentage.toFixed(1)}%` : '-'}
+                      </div>
+                      <div className="text-xs text-green-600">
+                        {item.discountAmount > 0 ? `₹${item.discountAmount.toFixed(2)}` : '-'}
+                      </div>
+                      <div className="print:hidden mt-1 flex gap-1">
+                        <Input
+                          type="number"
+                          value={item.discountPercentage}
+                          onChange={(e) => updateItemDiscountPercentage(item.id, Number(e.target.value))}
+                          className="w-16 h-6 text-xs"
+                          min="0"
+                          max="100"
+                          step="0.1"
+                          placeholder="%"
+                        />
+                      </div>
+                    </div>
+                    
+                    {/* Final Rate */}
+                    <div className="col-span-2 text-center">
+                      <div className="text-sm font-medium">₹{item.finalPrice.toFixed(2)}</div>
+                      <div className="print:hidden mt-1">
+                        <Input
+                          type="number"
+                          value={item.finalPrice}
+                          onChange={(e) => updateItemPrice(item.id, Number(e.target.value))}
+                          className="w-20 h-6 text-xs"
+                          min="0"
+                          step="0.01"
+                        />
+                      </div>
+                    </div>
+                    
+                    {/* Amount */}
+                    <div className="col-span-1 text-right font-medium text-sm">₹{item.totalPrice.toFixed(2)}</div>
                   </div>
                 );
               })}
@@ -942,10 +1085,27 @@ export function InvoiceBillingDashboard({
                   <span>₹{subtotal.toFixed(2)}</span>
                 </div>
                 
-                {discountAmount > 0 && (
+                {/* Individual Item Discounts */}
+                {itemDiscountAmount > 0 && (
+                  <div className="flex justify-between text-blue-600">
+                    <span>Item Discounts:</span>
+                    <span>-₹{itemDiscountAmount.toFixed(2)}</span>
+                  </div>
+                )}
+                
+                {/* Global Discount */}
+                {globalDiscountAmount > 0 && (
                   <div className="flex justify-between text-green-600">
-                    <span>Discount ({globalDiscountType === 'percentage' ? globalDiscount + '%' : '₹' + globalDiscount}):</span>
-                    <span>-₹{discountAmount.toFixed(2)}</span>
+                    <span>Additional Discount ({globalDiscountType === 'percentage' ? globalDiscount + '%' : '₹' + globalDiscount}):</span>
+                    <span>-₹{globalDiscountAmount.toFixed(2)}</span>
+                  </div>
+                )}
+                
+                {/* Total Discount Summary */}
+                {totalDiscountAmount > 0 && (
+                  <div className="flex justify-between text-purple-600 font-medium border-t border-gray-200 pt-2">
+                    <span>Total Discounts ({((totalDiscountAmount / subtotal) * 100).toFixed(1)}%):</span>
+                    <span>-₹{totalDiscountAmount.toFixed(2)}</span>
                   </div>
                 )}
                 
@@ -1011,6 +1171,35 @@ export function InvoiceBillingDashboard({
                   </div>
                 </div>
                 <div>
+                  <Label className="text-xs">Delivery Floor</Label>
+                  <Select value={deliveryFloor} onValueChange={(value) => {
+                    setDeliveryFloor(value);
+                    // Set awareness flag for 1st floor
+                    if (value === 'first') {
+                      setIsFirstFloorAwareness(true); // Mark awareness needed for 1st floor
+                    } else {
+                      setIsFirstFloorAwareness(false);
+                    }
+                    // Note: Freight charges can be manually entered below
+                  }}>
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Select floor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ground">Ground Floor</SelectItem>
+                      <SelectItem value="first">1st Floor</SelectItem>
+                      <SelectItem value="second">2nd Floor</SelectItem>
+                      <SelectItem value="third">3rd Floor</SelectItem>
+                      <SelectItem value="higher">Higher Floor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {isFirstFloorAwareness && (
+                    <div className="text-xs text-orange-600 mt-1 p-1 bg-orange-50 rounded">
+                      ⚠️ 1st Floor Delivery: Prepare tools for reassembly
+                    </div>
+                  )}
+                </div>
+                <div>
                   <Label className="text-xs">Freight Charges</Label>
                   <Input
                     type="number"
@@ -1030,62 +1219,8 @@ export function InvoiceBillingDashboard({
           <h3 className="text-lg font-semibold mb-3 border-b border-gray-300 pb-1">PAYMENT OPTIONS</h3>
           
           <div className="space-y-4">
-            {/* Payment Method Buttons */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const payment: PaymentMethod = {
-                    id: 'cash-' + Date.now(),
-                    type: 'cash',
-                    amount: grandTotal,
-                    reference: 'Cash Payment'
-                  };
-                  setPaymentMethods([payment]);
-                }}
-                className="flex flex-col h-16"
-              >
-                <span className="text-xs">Cash</span>
-                <span className="text-xs text-gray-500">Full Payment</span>
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const payment: PaymentMethod = {
-                    id: 'card-' + Date.now(),
-                    type: 'card',
-                    amount: grandTotal,
-                    reference: 'Card Payment'
-                  };
-                  setPaymentMethods([payment]);
-                }}
-                className="flex flex-col h-16"
-              >
-                <span className="text-xs">Card</span>
-                <span className="text-xs text-gray-500">Full Payment</span>
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const payment: PaymentMethod = {
-                    id: 'upi-' + Date.now(),
-                    type: 'upi',
-                    amount: grandTotal,
-                    reference: 'UPI Payment'
-                  };
-                  setPaymentMethods([payment]);
-                }}
-                className="flex flex-col h-16"
-              >
-                <span className="text-xs">UPI</span>
-                <span className="text-xs text-gray-500">Full Payment</span>
-              </Button>
-
+            {/* Payment Method Buttons - Only Bajaj Finance */}
+            <div className="grid grid-cols-1 gap-2">
               <Button
                 variant="outline"
                 size="sm"
@@ -1100,7 +1235,14 @@ export function InvoiceBillingDashboard({
             {/* Current Payment Methods Display */}
             {paymentMethods.length > 0 && (
               <div className="space-y-2">
-                <h4 className="font-medium text-sm">Selected Payment Methods:</h4>
+                <h4 className="font-medium text-sm">
+                  Selected Payment Methods:
+                  {bajajFinanceData?.isSplitBill && (
+                    <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                      Split Bill
+                    </span>
+                  )}
+                </h4>
                 {paymentMethods.map((payment, index) => (
                   <div key={payment.id} className="flex justify-between items-center p-2 bg-gray-50 rounded border">
                     <div className="flex items-center gap-2">
@@ -1187,28 +1329,50 @@ export function InvoiceBillingDashboard({
           </div>
         )}
 
+        {/* Quote Status Indicator - Only visible on screen */}
+        {quoteGenerated && (
+          <div className="print:hidden flex justify-center pt-4">
+            <div className={`px-4 py-2 rounded-full text-sm font-medium ${
+              quoteStatus === 'Converted' || quoteStatus === 'converted'
+                ? 'bg-green-100 text-green-800 border border-green-200' 
+                : 'bg-blue-100 text-blue-800 border border-blue-200'
+            }`}>
+              Quote Status: {(quoteStatus === 'Converted' || quoteStatus === 'converted') ? 'Converted to Sales Order' : 'Draft'}
+            </div>
+          </div>
+        )}
+
         {/* Action Buttons - Only visible on screen */}
         <div className="print:hidden flex justify-center gap-4 pt-6 border-t border-gray-200">
           <Button 
-            onClick={() => onGenerateQuote?.(getCurrentBillingData())}
+            onClick={() => onCreateQuoteAndSalesOrder?.(getCurrentBillingData())}
             disabled={!customer || items.length === 0 || isProcessing || externalIsProcessing}
             variant="outline"
           >
-            <FileText className="h-4 w-4 mr-2" />
-            Generate Quote
-          </Button>
-          
-          <Button 
-            onClick={() => onGenerateSalesOrder?.(getCurrentBillingData())}
-            disabled={!customer || items.length === 0 || isProcessing || externalIsProcessing || !quoteGenerated || quoteStatus === 'converted'}
-            variant="outline"
-          >
             <ShoppingCart className="h-4 w-4 mr-2" />
-            {quoteStatus === 'converted' ? 'Sales Order Created' : 'Create Sales Order'}
+            Create Quote & Sales Order
           </Button>
           
           <Button 
-            onClick={() => onGenerateInvoice?.(getCurrentBillingData())}
+            onClick={() => {
+              // Create mock invoice data and open payment tracker
+              const billingData = getCurrentBillingData();
+              const mockInvoice: Invoice = {
+                id: `INV-${Date.now()}`,
+                invoice_number: `INV-${Date.now()}`,
+                sales_order_id: `SO-${Date.now()}`,
+                customer_id: billingData.customer?.customer_id || billingData.customer?.id || '',
+                customer_name: billingData.customer?.name || '',
+                amount: billingData.finalTotal,
+                total: billingData.finalTotal,
+                paid_amount: 0,
+                status: 'draft',
+                created_at: new Date().toISOString(),
+                due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days from now
+              };
+              setGeneratedInvoice(mockInvoice);
+              setShowPaymentTracker(true);
+            }}
             disabled={!customer || items.length === 0 || isProcessing || externalIsProcessing}
           >
             <Send className="h-4 w-4 mr-2" />
@@ -1602,6 +1766,24 @@ export function InvoiceBillingDashboard({
         onClose={() => setShowBajajFinance(false)}
         onSelect={handleBajajFinanceSetup}
       />
+
+      {/* Payment Tracking Dialog */}
+      {generatedInvoice && (
+        <PaymentTrackingDialog
+          open={showPaymentTracker}
+          onOpenChange={(open) => {
+            setShowPaymentTracker(open);
+            if (!open) {
+              setGeneratedInvoice(null);
+            }
+          }}
+          invoice={generatedInvoice}
+          onSuccess={() => {
+            setShowPaymentTracker(false);
+            setGeneratedInvoice(null);
+          }}
+        />
+      )}
     </div>
   );
 }

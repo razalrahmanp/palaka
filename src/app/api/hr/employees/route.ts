@@ -1,13 +1,16 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { supabase as supabaseAdmin } from '@/lib/supabaseAdmin';
 
 export async function GET() {
   try {
+    console.log('GET /api/hr/employees - Starting request');
+    
+    // Check if supabase client is properly initialized
+    if (!supabaseAdmin) {
+      console.error('Supabase admin client is not initialized');
+      return NextResponse.json({ error: 'Database connection not available' }, { status: 500 });
+    }
+
     const { data: employees, error } = await supabaseAdmin
       .from('employees')
       .select(`
@@ -22,7 +25,12 @@ export async function GET() {
 
     if (error) {
       console.error('Error fetching employees:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ 
+        message: 'Database error',
+        details: error.message,
+        hint: error.hint || '',
+        code: error.code || ''
+      }, { status: 500 });
     }
 
     // Transform the data to include user information
@@ -32,10 +40,19 @@ export async function GET() {
       name: employee.user?.name || employee.name
     }));
 
+    console.log(`GET /api/hr/employees - Success: ${transformedEmployees?.length || 0} employees found`);
     return NextResponse.json(transformedEmployees);
   } catch (error) {
-    console.error('Unexpected error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('Error fetching employees:', {
+      message: error instanceof Error ? error.message : String(error),
+      details: error instanceof Error ? error.stack : 'Unknown error',
+    });
+    return NextResponse.json({ 
+      message: error instanceof Error ? error.message : 'Unknown error',
+      details: error instanceof Error ? error.stack : String(error),
+      hint: 'Check database connection and environment variables',
+      code: ''
+    }, { status: 500 });
   }
 }
 

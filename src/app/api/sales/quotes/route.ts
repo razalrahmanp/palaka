@@ -18,6 +18,15 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const body = await req.json();
 
+  // Debug: Log the pricing data being received
+  console.log("Quotes API received pricing data:", {
+    total_price: body.total_price,
+    original_price: body.original_price,
+    final_price: body.final_price,
+    discount_amount: body.discount_amount,
+    freight_charges: body.freight_charges
+  });
+
   // 1) Insert the quote with all columns
   const { data: quote, error: quoteError } = await supabase
     .from('quotes')
@@ -26,8 +35,8 @@ export async function POST(req: NextRequest) {
       customer: body.customer,
       items: body.items,
       total_price: body.total_price,
-      original_price: body.original_price || body.total_price,
-      final_price: body.final_price || body.total_price,
+      original_price: body.original_price ?? body.total_price, // Use nullish coalescing
+      final_price: body.final_price ?? body.total_price, // Use nullish coalescing  
       discount_amount: body.discount_amount || 0,
       freight_charges: body.freight_charges || 0,
       notes: body.notes || '',

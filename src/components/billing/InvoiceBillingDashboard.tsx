@@ -165,6 +165,7 @@ export function InvoiceBillingDashboard({
     deliveryFloor, // Include floor selection
     isFirstFloorAwareness, // Include awareness flag
     selectedSalesman,
+    bajajFinanceData, // Include Bajaj Finance data with card status
     totals: {
       original_price: originalTotal,
       total_price: subtotal,

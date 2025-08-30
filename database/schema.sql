@@ -310,6 +310,7 @@ CREATE TABLE public.custom_products (
   price numeric DEFAULT 0,
   supplier_name text,
   supplier_id uuid,
+  cost_price numeric,
   CONSTRAINT custom_products_pkey PRIMARY KEY (id),
   CONSTRAINT custom_products_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id)
 );
@@ -1332,6 +1333,11 @@ CREATE TABLE public.quotes (
   bajaj_finance_amount numeric,
   freight_charges numeric,
   bajaj_approved_amount numeric,
+  bajaj_processing_fee_rate numeric DEFAULT 8.00,
+  bajaj_processing_fee_amount numeric DEFAULT 0,
+  bajaj_convenience_charges numeric DEFAULT 0,
+  bajaj_total_customer_payment numeric DEFAULT 0,
+  bajaj_merchant_receivable numeric DEFAULT 0,
   CONSTRAINT quotes_pkey PRIMARY KEY (id),
   CONSTRAINT quotes_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id),
   CONSTRAINT quotes_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
@@ -1492,8 +1498,8 @@ CREATE TABLE public.sales_order_items (
   cost numeric DEFAULT 0,
   image_url text,
   CONSTRAINT sales_order_items_pkey PRIMARY KEY (id),
-  CONSTRAINT sales_order_items_custom_product_id_fkey FOREIGN KEY (custom_product_id) REFERENCES public.custom_products(id),
   CONSTRAINT sales_order_items_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.sales_orders(id),
+  CONSTRAINT sales_order_items_custom_product_id_fkey FOREIGN KEY (custom_product_id) REFERENCES public.custom_products(id),
   CONSTRAINT sales_order_items_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id)
 );
 CREATE TABLE public.sales_orders (
@@ -1519,13 +1525,20 @@ CREATE TABLE public.sales_orders (
   freight_charges numeric DEFAULT 0,
   sales_representative_id uuid,
   waived_amount numeric DEFAULT 0,
+  delivery_floor character varying DEFAULT 'ground'::character varying,
+  first_floor_awareness boolean DEFAULT false,
+  bajaj_processing_fee_rate numeric DEFAULT 8.00,
+  bajaj_processing_fee_amount numeric DEFAULT 0,
+  bajaj_convenience_charges numeric DEFAULT 0,
+  bajaj_total_customer_payment numeric DEFAULT 0,
+  bajaj_merchant_receivable numeric DEFAULT 0,
   CONSTRAINT sales_orders_pkey PRIMARY KEY (id),
   CONSTRAINT sales_orders_sales_representative_id_fkey FOREIGN KEY (sales_representative_id) REFERENCES public.users(id),
-  CONSTRAINT sales_orders_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id),
   CONSTRAINT sales_orders_quote_id_fkey FOREIGN KEY (quote_id) REFERENCES public.quotes(id),
+  CONSTRAINT sales_orders_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
+  CONSTRAINT sales_orders_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id),
   CONSTRAINT fk_sales_orders_updated_by FOREIGN KEY (updated_by) REFERENCES public.users(id),
-  CONSTRAINT fk_sales_orders_created_by FOREIGN KEY (created_by) REFERENCES public.users(id),
-  CONSTRAINT sales_orders_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
+  CONSTRAINT fk_sales_orders_created_by FOREIGN KEY (created_by) REFERENCES public.users(id)
 );
 CREATE TABLE public.settings (
   key text NOT NULL,

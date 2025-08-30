@@ -122,6 +122,7 @@ export function ProfessionalBillingDashboard({
     category: '',
     subcategory: '',
     price: 0,
+    cost_price: null, // Add cost_price field
     material: '',
     lead_time_days: 30
   });
@@ -482,6 +483,7 @@ export function ProfessionalBillingDashboard({
       category: '',
       subcategory: '',
       price: 0,
+      cost_price: null,
       material: '',
       lead_time_days: 30
     });
@@ -551,6 +553,7 @@ export function ProfessionalBillingDashboard({
           category: '',
           subcategory: '',
           price: 0,
+          cost_price: null,
           material: '',
           lead_time_days: 30
         });
@@ -1315,14 +1318,27 @@ export function ProfessionalBillingDashboard({
                                 />
                               </div>
                               <div>
-                                <Label htmlFor="customPrice">Base Price *</Label>
+                                <Label htmlFor="customPrice">Selling Price (MRP) *</Label>
                                 <Input
                                   id="customPrice"
                                   type="number"
                                   value={customProductForm.price}
                                   onChange={(e) => setCustomProductForm(prev => ({ ...prev, price: Number(e.target.value) }))}
-                                  placeholder="Enter price"
+                                  placeholder="Enter selling price"
                                 />
+                              </div>
+                              <div>
+                                <Label htmlFor="customCostPrice">Cost Price</Label>
+                                <Input
+                                  id="customCostPrice"
+                                  type="number"
+                                  value={customProductForm.cost_price || ''}
+                                  onChange={(e) => setCustomProductForm(prev => ({ ...prev, cost_price: Number(e.target.value) || null }))}
+                                  placeholder="Auto-calculated (70% of MRP)"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">
+                                  Leave empty to auto-calculate as 70% of selling price
+                                </p>
                               </div>
                               <div>
                                 <Label htmlFor="customCategory">Category</Label>
@@ -1343,6 +1359,19 @@ export function ProfessionalBillingDashboard({
                                 />
                               </div>
                             </div>
+                            {/* Margin Display */}
+                            {customProductForm.price > 0 && (customProductForm.cost_price || customProductForm.price * 0.7) > 0 && (
+                              <div className="p-3 bg-blue-50 border border-blue-200 rounded">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm text-blue-700">
+                                    Cost: ₹{(customProductForm.cost_price || customProductForm.price * 0.7).toFixed(2)}
+                                  </span>
+                                  <span className="text-sm font-medium text-blue-700">
+                                    Margin: {(((customProductForm.price - (customProductForm.cost_price || customProductForm.price * 0.7)) / customProductForm.price) * 100).toFixed(1)}%
+                                  </span>
+                                </div>
+                              </div>
+                            )}
                             <div>
                               <Label htmlFor="customDescription">Description</Label>
                               <Textarea

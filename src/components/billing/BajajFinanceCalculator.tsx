@@ -100,7 +100,8 @@ export function BajajFinanceCalculator({
 
     // Calculate bill amount with 8% service charge for Bajaj Finance
     const bajajServiceCharge = Math.round(orderAmount * 0.08);
-    const finalBillAmount = orderAmount + bajajServiceCharge;
+    const cardFee = hasBajajCard ? 0 : 530; // ₹530 if no Bajaj card
+    const finalBillAmount = orderAmount + bajajServiceCharge + cardFee;
 
     // Calculate down payment based on plan type
     let calculatedDownPayment = 0;
@@ -133,10 +134,11 @@ export function BajajFinanceCalculator({
       const totalAmount = emi * selectedPlan.months;
       const totalInterest = 0; // No interest for Bajaj Finance
       
-      // Calculate additional charges
+      // Calculate additional charges (for display only - already included in finalBillAmount)
       const additionalCharges = hasBajajCard ? 0 : 530;
       const processingFee = selectedPlan.processingFee;
-      const grandTotal = totalAmount + processingFee + additionalCharges + remainingAmount;
+      // Note: additionalCharges already included in finalBillAmount, so don't add again
+      const grandTotal = totalAmount + processingFee + remainingAmount;
       
       // Create split bill data
       const splitBillFinanceData: BajajFinanceData = {
@@ -171,10 +173,11 @@ export function BajajFinanceCalculator({
     const totalAmount = emi * selectedPlan.months;
     const totalInterest = 0; // No interest for Bajaj Finance
 
-    // Calculate additional charges
+    // Calculate additional charges (for display only - already included in finalBillAmount)
     const additionalCharges = hasBajajCard ? 0 : 530;
     const processingFee = selectedPlan.processingFee;
-    const grandTotal = totalAmount + processingFee + additionalCharges;
+    // Note: additionalCharges already included in finalBillAmount, so don't add again
+    const grandTotal = totalAmount + processingFee;
 
     setFinanceData({
       orderAmount,
@@ -190,7 +193,7 @@ export function BajajFinanceCalculator({
       grandTotal: Math.round(grandTotal),
       approvedAmount,
       finalBillAmount,
-      bajajServiceCharge,
+      bajajServiceCharge: Math.round(orderAmount * 0.08), // Add bajajServiceCharge calculation
       isSplitBill: false
     });
     
@@ -605,6 +608,12 @@ export function BajajFinanceCalculator({
                         <span>Bajaj Service Charge (8%):</span>
                         <span className="text-orange-600">+₹{financeData.bajajServiceCharge.toLocaleString()}</span>
                       </div>
+                      {!financeData.hasBajajCard && financeData.additionalCharges > 0 && (
+                        <div className="flex justify-between">
+                          <span>Card Fee (New Customer):</span>
+                          <span className="text-orange-600">+₹{financeData.additionalCharges.toLocaleString()}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between font-medium border-t pt-2">
                         <span>Final Bill Amount:</span>
                         <span>₹{financeData.finalBillAmount.toLocaleString()}</span>
@@ -629,6 +638,12 @@ export function BajajFinanceCalculator({
                         <span>Processing Fee:</span>
                         <span>₹{financeData.processingFee.toLocaleString()}</span>
                       </div>
+                      {!financeData.hasBajajCard && financeData.additionalCharges > 0 && (
+                        <div className="flex justify-between">
+                          <span>Card Fee (New Customer):</span>
+                          <span className="text-orange-600">+₹{financeData.additionalCharges.toLocaleString()}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between font-bold border-t pt-2">
                         <span>Total Payable:</span>
                         <span>₹{(financeData.totalAmount + financeData.processingFee).toLocaleString()}</span>

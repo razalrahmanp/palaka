@@ -43,36 +43,86 @@ export default function BillingPage() {
     setIsProcessing(true);
     try {
       console.log("Creating quote and sales order:", data);
+      console.log("Items from billing data:", data.items.map(item => ({
+        name: item.isCustom ? item.customProduct?.name : item.product?.product_name,
+        originalPrice: item.originalPrice,
+        finalPrice: item.finalPrice,
+        discountPercentage: item.discountPercentage,
+        isCustom: item.isCustom
+      })));
+      console.log("Billing totals breakdown:", {
+        original_price: data.totals.original_price,
+        final_price: data.totals.final_price,
+        discount_amount: data.totals.discount_amount,
+        freight_charges: data.totals.freight_charges,
+        subtotal: data.totals.subtotal,
+        tax: data.totals.tax,
+        grandTotal: data.totals.grandTotal,
+        // Calculate what discount_amount should be based on the formula
+        calculated_discount: data.totals.original_price + data.totals.freight_charges - data.totals.final_price
+      });
 
       // Transform items to match API expectations
-      const transformedItems = data.items.map(item => ({
-        product_id: item.isCustom ? null : (item.product?.product_id || null),
-        custom_product_id: item.isCustom ? (item.customProduct?.id || null) : null,
-        name: item.isCustom ? item.customProduct?.name : item.product?.product_name,
-        quantity: item.quantity,
-        unit_price: item.finalPrice,
-        total_price: item.totalPrice,
-        supplier_name: item.isCustom ? item.customProduct?.supplier_name : item.product?.supplier_name,
-        supplier_id: item.isCustom ? item.customProduct?.supplier_id : null,
-        type: item.isCustom ? 'new' : 'product',
-        // Additional fields for custom items
-        ...(item.isCustom && {
-          image_url: null,
-          discount_percentage: item.discountPercentage || 0,
-          base_product_name: item.customProduct?.name,
-          specifications: item.customProduct?.description,
-          materials: [],
-          dimensions: null,
-          finish: null,
-          color: null,
-          custom_instructions: item.customProduct?.description,
-          estimated_delivery_days: item.customProduct?.lead_time_days || 30,
-          complexity_level: 'medium',
-          status: 'pending',
-          notes: null,
-          configuration: item.customProduct?.config_schema || {}
-        })
-      }));
+      const transformedItems = data.items.map(item => {
+        // Ensure we have the right pricing data
+        const originalPrice = item.originalPrice || item.finalPrice;
+        const finalPrice = item.finalPrice;
+        const discountPercentage = item.discountPercentage || 0;
+        
+        // Validate pricing consistency
+        if (discountPercentage > 0 && originalPrice === finalPrice) {
+          console.warn("Pricing inconsistency detected:", {
+            name: item.isCustom ? item.customProduct?.name : item.product?.product_name,
+            originalPrice,
+            finalPrice,
+            discountPercentage,
+            expectedFinalPrice: originalPrice * (1 - discountPercentage / 100)
+          });
+        }
+
+        const transformedItem = {
+          product_id: item.isCustom ? null : (item.product?.product_id || null),
+          custom_product_id: item.isCustom ? (item.customProduct?.id || null) : null,
+          name: item.isCustom ? item.customProduct?.name : item.product?.product_name,
+          quantity: item.quantity,
+          unit_price: originalPrice, // Use original price before discount
+          final_price: finalPrice, // Keep final price after discount
+          total_price: item.totalPrice,
+          discount_percentage: discountPercentage, // Include discount percentage
+          supplier_name: item.isCustom ? item.customProduct?.supplier_name : item.product?.supplier_name,
+          supplier_id: item.isCustom ? item.customProduct?.supplier_id : null,
+          type: item.isCustom ? 'new' : 'existing', // Use 'existing' for regular products
+          // Additional fields for custom items
+          ...(item.isCustom && {
+            image_url: null,
+            base_product_name: item.customProduct?.name,
+            specifications: item.customProduct?.description,
+            materials: [],
+            dimensions: null,
+            finish: null,
+            color: null,
+            custom_instructions: item.customProduct?.description,
+            estimated_delivery_days: item.customProduct?.lead_time_days || 30,
+            complexity_level: 'medium',
+            status: 'pending',
+            notes: null,
+            configuration: item.customProduct?.config_schema || {}
+          })
+        };
+
+        console.log("Transforming item:", {
+          name: transformedItem.name,
+          original_price: originalPrice,
+          final_price: finalPrice,
+          unit_price: transformedItem.unit_price,
+          discount_percentage: transformedItem.discount_percentage,
+          item_discount_percentage: item.discountPercentage,
+          type: transformedItem.type,
+          isCustom: item.isCustom
+        });
+
+        return transformedItem;
+      });
 
       // Check if EMI payment is selected
       const emiPayment = data.paymentMethods?.find(pm => pm.type === 'emi');
@@ -81,12 +131,49 @@ export default function BillingPage() {
       // Calculate EMI plan if Bajaj Finance is selected
       let emiPlan = null;
       let monthlyEmiAmount = 0;
+      let bajajCharges = null;
 
       if (hasBajajFinance) {
         const totalAmount = data.finalTotal;
-        const isNewCustomer = true; // Default to new customer
-        const newCustomerFee = isNewCustomer ? 530 : 0;
+        
+        // Get card status from Bajaj Finance data if available, otherwise default to new customer
+        const hasCard = data.bajajFinanceData?.hasBajajCard ?? false;
+        const isNewCustomer = !hasCard; // If no card, then new customer
+        
+        // Try to get card fee from BajajFinanceCalculator data first, then fallback to calculation
+        const newCustomerFee = data.bajajFinanceData?.additionalCharges ?? (isNewCustomer ? 530 : 0);
         const totalAmountWithFee = totalAmount + newCustomerFee;
+
+        console.log("Bajaj Finance Card Status:", {
+          hasBajajCard: hasCard,
+          isNewCustomer: isNewCustomer,
+          cardFee: newCustomerFee,
+          cardFeeSource: data.bajajFinanceData?.additionalCharges !== undefined ? "BajajFinanceCalculator" : "fallback calculation",
+          bajajFinanceDataPresent: !!data.bajajFinanceData
+        });
+
+        // Calculate Bajaj Finance charges properly
+        const processingFeeRate = 8.0; // 8% processing fee
+        const convenienceCharges = newCustomerFee; // Card fee goes into convenience charges!
+        
+        // Processing fee is calculated on the original bill amount (not including card fee)
+        const processingFeeAmount = Math.round((totalAmount * processingFeeRate / 100) * 100) / 100;
+        
+        // Total customer payment includes: bill amount + card fee + processing fee
+        const totalCustomerPayment = Math.round((totalAmount + newCustomerFee + processingFeeAmount) * 100) / 100;
+        
+        // Merchant receives only the original bill amount
+        const merchantReceivable = totalAmount;
+
+        bajajCharges = {
+          processing_fee_rate: processingFeeRate,
+          processing_fee_amount: processingFeeAmount,
+          convenience_charges: convenienceCharges, // Card fee stored here!
+          total_customer_payment: totalCustomerPayment,
+          merchant_receivable: merchantReceivable,
+          card_fee: newCustomerFee, // Track card fee separately for UI display
+          bill_amount: totalAmount // Track original bill amount
+        };
 
         if (totalAmount < 50000) {
           emiPlan = {
@@ -113,6 +200,50 @@ export default function BillingPage() {
           };
           monthlyEmiAmount = Math.round(totalAmountWithFee / 10);
         }
+
+        // Debug: Log Bajaj Finance charge breakdown
+        console.log("Bajaj Finance Charge Breakdown:", {
+          billAmount: totalAmount,
+          cardFee: newCustomerFee,
+          cardFeeGoesTo: "convenience_charges", // This is where card fee is stored!
+          processingFeeRate: processingFeeRate + "%",
+          processingFeeAmount: bajajCharges.processing_fee_amount,
+          convenienceCharges: bajajCharges.convenience_charges, // Should equal cardFee
+          totalCustomerPays: bajajCharges.total_customer_payment,
+          merchantReceives: bajajCharges.merchant_receivable,
+          emiCalculatedOn: totalAmountWithFee,
+          monthlyEMI: monthlyEmiAmount,
+          dataStructure: {
+            processing_fee_rate: bajajCharges.processing_fee_rate,
+            processing_fee_amount: bajajCharges.processing_fee_amount,
+            convenience_charges: bajajCharges.convenience_charges,
+            total_customer_payment: bajajCharges.total_customer_payment,
+            merchant_receivable: bajajCharges.merchant_receivable
+          }
+        });
+      }
+
+      // Fallback: If EMI is enabled but bajajCharges is null, calculate basic charges
+      if (hasBajajFinance && !bajajCharges) {
+        const totalAmount = data.finalTotal;
+        const hasCard = data.bajajFinanceData?.hasBajajCard ?? false;
+        const newCustomerFee = hasCard ? 0 : 530;
+        const processingFeeRate = 8.0;
+        const processingFeeAmount = Math.round((totalAmount * processingFeeRate / 100) * 100) / 100;
+        const totalCustomerPayment = Math.round((totalAmount + newCustomerFee + processingFeeAmount) * 100) / 100;
+        const merchantReceivable = totalAmount;
+
+        bajajCharges = {
+          processing_fee_rate: processingFeeRate,
+          processing_fee_amount: processingFeeAmount,
+          convenience_charges: newCustomerFee, // Card fee stored in convenience_charges!
+          total_customer_payment: totalCustomerPayment,
+          merchant_receivable: merchantReceivable,
+          card_fee: newCustomerFee,
+          bill_amount: totalAmount
+        };
+
+        console.log("Fallback Bajaj Finance Calculation Applied:", bajajCharges);
       }
 
       // Debug: Log what's being sent to quotes API
@@ -128,6 +259,15 @@ export default function BillingPage() {
         original_rounded: Math.round(data.totals.original_price * 100) / 100
       });
 
+      // Calculate the correct discount_amount using the mathematical formula
+      const correctedDiscountAmount = data.totals.original_price + data.totals.freight_charges - data.finalTotal;
+      
+      console.log("Discount amount correction:", {
+        billing_component_discount: data.totals.discount_amount,
+        calculated_discount: correctedDiscountAmount,
+        difference: correctedDiscountAmount - data.totals.discount_amount
+      });
+
       // Step 1: Create quote with "Converted" status
       const quoteResponse = await fetch('/api/sales/quotes', {
         method: 'POST',
@@ -141,7 +281,7 @@ export default function BillingPage() {
           total_price: data.finalTotal,
           original_price: data.totals.original_price,
           final_price: data.finalTotal,
-          discount_amount: data.totals.discount_amount,
+          discount_amount: correctedDiscountAmount, // Use corrected discount amount
           freight_charges: data.totals.freight_charges,
           notes: data.notes,
           status: 'Converted', // Set as Converted immediately
@@ -150,7 +290,13 @@ export default function BillingPage() {
           emi_plan: emiPlan,
           emi_monthly: monthlyEmiAmount,
           bajaj_finance_amount: hasBajajFinance ? data.finalTotal + (emiPlan?.newCustomerFee || 0) : 0,
-          bajaj_approved_amount: hasBajajFinance ? data.finalTotal + (emiPlan?.newCustomerFee || 0) : null
+          bajaj_approved_amount: hasBajajFinance ? data.finalTotal + (emiPlan?.newCustomerFee || 0) : null,
+          // New Bajaj Finance charge tracking fields
+          bajaj_processing_fee_rate: hasBajajFinance ? bajajCharges?.processing_fee_rate : null,
+          bajaj_processing_fee_amount: hasBajajFinance ? (bajajCharges?.processing_fee_amount ?? 0) : 0,
+          bajaj_convenience_charges: hasBajajFinance ? (bajajCharges?.convenience_charges ?? 0) : 0,
+          bajaj_total_customer_payment: hasBajajFinance ? (bajajCharges?.total_customer_payment ?? 0) : 0,
+          bajaj_merchant_receivable: hasBajajFinance ? (bajajCharges?.merchant_receivable ?? 0) : 0
         }),
       });
 
@@ -202,7 +348,13 @@ export default function BillingPage() {
           emi_plan: createdQuote.emi_plan,
           emi_monthly: createdQuote.emi_monthly,
           bajaj_finance_amount: createdQuote.bajaj_finance_amount,
-          bajaj_approved_amount: createdQuote.emi_enabled ? createdQuote.bajaj_finance_amount : null
+          bajaj_approved_amount: createdQuote.emi_enabled ? createdQuote.bajaj_finance_amount : null,
+          // Include new Bajaj Finance charge tracking fields
+          bajaj_processing_fee_rate: createdQuote.bajaj_processing_fee_rate,
+          bajaj_processing_fee_amount: createdQuote.bajaj_processing_fee_amount,
+          bajaj_convenience_charges: createdQuote.bajaj_convenience_charges,
+          bajaj_total_customer_payment: createdQuote.bajaj_total_customer_payment,
+          bajaj_merchant_receivable: createdQuote.bajaj_merchant_receivable
         }),
       });
 

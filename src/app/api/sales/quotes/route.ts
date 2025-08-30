@@ -46,7 +46,13 @@ export async function POST(req: NextRequest) {
       emi_plan: body.emi_plan || null,
       emi_monthly: body.emi_monthly || 0,
       bajaj_finance_amount: body.bajaj_finance_amount || 0,
-      bajaj_approved_amount: body.bajaj_approved_amount || null
+      bajaj_approved_amount: body.bajaj_approved_amount || null,
+      // New Bajaj Finance charge tracking fields
+      bajaj_processing_fee_rate: body.bajaj_processing_fee_rate || null,
+      bajaj_processing_fee_amount: body.bajaj_processing_fee_amount || 0,
+      bajaj_convenience_charges: body.bajaj_convenience_charges || 0,
+      bajaj_total_customer_payment: body.bajaj_total_customer_payment || 0,
+      bajaj_merchant_receivable: body.bajaj_merchant_receivable || 0
     })
     .select()
     .single();

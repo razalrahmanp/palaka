@@ -272,12 +272,19 @@ export async function GET() {
       const product = Array.isArray(i.products) 
         ? (i.products.length > 0 && i.products[0] ? i.products[0] : null)
         : (i.products && typeof i.products === 'object' && 'name' in i.products) 
-          ? (i.products as {name: string, sku?: string}) 
+          ? (i.products as {name: string, sku?: string, suppliers?: {name: string}[]}) 
           : null;
       
       if (product) {
         productName = product.name;
         sku = product.sku;
+        
+        // Extract supplier info from regular product
+        if (product.suppliers && product.suppliers.length > 0) {
+          supplierName = product.suppliers[0].name;
+        } else if (!supplierName) {
+          supplierName = "Unknown Supplier"; // Better than null
+        }
       }
     }
 
@@ -375,7 +382,12 @@ export async function POST(req: Request) {
     emi_enabled,
     emi_plan,
     emi_monthly,
-    bajaj_finance_amount
+    bajaj_finance_amount,
+    bajaj_processing_fee_rate,
+    bajaj_processing_fee_amount,
+    bajaj_convenience_charges,
+    bajaj_total_customer_payment,
+    bajaj_merchant_receivable
   }: {
     quote_id?: string;
     customer_id: string;
@@ -421,6 +433,11 @@ export async function POST(req: Request) {
     emi_plan?: Record<string, unknown>;
     emi_monthly?: number;
     bajaj_finance_amount?: number;
+    bajaj_processing_fee_rate?: number;
+    bajaj_processing_fee_amount?: number;
+    bajaj_convenience_charges?: number;
+    bajaj_total_customer_payment?: number;
+    bajaj_merchant_receivable?: number;
   } = body;
 
   if (!customer_id || !Array.isArray(items) || items.length === 0) {
@@ -456,41 +473,89 @@ export async function POST(req: Request) {
     original_price_nullish: original_price == null
   });
 
+  // Add more detailed logging for the values being inserted
+  const insertData = {
+    quote_id: quote_id ?? null,
+    customer_id,
+    status: validatedStatus,
+    created_by: createdBy,
+    created_at: date ?? new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    updated_by: createdBy,
+    address: null, // Can be updated later
+    expected_delivery_date: delivery_date ? new Date(delivery_date).toISOString().split('T')[0] : null,
+    delivery_floor: delivery_floor || 'ground',
+    first_floor_awareness: first_floor_awareness || false,
+    notes: notes || null,
+    final_price: Number(final_price ?? total_price ?? 0), // Ensure numeric type
+    original_price: Number(original_price ?? 0), // Ensure numeric type
+    discount_amount: Number(discount_amount || 0), // Ensure numeric type
+    emi_enabled: Boolean(emi_enabled), // Ensure boolean type
+    emi_plan: emi_plan || {},
+    emi_monthly: Number(emi_monthly || 0), // Ensure numeric type
+    bajaj_finance_amount: Number(bajaj_finance_amount || 0), // Ensure numeric type
+    // New Bajaj Finance charge tracking fields - ensure proper numeric types
+    bajaj_processing_fee_rate: bajaj_processing_fee_rate ? Number(bajaj_processing_fee_rate) : 8.00, // Default to 8%
+    bajaj_processing_fee_amount: Number(bajaj_processing_fee_amount || 0),
+    bajaj_convenience_charges: Number(bajaj_convenience_charges || 0),
+    bajaj_total_customer_payment: Number(bajaj_total_customer_payment || 0),
+    bajaj_merchant_receivable: Number(bajaj_merchant_receivable || 0),
+    freight_charges: Number(freight_charges || 0), // Ensure numeric type
+    sales_representative_id: createdBy,
+    waived_amount: Number(0), // Ensure numeric type
+    po_created: Boolean(false) // Ensure boolean type
+  };
+
+  console.log("Sales order insert data:", {
+    final_price: insertData.final_price,
+    original_price: insertData.original_price,
+    discount_amount: insertData.discount_amount,
+    freight_charges: insertData.freight_charges,
+    emi_enabled: insertData.emi_enabled,
+    // Bajaj Finance fields
+    bajaj_processing_fee_rate: insertData.bajaj_processing_fee_rate,
+    bajaj_processing_fee_amount: insertData.bajaj_processing_fee_amount,
+    bajaj_convenience_charges: insertData.bajaj_convenience_charges,
+    bajaj_total_customer_payment: insertData.bajaj_total_customer_payment,
+    bajaj_merchant_receivable: insertData.bajaj_merchant_receivable,
+    bajaj_finance_amount: insertData.bajaj_finance_amount,
+    // Verify calculation
+    calculated_discount: (insertData.original_price || 0) + (insertData.freight_charges || 0) - (insertData.final_price || 0),
+    // Data types validation
+    types: {
+      final_price: typeof insertData.final_price,
+      bajaj_convenience_charges: typeof insertData.bajaj_convenience_charges,
+      emi_enabled: typeof insertData.emi_enabled
+    }
+  });
+
   const { data: orderData, error: orderError } = await supabaseAdmin
     .from("sales_orders")
-    .insert([
-      {
-        quote_id: quote_id ?? null,
-        customer_id,
-        status: validatedStatus,
-        created_by: createdBy,
-        created_at: date ?? new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        updated_by: createdBy,
-        address: null, // Can be updated later
-        expected_delivery_date: delivery_date ? new Date(delivery_date).toISOString().split('T')[0] : null,
-        delivery_floor: delivery_floor || 'ground',
-        first_floor_awareness: first_floor_awareness || false,
-        notes: notes || null,
-        final_price: final_price ?? total_price ?? 0, // Use nullish coalescing
-        original_price: original_price ?? 0, // Use nullish coalescing to preserve 0 values
-        discount_amount: discount_amount || 0,
-        emi_enabled: emi_enabled || false,
-        emi_plan: emi_plan || {},
-        emi_monthly: emi_monthly || 0,
-        bajaj_finance_amount: bajaj_finance_amount || 0,
-        freight_charges: freight_charges || 0,
-        sales_representative_id: createdBy,
-        waived_amount: 0,
-        po_created: false
-      },
-    ])
+    .insert([insertData])
     .select()
     .single();
 
   if (orderError) {
     console.error("Error creating sales order:", orderError);
-    return NextResponse.json({ error: orderError.message }, { status: 500 });
+    console.error("Insert data that failed:", insertData);
+    
+    // Specific error handling for Bajaj Finance fields
+    if (orderError.message?.includes('bajaj_')) {
+      console.error("Bajaj Finance field error - check schema and data types");
+      console.error("Bajaj Finance data being inserted:", {
+        bajaj_processing_fee_rate: insertData.bajaj_processing_fee_rate,
+        bajaj_processing_fee_amount: insertData.bajaj_processing_fee_amount,
+        bajaj_convenience_charges: insertData.bajaj_convenience_charges,
+        bajaj_total_customer_payment: insertData.bajaj_total_customer_payment,
+        bajaj_merchant_receivable: insertData.bajaj_merchant_receivable
+      });
+    }
+    
+    return NextResponse.json({ 
+      error: orderError.message,
+      details: orderError,
+      insertData: insertData // Include insert data for debugging
+    }, { status: 500 });
   }
 
   console.log("Sales order created with stored values:", {
@@ -498,7 +563,13 @@ export async function POST(req: Request) {
     final_price: orderData.final_price,
     original_price: orderData.original_price,
     discount_amount: orderData.discount_amount,
-    freight_charges: orderData.freight_charges
+    freight_charges: orderData.freight_charges,
+    // Verify what was actually stored vs what we sent
+    stored_vs_sent: {
+      discount_amount_sent: insertData.discount_amount,
+      discount_amount_stored: orderData.discount_amount,
+      matches: insertData.discount_amount === orderData.discount_amount
+    }
   });
 
   const orderId = orderData.id;
@@ -625,6 +696,15 @@ export async function POST(req: Request) {
 
   // 4. Insert sales order items with proper constraints
   const itemsToInsert = deduplicatedItems.map((item) => {
+    console.log("Processing item for insertion:", {
+      name: item.name,
+      type: item.type,
+      unit_price: item.unit_price,
+      final_price: item.final_price,
+      discount_percentage: item.discount_percentage,
+      quantity: item.quantity
+    });
+
     let productId = item.product_id || null;
     let customProductId = item.custom_product_id || null;
 
@@ -650,11 +730,11 @@ export async function POST(req: Request) {
       custom_product_id: customProductId,
       name: item.name || null,
       quantity: item.quantity,
-      unit_price: item.unit_price,
+      unit_price: item.unit_price, // This should be the original price before discount
       discount_percentage: item.discount_percentage || 0,
       supplier_name: item.supplier_name || null,
       supplier_id: item.supplier_id || null,
-      final_price: item.final_price || item.total_price || (item.unit_price * item.quantity),
+      final_price: item.final_price || (item.unit_price * item.quantity * (1 - (item.discount_percentage || 0) / 100)),
       cost: 0, // Default cost
       image_url: item.image_url || null
     };

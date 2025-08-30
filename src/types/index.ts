@@ -600,6 +600,7 @@ export interface CustomProduct {
   description: string;
   price: number;
   cost?: number;
+  cost_price?: number | null; // Database field name
   category?: string;
   material?: string;
   lead_time_days?: number;
@@ -641,6 +642,17 @@ export interface BillingData {
   deliveryFloor?: string; // New field for floor selection
   isFirstFloorAwareness?: boolean; // New field for 1st floor awareness
   selectedSalesman?: { id: string; name: string; email?: string; user_id?: string } | null;
+  bajajFinanceData?: {
+    hasBajajCard: boolean;
+    additionalCharges: number;
+    orderAmount: number;
+    financeAmount: number;
+    monthlyEMI: number;
+    plan: {
+      months: number;
+      type: string;
+    };
+  } | null; // Add Bajaj Finance data to track card status and charges
   totals: {
     original_price: number;
     total_price: number;

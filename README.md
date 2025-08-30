@@ -1,5 +1,27 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Environment Setup
+
+Before running the development server, you need to set up your environment variables:
+
+1. Copy the `.env.example` file to `.env.local`:
+   ```bash
+   cp .env.example .env.local
+   ```
+
+2. Update the `.env.local` file with your actual Supabase credentials:
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
+   ```
+
+3. To get your Supabase credentials:
+   - Go to your [Supabase Dashboard](https://supabase.com/dashboard)
+   - Select your project
+   - Navigate to Settings > API
+   - Copy the "Project URL" for `NEXT_PUBLIC_SUPABASE_URL`
+   - Copy the "service_role" key for `SUPABASE_SERVICE_ROLE_KEY`
+
 ## Getting Started
 
 First, run the development server:

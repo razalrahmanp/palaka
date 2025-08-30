@@ -142,22 +142,67 @@ export function InvoiceBillingDashboard({
   // UI States
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Calculations - Updated to use proper BillingItem structure with rounding
-  const subtotal = Math.round((items.reduce((sum, item) => sum + (item.finalPrice * item.quantity), 0)) * 100) / 100;
+  // Calculate effective item data including global discount distribution
+  const getItemsWithGlobalDiscount = useCallback(() => {
+    if (items.length === 0) return items;
+
+    // Calculate total original price (without any discounts)
+    const totalOriginalPrice = items.reduce((sum, item) => sum + (item.originalPrice * item.quantity), 0);
+    
+    if (totalOriginalPrice === 0 || globalDiscount === 0) return items;
+
+    // Calculate global discount amount
+    const globalDiscountAmount = globalDiscountType === 'percentage' 
+      ? (totalOriginalPrice * globalDiscount) / 100
+      : globalDiscount;
+
+    return items.map(item => {
+      // Calculate this item's proportion of the total
+      const itemTotalOriginalPrice = item.originalPrice * item.quantity;
+      const itemProportion = itemTotalOriginalPrice / totalOriginalPrice;
+      
+      // Calculate this item's share of the global discount
+      const itemGlobalDiscountAmount = globalDiscountAmount * itemProportion;
+      
+      // Calculate individual item discount amount
+      const itemIndividualDiscountAmount = (item.originalPrice * item.discountPercentage) / 100;
+      
+      // Total discount is individual + global share per unit
+      const totalItemDiscountAmount = itemIndividualDiscountAmount + (itemGlobalDiscountAmount / item.quantity);
+      const effectiveDiscountPercentage = (totalItemDiscountAmount / item.originalPrice) * 100;
+      
+      const finalPrice = item.originalPrice - totalItemDiscountAmount;
+      const totalPrice = finalPrice * item.quantity;
+
+      return {
+        ...item,
+        discountAmount: Math.round(totalItemDiscountAmount * 100) / 100,
+        discountPercentage: Math.round(effectiveDiscountPercentage * 100) / 100,
+        finalPrice: Math.round(Math.max(0, finalPrice) * 100) / 100,
+        totalPrice: Math.round(Math.max(0, totalPrice) * 100) / 100,
+        tax: Math.max(0, totalPrice) * (taxPercentage / 100),
+        globalDiscountApplied: itemGlobalDiscountAmount
+      };
+    });
+  }, [items, globalDiscount, globalDiscountType, taxPercentage]);
+
+  // Calculations - Updated to use items with global discount distributed for accurate UI display
+  const displayItems = getItemsWithGlobalDiscount();
+  const subtotal = Math.round((displayItems.reduce((sum, item) => sum + (item.finalPrice * item.quantity), 0)) * 100) / 100;
   const originalTotal = Math.round((items.reduce((sum, item) => sum + (item.originalPrice * item.quantity), 0)) * 100) / 100;
-  const itemDiscountAmount = Math.round((originalTotal - subtotal) * 100) / 100; // Individual item discounts
+  const itemDiscountAmount = Math.round((originalTotal - subtotal) * 100) / 100; // Total discounts (individual + global distributed)
   const globalDiscountAmount = globalDiscountType === 'percentage' 
-    ? Math.round((subtotal * globalDiscount / 100) * 100) / 100
+    ? Math.round((originalTotal * globalDiscount / 100) * 100) / 100
     : globalDiscount;
-  const totalDiscountAmount = Math.round((itemDiscountAmount + globalDiscountAmount) * 100) / 100;
-  const taxableAmount = Math.round((subtotal - globalDiscountAmount) * 100) / 100;
+  const totalDiscountAmount = Math.round((itemDiscountAmount) * 100) / 100; // Already includes global discount
+  const taxableAmount = Math.round(subtotal * 100) / 100;
   const taxAmount = Math.round((taxableAmount * taxPercentage / 100) * 100) / 100;
   const grandTotal = Math.round((taxableAmount + taxAmount + freightCharges) * 100) / 100;
 
   // Helper function to get current billing data
   const getCurrentBillingData = (): BillingData => ({
     customer,
-    items,
+    items: getItemsWithGlobalDiscount(), // Use items with global discount distributed
     paymentMethods,
     finalTotal: grandTotal,
     notes,
@@ -173,6 +218,7 @@ export function InvoiceBillingDashboard({
       discount_amount: totalDiscountAmount,
       subtotal: taxableAmount,
       tax: taxAmount,
+      tax_percentage: taxPercentage,
       freight_charges: freightCharges,
       grandTotal
     }
@@ -936,26 +982,26 @@ export function InvoiceBillingDashboard({
           </div>
         </div>
 
-        {/* Items Table */}
-        <div>
-          <h3 className="text-lg font-semibold mb-3 border-b border-gray-300 pb-1">ITEMS</h3>
+        {/* Items Table - Enhanced Styling */}
+        <div className="overflow-x-auto min-w-full">
+          <h3 className="text-lg font-semibold mb-4 border-b-2 border-gray-300 pb-2 text-gray-800">ITEMS</h3>
           
           {items.length > 0 ? (
-            <div className="border border-gray-300">
+            <div className="border border-gray-300 rounded-lg overflow-hidden shadow-sm min-w-[800px]">
               {/* Table Header */}
-              <div className="bg-gray-100 grid grid-cols-16 gap-2 p-3 font-medium text-sm border-b border-gray-300">
+              <div className="bg-gradient-to-r from-gray-100 to-gray-200 grid grid-cols-16 gap-1 p-3 font-semibold text-xs uppercase tracking-wide border-b-2 border-gray-300">
                 <div className="col-span-1 text-center">#</div>
-                <div className="col-span-4">Description</div>
+                <div className="col-span-4 px-2">Description</div>
                 <div className="col-span-2 text-center">Cost</div>
                 <div className="col-span-2 text-center">Rate</div>
-                <div className="col-span-2 text-center">Qty</div>
+                <div className="col-span-1 text-center">Qty</div>
                 <div className="col-span-2 text-center">Discount</div>
                 <div className="col-span-2 text-center">Final Rate</div>
-                <div className="col-span-1 text-right">Amount</div>
+                <div className="col-span-2 text-right pr-2">Amount</div>
               </div>
               
               {/* Table Rows */}
-              {items.map((item, index) => {
+              {getItemsWithGlobalDiscount().map((item, index) => {
                 // Get the display name and description based on item type
                 const displayName = item.isCustom 
                   ? item.customProduct?.name 
@@ -968,75 +1014,109 @@ export function InvoiceBillingDashboard({
                   : item.product?.cost || 0;
                 
                 return (
-                  <div key={item.id} className="grid grid-cols-16 gap-2 p-3 border-b border-gray-200 last:border-b-0">
-                    <div className="col-span-1 text-center text-sm">{index + 1}</div>
+                  <div key={item.id} className={`grid grid-cols-16 gap-1 p-3 border-b border-gray-200 last:border-b-0 hover:bg-gray-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-25'}`}>
+                    
+                    {/* Serial Number */}
+                    <div className="col-span-1 text-center">
+                      <div className="text-sm font-medium text-gray-700 bg-gray-100 rounded-full w-6 h-6 flex items-center justify-center mx-auto">
+                        {index + 1}
+                      </div>
+                    </div>
                     
                     {/* Description */}
-                    <div className="col-span-4">
-                      <div className="font-medium text-sm">{displayName}</div>
+                    <div className="col-span-4 px-2">
+                      <div className="font-medium text-sm text-gray-800 truncate" title={displayName}>
+                        {displayName}
+                      </div>
                       {displayDescription && (
-                        <div className="text-xs text-gray-600 mt-1">{displayDescription}</div>
+                        <div className="text-xs text-gray-500 mt-1 truncate" title={displayDescription}>
+                          {displayDescription}
+                        </div>
                       )}
-                      <div className="print:hidden mt-2 flex gap-1">
+                      <div className="print:hidden mt-2">
                         <Button
                           onClick={() => removeItem(item.id)}
                           variant="outline"
                           size="sm"
-                          className="h-6 w-6 p-0"
+                          className="h-6 w-6 p-0 border-red-200 hover:border-red-300 hover:bg-red-50"
                         >
-                          <Trash2 className="h-3 w-3" />
+                          <Trash2 className="h-3 w-3 text-red-500" />
                         </Button>
                       </div>
                     </div>
                     
                     {/* Cost */}
-                    <div className="col-span-2 text-center text-sm">
-                      <div className="text-gray-600">₹{productCost.toFixed(2)}</div>
+                    <div className="col-span-2 text-center">
+                      <div className="text-sm text-gray-600 font-medium bg-gray-50 rounded px-2 py-1">
+                        ₹{productCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
                     </div>
                     
                     {/* Original Rate */}
                     <div className="col-span-2 text-center">
-                      <div className="text-sm">₹{item.originalPrice.toFixed(2)}</div>
+                      <div className="text-sm font-medium text-gray-800">
+                        ₹{item.originalPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
                       <div className="print:hidden mt-1">
                         <Input
                           type="number"
                           value={item.originalPrice}
                           onChange={(e) => updateItemOriginalPrice(item.id, Number(e.target.value))}
-                          className="w-20 h-6 text-xs"
+                          className="w-full h-7 text-xs border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
                           min="0"
                           step="0.01"
+                          placeholder="Rate"
                         />
                       </div>
                     </div>
                     
                     {/* Quantity */}
-                    <div className="col-span-2 text-center">
-                      <div className="text-sm">{item.quantity} pcs</div>
+                    <div className="col-span-1 text-center">
+                      <div className="text-sm font-medium text-gray-800">
+                        <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
+                          {item.quantity}
+                        </span>
+                      </div>
                       <div className="print:hidden mt-1">
                         <Input
                           type="number"
                           value={item.quantity}
                           onChange={(e) => updateItemQuantity(item.id, Number(e.target.value))}
-                          className="w-16 h-6 text-xs"
+                          className="w-full h-7 text-xs border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
                           min="1"
+                          placeholder="Qty"
                         />
                       </div>
                     </div>
                     
                     {/* Discount */}
                     <div className="col-span-2 text-center">
-                      <div className="text-sm text-green-600">
-                        {item.discountPercentage > 0 ? `${item.discountPercentage.toFixed(1)}%` : '-'}
+                      <div className="space-y-1">
+                        <div className="text-sm text-green-700 font-medium">
+                          {item.discountPercentage > 0 ? `${item.discountPercentage.toFixed(1)}%` : '-'}
+                        </div>
+                        <div className="text-xs text-green-600">
+                          {item.discountAmount > 0 ? `₹${item.discountAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                        </div>
+                        {/* Show global discount breakdown if applied */}
+                        {item.globalDiscountApplied && item.globalDiscountApplied > 0 && (
+                          <div className="text-xs text-blue-600 bg-blue-50 rounded px-1 py-0.5">
+                            <div title="Global discount applied" className="truncate">
+                              Global: ₹{item.globalDiscountApplied.toFixed(2)}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <div className="text-xs text-green-600">
-                        {item.discountAmount > 0 ? `₹${item.discountAmount.toFixed(2)}` : '-'}
-                      </div>
-                      <div className="print:hidden mt-1 flex gap-1">
+                      <div className="print:hidden mt-1">
                         <Input
                           type="number"
-                          value={item.discountPercentage}
+                          value={(() => {
+                            // Find original item to get the base discount percentage
+                            const originalItem = items.find(origItem => origItem.id === item.id);
+                            return originalItem?.discountPercentage || 0;
+                          })()}
                           onChange={(e) => updateItemDiscountPercentage(item.id, Number(e.target.value))}
-                          className="w-16 h-6 text-xs"
+                          className="w-full h-7 text-xs border-gray-300 focus:border-green-500 focus:ring-1 focus:ring-green-200"
                           min="0"
                           max="100"
                           step="0.1"
@@ -1047,109 +1127,132 @@ export function InvoiceBillingDashboard({
                     
                     {/* Final Rate */}
                     <div className="col-span-2 text-center">
-                      <div className="text-sm font-medium">₹{item.finalPrice.toFixed(2)}</div>
+                      <div className="text-sm font-semibold text-gray-800 bg-yellow-50 border border-yellow-200 rounded px-2 py-1">
+                        ₹{item.finalPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
                       <div className="print:hidden mt-1">
                         <Input
                           type="number"
                           value={item.finalPrice}
                           onChange={(e) => updateItemPrice(item.id, Number(e.target.value))}
-                          className="w-20 h-6 text-xs"
+                          className="w-full h-7 text-xs border-gray-300 focus:border-yellow-500 focus:ring-1 focus:ring-yellow-200"
                           min="0"
                           step="0.01"
+                          placeholder="Final"
                         />
                       </div>
                     </div>
                     
                     {/* Amount */}
-                    <div className="col-span-1 text-right font-medium text-sm">₹{item.totalPrice.toFixed(2)}</div>
+                    <div className="col-span-2 text-right pr-2">
+                      <div className="text-sm font-bold text-gray-900 bg-green-50 border border-green-200 rounded px-3 py-1 inline-block">
+                        ₹{item.totalPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    </div>
                   </div>
                 );
               })}
             </div>
           ) : (
-            <div className="text-center text-gray-500 italic py-8 print:hidden">
-              No items added yet
+            <div className="text-center text-gray-500 italic py-12 print:hidden border border-gray-300 rounded-lg bg-gray-50">
+              <div className="text-lg mb-2">📋</div>
+              <div>No items added yet</div>
+              <div className="text-sm mt-1">Add products to start building your invoice</div>
             </div>
           )}
         </div>
 
-        {/* Totals Section */}
+        {/* Totals Section - Enhanced */}
         <div className="flex justify-end">
           <div className="w-full md:w-1/2">
-            <div className="border border-gray-300">
-              <div className="bg-gray-100 p-3 font-medium border-b border-gray-300">
-                INVOICE SUMMARY
+            <div className="border border-gray-300 rounded-lg overflow-hidden shadow-sm">
+              <div className="bg-gradient-to-r from-gray-100 to-gray-200 p-4 font-semibold border-b border-gray-300 text-gray-800 uppercase tracking-wide">
+                Invoice Summary
               </div>
-              <div className="p-3 space-y-2">
-                <div className="flex justify-between">
-                  <span>Subtotal:</span>
-                  <span>₹{subtotal.toFixed(2)}</span>
+              <div className="p-4 space-y-3 bg-white">
+                <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                  <span className="text-gray-700 font-medium">Original Total:</span>
+                  <span className="font-semibold text-gray-900">₹{originalTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 
-                {/* Individual Item Discounts */}
-                {itemDiscountAmount > 0 && (
-                  <div className="flex justify-between text-blue-600">
-                    <span>Item Discounts:</span>
-                    <span>-₹{itemDiscountAmount.toFixed(2)}</span>
-                  </div>
-                )}
-                
-                {/* Global Discount */}
-                {globalDiscountAmount > 0 && (
-                  <div className="flex justify-between text-green-600">
-                    <span>Additional Discount ({globalDiscountType === 'percentage' ? globalDiscount + '%' : '₹' + globalDiscount}):</span>
-                    <span>-₹{globalDiscountAmount.toFixed(2)}</span>
-                  </div>
-                )}
-                
-                {/* Total Discount Summary */}
+                {/* Total Discounts (includes individual + global distributed) */}
                 {totalDiscountAmount > 0 && (
-                  <div className="flex justify-between text-purple-600 font-medium border-t border-gray-200 pt-2">
-                    <span>Total Discounts ({((totalDiscountAmount / subtotal) * 100).toFixed(1)}%):</span>
-                    <span>-₹{totalDiscountAmount.toFixed(2)}</span>
+                  <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span className="text-green-700 font-medium">
+                      <span className="inline-flex items-center">
+                        <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                        Total Discounts ({((totalDiscountAmount / originalTotal) * 100).toFixed(1)}%):
+                      </span>
+                    </span>
+                    <span className="font-semibold text-green-700">-₹{totalDiscountAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 )}
                 
-                <div className="flex justify-between">
-                  <span>Taxable Amount:</span>
-                  <span>₹{taxableAmount.toFixed(2)}</span>
+                {/* Show global discount info if applied */}
+                {globalDiscountAmount > 0 && (
+                  <div className="flex justify-between items-center py-1 bg-blue-50 px-3 rounded border-l-4 border-blue-400">
+                    <span className="text-blue-700 text-sm">
+                      → Includes Global Discount ({globalDiscountType === 'percentage' ? globalDiscount + '%' : '₹' + globalDiscount}):
+                    </span>
+                    <span className="font-medium text-blue-700 text-sm">₹{globalDiscountAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+                
+                <div className="flex justify-between items-center py-2 bg-yellow-50 px-3 rounded border-l-4 border-yellow-400">
+                  <span className="font-semibold text-gray-800">Subtotal:</span>
+                  <span className="font-bold text-gray-900">₹{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 
-                <div className="flex justify-between">
-                  <span>Tax ({taxPercentage}%):</span>
-                  <span>₹{taxAmount.toFixed(2)}</span>
+                <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                  <span className="text-gray-700 font-medium">
+                    <span className="inline-flex items-center">
+                      <span className="w-2 h-2 bg-orange-500 rounded-full mr-2"></span>
+                      Tax ({taxPercentage}%):
+                    </span>
+                  </span>
+                  <span className="font-semibold text-orange-700">₹{taxAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 
                 {freightCharges > 0 && (
-                  <div className="flex justify-between">
-                    <span>Freight Charges:</span>
-                    <span>₹{freightCharges.toFixed(2)}</span>
+                  <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span className="text-gray-700 font-medium">
+                      <span className="inline-flex items-center">
+                        <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
+                        Freight Charges:
+                      </span>
+                    </span>
+                    <span className="font-semibold text-purple-700">₹{freightCharges.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 )}
                 
-                <div className="border-t border-gray-300 pt-2 mt-2">
-                  <div className="flex justify-between font-bold text-lg">
-                    <span>TOTAL:</span>
-                    <span>₹{grandTotal.toFixed(2)}</span>
+                <div className="border-t-2 border-gray-300 pt-3 mt-4">
+                  <div className="flex justify-between items-center bg-gradient-to-r from-green-50 to-green-100 px-4 py-3 rounded-lg border border-green-200">
+                    <span className="font-bold text-lg text-gray-800 uppercase tracking-wide">Grand Total:</span>
+                    <span className="font-bold text-xl text-green-800">₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 </div>
               </div>
 
               {/* Discount and Freight Controls - Only visible on screen */}
-              <div className="print:hidden p-3 border-t border-gray-200 bg-gray-50 space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs">Discount</Label>
-                    <div className="flex">
+              <div className="print:hidden px-4 py-4 border-t border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 space-y-4">
+                <h5 className="font-medium text-gray-800 text-sm uppercase tracking-wide">Quick Controls</h5>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-gray-700 flex items-center">
+                      <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                      Global Discount
+                    </Label>
+                    <div className="flex rounded-lg border border-gray-300 overflow-hidden">
                       <Input
                         type="number"
                         value={globalDiscount}
                         onChange={(e) => setGlobalDiscount(Number(e.target.value))}
-                        className="h-8 text-xs"
+                        className="h-9 text-sm border-0 focus:ring-0 rounded-none"
                         min="0"
+                        placeholder="0"
                       />
                       <Select value={globalDiscountType} onValueChange={(value: 'percentage' | 'amount') => setGlobalDiscountType(value)}>
-                        <SelectTrigger className="w-16 h-8 text-xs">
+                        <SelectTrigger className="w-16 h-9 text-xs border-0 border-l border-gray-300 rounded-none bg-gray-50">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1158,57 +1261,82 @@ export function InvoiceBillingDashboard({
                         </SelectContent>
                       </Select>
                     </div>
+                    {/* Global discount status indicator */}
+                    {globalDiscount > 0 && (
+                      <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200">
+                        ✓ Global discount distributed to all items
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <Label className="text-xs">Tax %</Label>
-                    <Input
-                      type="number"
-                      value={taxPercentage}
-                      onChange={(e) => setTaxPercentage(Number(e.target.value))}
-                      className="h-8 text-xs"
-                      min="0"
-                      max="100"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-xs">Delivery Floor</Label>
-                  <Select value={deliveryFloor} onValueChange={(value) => {
-                    setDeliveryFloor(value);
-                    // Set awareness flag for 1st floor
-                    if (value === 'first') {
-                      setIsFirstFloorAwareness(true); // Mark awareness needed for 1st floor
-                    } else {
-                      setIsFirstFloorAwareness(false);
-                    }
-                    // Note: Freight charges can be manually entered below
-                  }}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Select floor" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ground">Ground Floor</SelectItem>
-                      <SelectItem value="first">1st Floor</SelectItem>
-                      <SelectItem value="second">2nd Floor</SelectItem>
-                      <SelectItem value="third">3rd Floor</SelectItem>
-                      <SelectItem value="higher">Higher Floor</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {isFirstFloorAwareness && (
-                    <div className="text-xs text-orange-600 mt-1 p-1 bg-orange-50 rounded">
-                      ⚠️ 1st Floor Delivery: Prepare tools for reassembly
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-gray-700 flex items-center">
+                      <span className="w-2 h-2 bg-orange-500 rounded-full mr-2"></span>
+                      Tax Percentage
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        type="number"
+                        value={taxPercentage}
+                        onChange={(e) => setTaxPercentage(Number(e.target.value))}
+                        className="h-9 text-sm border-gray-300 focus:border-orange-500 focus:ring-1 focus:ring-orange-200 pr-8"
+                        min="0"
+                        max="100"
+                        placeholder="0"
+                      />
+                      <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-sm">%</span>
                     </div>
-                  )}
+                  </div>
                 </div>
-                <div>
-                  <Label className="text-xs">Freight Charges</Label>
-                  <Input
-                    type="number"
-                    value={freightCharges}
-                    onChange={(e) => setFreightCharges(Number(e.target.value))}
-                    className="h-8 text-xs"
-                    min="0"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-gray-700 flex items-center">
+                      <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                      Delivery Floor
+                    </Label>
+                    <Select value={deliveryFloor} onValueChange={(value) => {
+                      setDeliveryFloor(value);
+                      // Set awareness flag for 1st floor
+                      if (value === 'first') {
+                        setIsFirstFloorAwareness(true); // Mark awareness needed for 1st floor
+                      } else {
+                        setIsFirstFloorAwareness(false);
+                      }
+                      // Note: Freight charges can be manually entered below
+                    }}>
+                      <SelectTrigger className="h-9 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-200">
+                        <SelectValue placeholder="Select floor" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ground">Ground Floor</SelectItem>
+                        <SelectItem value="first">1st Floor</SelectItem>
+                        <SelectItem value="second">2nd Floor</SelectItem>
+                        <SelectItem value="third">3rd Floor</SelectItem>
+                        <SelectItem value="higher">Higher Floor</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {isFirstFloorAwareness && (
+                      <div className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded border border-orange-200">
+                        ⚠️ 1st Floor Delivery: Prepare tools for reassembly
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-gray-700 flex items-center">
+                      <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
+                      Freight Charges
+                    </Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-sm">₹</span>
+                      <Input
+                        type="number"
+                        value={freightCharges}
+                        onChange={(e) => setFreightCharges(Number(e.target.value))}
+                        className="h-9 text-sm border-gray-300 focus:border-purple-500 focus:ring-1 focus:ring-purple-200 pl-8"
+                        min="0"
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

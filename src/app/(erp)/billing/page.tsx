@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { InvoiceBillingDashboard } from "@/components/billing/InvoiceBillingDashboard";
+import OrderQuoteSidebar from "@/components/OrderQuoteSidebar";
 import { BillingData } from "@/types";
 import { toast } from "sonner";
 
@@ -152,53 +153,101 @@ export default function BillingPage() {
           bajajFinanceDataPresent: !!data.bajajFinanceData
         });
 
-        // Calculate Bajaj Finance charges properly
-        const processingFeeRate = 8.0; // 8% processing fee
-        const convenienceCharges = newCustomerFee; // Card fee goes into convenience charges!
-        
-        // Processing fee is calculated on the original bill amount (not including card fee)
-        const processingFeeAmount = Math.round((totalAmount * processingFeeRate / 100) * 100) / 100;
-        
-        // Total customer payment includes: bill amount + card fee + processing fee
-        const totalCustomerPayment = Math.round((totalAmount + newCustomerFee + processingFeeAmount) * 100) / 100;
-        
-        // Merchant receives only the original bill amount
-        const merchantReceivable = totalAmount;
-
-        bajajCharges = {
-          processing_fee_rate: processingFeeRate,
-          processing_fee_amount: processingFeeAmount,
-          convenience_charges: convenienceCharges, // Card fee stored here!
-          total_customer_payment: totalCustomerPayment,
-          merchant_receivable: merchantReceivable,
-          card_fee: newCustomerFee, // Track card fee separately for UI display
-          bill_amount: totalAmount // Track original bill amount
-        };
-
-        if (totalAmount < 50000) {
-          emiPlan = {
-            type: "6/0",
-            totalMonths: 6,
-            emiMonths: 6,
-            downPaymentMonths: 0,
-            interestRate: 0,
-            processingFee: 0,
-            newCustomerFee: newCustomerFee,
-            isNewCustomer: isNewCustomer
+        // Calculate Bajaj Finance charges using BajajFinanceCalculator data if available
+        if (data.bajajFinanceData) {
+          // Use the exact values calculated by BajajFinanceCalculator
+          bajajCharges = {
+            processing_fee_rate: 8.0, // Standard 8% rate
+            processing_fee_amount: data.bajajFinanceData.processingFee,
+            convenience_charges: data.bajajFinanceData.additionalCharges, // Card fee
+            total_customer_payment: data.bajajFinanceData.grandTotal,
+            merchant_receivable: totalAmount,
+            card_fee: data.bajajFinanceData.additionalCharges,
+            bill_amount: totalAmount
           };
-          monthlyEmiAmount = Math.round(totalAmountWithFee / 6);
         } else {
+          // Fallback calculation if BajajFinanceCalculator wasn't used
+          const processingFeeRate = 8.0; // 8% processing fee
+          const convenienceCharges = newCustomerFee; // Card fee goes into convenience charges!
+          
+          // Processing fee is calculated on the original bill amount (not including card fee)
+          const processingFeeAmount = Math.round((totalAmount * processingFeeRate / 100) * 100) / 100;
+          
+          // Total customer payment includes: bill amount + card fee + processing fee
+          const totalCustomerPayment = Math.round((totalAmount + newCustomerFee + processingFeeAmount) * 100) / 100;
+          
+          // Merchant receives only the original bill amount
+          const merchantReceivable = totalAmount;
+
+          bajajCharges = {
+            processing_fee_rate: processingFeeRate,
+            processing_fee_amount: processingFeeAmount,
+            convenience_charges: convenienceCharges, // Card fee stored here!
+            total_customer_payment: totalCustomerPayment,
+            merchant_receivable: merchantReceivable,
+            card_fee: newCustomerFee, // Track card fee separately for UI display
+            bill_amount: totalAmount // Track original bill amount
+          };
+        }
+
+        // Use the selected plan from BajajFinanceCalculator if available, otherwise fallback to auto-selection
+        if (data.bajajFinanceData?.plan) {
+          // User actually used the calculator and selected a plan - use their selection!
           emiPlan = {
-            type: "10/2",
-            totalMonths: 10,
-            emiMonths: 8,
-            downPaymentMonths: 2,
+            type: data.bajajFinanceData.plan.code, // Use selected plan (e.g., "10/2" or "6/0")
+            totalMonths: data.bajajFinanceData.plan.months,
+            emiMonths: data.bajajFinanceData.plan.months - (data.bajajFinanceData.plan.downPaymentMonths || 0),
+            downPaymentMonths: data.bajajFinanceData.plan.downPaymentMonths || 0,
             interestRate: 0,
-            processingFee: 0,
+            processingFee: data.bajajFinanceData.plan.processingFee || 0,
             newCustomerFee: newCustomerFee,
             isNewCustomer: isNewCustomer
           };
-          monthlyEmiAmount = Math.round(totalAmountWithFee / 10);
+          // Use the EMI calculated by BajajFinanceCalculator (which is correct)
+          monthlyEmiAmount = data.bajajFinanceData.monthlyEMI;
+          
+          console.log("Using BajajFinanceCalculator selected plan:", {
+            selectedPlan: data.bajajFinanceData.plan.code,
+            downPayment: data.bajajFinanceData.downPayment,
+            monthlyEmi: monthlyEmiAmount,
+            totalMonths: data.bajajFinanceData.plan.months,
+            downPaymentMonths: data.bajajFinanceData.plan.downPaymentMonths,
+            financeAmount: data.bajajFinanceData.financeAmount,
+            totalCustomerPays: data.bajajFinanceData.grandTotal
+          });
+        } else {
+          // Fallback: Auto-select plan based on order amount (old logic)
+          if (totalAmount < 50000) {
+            emiPlan = {
+              type: "6/0",
+              totalMonths: 6,
+              emiMonths: 6,
+              downPaymentMonths: 0,
+              interestRate: 0,
+              processingFee: 0,
+              newCustomerFee: newCustomerFee,
+              isNewCustomer: isNewCustomer
+            };
+            monthlyEmiAmount = Math.round(totalAmountWithFee / 6);
+          } else {
+            emiPlan = {
+              type: "10/2",
+              totalMonths: 10,
+              emiMonths: 8,
+              downPaymentMonths: 2,
+              interestRate: 0,
+              processingFee: 0,
+              newCustomerFee: newCustomerFee,
+              isNewCustomer: isNewCustomer
+            };
+            monthlyEmiAmount = Math.round(totalAmountWithFee / 10);
+          }
+          
+          console.log("Using fallback EMI plan selection (user didn't use calculator):", {
+            orderAmount: totalAmount,
+            selectedPlan: emiPlan.type,
+            reason: totalAmount < 50000 ? "Amount < 50k" : "Amount >= 50k"
+          });
         }
 
         // Debug: Log Bajaj Finance charge breakdown
@@ -206,13 +255,14 @@ export default function BillingPage() {
           billAmount: totalAmount,
           cardFee: newCustomerFee,
           cardFeeGoesTo: "convenience_charges", // This is where card fee is stored!
-          processingFeeRate: processingFeeRate + "%",
+          processingFeeRate: bajajCharges.processing_fee_rate + "%",
           processingFeeAmount: bajajCharges.processing_fee_amount,
           convenienceCharges: bajajCharges.convenience_charges, // Should equal cardFee
           totalCustomerPays: bajajCharges.total_customer_payment,
           merchantReceives: bajajCharges.merchant_receivable,
-          emiCalculatedOn: totalAmountWithFee,
+          emiCalculatedOn: data.bajajFinanceData?.financeAmount || totalAmountWithFee,
           monthlyEMI: monthlyEmiAmount,
+          dataSource: data.bajajFinanceData ? "BajajFinanceCalculator" : "fallback",
           dataStructure: {
             processing_fee_rate: bajajCharges.processing_fee_rate,
             processing_fee_amount: bajajCharges.processing_fee_amount,
@@ -283,14 +333,19 @@ export default function BillingPage() {
           final_price: data.finalTotal,
           discount_amount: correctedDiscountAmount, // Use corrected discount amount
           freight_charges: data.totals.freight_charges,
+          // Tax information
+          tax_percentage: data.totals.tax_percentage || 18.00, // Use billing component tax percentage
+          tax_amount: data.totals.tax,
+          taxable_amount: data.totals.subtotal,
+          grand_total: data.totals.grandTotal,
           notes: data.notes,
           status: 'Converted', // Set as Converted immediately
           created_by: data.selectedSalesman?.user_id || null,
           emi_enabled: hasBajajFinance,
           emi_plan: emiPlan,
           emi_monthly: monthlyEmiAmount,
-          bajaj_finance_amount: hasBajajFinance ? data.finalTotal + (emiPlan?.newCustomerFee || 0) : 0,
-          bajaj_approved_amount: hasBajajFinance ? data.finalTotal + (emiPlan?.newCustomerFee || 0) : null,
+          bajaj_finance_amount: hasBajajFinance ? (data.bajajFinanceData?.financeAmount || data.finalTotal) : 0,
+          bajaj_approved_amount: hasBajajFinance ? (data.bajajFinanceData?.approvedAmount || 25000) : null,
           // New Bajaj Finance charge tracking fields
           bajaj_processing_fee_rate: hasBajajFinance ? bajajCharges?.processing_fee_rate : null,
           bajaj_processing_fee_amount: hasBajajFinance ? (bajajCharges?.processing_fee_amount ?? 0) : 0,
@@ -337,6 +392,11 @@ export default function BillingPage() {
           final_price: createdQuote.final_price,
           discount_amount: createdQuote.discount_amount,
           freight_charges: createdQuote.freight_charges,
+          // Tax information
+          tax_percentage: createdQuote.tax_percentage || 18.00,
+          tax_amount: createdQuote.tax_amount || data.totals.tax,
+          taxable_amount: createdQuote.taxable_amount || data.totals.subtotal,
+          grand_total: createdQuote.grand_total || data.totals.grandTotal,
           delivery_date: data.deliveryDate,
           delivery_floor: data.deliveryFloor,
           first_floor_awareness: data.isFirstFloorAwareness,
@@ -348,7 +408,7 @@ export default function BillingPage() {
           emi_plan: createdQuote.emi_plan,
           emi_monthly: createdQuote.emi_monthly,
           bajaj_finance_amount: createdQuote.bajaj_finance_amount,
-          bajaj_approved_amount: createdQuote.emi_enabled ? createdQuote.bajaj_finance_amount : null,
+          bajaj_approved_amount: createdQuote.bajaj_approved_amount,
           // Include new Bajaj Finance charge tracking fields
           bajaj_processing_fee_rate: createdQuote.bajaj_processing_fee_rate,
           bajaj_processing_fee_amount: createdQuote.bajaj_processing_fee_amount,
@@ -383,12 +443,33 @@ export default function BillingPage() {
   };
 
   return (
-    <InvoiceBillingDashboard
-      onSave={handleSave}
-      onCreateQuoteAndSalesOrder={handleCreateQuoteAndSalesOrder}
-      isProcessing={isProcessing}
-      quoteGenerated={!!generatedQuote}
-      quoteStatus={quoteStatus}
-    />
+    <div className="flex h-screen bg-background">
+      {/* Main Billing Content */}
+      <div className="flex-1 overflow-hidden">
+        <InvoiceBillingDashboard
+          onSave={handleSave}
+          onCreateQuoteAndSalesOrder={handleCreateQuoteAndSalesOrder}
+          isProcessing={isProcessing}
+          quoteGenerated={!!generatedQuote}
+          quoteStatus={quoteStatus}
+        />
+      </div>
+      
+      {/* Right Sidebar */}
+      <div className="border-l bg-card">
+        <OrderQuoteSidebar
+          onQuoteSelect={(quote) => {
+            console.log("Selected quote:", quote);
+            // You can add functionality to load quote data into the billing form
+            toast.info(`Quote #${quote.id.slice(-8)} selected`);
+          }}
+          onOrderSelect={(order) => {
+            console.log("Selected order:", order);
+            // You can add functionality to view order details
+            toast.info(`Order #${order.id.slice(-8)} selected`);
+          }}
+        />
+      </div>
+    </div>
   );
 }

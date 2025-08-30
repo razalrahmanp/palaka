@@ -375,6 +375,11 @@ export async function POST(req: Request) {
     final_price,
     discount_amount,
     freight_charges,
+    // Tax fields
+    tax_percentage,
+    tax_amount,
+    taxable_amount,
+    grand_total,
     delivery_date,
     delivery_floor,
     first_floor_awareness,
@@ -425,6 +430,11 @@ export async function POST(req: Request) {
     final_price?: number;
     discount_amount?: number;
     freight_charges?: number;
+    // Tax fields
+    tax_percentage?: number;
+    tax_amount?: number;
+    taxable_amount?: number;
+    grand_total?: number;
     delivery_date?: string;
     delivery_floor?: string;
     first_floor_awareness?: boolean;
@@ -462,10 +472,14 @@ export async function POST(req: Request) {
   // 1. Create the sales order with all fields
   console.log("Creating sales order with pricing data:", {
     final_price: final_price,
+    grand_total: grand_total,
     original_price: original_price,
     discount_amount: discount_amount,
     freight_charges: freight_charges,
+    tax_amount: tax_amount,
     total_price: total_price,
+    // Show what will be used as final_price (should be grand_total)
+    calculated_final_price: Number(grand_total ?? final_price ?? total_price ?? 0),
     // Debug the actual values and types
     final_price_type: typeof final_price,
     original_price_type: typeof original_price,
@@ -487,9 +501,14 @@ export async function POST(req: Request) {
     delivery_floor: delivery_floor || 'ground',
     first_floor_awareness: first_floor_awareness || false,
     notes: notes || null,
-    final_price: Number(final_price ?? total_price ?? 0), // Ensure numeric type
+    final_price: Number(grand_total ?? final_price ?? total_price ?? 0), // Use grand_total (includes tax + freight) as final_price
     original_price: Number(original_price ?? 0), // Ensure numeric type
     discount_amount: Number(discount_amount || 0), // Ensure numeric type
+    // Tax fields
+    tax_percentage: Number(tax_percentage ?? 18.00), // Default to 18% GST
+    tax_amount: Number(tax_amount ?? 0), // Ensure numeric type
+    taxable_amount: Number(taxable_amount ?? 0), // Ensure numeric type
+    grand_total: Number(grand_total ?? final_price ?? total_price ?? 0), // Ensure numeric type
     emi_enabled: Boolean(emi_enabled), // Ensure boolean type
     emi_plan: emi_plan || {},
     emi_monthly: Number(emi_monthly || 0), // Ensure numeric type
@@ -736,7 +755,11 @@ export async function POST(req: Request) {
       supplier_id: item.supplier_id || null,
       final_price: item.final_price || (item.unit_price * item.quantity * (1 - (item.discount_percentage || 0) / 100)),
       cost: 0, // Default cost
-      image_url: item.image_url || null
+      image_url: item.image_url || null,
+      // Tax calculations for each item
+      tax_percentage: Number(tax_percentage ?? 18.00), // Use sales order tax percentage
+      taxable_amount: Number((item.final_price || (item.unit_price * item.quantity * (1 - (item.discount_percentage || 0) / 100)))),
+      tax_amount: Number(((item.final_price || (item.unit_price * item.quantity * (1 - (item.discount_percentage || 0) / 100))) * (tax_percentage ?? 18.00) / 100).toFixed(2))
     };
   }).filter(Boolean); // Remove null items
 

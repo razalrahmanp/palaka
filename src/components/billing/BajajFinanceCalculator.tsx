@@ -100,24 +100,29 @@ export function BajajFinanceCalculator({
 
     // Calculate bill amount with 8% service charge for Bajaj Finance
     const bajajServiceCharge = Math.round(orderAmount * 0.08);
+    const billAmountForEMI = orderAmount + bajajServiceCharge; // Only order + 8% for EMI calculation
+    
+    // Upfront fees (paid with down payment)
     const cardFee = hasBajajCard ? 0 : 530; // ₹530 if no Bajaj card
-    const finalBillAmount = orderAmount + bajajServiceCharge + cardFee;
+    const processingFee = selectedPlan.processingFee; // ₹768
 
-    // Calculate down payment based on plan type
+    // Calculate down payment and EMI based on plan type
     let calculatedDownPayment = 0;
-    let financeAmount = finalBillAmount;
+    let financeAmount = 0;
+    let monthlyEMI = 0;
 
     if (selectedPlan.code === '10/2') {
-      // For 10/2 plan: 2 months EMI advance as down payment
-      // Since there's no interest, EMI = financeAmount / months
-      const monthlyEmi = finalBillAmount / selectedPlan.months;
-      calculatedDownPayment = Math.round(monthlyEmi * selectedPlan.downPaymentMonths);
-      financeAmount = finalBillAmount - calculatedDownPayment;
+      // For 10/2 plan: EMI = (orderAmount + 8%) / 10, down payment = 2 EMIs + fees
+      monthlyEMI = Math.round(billAmountForEMI / selectedPlan.months);
+      const downPaymentEMI = monthlyEMI * selectedPlan.downPaymentMonths; // 2 months EMI
+      calculatedDownPayment = downPaymentEMI + cardFee + processingFee; // 2 EMIs + upfront fees
+      financeAmount = billAmountForEMI; // Full amount financed by Bajaj (not remaining amount)
     }
-    // For 6/0 plan: zero down payment
+    // For 6/0 plan: zero down payment on EMI but upfront fees still apply
     else if (selectedPlan.code === '6/0') {
-      calculatedDownPayment = 0;
-      financeAmount = finalBillAmount;
+      monthlyEMI = Math.round(billAmountForEMI / selectedPlan.months);
+      calculatedDownPayment = cardFee + processingFee; // Only upfront fees
+      financeAmount = billAmountForEMI; // Full amount financed
     }
 
     // Update down payment state
@@ -134,10 +139,8 @@ export function BajajFinanceCalculator({
       const totalAmount = emi * selectedPlan.months;
       const totalInterest = 0; // No interest for Bajaj Finance
       
-      // Calculate additional charges (for display only - already included in finalBillAmount)
+      // Calculate additional charges (for display only)
       const additionalCharges = hasBajajCard ? 0 : 530;
-      const processingFee = selectedPlan.processingFee;
-      // Note: additionalCharges already included in finalBillAmount, so don't add again
       const grandTotal = totalAmount + processingFee + remainingAmount;
       
       // Create split bill data
@@ -154,7 +157,7 @@ export function BajajFinanceCalculator({
         hasBajajCard,
         grandTotal: Math.round(grandTotal),
         approvedAmount,
-        finalBillAmount,
+        finalBillAmount: billAmountForEMI + cardFee + processingFee,
         bajajServiceCharge,
         // Split bill specific fields
         isSplitBill: true,
@@ -168,32 +171,32 @@ export function BajajFinanceCalculator({
       return;
     }
 
-    // EMI calculation with no interest - simple division
-    const emi = financeAmount / selectedPlan.months;
-    const totalAmount = emi * selectedPlan.months;
+    // Regular EMI calculation (no split bill needed)
+    const totalAmount = financeAmount; // This is the amount being financed (24,300)
     const totalInterest = 0; // No interest for Bajaj Finance
-
-    // Calculate additional charges (for display only - already included in finalBillAmount)
     const additionalCharges = hasBajajCard ? 0 : 530;
-    const processingFee = selectedPlan.processingFee;
-    // Note: additionalCharges already included in finalBillAmount, so don't add again
-    const grandTotal = totalAmount + processingFee;
+    
+    // Total customer pays = down payment + remaining EMIs
+    // Down payment already includes card fee and processing fee
+    const remainingEMIs = selectedPlan.code === '10/2' ? 8 : selectedPlan.months; // 8 remaining EMIs for 10/2, all EMIs for 6/0
+    const totalCustomerPays = calculatedDownPayment + (monthlyEMI * remainingEMIs);
+    const grandTotal = Math.round(totalCustomerPays);
 
     setFinanceData({
       orderAmount,
       financeAmount,
       downPayment: calculatedDownPayment,
       plan: selectedPlan,
-      monthlyEMI: Math.round(emi),
+      monthlyEMI: monthlyEMI,
       totalAmount: Math.round(totalAmount),
       totalInterest: Math.round(totalInterest),
       processingFee,
       additionalCharges,
       hasBajajCard,
-      grandTotal: Math.round(grandTotal),
+      grandTotal: grandTotal,
       approvedAmount,
-      finalBillAmount,
-      bajajServiceCharge: Math.round(orderAmount * 0.08), // Add bajajServiceCharge calculation
+      finalBillAmount: billAmountForEMI + cardFee + processingFee,
+      bajajServiceCharge: Math.round(orderAmount * 0.08),
       isSplitBill: false
     });
     
@@ -468,12 +471,12 @@ export function BajajFinanceCalculator({
                       </p>
                       {selectedPlan.code === '6/0' && (
                         <p className="text-sm text-blue-700">
-                          Zero down payment required for this plan.
+                          Zero down payment on EMI, but card fee (₹530) and processing fee (₹768) are paid upfront.
                         </p>
                       )}
                       {selectedPlan.code === '10/2' && (
                         <p className="text-sm text-blue-700">
-                          Down payment will be automatically calculated as 2 months EMI advance.
+                          Down payment = 2 months EMI advance + card fee (₹530) + processing fee (₹768).
                         </p>
                       )}
                     </div>
@@ -489,17 +492,41 @@ export function BajajFinanceCalculator({
                           <span>+₹{Math.round(orderAmount * 0.08).toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between font-medium border-t pt-1">
-                          <span>Final Bill Amount:</span>
+                          <span>Amount for EMI Calculation:</span>
                           <span>₹{(orderAmount + Math.round(orderAmount * 0.08)).toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span>Down Payment (Auto-calculated):</span>
+                          <span>Monthly EMI:</span>
+                          <span>₹{selectedPlan ? Math.round((orderAmount + Math.round(orderAmount * 0.08)) / selectedPlan.months).toLocaleString() : 0}</span>
+                        </div>
+                        {selectedPlan?.code === '10/2' && (
+                          <div className="flex justify-between text-blue-600">
+                            <span>2 Months EMI (advance):</span>
+                            <span>₹{selectedPlan ? (Math.round((orderAmount + Math.round(orderAmount * 0.08)) / selectedPlan.months) * 2).toLocaleString() : 0}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between text-gray-600">
+                          <span>Card Fee:</span>
+                          <span>₹{hasBajajCard ? 0 : 530}</span>
+                        </div>
+                        <div className="flex justify-between text-gray-600">
+                          <span>Processing Fee:</span>
+                          <span>₹768</span>
+                        </div>
+                        <div className="flex justify-between font-bold border-t pt-1 text-green-600">
+                          <span>Total Down Payment:</span>
                           <span>₹{downPayment.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between font-medium border-t pt-1">
-                          <span>Finance Amount:</span>
-                          <span>₹{(orderAmount + Math.round(orderAmount * 0.08) - downPayment).toLocaleString()}</span>
+                          <span>Finance Amount (by Bajaj):</span>
+                          <span>₹{(orderAmount + Math.round(orderAmount * 0.08)).toLocaleString()}</span>
                         </div>
+                        {selectedPlan?.code === '10/2' && (
+                          <div className="flex justify-between text-gray-600">
+                            <span>Remaining EMIs (8 months):</span>
+                            <span>₹{selectedPlan ? ((orderAmount + Math.round(orderAmount * 0.08)) - Math.round((orderAmount + Math.round(orderAmount * 0.08)) / selectedPlan.months) * 2).toLocaleString() : 0}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </CardContent>
@@ -507,21 +534,21 @@ export function BajajFinanceCalculator({
               )}
 
               {/* Approval Validation */}
-              {selectedPlan && approvedAmount > 0 && (
+              {selectedPlan && approvedAmount > 0 && financeData && (
                 <Card className={`border-2 ${
-                  (orderAmount + Math.round(orderAmount * 0.08) - downPayment) > approvedAmount 
+                  financeData.financeAmount > approvedAmount 
                     ? 'border-red-200 bg-red-50' 
                     : 'border-green-200 bg-green-50'
                 }`}>
                   <CardContent className="pt-4">
-                    {(orderAmount + Math.round(orderAmount * 0.08) - downPayment) > approvedAmount ? (
+                    {financeData.financeAmount > approvedAmount ? (
                       <div className="space-y-4">
                         <div className="flex items-center gap-2 text-red-700">
                           <AlertTriangle className="h-5 w-5" />
                           <div>
                             <p className="font-medium">Finance amount exceeds approved limit!</p>
                             <p className="text-sm">
-                              Required: ₹{(orderAmount + Math.round(orderAmount * 0.08) - downPayment).toLocaleString()} | 
+                              Required: ₹{financeData.financeAmount.toLocaleString()} | 
                               Approved: ₹{approvedAmount.toLocaleString()}
                             </p>
                           </div>
@@ -566,7 +593,7 @@ export function BajajFinanceCalculator({
                         <div>
                           <p className="font-medium">Finance amount within approved limit</p>
                           <p className="text-sm">
-                            Required: ₹{(orderAmount + Math.round(orderAmount * 0.08) - downPayment).toLocaleString()} | 
+                            Required: ₹{financeData.financeAmount.toLocaleString()} | 
                             Approved: ₹{approvedAmount.toLocaleString()}
                           </p>
                         </div>
@@ -646,7 +673,7 @@ export function BajajFinanceCalculator({
                       )}
                       <div className="flex justify-between font-bold border-t pt-2">
                         <span>Total Payable:</span>
-                        <span>₹{(financeData.totalAmount + financeData.processingFee).toLocaleString()}</span>
+                        <span>₹{financeData.grandTotal.toLocaleString()}</span>
                       </div>
                     </div>
 

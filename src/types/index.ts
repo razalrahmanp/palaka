@@ -623,6 +623,7 @@ export interface BillingItem {
   discountPercentage: number;
   tax: number;
   isCustom: boolean;
+  globalDiscountApplied?: number; // Track global discount applied to this item
 }
 
 export interface PaymentMethod {
@@ -643,15 +644,34 @@ export interface BillingData {
   isFirstFloorAwareness?: boolean; // New field for 1st floor awareness
   selectedSalesman?: { id: string; name: string; email?: string; user_id?: string } | null;
   bajajFinanceData?: {
-    hasBajajCard: boolean;
-    additionalCharges: number;
     orderAmount: number;
     financeAmount: number;
-    monthlyEMI: number;
+    downPayment: number;
     plan: {
+      code: '6/0' | '10/2';
+      name: string;
+      description: string;
       months: number;
-      type: string;
+      interestRate: number;
+      downPaymentMonths: number;
+      processingFee: number;
+      minAmount: number;
+      maxAmount: number;
     };
+    monthlyEMI: number;
+    totalAmount: number;
+    totalInterest: number;
+    processingFee: number;
+    additionalCharges: number;
+    hasBajajCard: boolean;
+    grandTotal: number;
+    approvedAmount: number;
+    finalBillAmount: number;
+    bajajServiceCharge: number;
+    isSplitBill?: boolean;
+    splitBillBajajAmount?: number;
+    splitBillOtherAmount?: number;
+    splitBillOtherPaymentMethods?: string[];
   } | null; // Add Bajaj Finance data to track card status and charges
   totals: {
     original_price: number;
@@ -660,6 +680,7 @@ export interface BillingData {
     discount_amount: number;
     subtotal: number;
     tax: number;
+    tax_percentage: number;
     freight_charges: number;
     grandTotal: number;
   };

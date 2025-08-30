@@ -10,6 +10,7 @@ type OrderRow = {
   status: string;
   created_at: string;
   created_by?: string | null;
+  expected_delivery_date?: string | null;
   final_price?: number | null;
   original_price?: number | null;
   discount_amount?: number | null;
@@ -85,6 +86,7 @@ type SupabaseOrderRow = {
   status: string;
   created_at: string;
   created_by?: string | null;
+  expected_delivery_date?: string | null;
   final_price?: number | null;
   original_price?: number | null;
   discount_amount?: number | null;
@@ -116,6 +118,7 @@ export async function GET() {
         status,
         created_at,
         created_by,
+        expected_delivery_date,
         final_price,
         original_price,
         discount_amount,
@@ -157,6 +160,7 @@ export async function GET() {
     status: o.status,
     created_at: o.created_at,
     created_by: o.created_by,
+    expected_delivery_date: o.expected_delivery_date,
     final_price: o.final_price,
     original_price: o.original_price,
     discount_amount: o.discount_amount,
@@ -341,6 +345,7 @@ export async function GET() {
       final_price: order.final_price ?? calculatedTotal,
       original_price: order.original_price ?? calculatedTotal,
       discount_amount: order.discount_amount ?? 0,
+      expected_delivery_date: order.expected_delivery_date,
       items: orderItems,
       // Add payment information
       total_paid: paymentInfo.total_paid,

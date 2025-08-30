@@ -21,8 +21,7 @@ import {
   AlertCircle,
   XCircle,
   Search,
-  CalendarIcon,
-  X
+  CalendarIcon
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { DateRange } from 'react-day-picker';
@@ -55,9 +54,9 @@ interface SalesOrder {
     email: string;
   } | null;
   status: string;
-  created_at: string;
+  date: string; // API returns 'date' field (formatted created_at)
   updated_at?: string;
-  delivery_date?: string;
+  expected_delivery_date?: string; // API returns this field
   final_price: number;
   original_price: number;
   discount_amount: number;
@@ -173,17 +172,24 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
   };
 
   // Format date
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | null | undefined) => {
     try {
-      if (!dateString) return 'No Date';
+      if (!dateString || dateString === 'null' || dateString === 'undefined') {
+        return 'No Date';
+      }
+      
       const date = new Date(dateString);
-      if (isNaN(date.getTime())) return 'Invalid Date';
+      if (isNaN(date.getTime())) {
+        return 'Invalid Date';
+      }
+      
       return date.toLocaleDateString('en-IN', {
         day: '2-digit',
         month: 'short',
         year: 'numeric'
       });
-    } catch {
+    } catch (error) {
+      console.error('Date formatting error:', error);
       return 'Invalid Date';
     }
   };
@@ -267,7 +273,7 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
         if (createdByName.includes(query)) return true;
 
         // Search by date
-        const dateStr = formatDate(item.created_at).toLowerCase();
+        const dateStr = formatDate(showQuotes ? (item as Quote).created_at : (item as SalesOrder).date).toLowerCase();
         if (dateStr.includes(query)) return true;
 
         // Search by order/quote ID
@@ -289,7 +295,7 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
     // Apply date range filter
     if (dateFilter?.from || dateFilter?.to) {
       filtered = filtered.filter(item => {
-        const itemDate = new Date(item.created_at);
+        const itemDate = new Date(showQuotes ? (item as Quote).created_at : (item as SalesOrder).date);
         if (isNaN(itemDate.getTime())) return false;
         
         if (dateFilter.from && itemDate < dateFilter.from) return false;
@@ -313,27 +319,31 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
   return (
     <Card className={`w-80 h-full flex flex-col ${className}`}>
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg font-semibold">
-            {showQuotes ? 'Recent Quotes' : 'Recent Orders'}
-          </CardTitle>
+        <CardTitle className="text-lg font-semibold">
+          Quotes & Orders
+        </CardTitle>
+        
+        {/* Switch for Quote/Sales Order - moved above search */}
+        <div className="flex items-center justify-center gap-4 p-3 bg-muted/50 rounded-lg">
           <div className="flex items-center space-x-2">
-            <Label htmlFor="view-switch" className="text-sm">
-              {showQuotes ? <FileText className="w-4 h-4" /> : <ShoppingCart className="w-4 h-4" />}
+            <FileText className="w-4 h-4 text-blue-600" />
+            <Label htmlFor="view-switch" className="text-sm font-medium">
+              Quotes
             </Label>
             <Switch
               id="view-switch"
               checked={!showQuotes}
               onCheckedChange={(checked) => setShowQuotes(!checked)}
             />
+            <Label htmlFor="view-switch" className="text-sm font-medium">
+              Orders
+            </Label>
+            <ShoppingCart className="w-4 h-4 text-green-600" />
           </div>
         </div>
+        
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>{filteredData.length} of {showQuotes ? quotes.length : orders.length} items</span>
-          {/* Debug info */}
-          <span className="text-xs bg-muted px-2 py-1 rounded">
-            {showQuotes ? `Q:${quotes.length}` : `O:${orders.length}`}
-          </span>
+          <span>{filteredData.length} of {showQuotes ? quotes.length : orders.length} {showQuotes ? 'quotes' : 'orders'}</span>
           <Button
             variant="ghost"
             size="sm"
@@ -345,43 +355,32 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
         </div>
       </CardHeader>
 
-      {/* Search Input */}
+      {/* Search and Date Filter - reorganized */}
       <div className="px-4 pb-3 space-y-3">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-          <Input
-            placeholder="Search by customer, mobile, date, status..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        
-        {/* Date Range Filter */}
         <div className="flex gap-2">
+          {/* Search Input */}
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+            <Input
+              placeholder="Search customer, mobile, status..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          
+          {/* Date Range Filter - moved inline with search */}
           <Popover>
             <PopoverTrigger asChild>
               <Button
                 variant="outline"
-                size="sm"
-                className="flex-1 justify-start text-left font-normal"
+                size="default"
+                className="px-3"
               >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {dateFilter?.from ? (
-                  dateFilter?.to ? (
-                    <>
-                      {format(dateFilter.from, "LLL dd, y")} -{" "}
-                      {format(dateFilter.to, "LLL dd, y")}
-                    </>
-                  ) : (
-                    format(dateFilter.from, "LLL dd, y")
-                  )
-                ) : (
-                  <span>Pick a date range</span>
-                )}
+                <CalendarIcon className="h-4 w-4" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
+            <PopoverContent className="w-auto p-0" align="end">
               <CalendarComponent
                 initialFocus
                 mode="range"
@@ -392,17 +391,32 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
               />
             </PopoverContent>
           </Popover>
-          
-          {(dateFilter?.from || dateFilter?.to) && (
+        </div>
+        
+        {/* Date Range Display and Clear */}
+        {(dateFilter?.from || dateFilter?.to) && (
+          <div className="flex items-center justify-between text-xs text-muted-foreground bg-muted/30 p-2 rounded">
+            <span>
+              {dateFilter?.from && dateFilter?.to ? (
+                <>
+                  {format(dateFilter.from, "MMM dd")} - {format(dateFilter.to, "MMM dd, yyyy")}
+                </>
+              ) : dateFilter?.from ? (
+                `From ${format(dateFilter.from, "MMM dd, yyyy")}`
+              ) : (
+                'Date filter active'
+              )}
+            </span>
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               onClick={() => setDateFilter(undefined)}
+              className="h-6 px-2 text-xs"
             >
-              <X className="h-4 w-4" />
+              Clear
             </Button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       <CardContent className="flex-1 p-0">
@@ -478,13 +492,27 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
                         )}
                       </div>
 
-                      {/* Date and Created By */}
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <div className="flex items-center gap-1">
+                      {/* Date Information */}
+                      <div className="space-y-1">
+                        {/* Created Date */}
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
                           <Calendar className="w-3 h-3" />
-                          <span>{String(formatDate(item.created_at))}</span>
+                          <span>Created: {String(formatDate(showQuotes ? (item as Quote).created_at : (item as SalesOrder).date))}</span>
                         </div>
-                        <span className="truncate ml-2">{String(getCreatedByName(item))}</span>
+                        
+                        {/* Delivery Date (for Sales Orders only) */}
+                        {!showQuotes && (item as SalesOrder).expected_delivery_date && (
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Clock className="w-3 h-3 text-blue-600" />
+                            <span>Delivery: {String(formatDate((item as SalesOrder).expected_delivery_date))}</span>
+                          </div>
+                        )}
+                        
+                        {/* Created By */}
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <User className="w-3 h-3" />
+                          <span className="truncate">By: {String(getCreatedByName(item))}</span>
+                        </div>
                       </div>
 
                       {/* Additional Details */}

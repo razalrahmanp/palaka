@@ -48,6 +48,15 @@ interface InvoiceBillingProps {
   isProcessing?: boolean;
   quoteGenerated?: boolean;
   quoteStatus?: string;
+  initialData?: {
+    type: 'quote' | 'order';
+    data: Record<string, unknown>;
+    isEditing: boolean;
+    existingId: string;
+    existingQuoteId?: string;
+    existingStatus: string;
+  } | null;
+  onDataLoaded?: () => void;
 }
 
 export function InvoiceBillingDashboard({
@@ -55,7 +64,9 @@ export function InvoiceBillingDashboard({
   onCreateQuoteAndSalesOrder,
   isProcessing: externalIsProcessing = false,
   quoteGenerated = false,
-  quoteStatus = ''
+  quoteStatus = '',
+  initialData = null,
+  onDataLoaded
 }: InvoiceBillingProps) {
   // Core State
   const [customer, setCustomer] = useState<BillingCustomer | null>(null);
@@ -254,8 +265,8 @@ export function InvoiceBillingDashboard({
         const employees: EmployeeData[] = await response.json();
         const salespeople = employees.map((emp) => ({
           id: emp.id,
-          name: emp.name,
-          email: emp.email,
+          name: String(emp.name || ''),
+          email: String(emp.email || ''),
           user_id: emp.user?.id || emp.user_id
         }));
         setAvailableSalespeople(salespeople);
@@ -384,6 +395,194 @@ export function InvoiceBillingDashboard({
     }, 300);
     return () => clearTimeout(timer);
   }, [customerSearchQuery, searchCustomers]);
+
+  // Handle initial data loading for editing quotes/orders
+  useEffect(() => {
+    if (initialData && initialData.data) {
+      console.log("Loading initial data:", initialData);
+      
+      const data = initialData.data;
+      
+      try {
+        // Populate customer data if available - check multiple sources
+        let customerData: Record<string, unknown> | null = null;
+        
+        // Priority 1: Full customer details from API enhancement
+        if (data.customer_details) {
+          customerData = data.customer_details as Record<string, unknown>;
+        }
+        // Priority 2: Customer object directly
+        else if (data.customer && typeof data.customer === 'object') {
+          customerData = data.customer as Record<string, unknown>;
+        }
+        // Priority 3: Construct from customers relation and customer_id
+        else if (data.customers && data.customer_id) {
+          const customers = data.customers as Record<string, unknown>;
+          customerData = {
+            customer_id: data.customer_id,
+            id: data.customer_id,
+            name: String(customers.name || (typeof data.customer === 'string' ? data.customer : 'Unknown Customer')),
+            ...customers
+          };
+        }
+        // Priority 4: Minimal data from available fields
+        else if (data.customer_id || data.customer) {
+          customerData = {
+            customer_id: data.customer_id || '',
+            id: data.customer_id || '',
+            name: typeof data.customer === 'string' ? String(data.customer) : 'Unknown Customer'
+          };
+        }
+        
+        if (customerData) {
+          console.log("Setting customer data:", customerData);
+          
+          // Ensure all values are properly converted to strings and not objects
+          const safeCustomerData = {
+            customer_id: String(customerData.customer_id || customerData.id || ''),
+            name: String(customerData.name || ''),
+            phone: String(customerData.phone || ''),
+            email: String(customerData.email || ''),
+            address: String(customerData.address || ''),
+            floor: String(customerData.floor || ''),
+            city: String(customerData.city || ''),
+            state: String(customerData.state || ''),
+            pincode: String(customerData.pincode || ''),
+            notes: String(customerData.notes || ''),
+            tags: Array.isArray(customerData.tags) ? customerData.tags as string[] : [],
+            latitude: typeof customerData.latitude === 'number' ? customerData.latitude : undefined,
+            longitude: typeof customerData.longitude === 'number' ? customerData.longitude : undefined,
+            formatted_address: String(customerData.formatted_address || ''),
+            status: String(customerData.status || 'Lead'),
+            source: String(customerData.source || 'billing_system')
+          };
+          
+          console.log("Safe customer data:", safeCustomerData);
+          setCustomer(safeCustomerData);
+        }
+
+        // Populate invoice details
+        if (data.id) {
+          setInvoiceNumber(String(data.id));
+        }
+        if (data.created_at) {
+          const createdDate = new Date(String(data.created_at));
+          setInvoiceDate(createdDate.toISOString().split('T')[0]);
+        }
+        if (data.delivery_date) {
+          const deliveryDateValue = new Date(String(data.delivery_date));
+          setDeliveryDate(deliveryDateValue.toISOString().split('T')[0]);
+        }
+
+        // Populate items if available
+        if (Array.isArray(data.items)) {
+          const loadedItems: BillingItem[] = data.items.map((item: Record<string, unknown>, index: number) => {
+            const unitPrice = Number(item.unit_price || item.price || 0);
+            const finalPrice = Number(item.final_price || item.unit_price || item.price || 0);
+            const quantity = Number(item.quantity || 1);
+            const discountPercentage = Number(item.discount_percentage || 0);
+            const totalPrice = Number(item.total_price || finalPrice * quantity);
+            const discountAmount = unitPrice > finalPrice ? (unitPrice - finalPrice) * quantity : 0;
+            
+            return {
+              id: String(item.id || `item-${index}`),
+              // For editing, we'll set product to undefined and let the user re-select
+              // since we don't have all required ProductWithInventory fields from the API
+              product: undefined,
+              customProduct: !item.product_id ? {
+                id: String(item.custom_product_id || `custom-${index}`),
+                name: String(item.name || ''),
+                description: String(item.specifications || item.description || ''),
+                price: finalPrice, // Use the final price as the custom product price
+                supplier_name: String(item.supplier_name || ''),
+                config_schema: (item.configuration as Record<string, unknown>) || {} as Record<string, unknown>,
+                lead_time_days: Number(item.estimated_delivery_days || 30)
+              } : undefined,
+              isCustom: !item.product_id,
+              quantity: quantity,
+              originalPrice: unitPrice,
+              finalPrice: finalPrice,
+              totalPrice: totalPrice,
+              discountAmount: discountAmount,
+              discountPercentage: discountPercentage,
+              tax: Number(item.tax || 0)
+            };
+          });
+          setItems(loadedItems);
+        }
+
+        // Populate notes
+        if (data.notes) {
+          setNotes(String(data.notes));
+        }
+
+        // Populate tax percentage if available
+        if (data.tax_percentage !== undefined) {
+          setTaxPercentage(Number(data.tax_percentage));
+        }
+
+        // Populate freight charges if available
+        if (data.freight_charges !== undefined) {
+          setFreightCharges(Number(data.freight_charges));
+        }
+
+        // Populate salesman if available - check multiple sources
+        let salesmanId: string | null = null;
+        let salesmanName = 'Loading...';
+        let salesmanEmail = '';
+        
+        // Get salesman ID from various fields
+        if (data.salesman_id) {
+          salesmanId = String(data.salesman_id);
+        } else if (data.created_by) {
+          salesmanId = String(data.created_by);
+        }
+        
+        // Try to get salesman details from users relation
+        if (salesmanId && data.users) {
+          const users = data.users as Record<string, unknown>;
+          salesmanName = String(users.name || 'Unknown User');
+          salesmanEmail = String(users.email || '');
+          console.log("Found salesman from users relation:", { salesmanId, salesmanName, salesmanEmail });
+        }
+        
+        if (salesmanId) {
+          // Try to find salesman in available list first
+          if (availableSalespeople.length > 0) {
+            const salesman = availableSalespeople.find(s => s.id === salesmanId || s.user_id === salesmanId);
+            if (salesman) {
+              setSelectedSalesman(salesman);
+              console.log("Set salesman from available list:", salesman);
+            } else {
+              // Use data from API if not found in available list
+              setSelectedSalesman({
+                id: salesmanId,
+                name: salesmanName,
+                email: salesmanEmail,
+                user_id: salesmanId
+              });
+              console.log("Set salesman from API data:", { id: salesmanId, name: salesmanName, email: salesmanEmail });
+            }
+          } else {
+            // Set with API data that will be resolved when salespeople load
+            setSelectedSalesman({
+              id: salesmanId,
+              name: salesmanName,
+              email: salesmanEmail,
+              user_id: salesmanId
+            });
+            console.log("Set placeholder salesman:", { id: salesmanId, name: salesmanName, email: salesmanEmail });
+          }
+        }
+
+        console.log("Initial data loaded successfully");
+        onDataLoaded?.();
+        
+      } catch (error) {
+        console.error("Error loading initial data:", error);
+      }
+    }
+  }, [initialData, availableSalespeople, onDataLoaded]);
 
   // Add product to items - Updated for proper BillingItem structure
   const addProductToItems = (productData: ProductWithInventory) => {
@@ -775,7 +974,7 @@ export function InvoiceBillingDashboard({
               <div className="relative">
                 <Input
                   id="salesperson-search"
-                  value={salespersonSearchQuery || selectedSalesman?.name || ''}
+                  value={salespersonSearchQuery || String(selectedSalesman?.name || '')}
                   onChange={(e) => {
                     setSalespersonSearchQuery(e.target.value);
                     searchSalespeople(e.target.value);
@@ -798,13 +997,13 @@ export function InvoiceBillingDashboard({
                         className="px-3 py-2 cursor-pointer hover:bg-gray-100 border-b last:border-b-0"
                         onClick={() => {
                           setSelectedSalesman(person);
-                          setSalespersonSearchQuery(person.name);
+                          setSalespersonSearchQuery(String(person.name || ''));
                           setShowSalespersonDropdown(false);
                         }}
                       >
-                        <div className="font-medium">{person.name}</div>
+                        <div className="font-medium">{String(person.name || '')}</div>
                         {person.email && (
-                          <div className="text-sm text-gray-600">{person.email}</div>
+                          <div className="text-sm text-gray-600">{String(person.email || '')}</div>
                         )}
                       </div>
                     ))}
@@ -857,8 +1056,8 @@ export function InvoiceBillingDashboard({
                           setCustomerSearchResults([]);
                         }}
                       >
-                        <div className="font-medium">{cust.name}</div>
-                        <div className="text-sm text-gray-600">{cust.phone} • {cust.email}</div>
+                        <div className="font-medium">{String(cust.name || '')}</div>
+                        <div className="text-sm text-gray-600">{String(cust.phone || '')} • {String(cust.email || '')}</div>
                       </div>
                     ))}
                   </div>
@@ -899,8 +1098,8 @@ export function InvoiceBillingDashboard({
                         className="p-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
                         onClick={() => addProductToItems(product)}
                       >
-                        <div className="font-medium">{product.product_name}</div>
-                        <div className="text-sm text-gray-600">₹{product.price} • Stock: {product.quantity || 0}</div>
+                        <div className="font-medium">{String(product.product_name || '')}</div>
+                        <div className="text-sm text-gray-600">₹{String(product.price || 0)} • Stock: {String(product.quantity || 0)}</div>
                       </div>
                     ))}
                   </div>
@@ -924,31 +1123,31 @@ export function InvoiceBillingDashboard({
             <h3 className="text-lg font-semibold mb-3 border-b border-gray-300 pb-1">BILL TO</h3>
             {customer ? (
               <div className="space-y-1">
-                <div className="font-medium text-lg">{customer.name}</div>
+                <div className="font-medium text-lg">{String(customer.name || '')}</div>
                 {customer.full_name && customer.full_name !== customer.name && (
-                  <div className="text-gray-600">{customer.full_name}</div>
+                  <div className="text-gray-600">{String(customer.full_name || '')}</div>
                 )}
                 <div className="flex items-center gap-2 text-gray-600">
                   <Phone className="h-4 w-4" />
-                  {customer.phone}
+                  {String(customer.phone || '')}
                 </div>
                 {customer.email && (
                   <div className="flex items-center gap-2 text-gray-600">
                     <Mail className="h-4 w-4" />
-                    {customer.email}
+                    {String(customer.email || '')}
                   </div>
                 )}
                 <div className="flex items-start gap-2 text-gray-600">
                   <MapPin className="h-4 w-4 mt-1" />
                   <div>
-                    {customer.address}{customer.floor && `, ${customer.floor}`}
+                    {String(customer.address || '')}{customer.floor && `, ${String(customer.floor)}`}
                     <br />
-                    {customer.city && `${customer.city}, `}{customer.state} {customer.pincode}
+                    {customer.city && `${String(customer.city)}, `}{String(customer.state || '')} {String(customer.pincode || '')}
                   </div>
                 </div>
                 {customer.gst_number && (
                   <div className="text-gray-600">
-                    <strong>GST:</strong> {customer.gst_number}
+                    <strong>GST:</strong> {String(customer.gst_number || '')}
                   </div>
                 )}
               </div>
@@ -975,7 +1174,7 @@ export function InvoiceBillingDashboard({
               {selectedSalesman && (
                 <div className="flex justify-between">
                   <span className="text-gray-600">Sales Rep:</span>
-                  <span>{selectedSalesman.name}</span>
+                  <span>{String(selectedSalesman.name || '')}</span>
                 </div>
               )}
             </div>

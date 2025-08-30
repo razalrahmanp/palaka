@@ -5,14 +5,20 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function GET() {
   const { data, error } = await supabase
     .from('quotes')
-    .select('*')
+    .select(`
+      *,
+      customers:customer_id(name),
+      users:created_by(name, email)
+    `)
     .order('created_at', { ascending: false });
 
   if (error) {
     console.error('Supabase GET quotes error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json(data);
+  
+  // Return quotes in the expected format for the sidebar
+  return NextResponse.json({ quotes: data || [] });
 }
 
 export async function POST(req: NextRequest) {

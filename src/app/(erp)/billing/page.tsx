@@ -5,6 +5,7 @@ import { InvoiceBillingDashboard } from "@/components/billing/InvoiceBillingDash
 import OrderQuoteSidebar from "@/components/OrderQuoteSidebar";
 import { BillingData } from "@/types";
 import { toast } from "sonner";
+import { InvoiceDataLoader } from "@/services/InvoiceLoader";
 
 interface GeneratedQuote {
   id: string;
@@ -24,6 +25,65 @@ export default function BillingPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [generatedQuote, setGeneratedQuote] = useState<GeneratedQuote | null>(null);
   const [quoteStatus, setQuoteStatus] = useState<string>('');
+  const [initialData, setInitialData] = useState<{
+    type: 'quote' | 'order';
+    data: Record<string, unknown>;
+    isEditing: boolean;
+    existingId: string;
+    existingQuoteId?: string;
+    existingStatus: string;
+  } | null>(null);
+  const [isLoadingData, setIsLoadingData] = useState(false);
+
+  // Function to load quote data into the billing form
+  const handleQuoteSelect = async (quote: { id: string; customer_id: string; status: string; created_at: string; final_price: number; original_price: number; discount_amount: number; freight_charges: number; tax_amount: number; grand_total: number; customer?: string; customers?: { name: string }; users?: { name: string } }) => {
+    console.log("Selected quote:", quote);
+    setIsLoadingData(true);
+    
+    try {
+      const loadedData = await InvoiceDataLoader.loadQuoteIntoBilling(quote.id);
+      if (loadedData) {
+        setInitialData(loadedData);
+        toast.success(`Quote #${quote.id.slice(-8)} loaded for editing`);
+      } else {
+        toast.error("Failed to load quote data");
+      }
+    } catch (error) {
+      console.error("Error loading quote:", error);
+      toast.error("Failed to load quote data");
+    } finally {
+      setIsLoadingData(false);
+    }
+  };
+
+  // Function to load sales order data into the billing form
+  const handleOrderSelect = async (order: { id: string; quote_id?: string; customer_id: string; status: string; created_at: string; final_price: number; original_price: number; discount_amount: number; freight_charges: number; tax_amount: number; grand_total: number; customer?: string; customers?: { name: string }; users?: { name: string } }) => {
+    console.log("Selected order:", order);
+    setIsLoadingData(true);
+    
+    try {
+      const loadedData = await InvoiceDataLoader.loadSalesOrderIntoBilling(order.id);
+      if (loadedData) {
+        setInitialData(loadedData);
+        toast.success(`Order #${order.id.slice(-8)} loaded for editing`);
+      } else {
+        toast.error("Failed to load order data");
+      }
+    } catch (error) {
+      console.error("Error loading order:", error);
+      toast.error("Failed to load order data");
+    } finally {
+      setIsLoadingData(false);
+    }
+  };
+
+  // Reset the form to create a new quote/order
+  const handleNewInvoice = () => {
+    setInitialData(null);
+    setGeneratedQuote(null);
+    setQuoteStatus('');
+    toast.info("Creating new invoice");
+  };
 
   const handleSave = async (data: BillingData) => {
     setIsProcessing(true);
@@ -445,29 +505,52 @@ export default function BillingPage() {
   return (
     <div className="flex h-screen bg-background">
       {/* Main Billing Content */}
-      <div className="flex-1 overflow-hidden">
-        <InvoiceBillingDashboard
-          onSave={handleSave}
-          onCreateQuoteAndSalesOrder={handleCreateQuoteAndSalesOrder}
-          isProcessing={isProcessing}
-          quoteGenerated={!!generatedQuote}
-          quoteStatus={quoteStatus}
-        />
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Header with New Invoice Button */}
+        <div className="px-4 py-2 border-b bg-card flex justify-between items-center flex-shrink-0">
+          <h1 className="text-xl font-semibold">Billing & Invoice Management</h1>
+          <div className="flex gap-2">
+            {isLoadingData && (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                <span className="text-sm">Loading data...</span>
+              </div>
+            )}
+            {initialData && (
+              <button
+                onClick={handleNewInvoice}
+                className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors flex items-center gap-2 text-sm"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 5v14M5 12h14"/>
+                </svg>
+                New Invoice
+              </button>
+            )}
+          </div>
+        </div>
+        
+        {/* Billing Dashboard */}
+        <div className="flex-1 overflow-auto">
+          <InvoiceBillingDashboard
+            onSave={handleSave}
+            onCreateQuoteAndSalesOrder={handleCreateQuoteAndSalesOrder}
+            isProcessing={isProcessing}
+            quoteGenerated={!!generatedQuote}
+            quoteStatus={quoteStatus}
+            initialData={initialData}
+            onDataLoaded={() => {
+              console.log("Data loaded into billing form");
+            }}
+          />
+        </div>
       </div>
       
       {/* Right Sidebar */}
       <div className="border-l bg-card">
         <OrderQuoteSidebar
-          onQuoteSelect={(quote) => {
-            console.log("Selected quote:", quote);
-            // You can add functionality to load quote data into the billing form
-            toast.info(`Quote #${quote.id.slice(-8)} selected`);
-          }}
-          onOrderSelect={(order) => {
-            console.log("Selected order:", order);
-            // You can add functionality to view order details
-            toast.info(`Order #${order.id.slice(-8)} selected`);
-          }}
+          onQuoteSelect={handleQuoteSelect}
+          onOrderSelect={handleOrderSelect}
         />
       </div>
     </div>

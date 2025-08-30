@@ -7,6 +7,9 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { 
   FileText, 
   ShoppingCart, 
@@ -16,13 +19,19 @@ import {
   Clock,
   CheckCircle,
   AlertCircle,
-  XCircle
+  XCircle,
+  Search,
+  CalendarIcon,
+  X
 } from 'lucide-react';
+import { format } from 'date-fns';
+import { DateRange } from 'react-day-picker';
 
 // Types
 interface Quote {
   id: string;
   customer_id: string;
+  customer?: string; // Direct customer name field
   status: string;
   created_at: string;
   final_price: number;
@@ -31,24 +40,33 @@ interface Quote {
   freight_charges: number;
   tax_amount: number;
   grand_total: number;
-  customers?: { name: string };
-  users?: { name: string };
+  customers?: { name: string }; // Legacy field for backward compatibility
+  users?: { name: string }; // Legacy field for backward compatibility
 }
 
 interface SalesOrder {
   id: string;
   quote_id?: string;
   customer_id: string;
+  customer?: { name: string } | null; // API returns this as an object with name
+  sales_representative?: { // API maps created_by users to this field
+    id: string;
+    name: string;
+    email: string;
+  } | null;
   status: string;
   created_at: string;
+  updated_at?: string;
+  delivery_date?: string;
   final_price: number;
   original_price: number;
   discount_amount: number;
   freight_charges: number;
   tax_amount: number;
   grand_total: number;
-  customers?: { name: string };
-  users?: { name: string };
+  total_paid?: number; // From payment summary
+  balance_due?: number; // From payment summary
+  payment_status?: string; // From payment summary
 }
 
 interface OrderQuoteSidebarProps {
@@ -67,11 +85,19 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
   const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [dateFilter, setDateFilter] = useState<DateRange | undefined>();
+
+  // Handle date range selection
+  const handleDateSelect = (range: DateRange | undefined) => {
+    setDateFilter(range);
+  };
 
   // Fetch quotes
   const fetchQuotes = async () => {
     try {
       setLoading(true);
+      setError(null);
       const response = await fetch('/api/sales/quotes');
       if (!response.ok) throw new Error('Failed to fetch quotes');
       const data = await response.json();
@@ -88,9 +114,11 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
   const fetchOrders = async () => {
     try {
       setLoading(true);
+      setError(null);
       const response = await fetch('/api/sales/orders');
       if (!response.ok) throw new Error('Failed to fetch orders');
       const data = await response.json();
+      
       setOrders(data.orders || []);
     } catch (err) {
       setError('Failed to load orders');
@@ -146,28 +174,141 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
 
   // Format date
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric'
-    });
+    try {
+      if (!dateString) return 'No Date';
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'Invalid Date';
+      return date.toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      });
+    } catch {
+      return 'Invalid Date';
+    }
   };
 
   // Get customer name
   const getCustomerName = (item: Quote | SalesOrder) => {
-    if (item.customers) {
-      return Array.isArray(item.customers) ? item.customers[0]?.name : item.customers.name;
+    // For sales orders, the API returns customer as an object with name
+    if ('customer' in item && item.customer) {
+      if (typeof item.customer === 'object' && item.customer.name) {
+        return String(item.customer.name);
+      }
+      // Fallback for other formats
+      if (typeof item.customer === 'string') {
+        try {
+          const parsed = JSON.parse(item.customer);
+          return String(parsed.name || parsed);
+        } catch {
+          return String(item.customer);
+        }
+      }
+      return String(item.customer);
     }
+    
+    // For quotes, check if customers field exists (legacy)
+    if ('customers' in item && (item as Quote).customers) {
+      const customers = (item as Quote).customers;
+      if (Array.isArray(customers)) {
+        return String(customers[0]?.name || 'Unknown');
+      } else if (typeof customers === 'object') {
+        return String(customers.name || 'Unknown');
+      }
+    }
+    
     return 'Unknown Customer';
   };
 
   // Get created by name
   const getCreatedByName = (item: Quote | SalesOrder) => {
-    if (item.users) {
-      return Array.isArray(item.users) ? item.users[0]?.name : item.users.name;
+    // For sales orders, check sales_representative field (mapped from created_by)
+    if ('sales_representative' in item && (item as SalesOrder).sales_representative) {
+      const salesRep = (item as SalesOrder).sales_representative;
+      if (salesRep && typeof salesRep === 'object' && salesRep.name) {
+        return String(salesRep.name);
+      }
     }
+
+    // For quotes, check users field (legacy)
+    if ('users' in item && (item as Quote).users) {
+      const users = (item as Quote).users;
+      if (Array.isArray(users)) {
+        return String(users[0]?.name || 'Unknown');
+      } else if (typeof users === 'object') {
+        return String(users.name || 'Unknown');
+      } else if (typeof users === 'string') {
+        try {
+          const parsed = JSON.parse(users);
+          return String(parsed.name || parsed);
+        } catch {
+          return String(users);
+        }
+      }
+    }
+    
     return 'Unknown User';
   };
+
+  // Filter function for search
+  const filterItems = (items: (Quote | SalesOrder)[]) => {
+    let filtered = items;
+
+    // Apply text search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(item => {
+        // Search by customer name
+        const customerName = getCustomerName(item).toLowerCase();
+        if (customerName.includes(query)) return true;
+
+        // Search by created by name
+        const createdByName = getCreatedByName(item).toLowerCase();
+        if (createdByName.includes(query)) return true;
+
+        // Search by date
+        const dateStr = formatDate(item.created_at).toLowerCase();
+        if (dateStr.includes(query)) return true;
+
+        // Search by order/quote ID
+        const idStr = item.id.toLowerCase();
+        if (idStr.includes(query)) return true;
+
+        // Search by status
+        const status = item.status.toLowerCase();
+        if (status.includes(query)) return true;
+
+        // Search by amount
+        const amount = (item.grand_total || item.final_price || 0).toString();
+        if (amount.includes(query)) return true;
+
+        return false;
+      });
+    }
+
+    // Apply date range filter
+    if (dateFilter?.from || dateFilter?.to) {
+      filtered = filtered.filter(item => {
+        const itemDate = new Date(item.created_at);
+        if (isNaN(itemDate.getTime())) return false;
+        
+        if (dateFilter.from && itemDate < dateFilter.from) return false;
+        if (dateFilter.to) {
+          // Set to end of day for 'to' date
+          const toEndOfDay = new Date(dateFilter.to);
+          toEndOfDay.setHours(23, 59, 59, 999);
+          if (itemDate > toEndOfDay) return false;
+        }
+        
+        return true;
+      });
+    }
+
+    return filtered;
+  };
+
+  // Get filtered data
+  const filteredData = showQuotes ? filterItems(quotes) : filterItems(orders);
 
   return (
     <Card className={`w-80 h-full flex flex-col ${className}`}>
@@ -188,7 +329,11 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>{showQuotes ? quotes.length : orders.length} items</span>
+          <span>{filteredData.length} of {showQuotes ? quotes.length : orders.length} items</span>
+          {/* Debug info */}
+          <span className="text-xs bg-muted px-2 py-1 rounded">
+            {showQuotes ? `Q:${quotes.length}` : `O:${orders.length}`}
+          </span>
           <Button
             variant="ghost"
             size="sm"
@@ -199,6 +344,66 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
           </Button>
         </div>
       </CardHeader>
+
+      {/* Search Input */}
+      <div className="px-4 pb-3 space-y-3">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+          <Input
+            placeholder="Search by customer, mobile, date, status..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        
+        {/* Date Range Filter */}
+        <div className="flex gap-2">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 justify-start text-left font-normal"
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {dateFilter?.from ? (
+                  dateFilter?.to ? (
+                    <>
+                      {format(dateFilter.from, "LLL dd, y")} -{" "}
+                      {format(dateFilter.to, "LLL dd, y")}
+                    </>
+                  ) : (
+                    format(dateFilter.from, "LLL dd, y")
+                  )
+                ) : (
+                  <span>Pick a date range</span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <CalendarComponent
+                initialFocus
+                mode="range"
+                defaultMonth={dateFilter?.from}
+                selected={dateFilter}
+                onSelect={handleDateSelect}
+                numberOfMonths={2}
+              />
+            </PopoverContent>
+          </Popover>
+          
+          {(dateFilter?.from || dateFilter?.to) && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDateFilter(undefined)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      </div>
 
       <CardContent className="flex-1 p-0">
         <ScrollArea className="h-full px-4">
@@ -224,7 +429,8 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
 
           {!loading && !error && (
             <div className="space-y-3 pb-4">
-              {(showQuotes ? quotes : orders).map((item) => (
+              {filteredData.length > 0 ? (
+                filteredData.map((item) => (
                 <Card
                   key={item.id}
                   className="cursor-pointer transition-all hover:shadow-md border-l-4 border-l-primary/20 hover:border-l-primary"
@@ -256,7 +462,7 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
                       {/* Customer */}
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <User className="w-3 h-3" />
-                        <span className="truncate">{getCustomerName(item)}</span>
+                        <span className="truncate">{String(getCustomerName(item))}</span>
                       </div>
 
                       {/* Amount */}
@@ -276,9 +482,9 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <div className="flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
-                          <span>{formatDate(item.created_at)}</span>
+                          <span>{String(formatDate(item.created_at))}</span>
                         </div>
-                        <span className="truncate ml-2">{getCreatedByName(item)}</span>
+                        <span className="truncate ml-2">{String(getCreatedByName(item))}</span>
                       </div>
 
                       {/* Additional Details */}
@@ -290,9 +496,18 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
                     </div>
                   </CardContent>
                 </Card>
-              ))}
+              ))
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <div className="mb-2">
+                    <Search className="w-12 h-12 mx-auto opacity-50" />
+                  </div>
+                  <p>No results found for &ldquo;{searchQuery}&rdquo;</p>
+                  <p className="text-xs mt-1">Try adjusting your search terms</p>
+                </div>
+              )}
 
-              {(showQuotes ? quotes : orders).length === 0 && !loading && (
+              {(showQuotes ? quotes : orders).length === 0 && !loading && !searchQuery && (
                 <div className="text-center py-8 text-muted-foreground">
                   <div className="mb-2">
                     {showQuotes ? (

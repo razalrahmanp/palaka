@@ -352,7 +352,8 @@ export async function GET() {
     };
   });
 
-  return NextResponse.json(grouped);
+  // Return orders in the expected format for the sidebar
+  return NextResponse.json({ orders: grouped || [] });
   } catch (error) {
     console.error('Error in GET /api/sales/orders:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

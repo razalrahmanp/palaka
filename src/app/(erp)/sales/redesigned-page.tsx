@@ -22,11 +22,10 @@ import {
   Percent,
   Truck,
   User,
-  Package,
   Settings,
   BarChart3
 } from 'lucide-react';
-import { useSalesData } from '@/components/sales/SalesDataLoader';
+import { useSalesDataFixed as useSalesData } from '@/components/sales/SalesDataLoaderFixed';
 import { createSalesHandlers } from '@/components/sales/SalesHandlers';
 import { SalesModals } from '@/components/sales/SalesModals';
 import QuoteDetails from '@/components/sales/QuoteDetails';
@@ -182,6 +181,10 @@ export default function RedesignedSalesPage() {
     const partialPaidQuotes = quotes.filter(q => q.payment_status === 'partial').length;
     const fullyPaidQuotes = quotes.filter(q => q.payment_status === 'paid').length;
     
+    // Additional required fields
+    const pendingOrders = ordersWithPayment.filter(o => o.status === 'draft').length; // using 'draft' as pending equivalent
+    const convertedQuotes = quotes.filter(q => q.status === 'Converted').length;
+    
     return {
       totalQuotes,
       totalOrders,
@@ -201,7 +204,9 @@ export default function RedesignedSalesPage() {
       averageOrderValue,
       totalPendingPayments,
       partialPaidQuotes,
-      fullyPaidQuotes
+      fullyPaidQuotes,
+      pendingOrders,
+      convertedQuotes
     };
   })();
 
@@ -394,7 +399,7 @@ export default function RedesignedSalesPage() {
                 </Badge>
               </TabsTrigger>
               <TabsTrigger 
-                value="custom" 
+                value="performance" 
                 className="relative flex items-center justify-center gap-2 px-6 py-4 text-sm font-medium 
                           text-gray-600 hover:text-gray-900 hover:bg-white/50
                           data-[state=active]:bg-white data-[state=active]:text-purple-600 
@@ -402,13 +407,14 @@ export default function RedesignedSalesPage() {
                           data-[state=active]:shadow-sm transition-all duration-200
                           border-b-2 border-transparent"
               >
-                <Package className="h-4 w-4" />
-                <span>Custom Orders</span>
+                <BarChart3 className="h-4 w-4" />
+                <span>Analytics</span>
                 <Badge className="bg-purple-50 text-purple-700 border border-purple-200 text-xs px-2 py-0.5
                                data-[state=active]:bg-purple-100 data-[state=active]:text-purple-800">
-                  New
+                  {stats.conversionRate}%
                 </Badge>
               </TabsTrigger>
+
 
             </TabsList>
           </div>
@@ -456,16 +462,13 @@ export default function RedesignedSalesPage() {
                     } else if (activeTab === 'orders') {
                       setSelectedOrder(null);
                       setIsOrderModalOpen(true);
-                    } else if (activeTab === 'custom') {
-                      // Handle custom order creation
-                      console.log('Create custom order functionality to be implemented');
                     }
                     // No action for performance tab
                   }}
                   disabled={activeTab === 'performance'}
                 >
                   <Plus className="mr-2 h-5 w-5" />
-                  {activeTab === 'quotes' ? 'New Quote' : activeTab === 'orders' ? 'New Order' : activeTab === 'custom' ? 'Create Custom Order' : 'View Analytics'}
+                  {activeTab === 'quotes' ? 'New Quote' : activeTab === 'orders' ? 'New Order' : 'View Analytics'}
                 </Button>
               </div>
             </div>
@@ -480,10 +483,6 @@ export default function RedesignedSalesPage() {
                 onView={(quote) => {
                   setSelectedQuote(quote);
                   setIsQuoteDetailsOpen(true);
-                }}
-                onEdit={(quote) => {
-                  setSelectedQuote(quote);
-                  setIsQuoteModalOpen(true);
                 }}
                 formatCurrency={formatCurrency}
                 getStatusColor={getStatusColor}
@@ -508,10 +507,12 @@ export default function RedesignedSalesPage() {
               />
             </TabsContent>
 
-            <TabsContent value="custom" className="mt-0">
-              <CustomOrdersTabContent />
+            <TabsContent value="performance" className="mt-0">
+              <PerformanceTabContent 
+                stats={stats}
+                formatCurrency={formatCurrency}
+              />
             </TabsContent>
-
 
           </div>
         </Tabs>
@@ -564,14 +565,12 @@ export default function RedesignedSalesPage() {
 // Quotes Tab Component
 function QuotesTabContent({ 
   quotes, 
-  onView,
-  onEdit, 
+  onView, 
   formatCurrency, 
   getStatusColor 
 }: {
   quotes: Quote[];
   onView: (quote: Quote) => void;
-  onEdit: (quote: Quote) => void;
   formatCurrency: (amount: number) => string;
   getStatusColor: (status: string) => string;
 }) {
@@ -730,24 +729,15 @@ function QuotesTabContent({
 
                 {/* Action Buttons */}
                 <div className="border-t border-gray-200 pt-3">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="w-full">
                     <Button 
                       variant="outline" 
                       size="sm" 
-                      className="border-blue-200 text-blue-700 hover:bg-blue-50 hover:border-blue-300"
+                      className="w-full border-blue-200 text-blue-700 hover:bg-blue-50 hover:border-blue-300"
                       onClick={() => onView(quote)}
                     >
                       <Eye className="mr-2 h-4 w-4" />
                       View Details
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300"
-                      onClick={() => onEdit(quote)}
-                    >
-                      <Edit className="mr-2 h-4 w-4" />
-                      Edit
                     </Button>
                   </div>
 
@@ -1078,45 +1068,126 @@ function OrdersTabContent({
   );
 }
 
-// Custom Orders Tab Component
-function CustomOrdersTabContent() {
+// Performance Tab Component
+function PerformanceTabContent({ 
+  stats, 
+  formatCurrency 
+}: {
+  stats: {
+    totalQuotes: number;
+    totalOrders: number;
+    totalRevenue: number;
+    pendingQuotes: number;
+    confirmedOrders: number;
+    pendingOrders: number;
+    convertedQuotes: number;
+    conversionRate: number;
+    totalOutstanding: number;
+    pendingPaymentOrders: number;
+    totalCollected: number;
+    fullyPaidOrders: number;
+    collectionRate: number;
+  };
+  formatCurrency: (amount: number) => string;
+}) {
   return (
     <div className="space-y-6">
-      {/* Custom Order Creation Form */}
-      <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200 shadow-lg rounded-2xl">
-        <CardHeader>
-          <CardTitle className="text-xl font-bold text-gray-800 flex items-center">
-            <Package className="mr-2 h-6 w-6 text-purple-600" />
-            Create Custom Purchase Order
-          </CardTitle>
-          <p className="text-gray-600">Design custom furniture orders and generate purchase orders automatically</p>
-        </CardHeader>
-        <CardContent className="p-6">
-          <div className="text-center py-12">
-            <div className="h-24 w-24 bg-gradient-to-br from-purple-100 to-pink-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Plus className="h-12 w-12 text-purple-600" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Conversion Metrics */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-gray-800">Conversion Rate</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center">
+              <p className="text-3xl font-bold text-blue-600">{stats.conversionRate}%</p>
+              <p className="text-gray-600 text-sm">Quotes to Orders</p>
+              <div className="mt-2 text-xs text-gray-500">
+                {stats.convertedQuotes} / {stats.totalQuotes} converted
+              </div>
             </div>
-            <h3 className="text-lg font-semibold text-gray-800 mb-2">Custom Order Builder</h3>
-            <p className="text-gray-600 mb-6">Create specialized furniture orders with custom specifications</p>
-            <Button 
-              size="lg"
-              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
-            >
-              <Plus className="mr-2 h-5 w-5" />
-              Start Custom Order
-            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Collection Rate */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-gray-800">Collection Rate</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center">
+              <p className="text-3xl font-bold text-green-600">{stats.collectionRate}%</p>
+              <p className="text-gray-600 text-sm">Payment Collection</p>
+              <div className="mt-2 text-xs text-gray-500">
+                {stats.fullyPaidOrders} / {stats.totalOrders} paid
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Outstanding Amount */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-gray-800">Outstanding</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center">
+              <p className="text-3xl font-bold text-red-600">{formatCurrency(stats.totalOutstanding)}</p>
+              <p className="text-gray-600 text-sm">Pending Collections</p>
+              <div className="mt-2 text-xs text-gray-500">
+                {stats.pendingPaymentOrders} orders pending
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Revenue Breakdown */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold text-gray-800">Revenue Overview</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="text-center">
+              <p className="text-2xl font-bold text-blue-600">{formatCurrency(stats.totalRevenue)}</p>
+              <p className="text-gray-600 text-sm">Total Revenue</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-green-600">{formatCurrency(stats.totalCollected)}</p>
+              <p className="text-gray-600 text-sm">Collected</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-red-600">{formatCurrency(stats.totalOutstanding)}</p>
+              <p className="text-gray-600 text-sm">Outstanding</p>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Placeholder for Custom Orders List */}
-      <Card className="bg-white/80 backdrop-blur-sm border border-gray-200 shadow-lg rounded-2xl">
+      {/* Order Status Breakdown */}
+      <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold text-gray-800">Recent Custom Orders</CardTitle>
+          <CardTitle className="text-lg font-semibold text-gray-800">Order Status</CardTitle>
         </CardHeader>
-        <CardContent className="p-6">
-          <div className="text-center py-8">
-            <p className="text-gray-500">No custom orders yet. Create your first custom order above.</p>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="text-center p-4 bg-blue-50 rounded-lg">
+              <p className="text-xl font-bold text-blue-600">{stats.totalOrders}</p>
+              <p className="text-blue-700 text-sm">Total Orders</p>
+            </div>
+            <div className="text-center p-4 bg-green-50 rounded-lg">
+              <p className="text-xl font-bold text-green-600">{stats.confirmedOrders}</p>
+              <p className="text-green-700 text-sm">Confirmed</p>
+            </div>
+            <div className="text-center p-4 bg-yellow-50 rounded-lg">
+              <p className="text-xl font-bold text-yellow-600">{stats.pendingOrders}</p>
+              <p className="text-yellow-700 text-sm">Pending</p>
+            </div>
+            <div className="text-center p-4 bg-purple-50 rounded-lg">
+              <p className="text-xl font-bold text-purple-600">{stats.fullyPaidOrders}</p>
+              <p className="text-purple-700 text-sm">Fully Paid</p>
+            </div>
           </div>
         </CardContent>
       </Card>

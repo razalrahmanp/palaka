@@ -462,3 +462,142 @@ export async function PUT(
 
   return NextResponse.json({ success: true });
 }
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+
+  if (!id) {
+    return NextResponse.json({ error: 'Missing order ID' }, { status: 400 });
+  }
+
+  try {
+    const body = await req.json();
+    console.log(`Updating sales order ${id} with data:`, body);
+
+    // Prepare update data - only include fields that are provided
+    const updateData: Record<string, unknown> = {};
+    
+    if (body.customer_id !== undefined) updateData.customer_id = body.customer_id;
+    if (body.customer !== undefined) updateData.customer = body.customer;
+    if (body.items !== undefined) updateData.items = body.items;
+    if (body.total_price !== undefined) updateData.total_price = body.total_price;
+    if (body.original_price !== undefined) updateData.original_price = body.original_price;
+    if (body.final_price !== undefined) updateData.final_price = body.final_price;
+    if (body.discount_amount !== undefined) updateData.discount_amount = body.discount_amount;
+    if (body.freight_charges !== undefined) updateData.freight_charges = body.freight_charges;
+    if (body.tax_percentage !== undefined) updateData.tax_percentage = body.tax_percentage;
+    if (body.tax_amount !== undefined) updateData.tax_amount = body.tax_amount;
+    if (body.taxable_amount !== undefined) updateData.taxable_amount = body.taxable_amount;
+    if (body.grand_total !== undefined) updateData.grand_total = body.grand_total;
+    if (body.delivery_date !== undefined) updateData.delivery_date = body.delivery_date;
+    if (body.delivery_floor !== undefined) updateData.delivery_floor = body.delivery_floor;
+    if (body.first_floor_awareness !== undefined) updateData.first_floor_awareness = body.first_floor_awareness;
+    if (body.payment_methods !== undefined) updateData.payment_methods = body.payment_methods;
+    if (body.notes !== undefined) updateData.notes = body.notes;
+    if (body.status !== undefined) updateData.status = body.status;
+    if (body.created_by !== undefined) updateData.created_by = body.created_by;
+    if (body.emi_enabled !== undefined) updateData.emi_enabled = body.emi_enabled;
+    if (body.emi_plan !== undefined) updateData.emi_plan = body.emi_plan;
+    if (body.emi_monthly !== undefined) updateData.emi_monthly = body.emi_monthly;
+    if (body.bajaj_finance_amount !== undefined) updateData.bajaj_finance_amount = body.bajaj_finance_amount;
+    if (body.bajaj_approved_amount !== undefined) updateData.bajaj_approved_amount = body.bajaj_approved_amount;
+
+    // Bajaj Finance charge tracking fields
+    if (body.bajaj_processing_fee_rate !== undefined) updateData.bajaj_processing_fee_rate = body.bajaj_processing_fee_rate;
+    if (body.bajaj_processing_fee_amount !== undefined) updateData.bajaj_processing_fee_amount = body.bajaj_processing_fee_amount;
+    if (body.bajaj_convenience_charges !== undefined) updateData.bajaj_convenience_charges = body.bajaj_convenience_charges;
+    if (body.bajaj_total_customer_payment !== undefined) updateData.bajaj_total_customer_payment = body.bajaj_total_customer_payment;
+    if (body.bajaj_merchant_receivable !== undefined) updateData.bajaj_merchant_receivable = body.bajaj_merchant_receivable;
+
+    console.log('Sales order update data prepared:', updateData);
+
+    // Update the sales order
+    const { data, error } = await supabase
+      .from('sales_orders')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Database error:', error);
+      return NextResponse.json(
+        { error: 'Failed to update sales order' },
+        { status: 500 }
+      );
+    }
+
+    // Update items if provided
+    if (body.items && Array.isArray(body.items)) {
+      // Delete existing items
+      const { error: deleteItemsError } = await supabase
+        .from('sales_order_items')
+        .delete()
+        .eq('order_id', id);
+
+      if (deleteItemsError) {
+        console.error('Error deleting existing items:', deleteItemsError);
+        return NextResponse.json({ error: 'Failed to update order items' }, { status: 500 });
+      }
+
+      // Insert new items
+      const itemsToInsert = body.items.map((item: unknown) => {
+        const itemData = item as Record<string, unknown>;
+        return {
+          order_id: id,
+          product_id: itemData.product_id || null,
+          custom_product_id: itemData.custom_product_id || null,
+          quantity: itemData.quantity || 1,
+          unit_price: itemData.unit_price || 0,
+          final_price: itemData.final_price || itemData.unit_price || 0,
+          total_price: itemData.total_price || 0,
+          discount_percentage: itemData.discount_percentage || 0,
+          name: itemData.name || null,
+          supplier_name: itemData.supplier_name || null,
+          supplier_id: itemData.supplier_id || null,
+          type: itemData.type || 'existing',
+          // Custom product fields
+          image_url: itemData.image_url || null,
+          base_product_name: itemData.base_product_name || null,
+          specifications: itemData.specifications || null,
+          materials: itemData.materials || null,
+          dimensions: itemData.dimensions || null,
+          finish: itemData.finish || null,
+          color: itemData.color || null,
+          custom_instructions: itemData.custom_instructions || null,
+          estimated_delivery_days: itemData.estimated_delivery_days || null,
+          complexity_level: itemData.complexity_level || null,
+          status: itemData.status || null,
+          notes: itemData.notes || null,
+          configuration: itemData.configuration || null
+        };
+      });
+
+      const { error: insertItemsError } = await supabase
+        .from('sales_order_items')
+        .insert(itemsToInsert);
+
+      if (insertItemsError) {
+        console.error('Error inserting updated items:', insertItemsError);
+        return NextResponse.json({ error: 'Failed to update order items' }, { status: 500 });
+      }
+    }
+
+    console.log(`Sales order ${id} updated successfully`);
+
+    return NextResponse.json({
+      message: 'Sales order updated successfully',
+      order: data
+    });
+
+  } catch (error) {
+    console.error('Update sales order error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}

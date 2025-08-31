@@ -1700,7 +1700,13 @@ export function InvoiceBillingDashboard({
             variant="outline"
           >
             <ShoppingCart className="h-4 w-4 mr-2" />
-            Create Quote & Sales Order
+            {initialData?.isEditing 
+              ? (initialData.type === 'quote' 
+                ? 'Update Quote & Create Order' 
+                : 'Update Sales Order'
+              )
+              : 'Create Quote & Sales Order'
+            }
           </Button>
           
           <Button 

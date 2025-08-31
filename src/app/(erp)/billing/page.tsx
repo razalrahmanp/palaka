@@ -35,6 +35,126 @@ export default function BillingPage() {
   } | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(false);
 
+  // Helper function to transform items for API
+  const transformItemsForAPI = (items: BillingData['items']) => {
+    return items.map(item => {
+      const originalPrice = item.originalPrice || item.finalPrice;
+      const finalPrice = item.finalPrice;
+      const discountPercentage = item.discountPercentage || 0;
+      
+      return {
+        product_id: item.isCustom ? null : (item.product?.product_id || null),
+        custom_product_id: item.isCustom ? (item.customProduct?.id || null) : null,
+        name: item.isCustom ? item.customProduct?.name : item.product?.product_name,
+        quantity: item.quantity,
+        unit_price: originalPrice,
+        final_price: finalPrice,
+        total_price: item.totalPrice,
+        discount_percentage: discountPercentage,
+        supplier_name: item.isCustom ? item.customProduct?.supplier_name : item.product?.supplier_name,
+        supplier_id: item.isCustom ? item.customProduct?.supplier_id : null,
+        type: item.isCustom ? 'new' : 'existing',
+        ...(item.isCustom && {
+          image_url: null,
+          base_product_name: item.customProduct?.name,
+          specifications: item.customProduct?.description,
+          materials: [],
+          dimensions: null,
+          finish: null,
+          color: null,
+          custom_instructions: item.customProduct?.description,
+          estimated_delivery_days: item.customProduct?.lead_time_days || 30,
+          complexity_level: 'medium',
+          status: 'pending',
+          notes: null,
+          configuration: item.customProduct?.config_schema || {}
+        })
+      };
+    });
+  };
+
+  // Helper function to check if EMI payment is selected
+  const hasEMIPayment = (paymentMethods: BillingData['paymentMethods']) => {
+    return paymentMethods?.some(pm => pm.type === 'emi') ?? false;
+  };
+
+  // Helper function to calculate EMI plan
+  const calculateEMIPlan = (data: BillingData) => {
+    const emiPayment = data.paymentMethods?.find(pm => pm.type === 'emi');
+    if (!emiPayment) return null;
+
+    const totalAmount = data.finalTotal;
+    const hasCard = data.bajajFinanceData?.hasBajajCard ?? false;
+    const newCustomerFee = hasCard ? 0 : 530;
+
+    if (data.bajajFinanceData?.plan) {
+      return {
+        type: data.bajajFinanceData.plan.code,
+        totalMonths: data.bajajFinanceData.plan.months,
+        emiMonths: data.bajajFinanceData.plan.months - (data.bajajFinanceData.plan.downPaymentMonths || 0),
+        downPaymentMonths: data.bajajFinanceData.plan.downPaymentMonths || 0,
+        interestRate: 0,
+        processingFee: data.bajajFinanceData.plan.processingFee || 0,
+        newCustomerFee: newCustomerFee,
+        isNewCustomer: !hasCard
+      };
+    }
+
+    // Fallback plan selection
+    if (totalAmount < 50000) {
+      return {
+        type: "6/0",
+        totalMonths: 6,
+        emiMonths: 6,
+        downPaymentMonths: 0,
+        interestRate: 0,
+        processingFee: 0,
+        newCustomerFee: newCustomerFee,
+        isNewCustomer: !hasCard
+      };
+    } else {
+      return {
+        type: "10/2",
+        totalMonths: 10,
+        emiMonths: 8,
+        downPaymentMonths: 2,
+        interestRate: 0,
+        processingFee: 0,
+        newCustomerFee: newCustomerFee,
+        isNewCustomer: !hasCard
+      };
+    }
+  };
+
+  // Helper function to calculate monthly EMI
+  const calculateMonthlyEMI = (data: BillingData) => {
+    const emiPayment = data.paymentMethods?.find(pm => pm.type === 'emi');
+    if (!emiPayment) return 0;
+
+    if (data.bajajFinanceData?.monthlyEMI) {
+      return data.bajajFinanceData.monthlyEMI;
+    }
+
+    const totalAmount = data.finalTotal;
+    const hasCard = data.bajajFinanceData?.hasBajajCard ?? false;
+    const newCustomerFee = hasCard ? 0 : 530;
+    const totalAmountWithFee = totalAmount + newCustomerFee;
+
+    if (totalAmount < 50000) {
+      return Math.round(totalAmountWithFee / 6);
+    } else {
+      return Math.round(totalAmountWithFee / 10);
+    }
+  };
+
+  // Helper function to get Bajaj finance amount
+  const getBajajFinanceAmount = (data: BillingData) => {
+    const emiPayment = data.paymentMethods?.find(pm => pm.type === 'emi');
+    if (!emiPayment) return 0;
+
+    return data.bajajFinanceData?.financeAmount || data.finalTotal;
+  };
+
   // Function to load quote data into the billing form
   const handleQuoteSelect = async (quote: {
     id: string;
@@ -143,6 +263,183 @@ export default function BillingPage() {
 
   // Combined function to create both quote and sales order in one action
   const handleCreateQuoteAndSalesOrder = async (data: BillingData) => {
+    // Check if we're editing existing data
+    if (initialData?.isEditing) {
+      if (initialData.type === 'quote') {
+        // For quote editing: Update quote AND create sales order
+        await handleUpdateQuoteAndCreateOrder(data);
+      } else if (initialData.type === 'order') {
+        // For order editing: Update the existing sales order
+        await handleUpdateSalesOrder(data);
+      }
+    } else {
+      // For new invoice: Create both quote and sales order
+      await handleCreateNewQuoteAndSalesOrder(data);
+    }
+  };
+
+  // Function to update existing quote and create sales order
+  const handleUpdateQuoteAndCreateOrder = async (data: BillingData) => {
+    setIsProcessing(true);
+    try {
+      console.log("Updating quote and creating sales order:", data);
+      
+      if (!initialData?.existingId) {
+        toast.error("No quote ID found for updating");
+        return;
+      }
+
+      // Step 1: Update the existing quote
+      const updateQuoteResponse = await fetch(`/api/sales/quotes/${initialData.existingId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          customer_id: data.customer?.customer_id || data.customer?.id,
+          customer: data.customer?.name,
+          items: transformItemsForAPI(data.items),
+          total_price: data.finalTotal,
+          original_price: data.totals.original_price,
+          final_price: data.finalTotal,
+          discount_amount: data.totals.original_price + data.totals.freight_charges - data.finalTotal,
+          freight_charges: data.totals.freight_charges,
+          tax_percentage: data.totals.tax_percentage || 18.00,
+          tax_amount: data.totals.tax,
+          taxable_amount: data.totals.subtotal,
+          grand_total: data.totals.grandTotal,
+          notes: data.notes,
+          status: 'Converted',
+          created_by: data.selectedSalesman?.user_id || null,
+          emi_enabled: hasEMIPayment(data.paymentMethods),
+          emi_plan: calculateEMIPlan(data),
+          emi_monthly: calculateMonthlyEMI(data),
+          bajaj_finance_amount: getBajajFinanceAmount(data),
+        }),
+      });
+
+      if (!updateQuoteResponse.ok) {
+        toast.error("Failed to update quote");
+        return;
+      }
+
+      const updatedQuote = await updateQuoteResponse.json();
+      
+      // Step 2: Create new sales order linked to the updated quote
+      const salesOrderResponse = await fetch('/api/sales/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          quote_id: initialData.existingId,
+          customer_id: data.customer?.customer_id || data.customer?.id,
+          customer: data.customer?.name,
+          items: transformItemsForAPI(data.items),
+          total_price: updatedQuote.total_price,
+          original_price: updatedQuote.original_price,
+          final_price: updatedQuote.final_price,
+          discount_amount: updatedQuote.discount_amount,
+          freight_charges: updatedQuote.freight_charges,
+          tax_percentage: updatedQuote.tax_percentage,
+          tax_amount: updatedQuote.tax_amount,
+          taxable_amount: updatedQuote.taxable_amount,
+          grand_total: updatedQuote.grand_total,
+          delivery_date: data.deliveryDate,
+          delivery_floor: data.deliveryFloor,
+          first_floor_awareness: data.isFirstFloorAwareness,
+          payment_methods: data.paymentMethods,
+          notes: data.notes,
+          status: 'confirmed',
+          created_by: data.selectedSalesman?.user_id || null,
+          emi_enabled: updatedQuote.emi_enabled,
+          emi_plan: updatedQuote.emi_plan,
+          emi_monthly: updatedQuote.emi_monthly,
+          bajaj_finance_amount: updatedQuote.bajaj_finance_amount,
+        }),
+      });
+
+      if (!salesOrderResponse.ok) {
+        toast.error("Failed to create sales order");
+        return;
+      }
+
+      const createdSalesOrder = await salesOrderResponse.json();
+      console.log("Quote updated and sales order created:", createdSalesOrder);
+
+      toast.success("Quote updated and Sales Order created successfully!");
+      
+    } catch (error) {
+      console.error("Failed to update quote and create sales order:", error);
+      toast.error("Failed to update quote and create sales order");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Function to update existing sales order
+  const handleUpdateSalesOrder = async (data: BillingData) => {
+    setIsProcessing(true);
+    try {
+      console.log("Updating sales order:", data);
+      
+      if (!initialData?.existingId) {
+        toast.error("No sales order ID found for updating");
+        return;
+      }
+
+      const updateOrderResponse = await fetch(`/api/sales/orders/${initialData.existingId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          customer_id: data.customer?.customer_id || data.customer?.id,
+          customer: data.customer?.name,
+          items: transformItemsForAPI(data.items),
+          total_price: data.finalTotal,
+          original_price: data.totals.original_price,
+          final_price: data.finalTotal,
+          discount_amount: data.totals.original_price + data.totals.freight_charges - data.finalTotal,
+          freight_charges: data.totals.freight_charges,
+          tax_percentage: data.totals.tax_percentage || 18.00,
+          tax_amount: data.totals.tax,
+          taxable_amount: data.totals.subtotal,
+          grand_total: data.totals.grandTotal,
+          delivery_date: data.deliveryDate,
+          delivery_floor: data.deliveryFloor,
+          first_floor_awareness: data.isFirstFloorAwareness,
+          payment_methods: data.paymentMethods,
+          notes: data.notes,
+          status: 'confirmed',
+          created_by: data.selectedSalesman?.user_id || null,
+          emi_enabled: hasEMIPayment(data.paymentMethods),
+          emi_plan: calculateEMIPlan(data),
+          emi_monthly: calculateMonthlyEMI(data),
+          bajaj_finance_amount: getBajajFinanceAmount(data),
+        }),
+      });
+
+      if (!updateOrderResponse.ok) {
+        toast.error("Failed to update sales order");
+        return;
+      }
+
+      const updatedOrder = await updateOrderResponse.json();
+      console.log("Sales order updated:", updatedOrder);
+
+      toast.success("Sales Order updated successfully!");
+      
+    } catch (error) {
+      console.error("Failed to update sales order:", error);
+      toast.error("Failed to update sales order");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Original function for creating new quote and sales order (renamed for clarity)
+  const handleCreateNewQuoteAndSalesOrder = async (data: BillingData) => {
     setIsProcessing(true);
     try {
       console.log("Creating quote and sales order:", data);
@@ -558,17 +855,15 @@ export default function BillingPage() {
                 <span className="text-sm">Loading data...</span>
               </div>
             )}
-            {initialData && (
-              <button
-                onClick={handleNewInvoice}
-                className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors flex items-center gap-2 text-sm"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 5v14M5 12h14"/>
-                </svg>
-                New Invoice
-              </button>
-            )}
+            <button
+              onClick={handleNewInvoice}
+              className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors flex items-center gap-2 text-sm"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14"/>
+              </svg>
+              {initialData ? 'New Invoice' : 'New Invoice'}
+            </button>
           </div>
         </div>
         

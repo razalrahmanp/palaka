@@ -41,6 +41,9 @@ interface Quote {
   grand_total: number;
   customers?: { name: string }; // Legacy field for backward compatibility
   users?: { name: string }; // Legacy field for backward compatibility
+  emi_enabled?: boolean; // Bajaj financing enabled
+  bajaj_finance_amount?: number; // Bajaj finance amount
+  tax_percentage?: number; // Tax rate
 }
 
 interface SalesOrder {
@@ -66,6 +69,8 @@ interface SalesOrder {
   total_paid?: number; // From payment summary
   balance_due?: number; // From payment summary
   payment_status?: string; // From payment summary
+  emi_enabled?: boolean; // Bajaj financing enabled
+  bajaj_finance_amount?: number; // Bajaj finance amount
 }
 
 interface OrderQuoteSidebarProps {
@@ -470,7 +475,26 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
                             {showQuotes ? 'Quote' : 'Order'} #{item.id.slice(-8)}
                           </span>
                         </div>
-                        {getStatusBadge(item.status)}
+                        <div className="flex flex-col items-end gap-1">
+                          {getStatusBadge(item.status)}
+                        </div>
+                      </div>
+
+                      {/* Badges Row */}
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {/* Bajaj Finance Badge */}
+                        {(showQuotes ? (item as Quote).emi_enabled : (item as SalesOrder).emi_enabled) && (
+                          <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-800 border-blue-200">
+                            💳 Bajaj
+                          </Badge>
+                        )}
+                        
+                        {/* Tax Applied Badge */}
+                        {(showQuotes ? (item as Quote).tax_amount > 0 : false) && (
+                          <Badge variant="secondary" className="text-xs bg-green-100 text-green-800 border-green-200">
+                            📋 Tax
+                          </Badge>
+                        )}
                       </div>
 
                       {/* Customer */}

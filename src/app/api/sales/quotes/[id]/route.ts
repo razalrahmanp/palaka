@@ -1,6 +1,76 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabaseAdmin';
 
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+
+  if (!id) {
+    return NextResponse.json({ error: 'Missing quote ID' }, { status: 400 });
+  }
+
+  try {
+    // Fetch quote with customer details
+    const { data: quoteData, error: quoteError } = await supabase
+      .from('quotes')
+      .select(`
+        *,
+        customers:customer_id (
+          id,
+          name,
+          email,
+          phone,
+          address,
+          city,
+          state,
+          pincode,
+          floor,
+          notes,
+          formatted_address,
+          status,
+          source
+        ),
+        users:created_by (
+          id,
+          name,
+          email
+        )
+      `)
+      .eq('id', id)
+      .single();
+
+    if (quoteError) {
+      console.error('Error fetching quote:', quoteError);
+      return NextResponse.json({ error: quoteError.message }, { status: 500 });
+    }
+
+    // Enhance the quote with complete customer details
+    const quoteWithDetails = {
+      ...quoteData,
+      customer_details: quoteData.customers, // Provide customer details for easy access
+      sales_representative: quoteData.users,
+      
+      // Keep backward compatibility
+      customer: quoteData.customers,
+      users: quoteData.users,
+      
+      // Add flags for easy checking
+      has_customer_details: !!quoteData.customers,
+      is_financed: quoteData.emi_enabled || quoteData.bajaj_finance_amount > 0
+    };
+
+    return NextResponse.json(quoteWithDetails);
+  } catch (error) {
+    console.error('Get quote error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

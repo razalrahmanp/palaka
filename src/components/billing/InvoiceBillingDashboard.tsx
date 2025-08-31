@@ -459,6 +459,28 @@ export function InvoiceBillingDashboard({
           
           console.log("Safe customer data:", safeCustomerData);
           setCustomer(safeCustomerData);
+          
+          // Also update the customer form fields so they show in the invoice section
+          setCustomerForm({
+            customer_id: safeCustomerData.customer_id,
+            name: safeCustomerData.name,
+            phone: safeCustomerData.phone,
+            email: safeCustomerData.email,
+            address: safeCustomerData.address,
+            floor: safeCustomerData.floor,
+            city: safeCustomerData.city,
+            state: safeCustomerData.state,
+            pincode: safeCustomerData.pincode,
+            notes: safeCustomerData.notes,
+            tags: safeCustomerData.tags,
+            latitude: safeCustomerData.latitude,
+            longitude: safeCustomerData.longitude,
+            formatted_address: safeCustomerData.formatted_address,
+            status: safeCustomerData.status,
+            source: safeCustomerData.source
+          });
+          
+          console.log("Customer form populated with address and contact info");
         }
 
         // Populate invoice details

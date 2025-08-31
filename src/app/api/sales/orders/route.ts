@@ -14,6 +14,8 @@ type OrderRow = {
   final_price?: number | null;
   original_price?: number | null;
   discount_amount?: number | null;
+  emi_enabled?: boolean | null;
+  bajaj_finance_amount?: number | null;
   customer: { name: string } | null;
   sales_representative?: {
     id: string;
@@ -90,6 +92,8 @@ type SupabaseOrderRow = {
   final_price?: number | null;
   original_price?: number | null;
   discount_amount?: number | null;
+  emi_enabled?: boolean | null;
+  bajaj_finance_amount?: number | null;
   customers?: { 
     name: string 
   } | { 
@@ -122,6 +126,8 @@ export async function GET() {
         final_price,
         original_price,
         discount_amount,
+        emi_enabled,
+        bajaj_finance_amount,
         customers!customer_id(name)
       `)
       .order('created_at', { ascending: false });
@@ -164,6 +170,8 @@ export async function GET() {
     final_price: o.final_price,
     original_price: o.original_price,
     discount_amount: o.discount_amount,
+    emi_enabled: o.emi_enabled,
+    bajaj_finance_amount: o.bajaj_finance_amount,
     customer: o.customers 
       ? Array.isArray(o.customers) 
         ? (o.customers.length > 0 ? { name: o.customers[0].name } : null)
@@ -346,6 +354,8 @@ export async function GET() {
       original_price: order.original_price ?? calculatedTotal,
       discount_amount: order.discount_amount ?? 0,
       expected_delivery_date: order.expected_delivery_date,
+      emi_enabled: order.emi_enabled,
+      bajaj_finance_amount: order.bajaj_finance_amount,
       items: orderItems,
       // Add payment information
       total_paid: paymentInfo.total_paid,

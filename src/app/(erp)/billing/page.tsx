@@ -36,7 +36,24 @@ export default function BillingPage() {
   const [isLoadingData, setIsLoadingData] = useState(false);
 
   // Function to load quote data into the billing form
-  const handleQuoteSelect = async (quote: { id: string; customer_id: string; status: string; created_at: string; final_price: number; original_price: number; discount_amount: number; freight_charges: number; tax_amount: number; grand_total: number; customer?: string; customers?: { name: string }; users?: { name: string } }) => {
+  const handleQuoteSelect = async (quote: {
+    id: string;
+    customer_id: string;
+    customer?: string;
+    status: string;
+    created_at: string;
+    final_price: number;
+    original_price: number;
+    discount_amount: number;
+    freight_charges: number;
+    tax_amount: number;
+    grand_total: number;
+    customers?: { name: string };
+    users?: { name: string };
+    emi_enabled?: boolean;
+    bajaj_finance_amount?: number;
+    tax_percentage?: number;
+  }) => {
     console.log("Selected quote:", quote);
     setIsLoadingData(true);
     
@@ -57,7 +74,32 @@ export default function BillingPage() {
   };
 
   // Function to load sales order data into the billing form
-  const handleOrderSelect = async (order: { id: string; quote_id?: string; customer_id: string; status: string; created_at: string; final_price: number; original_price: number; discount_amount: number; freight_charges: number; tax_amount: number; grand_total: number; customer?: string; customers?: { name: string }; users?: { name: string } }) => {
+  const handleOrderSelect = async (order: {
+    id: string;
+    quote_id?: string;
+    customer_id: string;
+    customer?: { name: string } | null;
+    sales_representative?: {
+      id: string;
+      name: string;
+      email: string;
+    } | null;
+    status: string;
+    date: string;
+    updated_at?: string;
+    expected_delivery_date?: string;
+    final_price: number;
+    original_price: number;
+    discount_amount: number;
+    freight_charges: number;
+    tax_amount: number;
+    grand_total: number;
+    total_paid?: number;
+    balance_due?: number;
+    payment_status?: string;
+    emi_enabled?: boolean;
+    bajaj_finance_amount?: number;
+  }) => {
     console.log("Selected order:", order);
     setIsLoadingData(true);
     

@@ -54,7 +54,12 @@ export async function GET(
           address,
           city,
           state,
-          pincode
+          pincode,
+          floor,
+          notes,
+          formatted_address,
+          status,
+          source
         )
       `)
       .eq('id', id)
@@ -272,6 +277,7 @@ export async function GET(
       ...orderData,
       items: mappedItems,
       customer: orderData.customers,
+      customer_details: orderData.customers, // Add customer_details for easy access in billing form
       sales_representative: salesRepresentative,
       
       // Payment summary (using actual invoice/payment data)

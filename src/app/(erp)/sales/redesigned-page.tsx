@@ -60,7 +60,7 @@ export default function RedesignedSalesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
-  const { handleSaveQuote, handleDeleteOrder } = createSalesHandlers(
+  const { handleSaveQuote, handleDeleteOrder, handleDeleteQuote } = createSalesHandlers(
     currentUser,
     selectedQuote,
     refresh,
@@ -484,6 +484,7 @@ export default function RedesignedSalesPage() {
                   setSelectedQuote(quote);
                   setIsQuoteDetailsOpen(true);
                 }}
+                onDelete={(quoteId) => handleDeleteQuote(quoteId)}
                 formatCurrency={formatCurrency}
                 getStatusColor={getStatusColor}
               />
@@ -566,11 +567,13 @@ export default function RedesignedSalesPage() {
 function QuotesTabContent({ 
   quotes, 
   onView, 
+  onDelete,
   formatCurrency, 
   getStatusColor 
 }: {
   quotes: Quote[];
   onView: (quote: Quote) => void;
+  onDelete: (quoteId: string) => void;
   formatCurrency: (amount: number) => string;
   getStatusColor: (status: string) => string;
 }) {
@@ -729,15 +732,24 @@ function QuotesTabContent({
 
                 {/* Action Buttons */}
                 <div className="border-t border-gray-200 pt-3">
-                  <div className="w-full">
+                  <div className="grid grid-cols-2 gap-3">
                     <Button 
                       variant="outline" 
                       size="sm" 
-                      className="w-full border-blue-200 text-blue-700 hover:bg-blue-50 hover:border-blue-300"
+                      className="border-blue-200 text-blue-700 hover:bg-blue-50 hover:border-blue-300"
                       onClick={() => onView(quote)}
                     >
                       <Eye className="mr-2 h-4 w-4" />
                       View Details
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300"
+                      onClick={() => onDelete(quote.id)}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete
                     </Button>
                   </div>
 

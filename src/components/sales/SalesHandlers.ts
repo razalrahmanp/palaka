@@ -146,5 +146,19 @@ export function createSalesHandlers(
     refresh();
   }
 
-  return { handleSaveQuote, handleDeleteOrder };
+  async function handleDeleteQuote(quoteId: string) {
+    if (!window.confirm('Are you sure you want to delete this quote?')) return;
+    const res = await fetch(`/api/sales/quotes`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: quoteId }),
+    });
+    if (!res.ok) {
+      console.error('Failed to delete quote', await res.json());
+      return;
+    }
+    refresh();
+  }
+
+  return { handleSaveQuote, handleDeleteOrder, handleDeleteQuote };
 }

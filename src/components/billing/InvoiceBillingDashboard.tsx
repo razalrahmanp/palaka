@@ -128,7 +128,6 @@ export function InvoiceBillingDashboard({
   
   // Pricing States
   const [globalDiscount, setGlobalDiscount] = useState(0);
-  const [globalDiscountType, setGlobalDiscountType] = useState<'percentage' | 'amount'>('percentage');
   const [taxPercentage, setTaxPercentage] = useState(18);
   const [freightCharges, setFreightCharges] = useState(0);
   const [deliveryFloor, setDeliveryFloor] = useState('ground'); // New floor selection
@@ -163,9 +162,7 @@ export function InvoiceBillingDashboard({
     if (totalOriginalPrice === 0 || globalDiscount === 0) return items;
 
     // Calculate global discount amount
-    const globalDiscountAmount = globalDiscountType === 'percentage' 
-      ? (totalOriginalPrice * globalDiscount) / 100
-      : globalDiscount;
+    const globalDiscountAmount = globalDiscount;
 
     return items.map(item => {
       // Calculate this item's proportion of the total
@@ -195,16 +192,14 @@ export function InvoiceBillingDashboard({
         globalDiscountApplied: itemGlobalDiscountAmount
       };
     });
-  }, [items, globalDiscount, globalDiscountType, taxPercentage]);
+  }, [items, globalDiscount, taxPercentage]);
 
   // Calculations - Updated to use items with global discount distributed for accurate UI display
   const displayItems = getItemsWithGlobalDiscount();
   const subtotal = Math.round((displayItems.reduce((sum, item) => sum + (item.finalPrice * item.quantity), 0)) * 100) / 100;
   const originalTotal = Math.round((items.reduce((sum, item) => sum + (item.originalPrice * item.quantity), 0)) * 100) / 100;
   const itemDiscountAmount = Math.round((originalTotal - subtotal) * 100) / 100; // Total discounts (individual + global distributed)
-  const globalDiscountAmount = globalDiscountType === 'percentage' 
-    ? Math.round((originalTotal * globalDiscount / 100) * 100) / 100
-    : globalDiscount;
+  const globalDiscountAmount = globalDiscount;
   const totalDiscountAmount = Math.round((itemDiscountAmount) * 100) / 100; // Already includes global discount
   const taxableAmount = Math.round(subtotal * 100) / 100;
   const taxAmount = Math.round((taxableAmount * taxPercentage / 100) * 100) / 100;
@@ -1413,7 +1408,7 @@ export function InvoiceBillingDashboard({
                 {globalDiscountAmount > 0 && (
                   <div className="flex justify-between items-center py-1 bg-blue-50 px-3 rounded border-l-4 border-blue-400">
                     <span className="text-blue-700 text-sm">
-                      → Includes Global Discount ({globalDiscountType === 'percentage' ? globalDiscount + '%' : '₹' + globalDiscount}):
+                      → Includes Global Discount (₹{globalDiscount}):
                     </span>
                     <span className="font-medium text-blue-700 text-sm">₹{globalDiscountAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
@@ -1472,15 +1467,9 @@ export function InvoiceBillingDashboard({
                         min="0"
                         placeholder="0"
                       />
-                      <Select value={globalDiscountType} onValueChange={(value: 'percentage' | 'amount') => setGlobalDiscountType(value)}>
-                        <SelectTrigger className="w-16 h-9 text-xs border-0 border-l border-gray-300 rounded-none bg-gray-50">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="percentage">%</SelectItem>
-                          <SelectItem value="amount">₹</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="w-16 h-9 text-xs border-0 border-l border-gray-300 rounded-none bg-gray-50 flex items-center justify-center font-medium">
+                        ₹
+                      </div>
                     </div>
                     {/* Global discount status indicator */}
                     {globalDiscount > 0 && (

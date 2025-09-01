@@ -163,3 +163,24 @@ export async function PUT(req: NextRequest) {
   }
   return NextResponse.json(data);
 }
+
+export async function DELETE(req: NextRequest) {
+  const body = await req.json();
+  const { id } = body;
+
+  if (!id) {
+    return NextResponse.json({ error: 'Quote ID is required' }, { status: 400 });
+  }
+
+  const { error } = await supabase
+    .from('quotes')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Supabase DELETE quote error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ message: 'Quote deleted successfully' });
+}

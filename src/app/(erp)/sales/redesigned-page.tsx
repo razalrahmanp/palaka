@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   FileText, 
   ShoppingCart, 
@@ -23,7 +24,8 @@ import {
   Truck,
   User,
   Settings,
-  BarChart3
+  BarChart3,
+  TrendingUp
 } from 'lucide-react';
 import { useSalesDataFixed as useSalesData } from '@/components/sales/SalesDataLoaderFixed';
 import { createSalesHandlers } from '@/components/sales/SalesHandlers';
@@ -52,13 +54,14 @@ export default function RedesignedSalesPage() {
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
   const [isQuoteDetailsOpen, setIsQuoteDetailsOpen] = useState(false);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
-  const [isOrderEditModalOpen, setIsOrderEditModalOpen] = useState(false);
+  const [isBasicOrderEditModalOpen, setIsBasicOrderEditModalOpen] = useState(false);
   const [isAssignRepModalOpen, setIsAssignRepModalOpen] = useState(false);
   const [selectedOrderForRepAssignment, setSelectedOrderForRepAssignment] = useState<Order | null>(null);
   
   // Search and filter states
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [timeFilter, setTimeFilter] = useState('all'); // New time filter state
 
   const { handleSaveQuote, handleDeleteOrder, handleDeleteQuote } = createSalesHandlers(
     currentUser,
@@ -93,13 +96,39 @@ export default function RedesignedSalesPage() {
     refresh(); // Refresh the sales data to show updated rep
   };
 
-  // Filter data based on search and status
+  // Helper function to filter by time period
+  const filterByTimePeriod = (item: { created_at?: string; date?: string }, filter: string) => {
+    if (filter === 'all') return true;
+    
+    // Handle both created_at and date field names
+    const dateString = item.created_at || item.date;
+    if (!dateString) return false;
+    
+    const itemDate = new Date(dateString);
+    const now = new Date();
+    
+    switch (filter) {
+      case 'daily':
+        return itemDate.toDateString() === now.toDateString();
+      case 'weekly':
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        return itemDate >= weekAgo;
+      case 'monthly':
+        return itemDate.getMonth() === now.getMonth() && 
+               itemDate.getFullYear() === now.getFullYear();
+      default:
+        return true;
+    }
+  };
+
+  // Filter data based on search, status, and time
   const filteredQuotes = quotes.filter(quote => {
     const matchesSearch = !searchTerm || 
       quote.customer?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       quote.id?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || quote.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesTime = filterByTimePeriod(quote, timeFilter);
+    return matchesSearch && matchesStatus && matchesTime;
   });
 
   const filteredOrders = orders.filter(order => {
@@ -107,10 +136,11 @@ export default function RedesignedSalesPage() {
       order.customer?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.id?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesTime = filterByTimePeriod(order, timeFilter);
+    return matchesSearch && matchesStatus && matchesTime;
   });
 
-  // Enhanced statistics with real payment and invoice data
+  // Enhanced statistics with real payment and invoice data - based on filtered data
   const stats = (() => {
     // Type extension for orders with payment data
     type OrderWithPayment = Order & {
@@ -118,13 +148,25 @@ export default function RedesignedSalesPage() {
       balance_due?: number;
       payment_status?: string;
       payment_count?: number;
+      items?: Array<{
+        cost?: number;
+        unit_price?: number;
+        quantity?: number;
+        final_price?: number;
+      }>;
     };
     
-    const ordersWithPayment = orders as OrderWithPayment[];
+    // Use filtered data for calculations
+    const ordersWithPayment = filteredOrders as OrderWithPayment[];
+    const quotesFiltered = filteredQuotes;
+    
+    // Debug logging
+    console.log(`📈 Sales stats: timeFilter=${timeFilter}, totalOrders=${orders.length}, filteredOrders=${ordersWithPayment.length}, totalQuotes=${quotes.length}, filteredQuotes=${quotesFiltered.length}`);
+    console.log(`💰 Profit calculation: Using final_price (actual amount received) - cost`);
     
     // Basic counts
-    const totalQuotes = quotes.length;
-    const totalOrders = orders.length;
+    const totalQuotes = quotesFiltered.length;
+    const totalOrders = ordersWithPayment.length;
     
     // Revenue calculations using actual payment data
     const totalRevenue = ordersWithPayment.reduce((sum, order) => {
@@ -183,9 +225,52 @@ export default function RedesignedSalesPage() {
     
     // Additional required fields
     const pendingOrders = ordersWithPayment.filter(o => o.status === 'draft').length; // using 'draft' as pending equivalent
-    const convertedQuotes = quotes.filter(q => q.status === 'Converted').length;
+    const convertedQuotes = quotesFiltered.filter(q => q.status === 'Converted').length;
     
-    return {
+    // Profit calculations - using final_price (actual amount received) minus cost
+    const totalProfit = ordersWithPayment.reduce((sum, order) => {
+      if (!order.items || !Array.isArray(order.items)) return sum;
+      
+      const orderProfit = order.items.reduce((itemSum, item) => {
+        // Actual Profit = Final Price (amount received) - Cost
+        const finalPrice = item.final_price || 0; // Actual selling price after discounts
+        const cost = item.cost || 0; // Cost of the product
+        const quantity = item.quantity || 1;
+        
+        // Total profit for this item = (final_price - cost) * quantity
+        const itemProfit = (finalPrice - cost) * quantity;
+        return itemSum + itemProfit;
+      }, 0);
+      
+      return sum + orderProfit;
+    }, 0);
+    
+    const totalCost = ordersWithPayment.reduce((sum, order) => {
+      if (!order.items || !Array.isArray(order.items)) return sum;
+      
+      const orderCost = order.items.reduce((itemSum, item) => {
+        const cost = (item.cost || 0) * (item.quantity || 1);
+        return itemSum + cost;
+      }, 0);
+      
+      return sum + orderCost;
+    }, 0);
+    
+    // Calculate profit margin based on total revenue (final prices)
+    const totalFinalPrice = ordersWithPayment.reduce((sum, order) => {
+      if (!order.items || !Array.isArray(order.items)) return sum;
+      
+      const orderFinalPrice = order.items.reduce((itemSum, item) => {
+        const finalPrice = (item.final_price || 0) * (item.quantity || 1);
+        return itemSum + finalPrice;
+      }, 0);
+      
+      return sum + orderFinalPrice;
+    }, 0);
+    
+    const profitMargin = totalFinalPrice > 0 ? Math.round((totalProfit / totalFinalPrice) * 100) : 0;
+    
+    const result = {
       totalQuotes,
       totalOrders,
       totalRevenue,
@@ -206,8 +291,15 @@ export default function RedesignedSalesPage() {
       partialPaidQuotes,
       fullyPaidQuotes,
       pendingOrders,
-      convertedQuotes
+      convertedQuotes,
+      totalProfit,
+      totalCost,
+      profitMargin
     };
+    
+    console.log(`📈 Sales stats:`, result);
+    
+    return result;
   })();
 
   const formatCurrency = (amount: number) => {
@@ -265,8 +357,35 @@ export default function RedesignedSalesPage() {
         </div>
       </div>
 
+      {/* Filter Controls */}
+      <div className="mb-4">
+        <div className="bg-white/90 backdrop-blur-xl rounded-2xl border border-white/20 shadow-lg p-4">
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-gray-500" />
+              <span className="text-sm font-medium text-gray-700">Time Period:</span>
+              <Select value={timeFilter} onValueChange={setTimeFilter}>
+                <SelectTrigger className="w-32">
+                  <SelectValue placeholder="All time" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Time</SelectItem>
+                  <SelectItem value="daily">Today</SelectItem>
+                  <SelectItem value="weekly">This Week</SelectItem>
+                  <SelectItem value="monthly">This Month</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="text-sm text-gray-500">
+              Showing {timeFilter === 'all' ? 'all' : timeFilter} sales data
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Compact Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 mb-4">
         <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300">
           <CardContent className="p-3">
             <div className="flex items-center justify-between">
@@ -354,6 +473,21 @@ export default function RedesignedSalesPage() {
               </div>
               <div className="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center">
                 <CreditCard className="h-4 w-4" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300">
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-indigo-100 text-xs font-medium">Net Profit</p>
+                <p className="text-xl font-bold mb-1">{formatCurrency(stats.totalProfit)}</p>
+                <p className="text-indigo-100 text-xs">{stats.profitMargin}% of sales</p>
+              </div>
+              <div className="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center">
+                <TrendingUp className="h-4 w-4" />
               </div>
             </div>
           </CardContent>
@@ -499,7 +633,7 @@ export default function RedesignedSalesPage() {
                 }}
                 onEdit={(order) => {
                   setSelectedOrder(order);
-                  setIsOrderEditModalOpen(true);
+                  setIsBasicOrderEditModalOpen(true);
                 }}
                 onDelete={handleDeleteOrder}
                 onAssignRep={isAdmin ? handleAssignRep : undefined}
@@ -525,8 +659,8 @@ export default function RedesignedSalesPage() {
         setIsQuoteModalOpen={setIsQuoteModalOpen}
         isOrderModalOpen={isOrderModalOpen}
         setIsOrderModalOpen={setIsOrderModalOpen}
-        isOrderEditModalOpen={isOrderEditModalOpen}
-        setIsOrderEditModalOpen={setIsOrderEditModalOpen}
+        isBasicOrderEditModalOpen={isBasicOrderEditModalOpen}
+        setIsBasicOrderEditModalOpen={setIsBasicOrderEditModalOpen}
         selectedQuote={selectedQuote}
         selectedOrder={selectedOrder}
         customers={customers}

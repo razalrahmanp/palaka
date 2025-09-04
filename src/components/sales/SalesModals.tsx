@@ -2,7 +2,7 @@ import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { QuoteBuilderForm } from '@/components/sales/QuoteBuilderForm';
 import { OrderDetails } from '@/components/sales/OrderDetails';
-import { OrderEditForm } from '@/components/sales/OrderEditForm';
+import { BasicOrderEditForm } from '@/components/sales/BasicOrderEditForm';
 import { Quote, Order, Product, Customer, User, OrderItem } from '@/types';
 
 type QuoteFormData = {
@@ -18,8 +18,8 @@ type Props = {
   setIsQuoteModalOpen: (v: boolean) => void;
   isOrderModalOpen: boolean;
   setIsOrderModalOpen: (v: boolean) => void;
-  isOrderEditModalOpen: boolean;
-  setIsOrderEditModalOpen: (v: boolean) => void;
+  isBasicOrderEditModalOpen: boolean;
+  setIsBasicOrderEditModalOpen: (v: boolean) => void;
   selectedQuote: Quote | null;
   selectedOrder: Order | null;
   customers: Customer[];
@@ -37,8 +37,8 @@ export function SalesModals({
   setIsQuoteModalOpen,
   isOrderModalOpen,
   setIsOrderModalOpen,
-  isOrderEditModalOpen,
-  setIsOrderEditModalOpen,
+  isBasicOrderEditModalOpen,
+  setIsBasicOrderEditModalOpen,
   selectedQuote,
   selectedOrder,
   customers,
@@ -97,30 +97,38 @@ export function SalesModals({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isOrderEditModalOpen} onOpenChange={setIsOrderEditModalOpen}>
+      {/* Basic Order Edit Modal */}
+      <Dialog open={isBasicOrderEditModalOpen} onOpenChange={setIsBasicOrderEditModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Order: {selectedOrder?.id}</DialogTitle>
+            <DialogTitle>Edit Order Details: {selectedOrder?.id}</DialogTitle>
+            <DialogDescription>
+              Update delivery date, status, and delivery address
+            </DialogDescription>
           </DialogHeader>
           {selectedOrder && (
-            <OrderEditForm
+            <BasicOrderEditForm
               order={selectedOrder}
-              customerId={customers.find((c) => c.name === selectedOrder.customer?.name)?.id || ''}
-              availableProducts={products}
               onSave={async (updates) => {
-                const res = await fetch(`/api/sales/orders`, {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(updates),
-                });
-                if (res.ok) {
-                  refresh();
-                  setIsOrderEditModalOpen(false);
-                } else {
-                  console.error(await res.json());
+                try {
+                  const res = await fetch(`/api/sales/orders/${selectedOrder.id}/basic-update`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updates),
+                  });
+                  
+                  if (res.ok) {
+                    refresh();
+                    setIsBasicOrderEditModalOpen(false);
+                  } else {
+                    const error = await res.json();
+                    console.error('Failed to update order:', error);
+                  }
+                } catch (error) {
+                  console.error('Error updating order:', error);
                 }
               }}
-              onCancel={() => setIsOrderEditModalOpen(false)}
+              onCancel={() => setIsBasicOrderEditModalOpen(false)}
             />
           )}
         </DialogContent>

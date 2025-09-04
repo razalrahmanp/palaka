@@ -28,6 +28,8 @@ type ItemRow = {
   order_id: string;
   quantity: number;
   unit_price: number | null;
+  cost?: number | null;
+  final_price?: number | null;
   product_id?: string | null;
   custom_product_id?: string | null;
   product_name?: string | null;
@@ -37,6 +39,7 @@ type ItemRow = {
   products?: {
     name: string;
     price: number;
+    cost?: number;
     sku?: string;
     supplier_id?: string;
     suppliers?: { name: string }[];
@@ -53,6 +56,8 @@ type ItemQueryResult = {
   order_id: string;
   quantity: number;
   unit_price: number | null;
+  cost?: number | null;
+  final_price?: number | null;
   product_id?: string | null;
   custom_product_id?: string | null;
   name?: string | null;
@@ -60,22 +65,26 @@ type ItemQueryResult = {
   products?: {
     name: string;
     price: number;
+    cost?: number;
     sku?: string;
     suppliers?: { name: string }[];
   } | {
     name: string;
     price: number;
+    cost?: number;
     sku?: string;
     suppliers?: { name: string }[];
   }[] | null;
   custom_products?: {
     name: string;
     price: number;
+    cost_price?: number;
     sku?: string;
     supplier?: { name: string }[] | { name: string };
   } | {
     name: string;
     price: number;
+    cost_price?: number;
     sku?: string;
     supplier?: { name: string }[] | { name: string };
   }[] | null;
@@ -233,12 +242,14 @@ export async function GET() {
       order_id,
       quantity,
       unit_price,
+      cost,
+      final_price,
       product_id,
       custom_product_id,
       name,
       supplier_name,
-      products:product_id(name, sku, price, suppliers(name)),
-      custom_products:custom_product_id(name, sku, price, supplier:supplier_id(name))
+      products:product_id(name, sku, price, cost, suppliers(name)),
+      custom_products:custom_product_id(name, sku, price, cost_price, supplier:supplier_id(name))
     `);
 
   if (itemsError) {
@@ -254,6 +265,7 @@ export async function GET() {
     let productName = null;
     let sku = null;
     let supplierName = i.supplier_name;
+    let productCost = 0; // Default cost
 
     if (isCustomProduct && i.custom_products) {
       // Handle custom product
@@ -264,6 +276,7 @@ export async function GET() {
       if (customProduct) {
         productName = customProduct.name;
         sku = customProduct.sku;
+        productCost = customProduct.cost_price || 0; // Use cost_price from custom_products table
         
         // Handle supplier from custom product
         if (customProduct.supplier) {
@@ -284,12 +297,13 @@ export async function GET() {
       const product = Array.isArray(i.products) 
         ? (i.products.length > 0 && i.products[0] ? i.products[0] : null)
         : (i.products && typeof i.products === 'object' && 'name' in i.products) 
-          ? (i.products as {name: string, sku?: string, suppliers?: {name: string}[]}) 
+          ? (i.products as {name: string, sku?: string, cost?: number, suppliers?: {name: string}[]}) 
           : null;
       
       if (product) {
         productName = product.name;
         sku = product.sku;
+        productCost = product.cost || 0; // Extract cost from products table
         
         // Extract supplier info from regular product
         if (product.suppliers && product.suppliers.length > 0) {
@@ -304,6 +318,8 @@ export async function GET() {
       order_id: i.order_id,
       quantity: i.quantity,
       unit_price: i.unit_price,
+      cost: productCost, // Use cost from source tables
+      final_price: i.final_price,
       product_id: i.product_id,
       product_name: productName,
       supplier_name: supplierName,
@@ -321,6 +337,8 @@ export async function GET() {
         name: i.product_name || "(no name)",
         quantity: i.quantity ?? 0,
         price: i.unit_price ?? 0,
+        cost: i.cost ?? 0, // Now coming from products/custom_products tables
+        final_price: i.final_price ?? 0,
         supplier_name: i.supplier_name || "N/A",
         sku: i.sku || null,
         product_id: i.product_id || null,

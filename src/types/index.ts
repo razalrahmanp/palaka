@@ -87,9 +87,10 @@ export interface OrderItem {
   quantity: number; 
   price: number;
   unit_price?: number; // Optional, used for quotes
+  cost?: number; // Cost price for profit calculation
+  final_price?: number; // Final price after discounts
   configuration?: Record<string, unknown>;
   supplier_name?: string;
-  
 }
 
 // In types.ts
@@ -208,6 +209,11 @@ export interface Order {
     name: string;
     email: string;
   };
+  // Additional delivery fields
+  expected_delivery_date?: string;
+  delivery_floor?: string;
+  first_floor_awareness?: boolean;
+  notes?: string;
 }
 
 

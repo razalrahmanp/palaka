@@ -567,26 +567,12 @@ export async function PATCH(
           quantity: itemData.quantity || 1,
           unit_price: itemData.unit_price || 0,
           final_price: itemData.final_price || itemData.unit_price || 0,
-          total_price: itemData.total_price || 0,
+          cost: itemData.cost || 0,
           discount_percentage: itemData.discount_percentage || 0,
           name: itemData.name || null,
           supplier_name: itemData.supplier_name || null,
           supplier_id: itemData.supplier_id || null,
-          type: itemData.type || 'existing',
-          // Custom product fields
-          image_url: itemData.image_url || null,
-          base_product_name: itemData.base_product_name || null,
-          specifications: itemData.specifications || null,
-          materials: itemData.materials || null,
-          dimensions: itemData.dimensions || null,
-          finish: itemData.finish || null,
-          color: itemData.color || null,
-          custom_instructions: itemData.custom_instructions || null,
-          estimated_delivery_days: itemData.estimated_delivery_days || null,
-          complexity_level: itemData.complexity_level || null,
-          status: itemData.status || null,
-          notes: itemData.notes || null,
-          configuration: itemData.configuration || null
+          image_url: itemData.image_url || null
         };
       });
 

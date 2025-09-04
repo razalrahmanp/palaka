@@ -482,8 +482,10 @@ export async function PATCH(
     
     if (body.customer_id !== undefined) updateData.customer_id = body.customer_id;
     // Note: 'customer' field doesn't exist in sales_orders table, only customer_id
-    if (body.items !== undefined) updateData.items = body.items;
-    if (body.total_price !== undefined) updateData.total_price = body.total_price;
+    // Note: 'items' field doesn't exist in sales_orders table, handled separately below
+    // if (body.items !== undefined) updateData.items = body.items;
+    // Note: 'total_price' field doesn't exist in sales_orders table, only final_price
+    // if (body.total_price !== undefined) updateData.total_price = body.total_price;
     if (body.original_price !== undefined) updateData.original_price = body.original_price;
     if (body.final_price !== undefined) updateData.final_price = body.final_price;
     if (body.discount_amount !== undefined) updateData.discount_amount = body.discount_amount;
@@ -492,10 +494,11 @@ export async function PATCH(
     if (body.tax_amount !== undefined) updateData.tax_amount = body.tax_amount;
     if (body.taxable_amount !== undefined) updateData.taxable_amount = body.taxable_amount;
     if (body.grand_total !== undefined) updateData.grand_total = body.grand_total;
-    if (body.delivery_date !== undefined) updateData.delivery_date = body.delivery_date;
+    if (body.delivery_date !== undefined) updateData.expected_delivery_date = body.delivery_date; // Map to correct column
     if (body.delivery_floor !== undefined) updateData.delivery_floor = body.delivery_floor;
     if (body.first_floor_awareness !== undefined) updateData.first_floor_awareness = body.first_floor_awareness;
-    if (body.payment_methods !== undefined) updateData.payment_methods = body.payment_methods;
+    // Note: payment_methods field doesn't exist in sales_orders table schema
+    // if (body.payment_methods !== undefined) updateData.payment_methods = body.payment_methods;
     if (body.notes !== undefined) updateData.notes = body.notes;
     if (body.status !== undefined) updateData.status = body.status;
     if (body.created_by !== undefined) updateData.created_by = body.created_by;
@@ -517,6 +520,12 @@ export async function PATCH(
       freight_charges: updateData.freight_charges,
       has_freight_charges: 'freight_charges' in updateData,
       freight_value: body.freight_charges
+    });
+    console.log('Schema mappings applied:', {
+      delivery_date_mapped_to: 'expected_delivery_date',
+      payment_methods_excluded: 'field does not exist in sales_orders table',
+      items_excluded: 'items handled separately in sales_order_items table',
+      total_price_excluded: 'field does not exist in sales_orders table, use final_price'
     });
 
     // Update the sales order

@@ -89,7 +89,9 @@ export async function GET(
       amount,
       method,
       payment_date,
-      bank_account_id
+      bank_account_id,
+      upi_account_id,
+      reference
     } = body;
 
     // Validate required fields
@@ -101,13 +103,16 @@ export async function GET(
       );
     }
 
-    // Validate bank account for bank transfer and cheque methods
-    if ((method === 'bank_transfer' || method === 'cheque') && (!bank_account_id || bank_account_id.trim() === '')) {
-      console.log('Validation failed: Missing bank account for bank transfer/cheque', { method, bank_account_id });
-      return NextResponse.json(
-        { error: 'Bank account is required for bank transfer and cheque payments' },
-        { status: 400 }
-      );
+    // Validate account selection for applicable payment methods
+    if (['bank_transfer', 'cheque', 'upi'].includes(method)) {
+      const accountId = method === 'upi' ? upi_account_id : bank_account_id;
+      if (!accountId || accountId.trim() === '') {
+        console.log('Validation failed: Missing account for method', { method, bank_account_id, upi_account_id });
+        return NextResponse.json(
+          { error: `Account selection is required for ${method} payments` },
+          { status: 400 }
+        );
+      }
     }
 
     // Get the sales order details using correct column names
@@ -175,14 +180,27 @@ export async function GET(
     }
 
     // Insert the payment using the actual database structure
+    const paymentData: {
+      invoice_id: string;
+      amount: number;
+      method: string;
+      date: string;
+      reference?: string;
+    } = {
+      invoice_id: invoice.id,
+      amount: parseFloat(amount),
+      method,
+      date: payment_date || new Date().toISOString().split('T')[0]
+    };
+
+    // Add reference if provided
+    if (reference && reference.trim() !== '') {
+      paymentData.reference = reference;
+    }
+
     const { data: payment, error } = await supabase
       .from('payments')
-      .insert({
-        invoice_id: invoice.id,
-        amount: parseFloat(amount),
-        method,
-        date: payment_date || new Date().toISOString().split('T')[0]
-      })
+      .insert(paymentData)
       .select('id, invoice_id, amount, date, method')
       .single();
 
@@ -191,43 +209,91 @@ export async function GET(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // If payment method is bank_transfer or cheque, create a bank transaction
-    if ((method === 'bank_transfer' || method === 'cheque') && bank_account_id) {
+    // Handle bank account transactions for applicable payment methods
+    let targetAccountId = null;
+
+    if (method === 'bank_transfer' || method === 'cheque') {
+      targetAccountId = bank_account_id;
+    } else if (method === 'upi') {
+      targetAccountId = upi_account_id;
+    }
+
+    if (targetAccountId) {
       try {
-        // Verify bank account exists
-        const { data: bankAccount, error: bankAccountError } = await supabase
+        // Verify account exists
+        const { data: account, error: accountError } = await supabase
           .from('bank_accounts')
-          .select('id, name, current_balance')
-          .eq('id', bank_account_id)
+          .select('id, name, current_balance, account_type, linked_bank_account_id')
+          .eq('id', targetAccountId)
           .single();
 
-        if (bankAccountError || !bankAccount) {
-          console.error('Bank account not found:', bankAccountError);
+        if (accountError || !account) {
+          console.error('Account not found:', accountError);
           // Don't fail the payment, just log the error
         } else {
-          // Create bank transaction (credit - money coming in)
+          // Create bank transaction (deposit - money coming in)
+          const transactionDescription = `Payment received for Sales Order #${orderId} via ${method}`;
+          const transactionReference = reference || `Order-${orderId}`;
+
           const { error: transactionError } = await supabase
             .from('bank_transactions')
             .insert({
-              bank_account_id: bank_account_id,
-              type: 'credit',
+              bank_account_id: targetAccountId,
+              type: 'deposit',
               amount: parseFloat(amount),
-              description: `Payment received for Sales Order #${orderId} via ${method}`,
-              transaction_date: payment_date || new Date().toISOString().split('T')[0],
-              reference_type: 'payment',
-              reference_id: payment.id
+              description: transactionDescription,
+              date: payment_date || new Date().toISOString().split('T')[0],
+              reference: transactionReference
             });
 
           if (transactionError) {
             console.error('Error creating bank transaction:', transactionError);
             // Don't fail the payment, just log the error
           } else {
-            // Update bank account balance
-            const newBalance = bankAccount.current_balance + parseFloat(amount);
+            // Update account balance
+            const newBalance = (account.current_balance || 0) + parseFloat(amount);
             await supabase
               .from('bank_accounts')
               .update({ current_balance: newBalance })
-              .eq('id', bank_account_id);
+              .eq('id', targetAccountId);
+
+            console.log(`Updated account ${account.name} balance: ${account.current_balance} -> ${newBalance}`);
+
+            // For UPI accounts, also update linked bank account if exists
+            if (method === 'upi' && account.linked_bank_account_id) {
+              try {
+                const { data: linkedBankAccount, error: linkedBankError } = await supabase
+                  .from('bank_accounts')
+                  .select('id, name, current_balance')
+                  .eq('id', account.linked_bank_account_id)
+                  .single();
+
+                if (!linkedBankError && linkedBankAccount) {
+                  // Create transaction for linked bank account
+                  await supabase
+                    .from('bank_transactions')
+                    .insert({
+                      bank_account_id: account.linked_bank_account_id,
+                      type: 'deposit',
+                      amount: parseFloat(amount),
+                      description: `UPI Transfer from ${account.name} for Order #${orderId}`,
+                      date: payment_date || new Date().toISOString().split('T')[0],
+                      reference: `UPI-${transactionReference}`
+                    });
+
+                  // Update linked bank account balance
+                  const linkedNewBalance = (linkedBankAccount.current_balance || 0) + parseFloat(amount);
+                  await supabase
+                    .from('bank_accounts')
+                    .update({ current_balance: linkedNewBalance })
+                    .eq('id', account.linked_bank_account_id);
+
+                  console.log(`Updated linked bank ${linkedBankAccount.name} balance: ${linkedBankAccount.current_balance} -> ${linkedNewBalance}`);
+                }
+              } catch (linkedBankError) {
+                console.error('Error processing linked bank account:', linkedBankError);
+              }
+            }
           }
         }
       } catch (bankError) {

@@ -17,15 +17,16 @@ import {
   BarChart3,
   Plus,
   Eye,
-  RefreshCw
+  RefreshCw,
+  Users
 } from 'lucide-react';
 
 // Import subcomponents
 import { SalesOrderInvoiceManager } from '@/components/finance/SalesOrderInvoiceManager';
 import { BankAccountManager } from '@/components/finance/BankAccountManager';
 import ChartOfAccounts from '@/components/finance/ChartOfAccounts';
-import GeneralLedger from '@/components/finance/GeneralLedger';
 import JournalEntryManager from '@/components/finance/JournalEntryManager';
+import LedgerManager from '@/components/finance/LedgerManager';
 
 interface FinancialSummary {
   totalAssets: number;
@@ -427,12 +428,12 @@ export default function FinancePage() {
                 Chart of Accounts
               </TabsTrigger>
               <TabsTrigger value="journals" className="flex items-center gap-2">
-                <Receipt className="h-4 w-4" />
-                Journal Entries
+                <Users className="h-4 w-4" />
+                Ledgers
               </TabsTrigger>
               <TabsTrigger value="ledger" className="flex items-center gap-2">
-                <Calculator className="h-4 w-4" />
-                General Ledger
+                <Receipt className="h-4 w-4" />
+                Journal Entries
               </TabsTrigger>
               <TabsTrigger value="reports" className="flex items-center gap-2">
                 <BarChart3 className="h-4 w-4" />
@@ -538,14 +539,14 @@ export default function FinancePage() {
               <ChartOfAccounts />
             </TabsContent>
 
-            {/* Journal Entries Tab */}
+            {/* Ledgers Tab */}
             <TabsContent value="journals">
-              <JournalEntryManager />
+              <LedgerManager />
             </TabsContent>
 
-            {/* General Ledger Tab */}
+            {/* Journal Entries Tab */}
             <TabsContent value="ledger">
-              <GeneralLedger />
+              <JournalEntryManager />
             </TabsContent>
 
             {/* Financial Reports Tab - Placeholder */}

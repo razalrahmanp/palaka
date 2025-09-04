@@ -283,6 +283,12 @@ export default function BillingPage() {
     setIsProcessing(true);
     try {
       console.log("Updating quote and creating sales order:", data);
+      console.log("Freight charges in update data:", {
+        freight_charges: data.totals.freight_charges,
+        grandTotal: data.totals.grandTotal,
+        finalTotal: data.finalTotal,
+        totals: data.totals
+      });
       
       if (!initialData?.existingId) {
         toast.error("No quote ID found for updating");
@@ -382,6 +388,12 @@ export default function BillingPage() {
     setIsProcessing(true);
     try {
       console.log("Updating sales order:", data);
+      console.log("Freight charges in sales order update:", {
+        freight_charges: data.totals.freight_charges,
+        grandTotal: data.totals.grandTotal,
+        finalTotal: data.finalTotal,
+        totals: data.totals
+      });
       
       if (!initialData?.existingId) {
         toast.error("No sales order ID found for updating");
@@ -443,6 +455,12 @@ export default function BillingPage() {
     setIsProcessing(true);
     try {
       console.log("Creating quote and sales order:", data);
+      console.log("Freight charges in new creation:", {
+        freight_charges: data.totals.freight_charges,
+        grandTotal: data.totals.grandTotal,
+        finalTotal: data.finalTotal,
+        totals: data.totals
+      });
       console.log("Items from billing data:", data.items.map(item => ({
         name: item.isCustom ? item.customProduct?.name : item.product?.product_name,
         originalPrice: item.originalPrice,

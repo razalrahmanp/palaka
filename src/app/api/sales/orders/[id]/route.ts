@@ -481,7 +481,7 @@ export async function PATCH(
     const updateData: Record<string, unknown> = {};
     
     if (body.customer_id !== undefined) updateData.customer_id = body.customer_id;
-    if (body.customer !== undefined) updateData.customer = body.customer;
+    // Note: 'customer' field doesn't exist in sales_orders table, only customer_id
     if (body.items !== undefined) updateData.items = body.items;
     if (body.total_price !== undefined) updateData.total_price = body.total_price;
     if (body.original_price !== undefined) updateData.original_price = body.original_price;
@@ -513,6 +513,11 @@ export async function PATCH(
     if (body.bajaj_merchant_receivable !== undefined) updateData.bajaj_merchant_receivable = body.bajaj_merchant_receivable;
 
     console.log('Sales order update data prepared:', updateData);
+    console.log('Freight charges in update:', {
+      freight_charges: updateData.freight_charges,
+      has_freight_charges: 'freight_charges' in updateData,
+      freight_value: body.freight_charges
+    });
 
     // Update the sales order
     const { data, error } = await supabase

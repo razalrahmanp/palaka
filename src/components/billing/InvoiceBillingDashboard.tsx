@@ -151,6 +151,7 @@ export function InvoiceBillingDashboard({
 
   // UI States
   const [isProcessing, setIsProcessing] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   // Calculate effective item data including global discount distribution
   const getItemsWithGlobalDiscount = useCallback(() => {
@@ -299,6 +300,13 @@ export function InvoiceBillingDashboard({
       console.error('Failed to fetch suppliers:', error);
     }
   }, []);
+
+  // Clear validation errors when user starts fixing them
+  const clearValidationErrors = useCallback(() => {
+    if (validationErrors.length > 0) {
+      setValidationErrors([]);
+    }
+  }, [validationErrors.length]);
 
   // Search Suppliers for custom products
   const searchSuppliers = useCallback((query: string) => {
@@ -493,38 +501,82 @@ export function InvoiceBillingDashboard({
 
         // Populate items if available
         if (Array.isArray(data.items)) {
+          console.log("Raw quote items from API:", data.items);
+          
           const loadedItems: BillingItem[] = data.items.map((item: Record<string, unknown>, index: number) => {
-            const unitPrice = Number(item.unit_price || item.price || 0);
-            const finalPrice = Number(item.final_price || item.unit_price || item.price || 0);
+            // Use the stored unit_price as the original price (before discount)
+            // This is the correct approach - don't reverse calculate, use stored values
+            const originalPrice = Number(item.unit_price || item.price || 0);
+            const finalPrice = Number(item.final_price || originalPrice);
             const quantity = Number(item.quantity || 1);
             const discountPercentage = Number(item.discount_percentage || 0);
             const totalPrice = Number(item.total_price || finalPrice * quantity);
-            const discountAmount = unitPrice > finalPrice ? (unitPrice - finalPrice) * quantity : 0;
+            
+            // Calculate discount amount based on stored prices
+            const discountAmount = originalPrice > finalPrice ? (originalPrice - finalPrice) * quantity : 0;
+            
+            console.log(`Loading item ${index}: "${item.name}" - Unit Price: ${originalPrice.toFixed(2)}, Final: ${finalPrice.toFixed(2)}, Discount: ${discountPercentage}%`);
+            
+            // Reconstruct product data if it's not a custom product
+            let productData: ProductWithInventory | undefined = undefined;
+            if (item.product_id && item.name) {
+              productData = {
+                inventory_id: String(item.product_id), // Use product_id as inventory_id
+                product_id: String(item.product_id),
+                product_name: String(item.name),
+                product_description: String(item.specifications || item.description || ''),
+                price: originalPrice, // Use the stored unit_price as original price
+                cost: Number(item.cost || 0),
+                sku: String(item.sku || ''),
+                supplier_name: String(item.supplier_name || ''),
+                supplier_id: String(item.supplier_id || ''),
+                category: String(item.category || 'General'),
+                subcategory: String(item.subcategory || ''),
+                material: String(item.material || ''),
+                location: String(item.location || ''),
+                quantity: 999, // Default inventory quantity for loaded items
+                reorder_point: 10, // Default reorder point
+                updated_at: new Date().toISOString(),
+                product_created_at: String(item.created_at || ''),
+                product_category: String(item.category || 'General'),
+                product_image_url: String(item.image_url || ''),
+                applied_margin: 0 // Default margin
+              };
+            }
             
             return {
               id: String(item.id || `item-${index}`),
-              // For editing, we'll set product to undefined and let the user re-select
-              // since we don't have all required ProductWithInventory fields from the API
-              product: undefined,
+              product: productData,
               customProduct: !item.product_id ? {
                 id: String(item.custom_product_id || `custom-${index}`),
                 name: String(item.name || ''),
                 description: String(item.specifications || item.description || ''),
-                price: finalPrice, // Use the final price as the custom product price
+                price: originalPrice, // Use the stored unit_price as original price
+                cost: Number(item.cost || 0),
                 supplier_name: String(item.supplier_name || ''),
                 config_schema: (item.configuration as Record<string, unknown>) || {} as Record<string, unknown>,
                 lead_time_days: Number(item.estimated_delivery_days || 30)
               } : undefined,
               isCustom: !item.product_id,
               quantity: quantity,
-              originalPrice: unitPrice,
+              originalPrice: originalPrice, // Use the stored unit_price as original price
               finalPrice: finalPrice,
               totalPrice: totalPrice,
               discountAmount: discountAmount,
-              discountPercentage: discountPercentage,
+              discountPercentage: discountPercentage, // Preserve the original discount percentage
               tax: Number(item.tax || 0)
             };
           });
+          
+          console.log("Loaded items with reconstructed product data:", loadedItems.map(item => ({
+            name: item.isCustom ? item.customProduct?.name : item.product?.product_name,
+            isCustom: item.isCustom,
+            originalPrice: item.originalPrice,
+            finalPrice: item.finalPrice,
+            hasProductData: !!item.product,
+            hasCustomProductData: !!item.customProduct
+          })));
+          
           setItems(loadedItems);
         }
 
@@ -540,7 +592,10 @@ export function InvoiceBillingDashboard({
 
         // Populate freight charges if available
         if (data.freight_charges !== undefined) {
+          console.log("Loading freight charges from quote/order:", data.freight_charges);
           setFreightCharges(Number(data.freight_charges));
+        } else {
+          console.log("No freight charges found in quote/order data");
         }
 
         // Populate salesman if available - check multiple sources
@@ -996,6 +1051,7 @@ export function InvoiceBillingDashboard({
                     setSalespersonSearchQuery(e.target.value);
                     searchSalespeople(e.target.value);
                     setShowSalespersonDropdown(true);
+                    clearValidationErrors(); // Clear errors when user starts typing
                   }}
                   onFocus={() => {
                     setShowSalespersonDropdown(true);
@@ -1004,7 +1060,7 @@ export function InvoiceBillingDashboard({
                     }
                   }}
                   placeholder="Search salesperson..."
-                  className="pr-8"
+                  className={`pr-8 ${!selectedSalesman ? 'border-red-300 focus:border-red-500' : ''}`}
                 />
                 {showSalespersonDropdown && salespersonSearchResults.length > 0 && (
                   <div className="salesperson-dropdown absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
@@ -1039,11 +1095,15 @@ export function InvoiceBillingDashboard({
             </div>
 
             <div>
-              <Label htmlFor="delivery-date">Delivery Date</Label>
+              <Label htmlFor="delivery-date">Delivery Date *</Label>
               <Input
                 type="date"
                 value={deliveryDate}
-                onChange={(e) => setDeliveryDate(e.target.value)}
+                onChange={(e) => {
+                  setDeliveryDate(e.target.value);
+                  clearValidationErrors(); // Clear errors when user selects date
+                }}
+                className={!deliveryDate ? 'border-red-300 focus:border-red-500' : ''}
               />
             </div>
           </div>
@@ -1684,8 +1744,26 @@ export function InvoiceBillingDashboard({
         {/* Action Buttons - Only visible on screen */}
         <div className="print:hidden flex justify-center gap-4 pt-6 border-t border-gray-200">
           <Button 
-            onClick={() => onCreateQuoteAndSalesOrder?.(getCurrentBillingData())}
-            disabled={!customer || items.length === 0 || isProcessing || externalIsProcessing}
+            onClick={() => {
+              // Validation before creating quote/order
+              const errors: string[] = [];
+              if (!selectedSalesman) {
+                errors.push('Please select a salesperson');
+              }
+              if (!deliveryDate) {
+                errors.push('Please select a delivery date');
+              }
+              
+              if (errors.length > 0) {
+                setValidationErrors(errors);
+                return;
+              }
+              
+              // Clear errors and proceed
+              setValidationErrors([]);
+              onCreateQuoteAndSalesOrder?.(getCurrentBillingData());
+            }}
+            disabled={!customer || items.length === 0 || isProcessing || externalIsProcessing || !selectedSalesman || !deliveryDate}
             variant="outline"
           >
             <ShoppingCart className="h-4 w-4 mr-2" />
@@ -1724,6 +1802,20 @@ export function InvoiceBillingDashboard({
             Generate Invoice
           </Button>
         </div>
+
+        {/* Validation Errors */}
+        {validationErrors.length > 0 && (
+          <div className="print:hidden bg-red-50 border border-red-200 rounded-md p-3 mx-auto max-w-md">
+            <div className="text-red-800 text-sm">
+              <div className="font-medium mb-1">Please fix the following issues:</div>
+              <ul className="list-disc list-inside space-y-1">
+                {validationErrors.map((error, index) => (
+                  <li key={index}>{error}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Customer Form Modal */}

@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 'use client';
 
 import React, { useState } from 'react';
@@ -615,7 +614,7 @@ export default function FinancialReportsManager() {
         )}
 
         {/* Expenses Section */}
-        {reportData.sections?.EXPENSES?.length > 0 && (
+        {reportData.sections && reportData.sections.EXPENSES && reportData.sections.EXPENSES.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle className="text-red-700">Expenses</CardTitle>
@@ -630,7 +629,7 @@ export default function FinancialReportsManager() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {reportData.sections.EXPENSES.map((item: any, index: number) => (
+                  {reportData.sections!.EXPENSES!.map((item: any, index: number) => (
                     <TableRow key={index}>
                       <TableCell className="font-mono">{item.account_code}</TableCell>
                       <TableCell>{item.account_name}</TableCell>
@@ -674,7 +673,7 @@ export default function FinancialReportsManager() {
     return (
       <div className="space-y-6">
         {/* Assets Section */}
-        {reportData.sections?.ASSETS?.length > 0 && (
+        {reportData.sections && reportData.sections.ASSETS && reportData.sections.ASSETS.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle className="text-blue-700">Assets</CardTitle>
@@ -689,7 +688,7 @@ export default function FinancialReportsManager() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {reportData.sections.ASSETS.map((item: any, index: number) => (
+                  {reportData.sections!.ASSETS!.map((item: any, index: number) => (
                     <TableRow key={index}>
                       <TableCell className="font-mono">{item.account_code}</TableCell>
                       <TableCell>{item.account_name}</TableCell>
@@ -711,7 +710,7 @@ export default function FinancialReportsManager() {
         )}
 
         {/* Liabilities Section */}
-        {reportData.sections?.LIABILITIES?.length > 0 && (
+        {reportData.sections && reportData.sections.LIABILITIES && reportData.sections.LIABILITIES.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle className="text-red-700">Liabilities</CardTitle>
@@ -726,7 +725,7 @@ export default function FinancialReportsManager() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {reportData.sections.LIABILITIES.map((item: any, index: number) => (
+                  {reportData.sections!.LIABILITIES!.map((item: any, index: number) => (
                     <TableRow key={index}>
                       <TableCell className="font-mono">{item.account_code}</TableCell>
                       <TableCell>{item.account_name}</TableCell>
@@ -748,7 +747,7 @@ export default function FinancialReportsManager() {
         )}
 
         {/* Equity Section */}
-        {reportData.sections?.EQUITY?.length > 0 && (
+        {reportData.sections && reportData.sections.EQUITY && reportData.sections.EQUITY.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle className="text-green-700">Equity</CardTitle>
@@ -763,7 +762,7 @@ export default function FinancialReportsManager() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {reportData.sections.EQUITY.map((item: any, index: number) => (
+                  {reportData.sections!.EQUITY!.map((item: any, index: number) => (
                     <TableRow key={index}>
                       <TableCell className="font-mono">{item.account_code}</TableCell>
                       <TableCell>{item.account_name}</TableCell>

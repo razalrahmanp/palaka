@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { supabase } from '@/lib/supabaseAdmin';
 import { NextResponse } from 'next/server';
 
@@ -349,7 +350,7 @@ async function generateCashFlowReport(startDate: string, endDate: string) {
   
   if (error) throw error;
   
-  let openingCash = 0;
+  const openingCash = 0;
   let totalInflows = 0;
   let totalOutflows = 0;
   

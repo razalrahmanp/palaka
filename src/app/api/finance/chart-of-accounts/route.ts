@@ -8,7 +8,8 @@ const supabase = createClient(
 
 export async function GET() {
   try {
-    const { data, error } = await supabase
+    // First get all accounts
+    const { data: accounts, error } = await supabase
       .from('chart_of_accounts')
       .select('*')
       .order('account_code', { ascending: true });
@@ -18,7 +19,55 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ data });
+    // Calculate current balances from journal entries for each account
+    const accountsWithBalances = await Promise.all(
+      accounts?.map(async (account) => {
+        // Get all journal entry lines for this account
+        const { data: journalLines, error: linesError } = await supabase
+          .from('journal_entry_lines')
+          .select(`
+            debit_amount,
+            credit_amount,
+            journal_entries!inner(status)
+          `)
+          .eq('account_id', account.id);
+
+        if (linesError) {
+          console.error('Error fetching journal lines for account:', account.account_code, linesError);
+          return { ...account, calculated_balance: 0 };
+        }
+
+        // Calculate balance based on account's normal balance and posted entries
+        let calculatedBalance = 0;
+        
+        if (journalLines?.length > 0) {
+          const totalDebits = journalLines.reduce((sum, line) => 
+            sum + (parseFloat(String(line.debit_amount || 0))), 0);
+          const totalCredits = journalLines.reduce((sum, line) => 
+            sum + (parseFloat(String(line.credit_amount || 0))), 0);
+
+          // Calculate balance based on normal balance type
+          if (account.normal_balance === 'DEBIT') {
+            // For debit accounts: debits increase, credits decrease
+            calculatedBalance = totalDebits - totalCredits;
+          } else {
+            // For credit accounts: credits increase, debits decrease  
+            calculatedBalance = totalCredits - totalDebits;
+          }
+        }
+
+        return {
+          ...account,
+          calculated_balance: calculatedBalance,
+          total_debits: journalLines?.reduce((sum, line) => 
+            sum + (parseFloat(String(line.debit_amount || 0))), 0) || 0,
+          total_credits: journalLines?.reduce((sum, line) => 
+            sum + (parseFloat(String(line.credit_amount || 0))), 0) || 0
+        };
+      }) || []
+    );
+
+    return NextResponse.json({ data: accountsWithBalances });
   } catch (error) {
     console.error('Server error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

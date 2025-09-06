@@ -50,14 +50,19 @@ import {
 
 interface JournalEntry {
   id: string;
-  entry_number: string;
-  transaction_date: string;
+  entry_number?: string | null;
+  transaction_date?: string | null;
   description: string;
-  reference_number?: string;
-  total_amount: number;
+  reference_number?: string | null;
+  total_amount?: number | null;
   status: 'DRAFT' | 'POSTED';
   created_at: string;
   journal_entry_lines: JournalEntryLine[];
+  // Legacy database fields
+  journal_number?: string | null;
+  entry_date?: string | null;
+  total_debit?: number | null;
+  total_credit?: number | null;
 }
 
 interface JournalEntryLine {
@@ -141,21 +146,37 @@ export default function JournalEntryManager() {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(Math.abs(amount));
+  const formatCurrency = (amount: number | null | undefined) => {
+    try {
+      if (amount === null || amount === undefined || isNaN(amount)) {
+        return '₹0';
+      }
+      return new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency: 'INR',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(Math.abs(amount));
+    } catch (error) {
+      console.error('Error formatting currency:', error);
+      return '₹0';
+    }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
+  const formatDate = (dateString: string | null | undefined) => {
+    try {
+      if (!dateString) return 'N/A';
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'Invalid Date';
+      return date.toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'Invalid Date';
+    }
   };
 
   const calculateTotals = () => {
@@ -515,10 +536,10 @@ export default function JournalEntryManager() {
               {entries.map((entry) => (
                 <TableRow key={entry.id}>
                   <TableCell className="font-mono text-sm">
-                    {entry.entry_number}
+                    {entry.entry_number || entry.journal_number || 'N/A'}
                   </TableCell>
                   <TableCell className="font-mono text-sm">
-                    {formatDate(entry.transaction_date)}
+                    {formatDate(entry.transaction_date || entry.entry_date || '')}
                   </TableCell>
                   <TableCell className="max-w-xs truncate">
                     {entry.description}
@@ -527,7 +548,7 @@ export default function JournalEntryManager() {
                     {entry.reference_number || '-'}
                   </TableCell>
                   <TableCell className="text-right font-mono">
-                    {formatCurrency(entry.total_amount)}
+                    {formatCurrency(entry.total_amount || entry.total_debit || entry.total_credit || 0)}
                   </TableCell>
                   <TableCell>
                     <Badge variant={entry.status === 'POSTED' ? 'default' : 'secondary'}>

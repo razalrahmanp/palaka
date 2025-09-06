@@ -7,6 +7,7 @@ const supabase = createClient(
 );
 
 interface JournalEntryLine {
+  line_number?: number;
   account_id: string;
   description?: string;
   debit_amount: string | number;
@@ -34,7 +35,34 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ data });
+    // Map database field names to frontend expected field names
+    const mappedData = data?.map(entry => {
+      // Calculate total amount from journal lines if not available in the entry
+      let totalAmount = entry.total_debit || entry.total_credit || 0;
+      
+      if (totalAmount === 0 && entry.journal_entry_lines?.length > 0) {
+        totalAmount = entry.journal_entry_lines.reduce((sum: number, line: { debit_amount?: number | string }) => {
+          return sum + (parseFloat(String(line.debit_amount || 0)));
+        }, 0);
+      }
+      
+      return {
+        ...entry,
+        entry_number: entry.journal_number,
+        transaction_date: entry.entry_date,
+        total_amount: totalAmount,
+        journal_entry_lines: entry.journal_entry_lines?.map((line: unknown) => {
+          const typedLine = line as { chart_of_accounts?: { account_code?: string; account_name?: string } };
+          return {
+            ...typedLine,
+            account_code: typedLine.chart_of_accounts?.account_code || '',
+            account_name: typedLine.chart_of_accounts?.account_name || ''
+          };
+        })
+      };
+    });
+
+    return NextResponse.json({ data: mappedData });
   } catch (error) {
     console.error('Server error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -44,12 +72,12 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { entry_number, transaction_date, description, reference_number, lines } = body;
+    const { journal_number, entry_date, description, reference_number, lines, created_by } = body;
 
     // Validate required fields
-    if (!entry_number || !transaction_date || !description || !lines || lines.length < 2) {
+    if (!journal_number || !entry_date || !description || !lines || lines.length < 2) {
       return NextResponse.json(
-        { error: 'Entry number, date, description, and at least 2 lines are required' },
+        { error: 'Journal number, date, description, and at least 2 lines are required' },
         { status: 400 }
       );
     }
@@ -69,12 +97,12 @@ export async function POST(request: NextRequest) {
     const { data: existingEntry } = await supabase
       .from('journal_entries')
       .select('id')
-      .eq('entry_number', entry_number)
+      .eq('journal_number', journal_number)
       .single();
 
     if (existingEntry) {
       return NextResponse.json(
-        { error: 'Entry number already exists' },
+        { error: 'Journal number already exists' },
         { status: 400 }
       );
     }
@@ -83,11 +111,13 @@ export async function POST(request: NextRequest) {
     const { data: journalEntry, error: journalError } = await supabase
       .from('journal_entries')
       .insert([{
-        entry_number,
-        transaction_date,
+        journal_number,
+        entry_date,
         description,
         reference_number: reference_number || null,
-        total_amount: totalDebits,
+        total_debit: totalDebits,
+        total_credit: totalCredits,
+        created_by: created_by || '00000000-0000-0000-0000-000000000000',
         status: 'DRAFT',
       }])
       .select()
@@ -99,8 +129,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Create journal entry lines
-    const journalLines = lines.map((line: JournalEntryLine) => ({
+    const journalLines = lines.map((line: JournalEntryLine, index: number) => ({
       journal_entry_id: journalEntry.id,
+      line_number: line.line_number || (index + 1),
       account_id: line.account_id,
       description: line.description || null,
       debit_amount: parseFloat(line.debit_amount.toString()) || 0,
@@ -132,7 +163,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, entry_number, transaction_date, description, reference_number, lines } = body;
+    const { id, journal_number, entry_date, description, reference_number, lines } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'Journal entry ID is required' }, { status: 400 });
@@ -169,8 +200,8 @@ export async function PUT(request: NextRequest) {
     const { data, error } = await supabase
       .from('journal_entries')
       .update({
-        entry_number,
-        transaction_date,
+        journal_number,
+        entry_date,
         description,
         reference_number: reference_number || null,
         updated_at: new Date().toISOString(),
@@ -193,8 +224,9 @@ export async function PUT(request: NextRequest) {
         .eq('journal_entry_id', id);
 
       // Insert new lines
-      const journalLines = lines.map((line: JournalEntryLine) => ({
+      const journalLines = lines.map((line: JournalEntryLine, index: number) => ({
         journal_entry_id: id,
+        line_number: line.line_number || (index + 1),
         account_id: line.account_id,
         description: line.description || null,
         debit_amount: parseFloat(line.debit_amount.toString()) || 0,

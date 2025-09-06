@@ -193,21 +193,31 @@ export default function LedgerManager() {
   const [transactionsLoading, setTransactionsLoading] = useState(false);
   const [dateFrom, setDateFrom] = useState<Date>();
   const [dateTo, setDateTo] = useState<Date>();
+  const [hideZeroBalances, setHideZeroBalances] = useState(false);
 
   const fetchAllLedgers = React.useCallback(async () => {
     try {
       setLoading(true);
-      // Fetch all ledger data without type filtering
-      const response = await fetch(`/api/finance/ledgers?search=${encodeURIComponent(searchTerm)}`);
-      const { data } = await response.json();
-      setAllLedgers(data || []);
+      // Use the corrected customer ledger API for customers and fallback to general for others
+      const customerResponse = await fetch(`/api/finance/customer-ledgers?search=${encodeURIComponent(searchTerm)}&hide_zero_balances=${hideZeroBalances}`);
+      const customerData = await customerResponse.json();
+      
+      // Get other types from the general ledgers API  
+      const otherResponse = await fetch(`/api/finance/ledgers?search=${encodeURIComponent(searchTerm)}`);
+      const otherData = await otherResponse.json();
+      
+      // Combine customer data with other types (suppliers, employees, etc.)
+      const customers = customerData.success ? customerData.data : [];
+      const others = (otherData.data || []).filter((ledger: LedgerData) => ledger.type !== 'customer');
+      
+      setAllLedgers([...customers, ...others]);
     } catch (error) {
       console.error('Error fetching ledgers:', error);
       setAllLedgers([]);
     } finally {
       setLoading(false);
     }
-  }, [searchTerm]);
+  }, [searchTerm, hideZeroBalances]);
 
   useEffect(() => {
     fetchAllLedgers();
@@ -568,6 +578,15 @@ export default function LedgerManager() {
               className="pl-10 w-64"
             />
           </div>
+          <Button
+            variant={hideZeroBalances ? "default" : "outline"}
+            size="sm"
+            onClick={() => setHideZeroBalances(!hideZeroBalances)}
+            className="flex items-center gap-2"
+          >
+            <Filter className="h-4 w-4" />
+            {hideZeroBalances ? "Show All" : "Hide Settled"}
+          </Button>
         </div>
       </div>
 

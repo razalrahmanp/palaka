@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 
 export async function GET(
   request: Request,
-  { params }: { params: { reportType: string } }
+  { params }: { params: Promise<{ reportType: string }> }
 ) {
   try {
     const { searchParams } = new URL(request.url);
@@ -50,9 +50,9 @@ async function generateProfitLossReport(startDate: string, endDate: string) {
     
     // Group data by section
     const sections = {
-      REVENUE: [],
-      COST_OF_GOODS_SOLD: [],
-      EXPENSES: []
+      REVENUE: [] as any[],
+      COST_OF_GOODS_SOLD: [] as any[],
+      EXPENSES: [] as any[]
     };
     
     let totalRevenue = 0;

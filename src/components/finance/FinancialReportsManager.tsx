@@ -1,7 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
 'use client';
 
 import React, { useState } from 'react';
@@ -9,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Table,
   TableBody,
@@ -34,11 +33,13 @@ import {
   FileText,
   Calendar as CalendarIcon,
   Eye,
-  RefreshCw
+  RefreshCw,
+  Clock
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import AgingReports from './AgingReports';
 
 // Extend jsPDF type for autoTable
 declare module 'jspdf' {
@@ -341,7 +342,7 @@ export default function FinancialReportsManager() {
     // Add data based on report type
     if (activeReport === 'profit-loss' && reportData.sections) {
       // Revenue section
-      if (reportData.sections.REVENUE?.length > 0) {
+      if (reportData.sections.REVENUE && reportData.sections.REVENUE.length > 0) {
         doc.autoTable({
           startY: yPos,
           head: [['REVENUE', '', '']],
@@ -360,7 +361,7 @@ export default function FinancialReportsManager() {
       }
 
       // Expenses section
-      if (reportData.sections.EXPENSES?.length > 0) {
+      if (reportData.sections.EXPENSES && reportData.sections.EXPENSES.length > 0) {
         doc.autoTable({
           startY: yPos,
           head: [['EXPENSES', '', '']],
@@ -388,7 +389,7 @@ export default function FinancialReportsManager() {
 
     } else if (activeReport === 'balance-sheet' && reportData.sections) {
       // Assets
-      if (reportData.sections.ASSETS?.length > 0) {
+      if (reportData.sections.ASSETS && reportData.sections.ASSETS.length > 0) {
         doc.autoTable({
           startY: yPos,
           head: [['ASSETS', '', '']],
@@ -407,7 +408,7 @@ export default function FinancialReportsManager() {
       }
 
       // Liabilities
-      if (reportData.sections.LIABILITIES?.length > 0) {
+      if (reportData.sections.LIABILITIES && reportData.sections.LIABILITIES.length > 0) {
         doc.autoTable({
           startY: yPos,
           head: [['LIABILITIES', '', '']],
@@ -426,7 +427,7 @@ export default function FinancialReportsManager() {
       }
 
       // Equity
-      if (reportData.sections.EQUITY?.length > 0) {
+      if (reportData.sections.EQUITY && reportData.sections.EQUITY.length > 0) {
         doc.autoTable({
           startY: yPos,
           head: [['EQUITY', '', '']],
@@ -526,7 +527,7 @@ export default function FinancialReportsManager() {
     return (
       <div className="space-y-6">
         {/* Revenue Section */}
-        {reportData.sections?.REVENUE?.length > 0 && (
+        {reportData.sections && reportData.sections.REVENUE && reportData.sections.REVENUE.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle className="text-green-700">Revenue</CardTitle>
@@ -541,7 +542,7 @@ export default function FinancialReportsManager() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {reportData.sections.REVENUE.map((item: any, index: number) => (
+                  {reportData.sections!.REVENUE!.map((item: any, index: number) => (
                     <TableRow key={index}>
                       <TableCell className="font-mono">{item.account_code}</TableCell>
                       <TableCell>{item.account_name}</TableCell>
@@ -563,7 +564,7 @@ export default function FinancialReportsManager() {
         )}
 
         {/* COGS Section */}
-        {reportData.sections?.COST_OF_GOODS_SOLD?.length > 0 && (
+        {reportData.sections && reportData.sections.COST_OF_GOODS_SOLD && reportData.sections.COST_OF_GOODS_SOLD.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle className="text-orange-700">Cost of Goods Sold</CardTitle>
@@ -578,7 +579,7 @@ export default function FinancialReportsManager() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {reportData.sections.COST_OF_GOODS_SOLD.map((item: any, index: number) => (
+                  {reportData.sections!.COST_OF_GOODS_SOLD!.map((item: any, index: number) => (
                     <TableRow key={index}>
                       <TableCell className="font-mono">{item.account_code}</TableCell>
                       <TableCell>{item.account_name}</TableCell>
@@ -1050,8 +1051,8 @@ export default function FinancialReportsManager() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Financial Reports</h2>
-          <p className="text-gray-600">Generate and export comprehensive financial reports</p>
+          <h2 className="text-2xl font-bold text-gray-900">Financial Reports & Analytics</h2>
+          <p className="text-gray-600">Generate comprehensive financial reports and aging analysis</p>
         </div>
         {reportData && (
           <Button onClick={() => setReportData(null)} variant="outline">
@@ -1061,111 +1062,133 @@ export default function FinancialReportsManager() {
         )}
       </div>
 
-      {!reportData ? (
-        <div>
-          {/* Date Range Inputs */}
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>Report Parameters</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>Start Date (for period reports)</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full justify-start text-left font-normal">
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {format(startDate, 'PPP')}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={startDate}
-                        onSelect={(date) => date && setStartDate(date)}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                <div className="space-y-2">
-                  <Label>End Date (for period reports)</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full justify-start text-left font-normal">
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {format(endDate, 'PPP')}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={endDate}
-                        onSelect={(date) => date && setEndDate(date)}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                <div className="space-y-2">
-                  <Label>As Of Date (for point-in-time reports)</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full justify-start text-left font-normal">
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {format(asOfDate, 'PPP')}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={asOfDate}
-                        onSelect={(date) => date && setAsOfDate(date)}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+      {/* Tabbed Interface */}
+      <Tabs defaultValue="reports" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="reports" className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Financial Reports
+          </TabsTrigger>
+          <TabsTrigger value="aging" className="flex items-center gap-2">
+            <Clock className="h-4 w-4" />
+            Aging Reports
+          </TabsTrigger>
+        </TabsList>
 
-          {/* Report Type Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {reportTypes.map((report) => {
-              const IconComponent = report.icon;
-              return (
-                <Card key={report.id} className="hover:shadow-lg transition-shadow cursor-pointer group">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <IconComponent className="h-5 w-5 text-blue-600" />
-                      {report.name}
-                    </CardTitle>
-                    <CardDescription>{report.description}</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Button 
-                      onClick={() => fetchReport(report.id)}
-                      disabled={loading}
-                      className="w-full"
-                    >
-                      {loading && activeReport === report.id ? (
-                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <Eye className="h-4 w-4 mr-2" />
-                      )}
-                      {loading && activeReport === report.id ? 'Generating...' : 'Generate Report'}
-                    </Button>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </div>
-      ) : (
-        renderReportContent()
-      )}
+        {/* Financial Reports Tab */}
+        <TabsContent value="reports" className="space-y-6">
+          {!reportData ? (
+            <div>
+              {/* Date Range Inputs */}
+              <Card className="mb-6">
+                <CardHeader>
+                  <CardTitle>Report Parameters</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>Start Date (for period reports)</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="w-full justify-start text-left font-normal">
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {format(startDate, 'PPP')}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={startDate}
+                            onSelect={(date) => date && setStartDate(date)}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>End Date (for period reports)</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="w-full justify-start text-left font-normal">
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {format(endDate, 'PPP')}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={endDate}
+                            onSelect={(date) => date && setEndDate(date)}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>As Of Date (for point-in-time reports)</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="w-full justify-start text-left font-normal">
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {format(asOfDate, 'PPP')}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={asOfDate}
+                            onSelect={(date) => date && setAsOfDate(date)}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Report Type Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {reportTypes.map((report) => {
+                  const IconComponent = report.icon;
+                  return (
+                    <Card key={report.id} className="hover:shadow-lg transition-shadow cursor-pointer group">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <IconComponent className="h-5 w-5 text-blue-600" />
+                          {report.name}
+                        </CardTitle>
+                        <CardDescription>{report.description}</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <Button 
+                          onClick={() => fetchReport(report.id)}
+                          disabled={loading}
+                          className="w-full"
+                        >
+                          {loading && activeReport === report.id ? (
+                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <Eye className="h-4 w-4 mr-2" />
+                          )}
+                          {loading && activeReport === report.id ? 'Generating...' : 'Generate Report'}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            renderReportContent()
+          )}
+        </TabsContent>
+
+        {/* Aging Reports Tab */}
+        <TabsContent value="aging">
+          <AgingReports />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

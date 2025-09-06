@@ -51,6 +51,9 @@ interface Account {
   account_type: string;
   parent_account_id?: string;
   current_balance: number;
+  calculated_balance?: number;
+  total_debits?: number;
+  total_credits?: number;
   is_active: boolean;
   description?: string;
   created_at: string;
@@ -354,7 +357,7 @@ export default function ChartOfAccounts() {
           if (!typeAccounts.length) return null;
 
           const TypeIcon = accountType.icon;
-          const totalBalance = typeAccounts.reduce((sum, acc) => sum + Math.abs(acc.current_balance), 0);
+          const totalBalance = typeAccounts.reduce((sum, acc) => sum + Math.abs(acc.calculated_balance ?? acc.current_balance), 0);
 
           return (
             <Card key={accountType.value}>
@@ -414,7 +417,7 @@ export default function ChartOfAccounts() {
                             {account.description || '-'}
                           </TableCell>
                           <TableCell className="text-right font-mono">
-                            {formatCurrency(account.current_balance)}
+                            {formatCurrency(account.calculated_balance ?? account.current_balance)}
                           </TableCell>
                           <TableCell>
                             <Badge variant={account.is_active ? 'default' : 'secondary'}>

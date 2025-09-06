@@ -442,7 +442,7 @@ export default function FinancePage() {
               </TabsTrigger>
               <TabsTrigger value="reports" className="flex items-center gap-2">
                 <BarChart3 className="h-4 w-4" />
-                Financial Reports
+                Reports & Aging
               </TabsTrigger>
             </TabsList>
           </CardHeader>

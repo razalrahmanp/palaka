@@ -21,14 +21,14 @@ interface LedgerTransaction {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { searchParams } = new URL(request.url);
     const ledgerType = searchParams.get('type');
     const dateFrom = searchParams.get('date_from');
     const dateTo = searchParams.get('date_to');
-    const ledgerId = params.id;
 
     if (!ledgerType) {
       return NextResponse.json({ error: 'Ledger type is required' }, { status: 400 });
@@ -49,7 +49,7 @@ export async function GET(
           status,
           order_number
         `)
-        .eq('customer_id', ledgerId)
+        .eq('customer_id', id)
         .gte('created_at', dateFrom || '1900-01-01')
         .lte('created_at', dateTo || '2100-12-31')
         .order('created_at', { ascending: false });
@@ -82,7 +82,7 @@ export async function GET(
           reference_number,
           sales_orders!inner(customer_id)
         `)
-        .eq('sales_orders.customer_id', ledgerId)
+        .eq('sales_orders.customer_id', id)
         .gte('payment_date', dateFrom || '1900-01-01')
         .lte('payment_date', dateTo || '2100-12-31')
         .order('payment_date', { ascending: false });
@@ -117,7 +117,7 @@ export async function GET(
           status,
           purchase_order_number
         `)
-        .eq('supplier_id', ledgerId)
+        .eq('supplier_id', id)
         .gte('created_at', dateFrom || '1900-01-01')
         .lte('created_at', dateTo || '2100-12-31')
         .order('created_at', { ascending: false });
@@ -149,7 +149,7 @@ export async function GET(
           payment_method,
           reference_number
         `)
-        .eq('supplier_id', ledgerId)
+        .eq('supplier_id', id)
         .gte('payment_date', dateFrom || '1900-01-01')
         .lte('payment_date', dateTo || '2100-12-31')
         .order('payment_date', { ascending: false });
@@ -194,7 +194,7 @@ export async function GET(
           )
         `)
         .or(`chart_of_accounts.account_name.ilike.%salary%,chart_of_accounts.account_name.ilike.%wage%,chart_of_accounts.account_name.ilike.%payroll%`)
-        .ilike('description', `%${ledgerId}%`)
+        .ilike('description', `%${id}%`)
         .gte('journal_entries.entry_date', dateFrom || '1900-01-01')
         .lte('journal_entries.entry_date', dateTo || '2100-12-31')
         .order('journal_entries.entry_date', { ascending: false });

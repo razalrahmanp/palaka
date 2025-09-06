@@ -16,7 +16,6 @@ import {
   PieChart,
   BarChart3,
   Plus,
-  Eye,
   RefreshCw,
   Users
 } from 'lucide-react';
@@ -27,6 +26,8 @@ import { BankAccountManager } from '@/components/finance/BankAccountManager';
 import ChartOfAccounts from '@/components/finance/ChartOfAccounts';
 import JournalEntryManager from '@/components/finance/JournalEntryManager';
 import LedgerManager from '@/components/finance/LedgerManager';
+import GeneralLedger from '@/components/finance/GeneralLedger';
+import FinancialReportsManager from '@/components/finance/FinancialReportsManager';
 
 interface FinancialSummary {
   totalAssets: number;
@@ -410,7 +411,7 @@ export default function FinancePage() {
       <Card>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <CardHeader className="pb-0">
-            <TabsList className="grid w-full grid-cols-7 h-12">
+            <TabsList className="grid w-full grid-cols-8 h-12">
               <TabsTrigger value="overview" className="flex items-center gap-2">
                 <PieChart className="h-4 w-4" />
                 Overview
@@ -434,6 +435,10 @@ export default function FinancePage() {
               <TabsTrigger value="ledger" className="flex items-center gap-2">
                 <Receipt className="h-4 w-4" />
                 Journal Entries
+              </TabsTrigger>
+              <TabsTrigger value="general-ledger" className="flex items-center gap-2">
+                <BookOpen className="h-4 w-4" />
+                General Ledger
               </TabsTrigger>
               <TabsTrigger value="reports" className="flex items-center gap-2">
                 <BarChart3 className="h-4 w-4" />
@@ -549,105 +554,14 @@ export default function FinancePage() {
               <JournalEntryManager />
             </TabsContent>
 
-            {/* Financial Reports Tab - Placeholder */}
+            {/* General Ledger Tab */}
+            <TabsContent value="general-ledger">
+              <GeneralLedger />
+            </TabsContent>
+
+            {/* Financial Reports Tab */}
             <TabsContent value="reports">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <BarChart3 className="h-5 w-5" />
-                      Balance Sheet
-                    </CardTitle>
-                    <CardDescription>Assets, liabilities, and equity snapshot</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Button variant="outline" className="w-full">
-                      <Eye className="h-4 w-4 mr-2" />
-                      View Report
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <TrendingUp className="h-5 w-5" />
-                      Profit & Loss
-                    </CardTitle>
-                    <CardDescription>Revenue, expenses, and net income</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Button variant="outline" className="w-full">
-                      <Eye className="h-4 w-4 mr-2" />
-                      View Report
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Calculator className="h-5 w-5" />
-                      Trial Balance
-                    </CardTitle>
-                    <CardDescription>Verify accounting equation balance</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Button variant="outline" className="w-full">
-                      <Eye className="h-4 w-4 mr-2" />
-                      View Report
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <CreditCard className="h-5 w-5" />
-                      Cash Flow Statement
-                    </CardTitle>
-                    <CardDescription>Operating, investing, financing activities</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Button variant="outline" className="w-full">
-                      <Eye className="h-4 w-4 mr-2" />
-                      View Report
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <BookOpen className="h-5 w-5" />
-                      General Ledger
-                    </CardTitle>
-                    <CardDescription>Detailed transaction history by account</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Button variant="outline" className="w-full">
-                      <Eye className="h-4 w-4 mr-2" />
-                      View Report
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Receipt className="h-5 w-5" />
-                      Aging Reports
-                    </CardTitle>
-                    <CardDescription>Accounts receivable and payable aging</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Button variant="outline" className="w-full">
-                      <Eye className="h-4 w-4 mr-2" />
-                      View Report
-                    </Button>
-                  </CardContent>
-                </Card>
-              </div>
+              <FinancialReportsManager />
             </TabsContent>
           </CardContent>
         </Tabs>

@@ -72,18 +72,108 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const body = await req.json();
-  const { invoice_id, amount, date, method } = body;
+  try {
+    const body = await req.json();
+    const {
+      invoice_id,
+      purchase_order_id,
+      amount,
+      payment_date,
+      date,
+      method = "cash",
+      reference,
+      description,
+      bank_account_id,
+      created_by
+    } = body;
 
-  if (!invoice_id || !amount || !date || !method) {
-    return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+    console.log('💰 Creating payment with accounting...', { 
+      invoice_id, 
+      purchase_order_id, 
+      amount, 
+      payment_date: payment_date || date,
+      method 
+    });
+
+    // Validate required fields
+    if (!amount || amount <= 0) {
+      return NextResponse.json(
+        { success: false, error: "Amount is required and must be greater than 0" },
+        { status: 400 }
+      );
+    }
+
+    const finalPaymentDate = payment_date || date;
+    if (!finalPaymentDate) {
+      return NextResponse.json(
+        { success: false, error: "Payment date is required" },
+        { status: 400 }
+      );
+    }
+
+    // Must have either invoice_id or purchase_order_id
+    if (!invoice_id && !purchase_order_id) {
+      return NextResponse.json(
+        { success: false, error: "Either invoice_id or purchase_order_id is required" },
+        { status: 400 }
+      );
+    }
+
+    // Use stored procedure for atomic transaction with accounting
+    const { data: paymentId, error } = await supabase.rpc('create_payment_with_accounting', {
+      p_invoice_id: invoice_id || null,
+      p_purchase_order_id: purchase_order_id || null,
+      p_amount: parseFloat(amount),
+      p_payment_date: new Date(finalPaymentDate).toISOString(),
+      p_method: method || 'cash',
+      p_reference: reference || null,
+      p_description: description || null,
+      p_bank_account_id: bank_account_id || null,
+      p_created_by: created_by || null
+    });
+
+    if (error) {
+      console.error('❌ Payment creation error:', error);
+      // Fallback to manual method if stored procedure fails
+      return await createPaymentManually(body);
+    }
+
+    console.log('✅ Payment created with accounting entries:', paymentId);
+
+    return NextResponse.json({
+      success: true,
+      data: { id: paymentId },
+      accounting_integration: true,
+      message: "Payment created successfully with automatic journal entries"
+    });
+  } catch (error) {
+    console.error('❌ Payment creation error:', error);
+    return NextResponse.json(
+      { success: false, error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+// Fallback method for when stored procedure is not available
+async function createPaymentManually(body: any) {
+  const { invoice_id, amount, payment_date, date, method } = body;
+  
+  if (!invoice_id || !amount || !(payment_date || date) || !method) {
+    return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
   try {
     // 1. Create payment record
     const { data: payment, error: insertError } = await supabase
       .from("payments")
-      .insert([{ invoice_id, amount, date, method }])
+      .insert([{ 
+        invoice_id, 
+        amount: parseFloat(amount), 
+        date: payment_date || date,
+        payment_date: new Date(payment_date || date).toISOString(),
+        method 
+      }])
       .select()
       .single();
 
@@ -114,24 +204,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
-    // 3. Create accounting journal entry for the payment
-    // Dr. Cash/Bank / Cr. Accounts Receivable
-    try {
-      // TODO: Accounting integration removed
-      // await createPaymentJournalEntry(payment, invoice);
-      console.log(`✅ Journal entry creation skipped for payment ${payment.id}`);
-    } catch (journalError) {
-      console.error('❌ Failed to create journal entry for payment:', journalError);
-      // Don't fail the payment creation, but log the error
-    }
+    console.log(`✅ Manual payment created for invoice ${invoice_id}`);
 
     return NextResponse.json({ 
       success: true,
-      accounting_integration: true,
-      message: "Payment recorded with automatic journal entry"
+      accounting_integration: false,
+      message: "Payment recorded (manual mode - deploy stored procedures for full accounting)"
     });
   } catch (error) {
-    console.error('Error creating payment:', error);
+    console.error('Error creating payment manually:', error);
     return NextResponse.json({ error: "Failed to create payment" }, { status: 500 });
   }
 }

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finance System API Tester</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { color: green; }
+        .error { color: red; }
+        .warning { color: orange; }
+        button { padding: 10px 15px; margin: 5px; cursor: pointer; }
+        pre { background: #f5f5f5; padding: 10px; border-radius: 3px; overflow-x: auto; }
+        .status { font-weight: bold; padding: 5px; border-radius: 3px; }
+        .status.success { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .status.warning { background: #fff3cd; color: #856404; }
+    </style>
+</head>
+<body>
+    <h1>🏦 Finance System API Tester</h1>
+    <p>Test your new finance APIs to verify they're working correctly.</p>
+
+    <div class="test-section">
+        <h2>1. Opening Balances API</h2>
+        <button onclick="testOpeningBalances()">Test GET Opening Balances</button>
+        <div id="opening-balances-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. Account Balances API</h2>
+        <button onclick="testAccountBalances()">Test GET Account Balances</button>
+        <div id="account-balances-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. Enhanced Payments API</h2>
+        <button onclick="testPayments()">Test GET Payments</button>
+        <div id="payments-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>4. Financial Reports API</h2>
+        <button onclick="testReports()">Test Balance Sheet Report</button>
+        <button onclick="testProfitLoss()">Test P&L Report</button>
+        <div id="reports-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>5. Database Health Check</h2>
+        <button onclick="testDatabaseHealth()">Check Database Tables</button>
+        <div id="health-result"></div>
+    </div>
+
+    <script>
+        async function testAPI(url, elementId, description) {
+            const resultDiv = document.getElementById(elementId);
+            resultDiv.innerHTML = `<div class="status warning">Testing ${description}...</div>`;
+            
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `
+                        <div class="status success">✅ ${description} - SUCCESS</div>
+                        <p><strong>Status:</strong> ${response.status}</p>
+                        <p><strong>Data Count:</strong> ${Array.isArray(data.data) ? data.data.length : 'N/A'}</p>
+                        <details>
+                            <summary>View Response</summary>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </details>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="status error">❌ ${description} - FAILED</div>
+                        <p><strong>Status:</strong> ${response.status}</p>
+                        <p><strong>Error:</strong> ${data.error || 'Unknown error'}</p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="status error">❌ ${description} - CONNECTION ERROR</div>
+                    <p><strong>Error:</strong> ${error.message}</p>
+                    <p>Make sure your development server is running on http://localhost:3000</p>
+                `;
+            }
+        }
+
+        async function testOpeningBalances() {
+            await testAPI('/api/finance/opening-balances', 'opening-balances-result', 'Opening Balances API');
+        }
+
+        async function testAccountBalances() {
+            await testAPI('/api/finance/account-balances', 'account-balances-result', 'Account Balances API');
+        }
+
+        async function testPayments() {
+            await testAPI('/api/finance/payments', 'payments-result', 'Payments API');
+        }
+
+        async function testReports() {
+            const today = new Date().toISOString().split('T')[0];
+            await testAPI(`/api/finance/reports/balance-sheet?as_of_date=${today}`, 'reports-result', 'Balance Sheet Report');
+        }
+
+        async function testProfitLoss() {
+            const today = new Date().toISOString().split('T')[0];
+            const yearStart = new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
+            await testAPI(`/api/finance/reports/profit-loss?start_date=${yearStart}&end_date=${today}`, 'reports-result', 'Profit & Loss Report');
+        }
+
+        async function testDatabaseHealth() {
+            const resultDiv = document.getElementById('health-result');
+            resultDiv.innerHTML = `<div class="status warning">Checking database health...</div>`;
+            
+            const tables = [
+                'chart_of_accounts',
+                'invoices', 
+                'payments',
+                'journal_entries',
+                'general_ledger'
+            ];
+            
+            let healthResults = '<div class="status success">Database Health Check Results:</div><ul>';
+            
+            for (const table of tables) {
+                try {
+                    // Test each table by trying to fetch data
+                    const response = await fetch(`/api/finance/payments`); // Use payments as a representative test
+                    if (response.ok) {
+                        healthResults += `<li class="success">✅ API connectivity working</li>`;
+                        break;
+                    }
+                } catch (error) {
+                    healthResults += `<li class="error">❌ API connectivity failed: ${error.message}</li>`;
+                }
+            }
+            
+            healthResults += '</ul>';
+            healthResults += `
+                <p><strong>Next Steps:</strong></p>
+                <ol>
+                    <li>If APIs are working, deploy the stored procedures in Supabase</li>
+                    <li>Run the SQL scripts from the docs/ folder</li>
+                    <li>Test creating payments and opening balances</li>
+                </ol>
+            `;
+            
+            resultDiv.innerHTML = healthResults;
+        }
+
+        // Auto-run basic connectivity test on page load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                testPayments();
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

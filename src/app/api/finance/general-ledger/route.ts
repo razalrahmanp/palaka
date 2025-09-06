@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
         *,
         journal_entries:journal_entry_id (
           id,
-          transaction_date,
+          entry_date,
           description,
           reference_number,
           status
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
           account_type
         )
       `)
-      .order('journal_entries(transaction_date)', { ascending: true });
+      .order('journal_entries(entry_date)', { ascending: true });
 
     // Filter by account if specified
     if (accountId && accountId !== 'all') {
@@ -40,10 +40,10 @@ export async function GET(request: NextRequest) {
 
     // Filter by date range if specified
     if (dateFrom) {
-      query = query.gte('journal_entries.transaction_date', dateFrom);
+      query = query.gte('journal_entries.entry_date', dateFrom);
     }
     if (dateTo) {
-      query = query.lte('journal_entries.transaction_date', dateTo);
+      query = query.lte('journal_entries.entry_date', dateTo);
     }
 
     const { data, error } = await query;
@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
         account_code: entry.chart_of_accounts?.account_code || '',
         account_name: entry.chart_of_accounts?.account_name || '',
         account_type: entry.chart_of_accounts?.account_type || '',
-        transaction_date: entry.journal_entries?.transaction_date || '',
+        transaction_date: entry.journal_entries?.entry_date || '',
         description: entry.journal_entries?.description || '',
         reference_number: entry.journal_entries?.reference_number || '',
         debit_amount: debitAmount,

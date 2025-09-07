@@ -1,6 +1,7 @@
 // app/api/vendors/[id]/payments/route.ts
 import { supabase } from '@/lib/supabaseAdmin'
 import { NextRequest, NextResponse } from 'next/server'
+import { createVendorPaymentJournalEntry } from '@/lib/journalHelper'
 
 export async function GET(
   request: NextRequest,
@@ -75,7 +76,9 @@ export async function POST(
       reference_number,
       notes,
       purchase_order_id,
-      created_by
+      created_by,
+      bank_account_id,
+      upi_account_id
     } = body;
 
     // Insert into vendor_payment_history table
@@ -109,6 +112,30 @@ export async function POST(
 
       if (poError) throw poError;
 
+      // Create journal entry for the fallback payment
+      console.log('💰 Vendor payment created via fallback, creating journal entry...');
+      
+      // Determine bank account ID based on payment method
+      const selectedBankAccountId = payment_method === 'upi' ? upi_account_id : bank_account_id;
+      
+      const journalResult = await createVendorPaymentJournalEntry({
+        paymentId: poPayment.id,
+        amount: parseFloat(amount),
+        date: payment_date,
+        reference: reference_number,
+        description: notes || `Vendor payment via ${payment_method}`,
+        paymentMethod: payment_method,
+        bankAccountId: selectedBankAccountId
+      });
+      
+      if (journalResult.success) {
+        console.log('✅ Vendor payment journal entry created:', journalResult.journalEntryId);
+        console.log(`📊 Dr. ${journalResult.apAccount} ${amount}, Cr. ${journalResult.cashAccount} ${amount}`);
+      } else {
+        console.error('❌ Failed to create vendor payment journal entry:', journalResult.error);
+        // Don't fail the payment, just log the error
+      }
+
       // Update purchase order paid amount
       const { error: updateError } = await supabase
         .from('purchase_orders')
@@ -120,6 +147,30 @@ export async function POST(
       if (updateError) console.error('Error updating PO paid amount:', updateError);
 
       return NextResponse.json(poPayment, { status: 201 });
+    }
+
+    // Create journal entry for the successful vendor payment
+    console.log('💰 Vendor payment created successfully, creating journal entry...');
+    
+    // Determine bank account ID based on payment method
+    const selectedBankAccountId = payment_method === 'upi' ? upi_account_id : bank_account_id;
+    
+    const journalResult = await createVendorPaymentJournalEntry({
+      paymentId: payment.id,
+      amount: parseFloat(amount),
+      date: payment_date,
+      reference: reference_number,
+      description: notes || `Vendor payment via ${payment_method}`,
+      paymentMethod: payment_method,
+      bankAccountId: selectedBankAccountId
+    });
+    
+    if (journalResult.success) {
+      console.log('✅ Vendor payment journal entry created:', journalResult.journalEntryId);
+      console.log(`📊 Dr. ${journalResult.apAccount} ${amount}, Cr. ${journalResult.cashAccount} ${amount}`);
+    } else {
+      console.error('❌ Failed to create vendor payment journal entry:', journalResult.error);
+      // Don't fail the payment, just log the error
     }
 
     // Update purchase order paid amount if PO is provided

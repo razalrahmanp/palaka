@@ -29,7 +29,7 @@
   {
     "trigger_name": "enforce_bucket_name_length_trigger",
     "table_name": "buckets",
-    "event": "UPDATE",
+    "event": "INSERT",
     "function_name": "enforce_bucket_name_length",
     "function_source": "\nbegin\n    if length(new.name) > 100 then\n        raise exception 'bucket name \"%\" is too long (% characters). Max is 100.', new.name, length(new.name);\n    end if;\n    return new;\nend;\n",
     "enabled": "O",
@@ -38,11 +38,20 @@
   {
     "trigger_name": "enforce_bucket_name_length_trigger",
     "table_name": "buckets",
-    "event": "INSERT",
+    "event": "UPDATE",
     "function_name": "enforce_bucket_name_length",
     "function_source": "\nbegin\n    if length(new.name) > 100 then\n        raise exception 'bucket name \"%\" is too long (% characters). Max is 100.', new.name, length(new.name);\n    end if;\n    return new;\nend;\n",
     "enabled": "O",
     "type_flags": 23
+  },
+  {
+    "trigger_name": "audit_chart_of_accounts",
+    "table_name": "chart_of_accounts",
+    "event": "UPDATE",
+    "function_name": "create_audit_trail",
+    "function_source": "\r\nDECLARE\r\n  audit_action audit_action;\r\n  old_data JSONB;\r\n  new_data JSONB;\r\nBEGIN\r\n  -- Determine action\r\n  IF TG_OP = 'DELETE' THEN\r\n    audit_action := 'DELETE';\r\n    old_data := row_to_json(OLD)::JSONB;\r\n    new_data := NULL;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    audit_action := 'UPDATE';\r\n    old_data := row_to_json(OLD)::JSONB;\r\n    new_data := row_to_json(NEW)::JSONB;\r\n  ELSIF TG_OP = 'INSERT' THEN\r\n    audit_action := 'CREATE';\r\n    old_data := NULL;\r\n    new_data := row_to_json(NEW)::JSONB;\r\n  END IF;\r\n\r\n  -- Insert audit record\r\n  INSERT INTO audit_trail (\r\n    table_name,\r\n    record_id,\r\n    action,\r\n    old_values,\r\n    new_values,\r\n    user_id,\r\n    timestamp\r\n  ) VALUES (\r\n    TG_TABLE_NAME,\r\n    COALESCE(NEW.id, OLD.id),\r\n    audit_action,\r\n    old_data,\r\n    new_data,\r\n    COALESCE(NEW.created_by, NEW.updated_by, OLD.created_by, OLD.updated_by),\r\n    NOW()\r\n  );\r\n\r\n  RETURN COALESCE(NEW, OLD);\r\nEND;\r\n",
+    "enabled": "O",
+    "type_flags": 29
   },
   {
     "trigger_name": "audit_chart_of_accounts",
@@ -63,18 +72,9 @@
     "type_flags": 29
   },
   {
-    "trigger_name": "audit_chart_of_accounts",
-    "table_name": "chart_of_accounts",
-    "event": "UPDATE",
-    "function_name": "create_audit_trail",
-    "function_source": "\r\nDECLARE\r\n  audit_action audit_action;\r\n  old_data JSONB;\r\n  new_data JSONB;\r\nBEGIN\r\n  -- Determine action\r\n  IF TG_OP = 'DELETE' THEN\r\n    audit_action := 'DELETE';\r\n    old_data := row_to_json(OLD)::JSONB;\r\n    new_data := NULL;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    audit_action := 'UPDATE';\r\n    old_data := row_to_json(OLD)::JSONB;\r\n    new_data := row_to_json(NEW)::JSONB;\r\n  ELSIF TG_OP = 'INSERT' THEN\r\n    audit_action := 'CREATE';\r\n    old_data := NULL;\r\n    new_data := row_to_json(NEW)::JSONB;\r\n  END IF;\r\n\r\n  -- Insert audit record\r\n  INSERT INTO audit_trail (\r\n    table_name,\r\n    record_id,\r\n    action,\r\n    old_values,\r\n    new_values,\r\n    user_id,\r\n    timestamp\r\n  ) VALUES (\r\n    TG_TABLE_NAME,\r\n    COALESCE(NEW.id, OLD.id),\r\n    audit_action,\r\n    old_data,\r\n    new_data,\r\n    COALESCE(NEW.created_by, NEW.updated_by, OLD.created_by, OLD.updated_by),\r\n    NOW()\r\n  );\r\n\r\n  RETURN COALESCE(NEW, OLD);\r\nEND;\r\n",
-    "enabled": "O",
-    "type_flags": 29
-  },
-  {
     "trigger_name": "trg_chart_of_accounts_opening_balance",
     "table_name": "chart_of_accounts",
-    "event": "UPDATE",
+    "event": "INSERT",
     "function_name": "trigger_create_opening_balance",
     "function_source": "\r\nBEGIN\r\n    -- Create opening balance entry if opening_balance is set\r\n    IF NEW.opening_balance IS NOT NULL AND NEW.opening_balance != 0 THEN\r\n        INSERT INTO opening_balances (\r\n            account_id,\r\n            opening_date,\r\n            debit_amount,\r\n            credit_amount\r\n        ) VALUES (\r\n            NEW.id,\r\n            CURRENT_DATE,\r\n            CASE WHEN NEW.normal_balance = 'DEBIT' AND NEW.opening_balance > 0 THEN NEW.opening_balance ELSE 0 END,\r\n            CASE WHEN NEW.normal_balance = 'CREDIT' AND NEW.opening_balance > 0 THEN NEW.opening_balance ELSE 0 END\r\n        )\r\n        ON CONFLICT (account_id) DO UPDATE SET\r\n            debit_amount = CASE WHEN NEW.normal_balance = 'DEBIT' AND NEW.opening_balance > 0 THEN NEW.opening_balance ELSE 0 END,\r\n            credit_amount = CASE WHEN NEW.normal_balance = 'CREDIT' AND NEW.opening_balance > 0 THEN NEW.opening_balance ELSE 0 END;\r\n    END IF;\r\n    \r\n    RETURN NEW;\r\nEND;\r\n",
     "enabled": "O",
@@ -83,7 +83,7 @@
   {
     "trigger_name": "trg_chart_of_accounts_opening_balance",
     "table_name": "chart_of_accounts",
-    "event": "INSERT",
+    "event": "UPDATE",
     "function_name": "trigger_create_opening_balance",
     "function_source": "\r\nBEGIN\r\n    -- Create opening balance entry if opening_balance is set\r\n    IF NEW.opening_balance IS NOT NULL AND NEW.opening_balance != 0 THEN\r\n        INSERT INTO opening_balances (\r\n            account_id,\r\n            opening_date,\r\n            debit_amount,\r\n            credit_amount\r\n        ) VALUES (\r\n            NEW.id,\r\n            CURRENT_DATE,\r\n            CASE WHEN NEW.normal_balance = 'DEBIT' AND NEW.opening_balance > 0 THEN NEW.opening_balance ELSE 0 END,\r\n            CASE WHEN NEW.normal_balance = 'CREDIT' AND NEW.opening_balance > 0 THEN NEW.opening_balance ELSE 0 END\r\n        )\r\n        ON CONFLICT (account_id) DO UPDATE SET\r\n            debit_amount = CASE WHEN NEW.normal_balance = 'DEBIT' AND NEW.opening_balance > 0 THEN NEW.opening_balance ELSE 0 END,\r\n            credit_amount = CASE WHEN NEW.normal_balance = 'CREDIT' AND NEW.opening_balance > 0 THEN NEW.opening_balance ELSE 0 END;\r\n    END IF;\r\n    \r\n    RETURN NEW;\r\nEND;\r\n",
     "enabled": "O",
@@ -101,7 +101,7 @@
   {
     "trigger_name": "chat_room_last_message_trigger",
     "table_name": "chat_messages",
-    "event": "UPDATE",
+    "event": "INSERT",
     "function_name": "update_chat_room_last_message",
     "function_source": "\r\nBEGIN\r\n    IF TG_OP = 'INSERT' THEN\r\n        UPDATE chat_rooms \r\n        SET last_message_at = NEW.sent_at\r\n        WHERE id = NEW.room_id;\r\n        RETURN NEW;\r\n    ELSIF TG_OP = 'UPDATE' THEN\r\n        UPDATE chat_rooms \r\n        SET last_message_at = NEW.sent_at\r\n        WHERE id = NEW.room_id;\r\n        RETURN NEW;\r\n    END IF;\r\n    RETURN NULL;\r\nEND;\r\n",
     "enabled": "O",
@@ -110,7 +110,7 @@
   {
     "trigger_name": "chat_room_last_message_trigger",
     "table_name": "chat_messages",
-    "event": "INSERT",
+    "event": "UPDATE",
     "function_name": "update_chat_room_last_message",
     "function_source": "\r\nBEGIN\r\n    IF TG_OP = 'INSERT' THEN\r\n        UPDATE chat_rooms \r\n        SET last_message_at = NEW.sent_at\r\n        WHERE id = NEW.room_id;\r\n        RETURN NEW;\r\n    ELSIF TG_OP = 'UPDATE' THEN\r\n        UPDATE chat_rooms \r\n        SET last_message_at = NEW.sent_at\r\n        WHERE id = NEW.room_id;\r\n        RETURN NEW;\r\n    END IF;\r\n    RETURN NULL;\r\nEND;\r\n",
     "enabled": "O",
@@ -128,15 +128,6 @@
   {
     "trigger_name": "chat_participant_count_trigger",
     "table_name": "chat_participants",
-    "event": "DELETE",
-    "function_name": "update_chat_room_participant_count",
-    "function_source": "\r\nBEGIN\r\n    IF TG_OP = 'INSERT' THEN\r\n        UPDATE chat_rooms \r\n        SET participant_count = (\r\n            SELECT COUNT(*) \r\n            FROM chat_participants \r\n            WHERE room_id = NEW.room_id AND is_active = true\r\n        )\r\n        WHERE id = NEW.room_id;\r\n        RETURN NEW;\r\n    ELSIF TG_OP = 'UPDATE' THEN\r\n        UPDATE chat_rooms \r\n        SET participant_count = (\r\n            SELECT COUNT(*) \r\n            FROM chat_participants \r\n            WHERE room_id = NEW.room_id AND is_active = true\r\n        )\r\n        WHERE id = NEW.room_id;\r\n        RETURN NEW;\r\n    ELSIF TG_OP = 'DELETE' THEN\r\n        UPDATE chat_rooms \r\n        SET participant_count = (\r\n            SELECT COUNT(*) \r\n            FROM chat_participants \r\n            WHERE room_id = OLD.room_id AND is_active = true\r\n        )\r\n        WHERE id = OLD.room_id;\r\n        RETURN OLD;\r\n    END IF;\r\n    RETURN NULL;\r\nEND;\r\n",
-    "enabled": "O",
-    "type_flags": 29
-  },
-  {
-    "trigger_name": "chat_participant_count_trigger",
-    "table_name": "chat_participants",
     "event": "UPDATE",
     "function_name": "update_chat_room_participant_count",
     "function_source": "\r\nBEGIN\r\n    IF TG_OP = 'INSERT' THEN\r\n        UPDATE chat_rooms \r\n        SET participant_count = (\r\n            SELECT COUNT(*) \r\n            FROM chat_participants \r\n            WHERE room_id = NEW.room_id AND is_active = true\r\n        )\r\n        WHERE id = NEW.room_id;\r\n        RETURN NEW;\r\n    ELSIF TG_OP = 'UPDATE' THEN\r\n        UPDATE chat_rooms \r\n        SET participant_count = (\r\n            SELECT COUNT(*) \r\n            FROM chat_participants \r\n            WHERE room_id = NEW.room_id AND is_active = true\r\n        )\r\n        WHERE id = NEW.room_id;\r\n        RETURN NEW;\r\n    ELSIF TG_OP = 'DELETE' THEN\r\n        UPDATE chat_rooms \r\n        SET participant_count = (\r\n            SELECT COUNT(*) \r\n            FROM chat_participants \r\n            WHERE room_id = OLD.room_id AND is_active = true\r\n        )\r\n        WHERE id = OLD.room_id;\r\n        RETURN OLD;\r\n    END IF;\r\n    RETURN NULL;\r\nEND;\r\n",
@@ -147,6 +138,15 @@
     "trigger_name": "chat_participant_count_trigger",
     "table_name": "chat_participants",
     "event": "INSERT",
+    "function_name": "update_chat_room_participant_count",
+    "function_source": "\r\nBEGIN\r\n    IF TG_OP = 'INSERT' THEN\r\n        UPDATE chat_rooms \r\n        SET participant_count = (\r\n            SELECT COUNT(*) \r\n            FROM chat_participants \r\n            WHERE room_id = NEW.room_id AND is_active = true\r\n        )\r\n        WHERE id = NEW.room_id;\r\n        RETURN NEW;\r\n    ELSIF TG_OP = 'UPDATE' THEN\r\n        UPDATE chat_rooms \r\n        SET participant_count = (\r\n            SELECT COUNT(*) \r\n            FROM chat_participants \r\n            WHERE room_id = NEW.room_id AND is_active = true\r\n        )\r\n        WHERE id = NEW.room_id;\r\n        RETURN NEW;\r\n    ELSIF TG_OP = 'DELETE' THEN\r\n        UPDATE chat_rooms \r\n        SET participant_count = (\r\n            SELECT COUNT(*) \r\n            FROM chat_participants \r\n            WHERE room_id = OLD.room_id AND is_active = true\r\n        )\r\n        WHERE id = OLD.room_id;\r\n        RETURN OLD;\r\n    END IF;\r\n    RETURN NULL;\r\nEND;\r\n",
+    "enabled": "O",
+    "type_flags": 29
+  },
+  {
+    "trigger_name": "chat_participant_count_trigger",
+    "table_name": "chat_participants",
+    "event": "DELETE",
     "function_name": "update_chat_room_participant_count",
     "function_source": "\r\nBEGIN\r\n    IF TG_OP = 'INSERT' THEN\r\n        UPDATE chat_rooms \r\n        SET participant_count = (\r\n            SELECT COUNT(*) \r\n            FROM chat_participants \r\n            WHERE room_id = NEW.room_id AND is_active = true\r\n        )\r\n        WHERE id = NEW.room_id;\r\n        RETURN NEW;\r\n    ELSIF TG_OP = 'UPDATE' THEN\r\n        UPDATE chat_rooms \r\n        SET participant_count = (\r\n            SELECT COUNT(*) \r\n            FROM chat_participants \r\n            WHERE room_id = NEW.room_id AND is_active = true\r\n        )\r\n        WHERE id = NEW.room_id;\r\n        RETURN NEW;\r\n    ELSIF TG_OP = 'DELETE' THEN\r\n        UPDATE chat_rooms \r\n        SET participant_count = (\r\n            SELECT COUNT(*) \r\n            FROM chat_participants \r\n            WHERE room_id = OLD.room_id AND is_active = true\r\n        )\r\n        WHERE id = OLD.room_id;\r\n        RETURN OLD;\r\n    END IF;\r\n    RETURN NULL;\r\nEND;\r\n",
     "enabled": "O",
@@ -173,7 +173,7 @@
   {
     "trigger_name": "calculate_cost_price_trigger",
     "table_name": "custom_products",
-    "event": "UPDATE",
+    "event": "INSERT",
     "function_name": "calculate_custom_product_cost_price",
     "function_source": "\r\nBEGIN\r\n    -- If cost_price is null but price (MRP) is set, calculate cost_price\r\n    -- Using a default margin of 30% (cost = 70% of MRP)\r\n    IF NEW.cost_price IS NULL AND NEW.price IS NOT NULL AND NEW.price > 0 THEN\r\n        NEW.cost_price := ROUND(NEW.price * 0.70, 2);  -- 30% margin\r\n    END IF;\r\n    \r\n    RETURN NEW;\r\nEND;\r\n",
     "enabled": "O",
@@ -182,7 +182,7 @@
   {
     "trigger_name": "calculate_cost_price_trigger",
     "table_name": "custom_products",
-    "event": "INSERT",
+    "event": "UPDATE",
     "function_name": "calculate_custom_product_cost_price",
     "function_source": "\r\nBEGIN\r\n    -- If cost_price is null but price (MRP) is set, calculate cost_price\r\n    -- Using a default margin of 30% (cost = 70% of MRP)\r\n    IF NEW.cost_price IS NULL AND NEW.price IS NOT NULL AND NEW.price > 0 THEN\r\n        NEW.cost_price := ROUND(NEW.price * 0.70, 2);  -- 30% margin\r\n    END IF;\r\n    \r\n    RETURN NEW;\r\nEND;\r\n",
     "enabled": "O",
@@ -209,15 +209,6 @@
   {
     "trigger_name": "trigger_update_route_efficiency",
     "table_name": "deliveries",
-    "event": "UPDATE",
-    "function_name": "update_route_efficiency",
-    "function_source": "\r\nBEGIN\r\n    -- Update route statistics and efficiency\r\n    UPDATE delivery_routes \r\n    SET \r\n        route_efficiency_score = (\r\n            SELECT \r\n                CASE \r\n                    WHEN total_deliveries = 0 THEN 0\r\n                    ELSE ROUND(\r\n                        (completed_deliveries::numeric / total_deliveries::numeric) * 100 * \r\n                        (1 - (COALESCE(route_distance, 0) / NULLIF(COALESCE(route_distance, 0) + 100, 0))), 2\r\n                    )\r\n                END\r\n        ),\r\n        current_load_items = (\r\n            SELECT COALESCE(SUM(di.quantity_to_deliver), 0)\r\n            FROM deliveries d\r\n            JOIN delivery_items di ON d.id = di.delivery_id\r\n            WHERE d.route_id = COALESCE(NEW.route_id, OLD.route_id) \r\n            AND di.item_status IN ('loaded', 'in_transit')\r\n        ),\r\n        updated_at = now()\r\n    WHERE id = COALESCE(NEW.route_id, OLD.route_id);\r\n    \r\n    RETURN COALESCE(NEW, OLD);\r\nEND;\r\n",
-    "enabled": "O",
-    "type_flags": 29
-  },
-  {
-    "trigger_name": "trigger_update_route_efficiency",
-    "table_name": "deliveries",
     "event": "DELETE",
     "function_name": "update_route_efficiency",
     "function_source": "\r\nBEGIN\r\n    -- Update route statistics and efficiency\r\n    UPDATE delivery_routes \r\n    SET \r\n        route_efficiency_score = (\r\n            SELECT \r\n                CASE \r\n                    WHEN total_deliveries = 0 THEN 0\r\n                    ELSE ROUND(\r\n                        (completed_deliveries::numeric / total_deliveries::numeric) * 100 * \r\n                        (1 - (COALESCE(route_distance, 0) / NULLIF(COALESCE(route_distance, 0) + 100, 0))), 2\r\n                    )\r\n                END\r\n        ),\r\n        current_load_items = (\r\n            SELECT COALESCE(SUM(di.quantity_to_deliver), 0)\r\n            FROM deliveries d\r\n            JOIN delivery_items di ON d.id = di.delivery_id\r\n            WHERE d.route_id = COALESCE(NEW.route_id, OLD.route_id) \r\n            AND di.item_status IN ('loaded', 'in_transit')\r\n        ),\r\n        updated_at = now()\r\n    WHERE id = COALESCE(NEW.route_id, OLD.route_id);\r\n    \r\n    RETURN COALESCE(NEW, OLD);\r\nEND;\r\n",
@@ -234,11 +225,11 @@
     "type_flags": 29
   },
   {
-    "trigger_name": "trigger_update_delivery_status_from_items",
-    "table_name": "delivery_items",
-    "event": "INSERT",
-    "function_name": "update_delivery_status_from_items",
-    "function_source": "\r\nBEGIN\r\n  -- Update delivery status based on item statuses\r\n  -- Implementation depends on business logic\r\n  RETURN COALESCE(NEW, OLD);\r\nEND;\r\n",
+    "trigger_name": "trigger_update_route_efficiency",
+    "table_name": "deliveries",
+    "event": "UPDATE",
+    "function_name": "update_route_efficiency",
+    "function_source": "\r\nBEGIN\r\n    -- Update route statistics and efficiency\r\n    UPDATE delivery_routes \r\n    SET \r\n        route_efficiency_score = (\r\n            SELECT \r\n                CASE \r\n                    WHEN total_deliveries = 0 THEN 0\r\n                    ELSE ROUND(\r\n                        (completed_deliveries::numeric / total_deliveries::numeric) * 100 * \r\n                        (1 - (COALESCE(route_distance, 0) / NULLIF(COALESCE(route_distance, 0) + 100, 0))), 2\r\n                    )\r\n                END\r\n        ),\r\n        current_load_items = (\r\n            SELECT COALESCE(SUM(di.quantity_to_deliver), 0)\r\n            FROM deliveries d\r\n            JOIN delivery_items di ON d.id = di.delivery_id\r\n            WHERE d.route_id = COALESCE(NEW.route_id, OLD.route_id) \r\n            AND di.item_status IN ('loaded', 'in_transit')\r\n        ),\r\n        updated_at = now()\r\n    WHERE id = COALESCE(NEW.route_id, OLD.route_id);\r\n    \r\n    RETURN COALESCE(NEW, OLD);\r\nEND;\r\n",
     "enabled": "O",
     "type_flags": 29
   },
@@ -255,6 +246,15 @@
     "trigger_name": "trigger_update_delivery_status_from_items",
     "table_name": "delivery_items",
     "event": "UPDATE",
+    "function_name": "update_delivery_status_from_items",
+    "function_source": "\r\nBEGIN\r\n  -- Update delivery status based on item statuses\r\n  -- Implementation depends on business logic\r\n  RETURN COALESCE(NEW, OLD);\r\nEND;\r\n",
+    "enabled": "O",
+    "type_flags": 29
+  },
+  {
+    "trigger_name": "trigger_update_delivery_status_from_items",
+    "table_name": "delivery_items",
+    "event": "INSERT",
     "function_name": "update_delivery_status_from_items",
     "function_source": "\r\nBEGIN\r\n  -- Update delivery status based on item statuses\r\n  -- Implementation depends on business logic\r\n  RETURN COALESCE(NEW, OLD);\r\nEND;\r\n",
     "enabled": "O",
@@ -272,7 +272,7 @@
   {
     "trigger_name": "trg_general_ledger_update_balance",
     "table_name": "general_ledger",
-    "event": "INSERT",
+    "event": "UPDATE",
     "function_name": "trigger_update_account_balance",
     "function_source": "\r\nDECLARE\r\n    affected_account_id UUID;\r\nBEGIN\r\n    -- Handle different trigger events\r\n    IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN\r\n        affected_account_id := NEW.account_id;\r\n        RETURN NEW;\r\n    ELSIF TG_OP = 'DELETE' THEN\r\n        affected_account_id := OLD.account_id;\r\n        RETURN OLD;\r\n    END IF;\r\n    \r\n    -- Update account balance\r\n    UPDATE chart_of_accounts \r\n    SET \r\n        current_balance = calculate_account_balance(affected_account_id),\r\n        updated_at = CURRENT_TIMESTAMP\r\n    WHERE id = affected_account_id;\r\n    \r\n    RETURN COALESCE(NEW, OLD);\r\nEND;\r\n",
     "enabled": "O",
@@ -290,7 +290,7 @@
   {
     "trigger_name": "trg_general_ledger_update_balance",
     "table_name": "general_ledger",
-    "event": "UPDATE",
+    "event": "INSERT",
     "function_name": "trigger_update_account_balance",
     "function_source": "\r\nDECLARE\r\n    affected_account_id UUID;\r\nBEGIN\r\n    -- Handle different trigger events\r\n    IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN\r\n        affected_account_id := NEW.account_id;\r\n        RETURN NEW;\r\n    ELSIF TG_OP = 'DELETE' THEN\r\n        affected_account_id := OLD.account_id;\r\n        RETURN OLD;\r\n    END IF;\r\n    \r\n    -- Update account balance\r\n    UPDATE chart_of_accounts \r\n    SET \r\n        current_balance = calculate_account_balance(affected_account_id),\r\n        updated_at = CURRENT_TIMESTAMP\r\n    WHERE id = affected_account_id;\r\n    \r\n    RETURN COALESCE(NEW, OLD);\r\nEND;\r\n",
     "enabled": "O",
@@ -344,7 +344,7 @@
   {
     "trigger_name": "audit_journal_entries",
     "table_name": "journal_entries",
-    "event": "DELETE",
+    "event": "UPDATE",
     "function_name": "create_audit_trail",
     "function_source": "\r\nDECLARE\r\n  audit_action audit_action;\r\n  old_data JSONB;\r\n  new_data JSONB;\r\nBEGIN\r\n  -- Determine action\r\n  IF TG_OP = 'DELETE' THEN\r\n    audit_action := 'DELETE';\r\n    old_data := row_to_json(OLD)::JSONB;\r\n    new_data := NULL;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    audit_action := 'UPDATE';\r\n    old_data := row_to_json(OLD)::JSONB;\r\n    new_data := row_to_json(NEW)::JSONB;\r\n  ELSIF TG_OP = 'INSERT' THEN\r\n    audit_action := 'CREATE';\r\n    old_data := NULL;\r\n    new_data := row_to_json(NEW)::JSONB;\r\n  END IF;\r\n\r\n  -- Insert audit record\r\n  INSERT INTO audit_trail (\r\n    table_name,\r\n    record_id,\r\n    action,\r\n    old_values,\r\n    new_values,\r\n    user_id,\r\n    timestamp\r\n  ) VALUES (\r\n    TG_TABLE_NAME,\r\n    COALESCE(NEW.id, OLD.id),\r\n    audit_action,\r\n    old_data,\r\n    new_data,\r\n    COALESCE(NEW.created_by, NEW.updated_by, OLD.created_by, OLD.updated_by),\r\n    NOW()\r\n  );\r\n\r\n  RETURN COALESCE(NEW, OLD);\r\nEND;\r\n",
     "enabled": "O",
@@ -362,7 +362,7 @@
   {
     "trigger_name": "audit_journal_entries",
     "table_name": "journal_entries",
-    "event": "UPDATE",
+    "event": "DELETE",
     "function_name": "create_audit_trail",
     "function_source": "\r\nDECLARE\r\n  audit_action audit_action;\r\n  old_data JSONB;\r\n  new_data JSONB;\r\nBEGIN\r\n  -- Determine action\r\n  IF TG_OP = 'DELETE' THEN\r\n    audit_action := 'DELETE';\r\n    old_data := row_to_json(OLD)::JSONB;\r\n    new_data := NULL;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    audit_action := 'UPDATE';\r\n    old_data := row_to_json(OLD)::JSONB;\r\n    new_data := row_to_json(NEW)::JSONB;\r\n  ELSIF TG_OP = 'INSERT' THEN\r\n    audit_action := 'CREATE';\r\n    old_data := NULL;\r\n    new_data := row_to_json(NEW)::JSONB;\r\n  END IF;\r\n\r\n  -- Insert audit record\r\n  INSERT INTO audit_trail (\r\n    table_name,\r\n    record_id,\r\n    action,\r\n    old_values,\r\n    new_values,\r\n    user_id,\r\n    timestamp\r\n  ) VALUES (\r\n    TG_TABLE_NAME,\r\n    COALESCE(NEW.id, OLD.id),\r\n    audit_action,\r\n    old_data,\r\n    new_data,\r\n    COALESCE(NEW.created_by, NEW.updated_by, OLD.created_by, OLD.updated_by),\r\n    NOW()\r\n  );\r\n\r\n  RETURN COALESCE(NEW, OLD);\r\nEND;\r\n",
     "enabled": "O",
@@ -504,51 +504,6 @@
     "type_flags": 19
   },
   {
-    "trigger_name": "trg_payments_audit",
-    "table_name": "payments",
-    "event": "INSERT",
-    "function_name": "trigger_audit_financial_transaction",
-    "function_source": "\r\nBEGIN\r\n    -- This can be extended to log to an audit table\r\n    -- For now, just ensure created_at is set\r\n    IF TG_OP = 'INSERT' THEN\r\n        IF NEW.created_at IS NULL THEN\r\n            NEW.created_at = CURRENT_TIMESTAMP;\r\n        END IF;\r\n        RETURN NEW;\r\n    END IF;\r\n    \r\n    RETURN NEW;\r\nEND;\r\n",
-    "enabled": "O",
-    "type_flags": 7
-  },
-  {
-    "trigger_name": "trg_payments_create_journal",
-    "table_name": "payments",
-    "event": "INSERT",
-    "function_name": "trigger_create_payment_journal_entry",
-    "function_source": "\r\nDECLARE\r\n    cash_account_id UUID;\r\n    ar_account_id UUID;\r\n    journal_id UUID;\r\n    customer_name TEXT;\r\nBEGIN\r\n    -- Skip if amount is null or zero\r\n    IF NEW.amount IS NULL OR NEW.amount = 0 THEN\r\n        RETURN NEW;\r\n    END IF;\r\n    \r\n    -- Get account IDs with flexible lookup (try multiple account codes)\r\n    SELECT id INTO cash_account_id FROM chart_of_accounts WHERE account_code IN ('1001', '1010') ORDER BY account_code LIMIT 1;\r\n    SELECT id INTO ar_account_id FROM chart_of_accounts WHERE account_code IN ('1200', '1100') ORDER BY account_code LIMIT 1;\r\n    \r\n    -- Skip if accounts not found but log warning\r\n    IF cash_account_id IS NULL OR ar_account_id IS NULL THEN\r\n        RAISE WARNING 'Required accounts not found for payment journal entry: Cash=%, AR=%. Available codes: %', \r\n            cash_account_id, ar_account_id, \r\n            (SELECT array_agg(account_code) FROM chart_of_accounts WHERE account_code IN ('1001','1010','1200','1100'));\r\n        RETURN NEW;\r\n    END IF;\r\n    \r\n    -- Get customer name for description\r\n    IF NEW.sales_order_id IS NOT NULL THEN\r\n        SELECT so.customer_name INTO customer_name \r\n        FROM sales_orders so \r\n        WHERE so.id = NEW.sales_order_id;\r\n    ELSIF NEW.invoice_id IS NOT NULL THEN\r\n        SELECT c.name INTO customer_name FROM customers c \r\n        JOIN invoices i ON c.id = i.customer_id \r\n        WHERE i.id = NEW.invoice_id;\r\n    END IF;\r\n    \r\n    -- Create journal entry for payment\r\n    journal_id := create_journal_entry(\r\n        COALESCE(NEW.payment_date::date, NEW.date::date, CURRENT_DATE),\r\n        'Payment received from ' || COALESCE(customer_name, 'Customer'),\r\n        'PAY-' || NEW.id::text\r\n    );\r\n    \r\n    -- Debit Cash (increase asset)\r\n    PERFORM add_journal_entry_line(journal_id, cash_account_id, NEW.amount, 0, 'Cash received');\r\n    \r\n    -- Credit Accounts Receivable (decrease asset)\r\n    PERFORM add_journal_entry_line(journal_id, ar_account_id, 0, NEW.amount, 'Payment applied to receivable');\r\n    \r\n    -- Post the journal entry\r\n    PERFORM post_journal_entry(journal_id);\r\n    \r\n    RETURN NEW;\r\nEXCEPTION\r\n    WHEN OTHERS THEN\r\n        -- Log error and continue without failing the payment\r\n        RAISE WARNING 'Failed to create journal entry for payment %: %', NEW.id, SQLERRM;\r\n        RETURN NEW;\r\nEND;\r\n",
-    "enabled": "O",
-    "type_flags": 5
-  },
-  {
-    "trigger_name": "trg_payments_update_invoice_status",
-    "table_name": "payments",
-    "event": "INSERT",
-    "function_name": "trigger_update_invoice_payment_status",
-    "function_source": "\r\nBEGIN\r\n    -- Handle different trigger events\r\n    IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN\r\n        -- Update for new/updated payment\r\n        IF NEW.invoice_id IS NOT NULL THEN\r\n            PERFORM update_invoice_payment_status(NEW.invoice_id);\r\n        END IF;\r\n        RETURN NEW;\r\n    ELSIF TG_OP = 'DELETE' THEN\r\n        -- Update for deleted payment\r\n        IF OLD.invoice_id IS NOT NULL THEN\r\n            PERFORM update_invoice_payment_status(OLD.invoice_id);\r\n        END IF;\r\n        RETURN OLD;\r\n    END IF;\r\n    \r\n    RETURN NULL;\r\nEND;\r\n",
-    "enabled": "O",
-    "type_flags": 29
-  },
-  {
-    "trigger_name": "trg_payments_update_invoice_status",
-    "table_name": "payments",
-    "event": "DELETE",
-    "function_name": "trigger_update_invoice_payment_status",
-    "function_source": "\r\nBEGIN\r\n    -- Handle different trigger events\r\n    IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN\r\n        -- Update for new/updated payment\r\n        IF NEW.invoice_id IS NOT NULL THEN\r\n            PERFORM update_invoice_payment_status(NEW.invoice_id);\r\n        END IF;\r\n        RETURN NEW;\r\n    ELSIF TG_OP = 'DELETE' THEN\r\n        -- Update for deleted payment\r\n        IF OLD.invoice_id IS NOT NULL THEN\r\n            PERFORM update_invoice_payment_status(OLD.invoice_id);\r\n        END IF;\r\n        RETURN OLD;\r\n    END IF;\r\n    \r\n    RETURN NULL;\r\nEND;\r\n",
-    "enabled": "O",
-    "type_flags": 29
-  },
-  {
-    "trigger_name": "trg_payments_update_invoice_status",
-    "table_name": "payments",
-    "event": "UPDATE",
-    "function_name": "trigger_update_invoice_payment_status",
-    "function_source": "\r\nBEGIN\r\n    -- Handle different trigger events\r\n    IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN\r\n        -- Update for new/updated payment\r\n        IF NEW.invoice_id IS NOT NULL THEN\r\n            PERFORM update_invoice_payment_status(NEW.invoice_id);\r\n        END IF;\r\n        RETURN NEW;\r\n    ELSIF TG_OP = 'DELETE' THEN\r\n        -- Update for deleted payment\r\n        IF OLD.invoice_id IS NOT NULL THEN\r\n            PERFORM update_invoice_payment_status(OLD.invoice_id);\r\n        END IF;\r\n        RETURN OLD;\r\n    END IF;\r\n    \r\n    RETURN NULL;\r\nEND;\r\n",
-    "enabled": "O",
-    "type_flags": 29
-  },
-  {
     "trigger_name": "prefixes_create_hierarchy",
     "table_name": "prefixes",
     "event": "INSERT",
@@ -650,15 +605,6 @@
   {
     "trigger_name": "sales_order_analytics_trigger",
     "table_name": "sales_orders",
-    "event": "DELETE",
-    "function_name": "trigger_analytics_update",
-    "function_source": "\r\nBEGIN\r\n    -- Schedule a refresh of analytics views (in a real implementation, this would be queued)\r\n    PERFORM pg_notify('analytics_refresh', 'scheduled');\r\n    RETURN NEW;\r\nEND;\r\n",
-    "enabled": "O",
-    "type_flags": 29
-  },
-  {
-    "trigger_name": "sales_order_analytics_trigger",
-    "table_name": "sales_orders",
     "event": "UPDATE",
     "function_name": "trigger_analytics_update",
     "function_source": "\r\nBEGIN\r\n    -- Schedule a refresh of analytics views (in a real implementation, this would be queued)\r\n    PERFORM pg_notify('analytics_refresh', 'scheduled');\r\n    RETURN NEW;\r\nEND;\r\n",
@@ -669,6 +615,15 @@
     "trigger_name": "sales_order_analytics_trigger",
     "table_name": "sales_orders",
     "event": "INSERT",
+    "function_name": "trigger_analytics_update",
+    "function_source": "\r\nBEGIN\r\n    -- Schedule a refresh of analytics views (in a real implementation, this would be queued)\r\n    PERFORM pg_notify('analytics_refresh', 'scheduled');\r\n    RETURN NEW;\r\nEND;\r\n",
+    "enabled": "O",
+    "type_flags": 29
+  },
+  {
+    "trigger_name": "sales_order_analytics_trigger",
+    "table_name": "sales_orders",
+    "event": "DELETE",
     "function_name": "trigger_analytics_update",
     "function_source": "\r\nBEGIN\r\n    -- Schedule a refresh of analytics views (in a real implementation, this would be queued)\r\n    PERFORM pg_notify('analytics_refresh', 'scheduled');\r\n    RETURN NEW;\r\nEND;\r\n",
     "enabled": "O",
@@ -722,7 +677,7 @@
   {
     "trigger_name": "tr_check_filters",
     "table_name": "subscription",
-    "event": "UPDATE",
+    "event": "INSERT",
     "function_name": "subscription_check_filters",
     "function_source": "\n    /*\n    Validates that the user defined filters for a subscription:\n    - refer to valid columns that the claimed role may access\n    - values are coercable to the correct column type\n    */\n    declare\n        col_names text[] = coalesce(\n                array_agg(c.column_name order by c.ordinal_position),\n                '{}'::text[]\n            )\n            from\n                information_schema.columns c\n            where\n                format('%I.%I', c.table_schema, c.table_name)::regclass = new.entity\n                and pg_catalog.has_column_privilege(\n                    (new.claims ->> 'role'),\n                    format('%I.%I', c.table_schema, c.table_name)::regclass,\n                    c.column_name,\n                    'SELECT'\n                );\n        filter realtime.user_defined_filter;\n        col_type regtype;\n\n        in_val jsonb;\n    begin\n        for filter in select * from unnest(new.filters) loop\n            -- Filtered column is valid\n            if not filter.column_name = any(col_names) then\n                raise exception 'invalid column for filter %', filter.column_name;\n            end if;\n\n            -- Type is sanitized and safe for string interpolation\n            col_type = (\n                select atttypid::regtype\n                from pg_catalog.pg_attribute\n                where attrelid = new.entity\n                      and attname = filter.column_name\n            );\n            if col_type is null then\n                raise exception 'failed to lookup type for column %', filter.column_name;\n            end if;\n\n            -- Set maximum number of entries for in filter\n            if filter.op = 'in'::realtime.equality_op then\n                in_val = realtime.cast(filter.value, (col_type::text || '[]')::regtype);\n                if coalesce(jsonb_array_length(in_val), 0) > 100 then\n                    raise exception 'too many values for `in` filter. Maximum 100';\n                end if;\n            else\n                -- raises an exception if value is not coercable to type\n                perform realtime.cast(filter.value, col_type);\n            end if;\n\n        end loop;\n\n        -- Apply consistent order to filters so the unique constraint on\n        -- (subscription_id, entity, filters) can't be tricked by a different filter order\n        new.filters = coalesce(\n            array_agg(f order by f.column_name, f.op, f.value),\n            '{}'\n        ) from unnest(new.filters) f;\n\n        return new;\n    end;\n    ",
     "enabled": "O",
@@ -731,7 +686,7 @@
   {
     "trigger_name": "tr_check_filters",
     "table_name": "subscription",
-    "event": "INSERT",
+    "event": "UPDATE",
     "function_name": "subscription_check_filters",
     "function_source": "\n    /*\n    Validates that the user defined filters for a subscription:\n    - refer to valid columns that the claimed role may access\n    - values are coercable to the correct column type\n    */\n    declare\n        col_names text[] = coalesce(\n                array_agg(c.column_name order by c.ordinal_position),\n                '{}'::text[]\n            )\n            from\n                information_schema.columns c\n            where\n                format('%I.%I', c.table_schema, c.table_name)::regclass = new.entity\n                and pg_catalog.has_column_privilege(\n                    (new.claims ->> 'role'),\n                    format('%I.%I', c.table_schema, c.table_name)::regclass,\n                    c.column_name,\n                    'SELECT'\n                );\n        filter realtime.user_defined_filter;\n        col_type regtype;\n\n        in_val jsonb;\n    begin\n        for filter in select * from unnest(new.filters) loop\n            -- Filtered column is valid\n            if not filter.column_name = any(col_names) then\n                raise exception 'invalid column for filter %', filter.column_name;\n            end if;\n\n            -- Type is sanitized and safe for string interpolation\n            col_type = (\n                select atttypid::regtype\n                from pg_catalog.pg_attribute\n                where attrelid = new.entity\n                      and attname = filter.column_name\n            );\n            if col_type is null then\n                raise exception 'failed to lookup type for column %', filter.column_name;\n            end if;\n\n            -- Set maximum number of entries for in filter\n            if filter.op = 'in'::realtime.equality_op then\n                in_val = realtime.cast(filter.value, (col_type::text || '[]')::regtype);\n                if coalesce(jsonb_array_length(in_val), 0) > 100 then\n                    raise exception 'too many values for `in` filter. Maximum 100';\n                end if;\n            else\n                -- raises an exception if value is not coercable to type\n                perform realtime.cast(filter.value, col_type);\n            end if;\n\n        end loop;\n\n        -- Apply consistent order to filters so the unique constraint on\n        -- (subscription_id, entity, filters) can't be tricked by a different filter order\n        new.filters = coalesce(\n            array_agg(f order by f.column_name, f.op, f.value),\n            '{}'\n        ) from unnest(new.filters) f;\n\n        return new;\n    end;\n    ",
     "enabled": "O",
@@ -774,15 +729,6 @@
     "type_flags": 19
   },
   {
-    "trigger_name": "trg_vendor_payments_audit",
-    "table_name": "vendor_payment_history",
-    "event": "INSERT",
-    "function_name": "trigger_audit_financial_transaction",
-    "function_source": "\r\nBEGIN\r\n    -- This can be extended to log to an audit table\r\n    -- For now, just ensure created_at is set\r\n    IF TG_OP = 'INSERT' THEN\r\n        IF NEW.created_at IS NULL THEN\r\n            NEW.created_at = CURRENT_TIMESTAMP;\r\n        END IF;\r\n        RETURN NEW;\r\n    END IF;\r\n    \r\n    RETURN NEW;\r\nEND;\r\n",
-    "enabled": "O",
-    "type_flags": 7
-  },
-  {
     "trigger_name": "trg_vendor_payments_create_journal",
     "table_name": "vendor_payment_history",
     "event": "INSERT",
@@ -803,7 +749,7 @@
   {
     "trigger_name": "trg_vendor_payments_update_po_status",
     "table_name": "vendor_payment_history",
-    "event": "DELETE",
+    "event": "UPDATE",
     "function_name": "trigger_update_po_payment_status",
     "function_source": "\r\nBEGIN\r\n    -- Handle different trigger events\r\n    IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN\r\n        -- Update for new/updated vendor payment\r\n        IF NEW.purchase_order_id IS NOT NULL THEN\r\n            PERFORM update_purchase_order_payment_status(NEW.purchase_order_id);\r\n        END IF;\r\n        RETURN NEW;\r\n    ELSIF TG_OP = 'DELETE' THEN\r\n        -- Update for deleted vendor payment\r\n        IF OLD.purchase_order_id IS NOT NULL THEN\r\n            PERFORM update_purchase_order_payment_status(OLD.purchase_order_id);\r\n        END IF;\r\n        RETURN OLD;\r\n    END IF;\r\n    \r\n    RETURN NULL;\r\nEND;\r\n",
     "enabled": "O",
@@ -812,7 +758,7 @@
   {
     "trigger_name": "trg_vendor_payments_update_po_status",
     "table_name": "vendor_payment_history",
-    "event": "UPDATE",
+    "event": "DELETE",
     "function_name": "trigger_update_po_payment_status",
     "function_source": "\r\nBEGIN\r\n    -- Handle different trigger events\r\n    IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN\r\n        -- Update for new/updated vendor payment\r\n        IF NEW.purchase_order_id IS NOT NULL THEN\r\n            PERFORM update_purchase_order_payment_status(NEW.purchase_order_id);\r\n        END IF;\r\n        RETURN NEW;\r\n    ELSIF TG_OP = 'DELETE' THEN\r\n        -- Update for deleted vendor payment\r\n        IF OLD.purchase_order_id IS NOT NULL THEN\r\n            PERFORM update_purchase_order_payment_status(OLD.purchase_order_id);\r\n        END IF;\r\n        RETURN OLD;\r\n    END IF;\r\n    \r\n    RETURN NULL;\r\nEND;\r\n",
     "enabled": "O",
@@ -821,7 +767,7 @@
   {
     "trigger_name": "trigger_update_po_payment_status",
     "table_name": "vendor_payment_history",
-    "event": "DELETE",
+    "event": "UPDATE",
     "function_name": "update_purchase_order_payment_status",
     "function_source": "\r\nBEGIN\r\n    UPDATE purchase_orders \r\n    SET payment_status = CASE \r\n        WHEN paid_amount = 0 THEN 'unpaid'\r\n        WHEN paid_amount >= total THEN 'paid'\r\n        WHEN paid_amount > 0 AND paid_amount < total THEN 'partially_paid'\r\n        ELSE payment_status\r\n    END\r\n    WHERE id = COALESCE(NEW.purchase_order_id, OLD.purchase_order_id);\r\n\r\n    RETURN COALESCE(NEW, OLD);\r\nEND;\r\n",
     "enabled": "O",
@@ -830,7 +776,7 @@
   {
     "trigger_name": "trigger_update_po_payment_status",
     "table_name": "vendor_payment_history",
-    "event": "UPDATE",
+    "event": "DELETE",
     "function_name": "update_purchase_order_payment_status",
     "function_source": "\r\nBEGIN\r\n    UPDATE purchase_orders \r\n    SET payment_status = CASE \r\n        WHEN paid_amount = 0 THEN 'unpaid'\r\n        WHEN paid_amount >= total THEN 'paid'\r\n        WHEN paid_amount > 0 AND paid_amount < total THEN 'partially_paid'\r\n        ELSE payment_status\r\n    END\r\n    WHERE id = COALESCE(NEW.purchase_order_id, OLD.purchase_order_id);\r\n\r\n    RETURN COALESCE(NEW, OLD);\r\nEND;\r\n",
     "enabled": "O",
@@ -848,7 +794,7 @@
   {
     "trigger_name": "trigger_update_vendor_bill_status",
     "table_name": "vendor_payment_history",
-    "event": "INSERT",
+    "event": "DELETE",
     "function_name": "update_vendor_bill_status",
     "function_source": "\r\nBEGIN\r\n    UPDATE vendor_bills \r\n    SET status = CASE \r\n        WHEN paid_amount = 0 THEN 'pending'\r\n        WHEN paid_amount >= total_amount THEN 'paid'\r\n        WHEN paid_amount > 0 AND paid_amount < total_amount THEN 'partial'\r\n        ELSE status\r\n    END,\r\n    updated_at = now()\r\n    WHERE id = COALESCE(NEW.vendor_bill_id, OLD.vendor_bill_id);\r\n\r\n    RETURN COALESCE(NEW, OLD);\r\nEND;\r\n",
     "enabled": "O",
@@ -866,7 +812,7 @@
   {
     "trigger_name": "trigger_update_vendor_bill_status",
     "table_name": "vendor_payment_history",
-    "event": "DELETE",
+    "event": "INSERT",
     "function_name": "update_vendor_bill_status",
     "function_source": "\r\nBEGIN\r\n    UPDATE vendor_bills \r\n    SET status = CASE \r\n        WHEN paid_amount = 0 THEN 'pending'\r\n        WHEN paid_amount >= total_amount THEN 'paid'\r\n        WHEN paid_amount > 0 AND paid_amount < total_amount THEN 'partial'\r\n        ELSE status\r\n    END,\r\n    updated_at = now()\r\n    WHERE id = COALESCE(NEW.vendor_bill_id, OLD.vendor_bill_id);\r\n\r\n    RETURN COALESCE(NEW, OLD);\r\nEND;\r\n",
     "enabled": "O",

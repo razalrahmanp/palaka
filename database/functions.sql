@@ -1016,6 +1016,13 @@
   },
   {
     "schema": "public",
+    "function_name": "minimal_test_trigger",
+    "arguments": "",
+    "return_type": "trigger",
+    "definition": "CREATE OR REPLACE FUNCTION public.minimal_test_trigger()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n    -- Just log that the trigger fired\r\n    RAISE NOTICE 'MINIMAL TRIGGER FIRED for payment: %', NEW.id;\r\n    RETURN NEW;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema": "public",
     "function_name": "optimize_delivery_routes",
     "arguments": "p_optimization_date date, p_max_items_per_route integer, p_max_radius_km numeric",
     "return_type": "uuid",
@@ -1079,6 +1086,13 @@
   },
   {
     "schema": "public",
+    "function_name": "test_payment_trigger",
+    "arguments": "",
+    "return_type": "trigger",
+    "definition": "CREATE OR REPLACE FUNCTION public.test_payment_trigger()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n    RAISE NOTICE 'TEST TRIGGER FIRED: Payment ID = %, Amount = %', NEW.id, NEW.amount;\r\n    INSERT INTO journal_entries (entry_date, description, reference_number, total_debit, total_credit, status)\r\n    VALUES (CURRENT_DATE, 'Test trigger entry', 'TEST-' || NEW.id::text, 0, 0, 'DRAFT');\r\n    RETURN NEW;\r\nEXCEPTION\r\n    WHEN OTHERS THEN\r\n        RAISE WARNING 'Test trigger failed: %', SQLERRM;\r\n        RETURN NEW;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema": "public",
     "function_name": "trigger_analytics_update",
     "arguments": "",
     "return_type": "trigger",
@@ -1097,13 +1111,6 @@
     "arguments": "",
     "return_type": "trigger",
     "definition": "CREATE OR REPLACE FUNCTION public.trigger_create_opening_balance()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n    -- Create opening balance entry if opening_balance is set\r\n    IF NEW.opening_balance IS NOT NULL AND NEW.opening_balance != 0 THEN\r\n        INSERT INTO opening_balances (\r\n            account_id,\r\n            opening_date,\r\n            debit_amount,\r\n            credit_amount\r\n        ) VALUES (\r\n            NEW.id,\r\n            CURRENT_DATE,\r\n            CASE WHEN NEW.normal_balance = 'DEBIT' AND NEW.opening_balance > 0 THEN NEW.opening_balance ELSE 0 END,\r\n            CASE WHEN NEW.normal_balance = 'CREDIT' AND NEW.opening_balance > 0 THEN NEW.opening_balance ELSE 0 END\r\n        )\r\n        ON CONFLICT (account_id) DO UPDATE SET\r\n            debit_amount = CASE WHEN NEW.normal_balance = 'DEBIT' AND NEW.opening_balance > 0 THEN NEW.opening_balance ELSE 0 END,\r\n            credit_amount = CASE WHEN NEW.normal_balance = 'CREDIT' AND NEW.opening_balance > 0 THEN NEW.opening_balance ELSE 0 END;\r\n    END IF;\r\n    \r\n    RETURN NEW;\r\nEND;\r\n$function$\n"
-  },
-  {
-    "schema": "public",
-    "function_name": "trigger_create_payment_journal_entry",
-    "arguments": "",
-    "return_type": "trigger",
-    "definition": "CREATE OR REPLACE FUNCTION public.trigger_create_payment_journal_entry()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nDECLARE\r\n    cash_account_id UUID;\r\n    ar_account_id UUID;\r\n    journal_id UUID;\r\n    customer_name TEXT;\r\nBEGIN\r\n    -- Skip if amount is null or zero\r\n    IF NEW.amount IS NULL OR NEW.amount = 0 THEN\r\n        RETURN NEW;\r\n    END IF;\r\n    \r\n    -- Get account IDs with flexible lookup (try multiple account codes)\r\n    SELECT id INTO cash_account_id FROM chart_of_accounts WHERE account_code IN ('1001', '1010') ORDER BY account_code LIMIT 1;\r\n    SELECT id INTO ar_account_id FROM chart_of_accounts WHERE account_code IN ('1200', '1100') ORDER BY account_code LIMIT 1;\r\n    \r\n    -- Skip if accounts not found but log warning\r\n    IF cash_account_id IS NULL OR ar_account_id IS NULL THEN\r\n        RAISE WARNING 'Required accounts not found for payment journal entry: Cash=%, AR=%. Available codes: %', \r\n            cash_account_id, ar_account_id, \r\n            (SELECT array_agg(account_code) FROM chart_of_accounts WHERE account_code IN ('1001','1010','1200','1100'));\r\n        RETURN NEW;\r\n    END IF;\r\n    \r\n    -- Get customer name for description\r\n    IF NEW.sales_order_id IS NOT NULL THEN\r\n        SELECT so.customer_name INTO customer_name \r\n        FROM sales_orders so \r\n        WHERE so.id = NEW.sales_order_id;\r\n    ELSIF NEW.invoice_id IS NOT NULL THEN\r\n        SELECT c.name INTO customer_name FROM customers c \r\n        JOIN invoices i ON c.id = i.customer_id \r\n        WHERE i.id = NEW.invoice_id;\r\n    END IF;\r\n    \r\n    -- Create journal entry for payment\r\n    journal_id := create_journal_entry(\r\n        COALESCE(NEW.payment_date::date, NEW.date::date, CURRENT_DATE),\r\n        'Payment received from ' || COALESCE(customer_name, 'Customer'),\r\n        'PAY-' || NEW.id::text\r\n    );\r\n    \r\n    -- Debit Cash (increase asset)\r\n    PERFORM add_journal_entry_line(journal_id, cash_account_id, NEW.amount, 0, 'Cash received');\r\n    \r\n    -- Credit Accounts Receivable (decrease asset)\r\n    PERFORM add_journal_entry_line(journal_id, ar_account_id, 0, NEW.amount, 'Payment applied to receivable');\r\n    \r\n    -- Post the journal entry\r\n    PERFORM post_journal_entry(journal_id);\r\n    \r\n    RETURN NEW;\r\nEXCEPTION\r\n    WHEN OTHERS THEN\r\n        -- Log error and continue without failing the payment\r\n        RAISE WARNING 'Failed to create journal entry for payment %: %', NEW.id, SQLERRM;\r\n        RETURN NEW;\r\nEND;\r\n$function$\n"
   },
   {
     "schema": "public",

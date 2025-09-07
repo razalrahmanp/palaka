@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseAdmin";
+import { createPaymentJournalEntry } from "@/lib/journalHelper";
 
 export async function GET() {
   try {
@@ -178,9 +179,30 @@ export async function POST(req: Request) {
     });
 
     if (error) {
-      console.error('❌ Payment creation error:', error);
+      console.log('📋 Stored procedure not available, using manual payment creation...');
       // Fallback to manual method if stored procedure fails
       return await createPaymentManually(body);
+    }
+
+    // **NEW: Create journal entry for successful payment (when stored procedure succeeds)**
+    if (paymentId) {
+      console.log('💰 Payment created via stored procedure, creating journal entry...');
+      
+      const journalResult = await createPaymentJournalEntry({
+        paymentId: paymentId,
+        amount: parseFloat(amount),
+        date: new Date(finalPaymentDate).toISOString().split('T')[0],
+        reference: reference,
+        description: description || `Payment via ${method}`
+      });
+      
+      if (journalResult.success) {
+        console.log('✅ Journal entry created:', journalResult.journalEntryId);
+        console.log(`📊 Dr. ${journalResult.cashAccount} ${amount}, Cr. ${journalResult.arAccount} ${amount}`);
+      } else {
+        console.error('❌ Failed to create journal entry:', journalResult.error);
+        // Don't fail the payment, just log the error
+      }
     }
 
     console.log('✅ Payment created with accounting entries:', paymentId);
@@ -203,7 +225,7 @@ export async function POST(req: Request) {
 // Fallback method for when stored procedure is not available
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function createPaymentManually(body: any) {
-  const { invoice_id, amount, payment_date, date, method } = body;
+  const { invoice_id, amount, payment_date, date, method, reference, description } = body;
   
   if (!invoice_id || !amount || !(payment_date || date) || !method) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -211,23 +233,44 @@ async function createPaymentManually(body: any) {
 
   try {
     // 1. Create payment record
-    const { error: insertError } = await supabase
+    const { data: payment, error: insertError } = await supabase
       .from("payments")
       .insert([{ 
         invoice_id, 
         amount: parseFloat(amount), 
         date: payment_date || date,
         payment_date: new Date(payment_date || date).toISOString(),
-        method 
+        method,
+        reference: reference || null,
+        description: description || null
       }])
       .select()
       .single();
 
-    if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 500 });
+    if (insertError || !payment) {
+      return NextResponse.json({ error: insertError?.message || "Failed to create payment" }, { status: 500 });
     }
 
-    // 2. Recalculate total paid amount for that invoice
+    // 2. Create journal entry for the payment
+    console.log('💰 Payment created manually, creating journal entry...');
+    
+    const journalResult = await createPaymentJournalEntry({
+      paymentId: payment.id,
+      amount: parseFloat(amount),
+      date: payment_date || date,
+      reference: reference,
+      description: description || `Invoice payment via ${method}`
+    });
+    
+    if (journalResult.success) {
+      console.log('✅ Journal entry created:', journalResult.journalEntryId);
+      console.log(`📊 Dr. ${journalResult.cashAccount} ${amount}, Cr. ${journalResult.arAccount} ${amount}`);
+    } else {
+      console.error('❌ Failed to create journal entry:', journalResult.error);
+      // Don't fail the payment, just log the error
+    }
+
+    // 3. Recalculate total paid amount for that invoice
     const { data: payments, error: fetchError } = await supabase
       .from("payments")
       .select("amount")
@@ -250,12 +293,16 @@ async function createPaymentManually(body: any) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
-    console.log(`✅ Manual payment created for invoice ${invoice_id}`);
+    console.log(`✅ Manual payment created for invoice ${invoice_id} with journal entry`);
 
     return NextResponse.json({ 
       success: true,
-      accounting_integration: false,
-      message: "Payment recorded (manual mode - deploy stored procedures for full accounting)"
+      data: { id: payment.id },
+      accounting_integration: true,
+      journal_entry: journalResult.success ? journalResult.journalEntryId : null,
+      message: journalResult.success 
+        ? "Payment recorded with automatic journal entries" 
+        : "Payment recorded (journal entry failed - check logs)"
     });
   } catch (error) {
     console.error('Error creating payment manually:', error);

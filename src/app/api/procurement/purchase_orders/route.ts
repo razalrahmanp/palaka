@@ -79,22 +79,44 @@ type PurchaseOrderPayload = {
   total: number | null;
 };
 
-export async function GET() {
-  const { data, error } = await supabase
-    .from('purchase_orders')
-    .select(`
-      *,
-      supplier: suppliers(id,name),
-      product: products(id,name),
-      images: purchase_order_images(url)
-    `)
-    .order('created_at', { ascending: false });
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const supplierId = searchParams.get('supplier_id');
 
-  if (error) {
-    console.error(error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    let query = supabase
+      .from('purchase_orders')
+      .select(`
+        id,
+        created_at,
+        total,
+        paid_amount,
+        status,
+        description,
+        supplier_id,
+        supplier: suppliers(id,name),
+        product: products(id,name),
+        images: purchase_order_images(url)
+      `)
+      .order('created_at', { ascending: false });
+
+    // Filter by supplier if provided
+    if (supplierId) {
+      query = query.eq('supplier_id', supplierId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error(error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error('Error in purchase orders GET:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-  return NextResponse.json(data);
 }
 
 export async function POST(req: NextRequest) {

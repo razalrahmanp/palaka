@@ -145,7 +145,7 @@ export async function GET(
         .select(`
           id,
           payment_date,
-          amount_paid,
+          amount,
           payment_method,
           reference_number
         `)
@@ -162,7 +162,7 @@ export async function GET(
             description: `Payment made - ${payment.payment_method}`,
             reference_number: payment.reference_number,
             transaction_type: 'payment',
-            debit_amount: payment.amount_paid,
+            debit_amount: payment.amount,
             credit_amount: 0,
             balance: 0, // Will be calculated later
             source_document: 'vendor_payment'

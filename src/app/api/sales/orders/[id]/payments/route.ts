@@ -2,6 +2,7 @@
 // Updated to handle payment creation with database trigger compatibility
 import { supabase } from "@/lib/supabaseClient";
 import { NextRequest, NextResponse } from "next/server";
+import { createPaymentJournalEntry } from "@/lib/journalHelper";
 
 export async function GET(
   request: NextRequest,
@@ -361,6 +362,27 @@ export async function GET(
         }
       } catch (bankError) {
         console.error('Error processing bank transaction:', bankError);
+        // Don't fail the payment, just log the error
+      }
+    }
+
+    // **NEW: Create journal entry for successful payment**
+    if (payment && payment.id) {
+      console.log('💰 Payment created successfully, creating journal entry...');
+      
+      const journalResult = await createPaymentJournalEntry({
+        paymentId: payment.id,
+        amount: parseFloat(amount),
+        date: paymentData.date || new Date().toISOString().split('T')[0],
+        reference: paymentData.reference,
+        description: `Sales Order #${orderId} payment via ${method}`
+      });
+      
+      if (journalResult.success) {
+        console.log('✅ Journal entry created:', journalResult.journalEntryId);
+        console.log(`📊 Dr. ${journalResult.cashAccount} ${amount}, Cr. ${journalResult.arAccount} ${amount}`);
+      } else {
+        console.error('❌ Failed to create journal entry:', journalResult.error);
         // Don't fail the payment, just log the error
       }
     }

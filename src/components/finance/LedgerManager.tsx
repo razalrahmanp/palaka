@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import VendorPaymentManager from '@/components/vendors/VendorPaymentManager';
 import {
   Table,
   TableBody,
@@ -199,11 +200,12 @@ export default function LedgerManager() {
     try {
       setLoading(true);
       // Use the corrected customer ledger API for customers and fallback to general for others
-      const customerResponse = await fetch(`/api/finance/customer-ledgers?search=${encodeURIComponent(searchTerm)}&hide_zero_balances=${hideZeroBalances}`);
+      const timestamp = Date.now(); // Cache busting
+      const customerResponse = await fetch(`/api/finance/customer-ledgers?search=${encodeURIComponent(searchTerm)}&hide_zero_balances=${hideZeroBalances}&_t=${timestamp}`);
       const customerData = await customerResponse.json();
       
       // Get other types from the general ledgers API  
-      const otherResponse = await fetch(`/api/finance/ledgers?search=${encodeURIComponent(searchTerm)}`);
+      const otherResponse = await fetch(`/api/finance/ledgers?search=${encodeURIComponent(searchTerm)}&_t=${timestamp}`);
       const otherData = await otherResponse.json();
       
       // Combine customer data with other types (suppliers, employees, etc.)
@@ -412,6 +414,14 @@ export default function LedgerManager() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Vendor Payment Manager for Suppliers */}
+        {selectedLedger.type === 'supplier' && (
+          <VendorPaymentManager 
+            vendorId={selectedLedger.id} 
+            vendorName={selectedLedger.name} 
+          />
+        )}
 
         {/* Date Filter */}
         <Card>

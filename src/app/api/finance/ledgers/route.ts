@@ -196,9 +196,8 @@ export async function GET(request: NextRequest) {
           supplierInventory.forEach(item => {
             const quantity = item.quantity || 0;
             const cost = item.cost || 0;
-            const price = item.price || cost;
             
-            totalStockValue += quantity * price;  // Stock value at selling price
+            totalStockValue += quantity * cost;  // Stock value at cost price (what we owe supplier)
             itemCount += 1;
             
             if (item.updated_at && item.updated_at > lastInventoryDate) {
@@ -227,6 +226,7 @@ export async function GET(request: NextRequest) {
         let totalPaidAmount = 0;
         let totalPurchaseValue = 0;
         let totalPurchasePaid = 0;
+        let totalVendorPayments = 0;
 
         // From vendor bills
         if (vendorBills && vendorBills.length > 0) {
@@ -242,13 +242,24 @@ export async function GET(request: NextRequest) {
           totalPurchasePaid = supplierPOs.reduce((sum, po) => sum + (po.paid_amount || 0), 0);
         }
 
+        // Get vendor payment history to include in calculation
+        const { data: vendorPayments } = await supabase
+          .from('vendor_payment_history')
+          .select('amount')
+          .eq('supplier_id', supplier.id);
+
+        if (vendorPayments && vendorPayments.length > 0) {
+          totalVendorPayments = vendorPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
+        }
+
         // Calculate final amounts (prefer vendor bills, fallback to POs)
         const totalAmount = totalBillAmount > 0 ? totalBillAmount : 
                            totalPurchaseValue > 0 ? totalPurchaseValue : 
                            totalStockValue; // Use stock value if no bills/POs
 
-        const paidAmount = totalBillAmount > 0 ? totalPaidAmount : totalPurchasePaid;
-        const balanceDue = totalAmount - paidAmount;
+        // Calculate total payments including vendor bills paid amount and vendor payment history
+        const totalPayments = Math.max(totalPaidAmount, totalPurchasePaid) + totalVendorPayments;
+        const balanceDue = totalAmount - totalPayments;
 
         ledgers.push({
           id: supplier.id,
@@ -258,7 +269,7 @@ export async function GET(request: NextRequest) {
           phone: supplier.contact || supplier.phone || '',
           address: supplier.address || '',
           total_amount: totalAmount,
-          paid_amount: paidAmount,
+          paid_amount: totalPayments,
           balance_due: balanceDue,
           transaction_count: itemCount,
           total_transactions: itemCount,

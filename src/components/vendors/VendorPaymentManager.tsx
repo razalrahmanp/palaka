@@ -45,6 +45,35 @@ interface PaymentRecord {
   status: string
 }
 
+interface PurchaseOrder {
+  id: string
+  purchase_order_number?: string
+  created_at: string
+  total: number
+  paid_amount: number
+  status: string
+  description?: string
+  supplier_id?: string
+}
+
+interface BulkPaymentAllocation {
+  po_id: string
+  po_number: string
+  outstanding_amount: number
+  allocated_amount: number
+  is_selected: boolean
+}
+
+interface BankAccount {
+  id: string
+  name?: string
+  account_name: string
+  account_number?: string
+  upi_id?: string
+  account_type: 'BANK' | 'UPI'
+  is_active: boolean
+}
+
 interface Props {
   vendorId: string
   vendorName: string
@@ -53,9 +82,24 @@ interface Props {
 export default function VendorPaymentManager({ vendorId, vendorName }: Props) {
   const [bills, setBills] = useState<VendorBill[]>([])
   const [payments, setPayments] = useState<PaymentRecord[]>([])
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
+  const [inventoryBalance, setInventoryBalance] = useState<number>(0)
   const [loading, setLoading] = useState(true)
   const [addBillOpen, setAddBillOpen] = useState(false)
   const [addPaymentOpen, setAddPaymentOpen] = useState(false)
+  const [bulkPaymentOpen, setBulkPaymentOpen] = useState(false)
+
+  // Bulk payment states
+  const [bulkPaymentAmount, setBulkPaymentAmount] = useState('')
+  const [bulkPaymentAllocations, setBulkPaymentAllocations] = useState<BulkPaymentAllocation[]>([])
+  const [bulkPaymentForm, setBulkPaymentForm] = useState({
+    payment_date: new Date().toISOString().split('T')[0],
+    payment_method: 'cash',
+    bank_account_id: '',
+    reference_number: '',
+    notes: ''
+  })
 
   // Form states
   const [billForm, setBillForm] = useState({
@@ -72,6 +116,8 @@ export default function VendorPaymentManager({ vendorId, vendorName }: Props) {
     amount: '',
     payment_date: new Date().toISOString().split('T')[0],
     payment_method: 'cash',
+    bank_account_id: '',
+    upi_account_id: '',
     reference_number: '',
     notes: '',
     bill_id: ''
@@ -81,18 +127,39 @@ export default function VendorPaymentManager({ vendorId, vendorName }: Props) {
     const loadData = async () => {
       try {
         setLoading(true)
-        const [billsRes, paymentsRes] = await Promise.all([
+        const [billsRes, paymentsRes, bankRes, upiRes, purchaseOrdersRes, ledgerRes] = await Promise.all([
           fetch(`/api/vendors/${vendorId}/bills`),
-          fetch(`/api/vendors/${vendorId}/payments`)
+          fetch(`/api/vendors/${vendorId}/payments`),
+          fetch('/api/finance/bank_accounts?type=BANK'),
+          fetch('/api/finance/bank_accounts?type=UPI'),
+          fetch(`/api/procurement/purchase_orders?supplier_id=${vendorId}`),
+          fetch(`/api/finance/ledgers?type=supplier&id=${vendorId}`)
         ])
 
-        const [billsData, paymentsData] = await Promise.all([
+        const [billsData, paymentsData, bankData, upiData, purchaseOrdersData, ledgerData] = await Promise.all([
           billsRes.json(),
-          paymentsRes.json()
+          paymentsRes.json(),
+          bankRes.json(),
+          upiRes.json(),
+          purchaseOrdersRes.json(),
+          ledgerRes.json()
         ])
 
-        setBills(billsData)
-        setPayments(paymentsData)
+        setBills(billsData || [])
+        setPayments(paymentsData || [])
+        setPurchaseOrders(purchaseOrdersData || [])
+        setBankAccounts([...(bankData || []), ...(upiData || [])])
+        
+        // Find the specific supplier ledger and get its balance
+        if (ledgerData?.data) {
+          console.log('Ledger API Response:', ledgerData);
+          const supplierLedger = ledgerData.data.find((ledger: {id: string, type: string, balance_due?: number}) => ledger.id === vendorId && ledger.type === 'supplier');
+          console.log('Found supplier ledger:', supplierLedger);
+          if (supplierLedger) {
+            setInventoryBalance(supplierLedger.balance_due || 0);
+            console.log('Set inventory balance to:', supplierLedger.balance_due);
+          }
+        }
       } catch (error) {
         console.error('Error fetching vendor payment data:', error)
       } finally {
@@ -223,6 +290,8 @@ export default function VendorPaymentManager({ vendorId, vendorName }: Props) {
           amount: '',
           payment_date: new Date().toISOString().split('T')[0],
           payment_method: 'cash',
+          bank_account_id: '',
+          upi_account_id: '',
           reference_number: '',
           notes: '',
           bill_id: ''
@@ -253,8 +322,135 @@ export default function VendorPaymentManager({ vendorId, vendorName }: Props) {
     )
   }
 
+  // Bulk payment functions
+  const initializeBulkPayment = () => {
+    const outstandingPOs = purchaseOrders
+      .filter(po => (po.total - (po.paid_amount || 0)) > 0)
+      .map(po => ({
+        po_id: po.id,
+        po_number: po.purchase_order_number || `PO-${po.id.slice(0, 8)}`,
+        outstanding_amount: po.total - (po.paid_amount || 0),
+        allocated_amount: 0,
+        is_selected: false
+      }))
+    
+    setBulkPaymentAllocations(outstandingPOs)
+    setBulkPaymentOpen(true)
+  }
+
+  const updateBulkPaymentDistribution = (amount: number) => {
+    setBulkPaymentAmount(amount.toString())
+    
+    let remainingAmount = amount
+    const updatedAllocations = bulkPaymentAllocations.map(allocation => {
+      if (!allocation.is_selected) {
+        return { ...allocation, allocated_amount: 0 }
+      }
+      
+      const canAllocate = Math.min(remainingAmount, allocation.outstanding_amount)
+      remainingAmount -= canAllocate
+      
+      return { ...allocation, allocated_amount: canAllocate }
+    })
+    
+    setBulkPaymentAllocations(updatedAllocations)
+  }
+
+  const togglePOSelection = (poId: string) => {
+    const updated = bulkPaymentAllocations.map(allocation => 
+      allocation.po_id === poId 
+        ? { ...allocation, is_selected: !allocation.is_selected, allocated_amount: 0 }
+        : allocation
+    )
+    setBulkPaymentAllocations(updated)
+    
+    // Recalculate distribution if amount is set
+    if (bulkPaymentAmount) {
+      updateBulkPaymentDistribution(parseFloat(bulkPaymentAmount))
+    }
+  }
+
+  const submitBulkPayment = async () => {
+    try {
+      const selectedAllocations = bulkPaymentAllocations.filter(a => a.is_selected && a.allocated_amount > 0)
+      
+      if (selectedAllocations.length === 0) {
+        alert('Please select at least one purchase order and enter a payment amount')
+        return
+      }
+
+      // Create individual payments for each PO
+      for (const allocation of selectedAllocations) {
+        const response = await fetch(`/api/procurement/purchase_orders/${allocation.po_id}/payments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            amount: allocation.allocated_amount,
+            payment_date: bulkPaymentForm.payment_date,
+            payment_method: bulkPaymentForm.payment_method,
+            bank_account_id: bulkPaymentForm.bank_account_id,
+            reference_number: bulkPaymentForm.reference_number,
+            notes: `Bulk payment - ${bulkPaymentForm.notes}`,
+            purchase_order_id: allocation.po_id
+          })
+        })
+
+        if (!response.ok) {
+          throw new Error(`Failed to process payment for ${allocation.po_number}`)
+        }
+      }
+
+      // Reset and close
+      setBulkPaymentOpen(false)
+      setBulkPaymentAmount('')
+      setBulkPaymentAllocations([])
+      setBulkPaymentForm({
+        payment_date: new Date().toISOString().split('T')[0],
+        payment_method: 'cash',
+        bank_account_id: '',
+        reference_number: '',
+        notes: ''
+      })
+      
+      // Refresh data
+      const loadData = async () => {
+        const [billsRes, paymentsRes, purchaseOrdersRes] = await Promise.all([
+          fetch(`/api/vendors/${vendorId}/bills`),
+          fetch(`/api/vendors/${vendorId}/payments`),
+          fetch(`/api/procurement/purchase_orders?supplier_id=${vendorId}`)
+        ])
+        const [billsData, paymentsData, purchaseOrdersData] = await Promise.all([
+          billsRes.json(),
+          paymentsRes.json(),
+          purchaseOrdersRes.json()
+        ])
+        setBills(billsData || [])
+        setPayments(paymentsData || [])
+        setPurchaseOrders(purchaseOrdersData || [])
+      }
+      loadData()
+      
+    } catch (error) {
+      console.error('Error processing bulk payment:', error)
+      alert('Error processing payment. Please try again.')
+    }
+  }
+
   const totalOutstanding = bills.reduce((sum, bill) => sum + (bill.total_amount - bill.paid_amount), 0)
+  const purchaseOrdersOutstanding = purchaseOrders.reduce((sum, po) => sum + (po.total - (po.paid_amount || 0)), 0)
+  // Use the actual ledger balance if available (includes inventory), otherwise fall back to bills + POs
+  const totalVendorOutstanding = inventoryBalance > 0 ? inventoryBalance : (totalOutstanding + purchaseOrdersOutstanding)
   const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0)
+
+  console.log('VendorPaymentManager Debug:', {
+    vendorId,
+    inventoryBalance,
+    totalOutstanding,
+    purchaseOrdersOutstanding,
+    totalVendorOutstanding,
+    billsCount: bills.length,
+    purchaseOrdersCount: purchaseOrders.length
+  })
 
   if (loading) {
     return <div className="flex items-center justify-center h-64">Loading payment data...</div>
@@ -269,7 +465,14 @@ export default function VendorPaymentManager({ vendorId, vendorName }: Props) {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Outstanding</p>
-                <p className="text-2xl font-bold text-red-600">{formatCurrency(totalOutstanding)}</p>
+                <p className="text-2xl font-bold text-red-600">{formatCurrency(totalVendorOutstanding)}</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {inventoryBalance > 0 ? (
+                    <>Ledger Balance: {formatCurrency(inventoryBalance)} (incl. inventory)</>
+                  ) : (
+                    <>Bills: {formatCurrency(totalOutstanding)} + POs: {formatCurrency(purchaseOrdersOutstanding)}</>
+                  )}
+                </p>
               </div>
               <Receipt className="h-8 w-8 text-red-600" />
             </div>
@@ -294,7 +497,19 @@ export default function VendorPaymentManager({ vendorId, vendorName }: Props) {
               <div>
                 <p className="text-sm font-medium text-gray-600">Pending Bills</p>
                 <p className="text-2xl font-bold text-orange-600">
-                  {bills.filter(b => b.status === 'pending' || b.status === 'partial').length}
+                  {inventoryBalance > 0 ? 
+                    1 : // Show 1 when ledger balance exists (representing the inventory obligation)
+                    (bills.filter(b => b.status === 'pending' || b.status === 'partial').length + 
+                     purchaseOrders.filter(po => (po.total - (po.paid_amount || 0)) > 0).length)
+                  }
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {inventoryBalance > 0 ? (
+                    <>Inventory/Stock Obligation</>
+                  ) : (
+                    <>Bills: {bills.filter(b => b.status === 'pending' || b.status === 'partial').length} + 
+                     POs: {purchaseOrders.filter(po => (po.total - (po.paid_amount || 0)) > 0).length}</>
+                  )}
                 </p>
               </div>
               <FileText className="h-8 w-8 text-orange-600" />
@@ -307,6 +522,7 @@ export default function VendorPaymentManager({ vendorId, vendorName }: Props) {
       <Tabs defaultValue="bills" className="space-y-4">
         <TabsList>
           <TabsTrigger value="bills">Vendor Bills</TabsTrigger>
+          <TabsTrigger value="purchase-orders">Purchase Orders</TabsTrigger>
           <TabsTrigger value="payments">Payment History</TabsTrigger>
         </TabsList>
 
@@ -557,6 +773,65 @@ export default function VendorPaymentManager({ vendorId, vendorName }: Props) {
           </Card>
         </TabsContent>
 
+        <TabsContent value="purchase-orders">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Purchase Orders</CardTitle>
+                <CardDescription>Purchase orders from {vendorName} contributing to outstanding balance</CardDescription>
+              </div>
+              {purchaseOrders.filter(po => (po.total - (po.paid_amount || 0)) > 0).length > 0 && (
+                <Button onClick={initializeBulkPayment} className="ml-4">
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  Bulk Payment
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>PO Number</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Total Amount</TableHead>
+                    <TableHead className="text-right">Paid Amount</TableHead>
+                    <TableHead className="text-right">Outstanding</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Description</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {purchaseOrders.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                        No purchase orders found for this vendor
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    purchaseOrders.map((po) => (
+                      <TableRow key={po.id}>
+                        <TableCell className="font-medium">{po.purchase_order_number || `PO-${po.id.slice(0, 8)}`}</TableCell>
+                        <TableCell>{new Date(po.created_at).toLocaleDateString()}</TableCell>
+                        <TableCell className="text-right font-medium">
+                          {formatCurrency(po.total)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatCurrency(po.paid_amount || 0)}
+                        </TableCell>
+                        <TableCell className="text-right font-medium text-red-600">
+                          {formatCurrency(po.total - (po.paid_amount || 0))}
+                        </TableCell>
+                        <TableCell>{getStatusBadge(po.status)}</TableCell>
+                        <TableCell className="max-w-xs truncate">{po.description || '-'}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="payments">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
@@ -615,6 +890,50 @@ export default function VendorPaymentManager({ vendorId, vendorName }: Props) {
                         </SelectContent>
                       </Select>
                     </div>
+                    
+                    {/* Bank Account Selection */}
+                    {(paymentForm.payment_method === 'bank_transfer' || paymentForm.payment_method === 'cheque') && (
+                      <div>
+                        <Label htmlFor="bank_account_id">Bank Account</Label>
+                        <Select
+                          value={paymentForm.bank_account_id}
+                          onValueChange={(value) => setPaymentForm({...paymentForm, bank_account_id: value})}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select bank account" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {bankAccounts.filter(acc => acc.account_type === 'BANK').map(account => (
+                              <SelectItem key={account.id} value={account.id}>
+                                {account.name} - {account.account_number ? `****${account.account_number.slice(-4)}` : 'No A/C'}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    
+                    {paymentForm.payment_method === 'upi' && (
+                      <div>
+                        <Label htmlFor="upi_account_id">UPI Account</Label>
+                        <Select
+                          value={paymentForm.upi_account_id}
+                          onValueChange={(value) => setPaymentForm({...paymentForm, upi_account_id: value})}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select UPI account" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {bankAccounts.filter(acc => acc.account_type === 'UPI').map(account => (
+                              <SelectItem key={account.id} value={account.id}>
+                                {account.name} - {account.upi_id || 'No UPI ID'}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    
                     <div>
                       <Label htmlFor="reference_number">Reference Number</Label>
                       <Input
@@ -701,6 +1020,181 @@ export default function VendorPaymentManager({ vendorId, vendorName }: Props) {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Bulk Payment Dialog */}
+      <Dialog open={bulkPaymentOpen} onOpenChange={setBulkPaymentOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Bulk Payment to {vendorName}</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-6">
+            {/* Payment Amount Input */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="bulk-amount">Payment Amount</Label>
+                <Input
+                  id="bulk-amount"
+                  type="number"
+                  placeholder="Enter payment amount"
+                  value={bulkPaymentAmount}
+                  onChange={(e) => updateBulkPaymentDistribution(parseFloat(e.target.value) || 0)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="payment-date">Payment Date</Label>
+                <Input
+                  id="payment-date"
+                  type="date"
+                  value={bulkPaymentForm.payment_date}
+                  onChange={(e) => setBulkPaymentForm({...bulkPaymentForm, payment_date: e.target.value})}
+                />
+              </div>
+            </div>
+
+            {/* Payment Method */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Payment Method</Label>
+                <Select 
+                  value={bulkPaymentForm.payment_method} 
+                  onValueChange={(value) => setBulkPaymentForm({...bulkPaymentForm, payment_method: value})}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                    <SelectItem value="cheque">Cheque</SelectItem>
+                    <SelectItem value="upi">UPI</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="reference">Reference Number</Label>
+                <Input
+                  id="reference"
+                  placeholder="Transaction reference"
+                  value={bulkPaymentForm.reference_number}
+                  onChange={(e) => setBulkPaymentForm({...bulkPaymentForm, reference_number: e.target.value})}
+                />
+              </div>
+            </div>
+
+            {/* Bank Account Selection (if needed) */}
+            {(bulkPaymentForm.payment_method === 'bank_transfer' || bulkPaymentForm.payment_method === 'cheque') && (
+              <div>
+                <Label>Bank Account</Label>
+                <Select 
+                  value={bulkPaymentForm.bank_account_id} 
+                  onValueChange={(value) => setBulkPaymentForm({...bulkPaymentForm, bank_account_id: value})}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select bank account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {bankAccounts.filter(account => account.account_type === 'BANK').map((account) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {account.account_name} - {account.account_number || 'N/A'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Notes */}
+            <div>
+              <Label htmlFor="notes">Notes</Label>
+              <Textarea
+                id="notes"
+                placeholder="Payment notes..."
+                value={bulkPaymentForm.notes}
+                onChange={(e) => setBulkPaymentForm({...bulkPaymentForm, notes: e.target.value})}
+              />
+            </div>
+
+            {/* Purchase Orders Selection */}
+            <div>
+              <h3 className="text-lg font-semibold mb-4">Select Purchase Orders to Pay</h3>
+              <div className="space-y-2 max-h-64 overflow-y-auto border rounded-lg p-4">
+                {bulkPaymentAllocations.map((allocation) => (
+                  <div key={allocation.po_id} className="flex items-center space-x-4 p-3 border rounded-lg">
+                    <input
+                      type="checkbox"
+                      checked={allocation.is_selected}
+                      onChange={() => togglePOSelection(allocation.po_id)}
+                      className="w-4 h-4"
+                      aria-label={`Select ${allocation.po_number}`}
+                    />
+                    <div className="flex-1">
+                      <div className="font-medium">{allocation.po_number}</div>
+                      <div className="text-sm text-gray-500">
+                        Outstanding: {formatCurrency(allocation.outstanding_amount)}
+                      </div>
+                    </div>
+                    {allocation.is_selected && (
+                      <div className="text-right">
+                        <div className="font-medium text-green-600">
+                          Paying: {formatCurrency(allocation.allocated_amount)}
+                        </div>
+                        {allocation.allocated_amount < allocation.outstanding_amount && (
+                          <div className="text-xs text-orange-600">
+                            Remaining: {formatCurrency(allocation.outstanding_amount - allocation.allocated_amount)}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Summary */}
+            {bulkPaymentAmount && parseFloat(bulkPaymentAmount) > 0 && (
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h4 className="font-semibold mb-2">Payment Summary</h4>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span>Total Payment Amount:</span>
+                    <span className="font-medium">{formatCurrency(parseFloat(bulkPaymentAmount))}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Allocated Amount:</span>
+                    <span className="font-medium">
+                      {formatCurrency(bulkPaymentAllocations.reduce((sum, a) => sum + a.allocated_amount, 0))}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Remaining Amount:</span>
+                    <span className="font-medium text-orange-600">
+                      {formatCurrency(parseFloat(bulkPaymentAmount) - bulkPaymentAllocations.reduce((sum, a) => sum + a.allocated_amount, 0))}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex justify-end space-x-2 pt-4">
+              <Button 
+                variant="outline" 
+                onClick={() => setBulkPaymentOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={submitBulkPayment}
+                disabled={!bulkPaymentAmount || bulkPaymentAllocations.filter(a => a.is_selected).length === 0}
+              >
+                <CreditCard className="h-4 w-4 mr-2" />
+                Process Payment
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

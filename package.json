@@ -7,7 +7,8 @@
         "build": "next build",
         "start": "next start",
         "lint": "next lint",
-        "init-db:sales-payments": "node --loader ts-node/esm scripts/init-sales-payments.js"
+        "init-db:sales-payments": "node --loader ts-node/esm scripts/init-sales-payments.js",
+        "update-payment-associations": "node scripts/update-payment-associations.mjs"
     },
     "dependencies": {
         "@aws-sdk/client-s3": "^3.839.0",
@@ -38,6 +39,7 @@
         "clsx": "^2.1.1",
         "cmdk": "^1.1.1",
         "date-fns": "^4.1.0",
+        "dotenv": "^17.2.2",
         "html2canvas": "^1.4.1",
         "jspdf": "^3.0.2",
         "jspdf-autotable": "^5.0.2",
@@ -53,7 +55,7 @@
         "recharts": "^2.15.3",
         "sonner": "^2.0.5",
         "tailwind-merge": "^3.3.1",
-        "xlsx": "^0.18.5",
+        "xlsx": "^0.20.3",
         "zod": "^3.25.64"
     },
     "devDependencies": {

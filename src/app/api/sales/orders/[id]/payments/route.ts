@@ -1,4 +1,5 @@
 // src/app/api/sales/orders/[id]/payments/route.ts
+// Updated to handle payment creation with database trigger compatibility
 import { supabase } from "@/lib/supabaseClient";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -184,28 +185,90 @@ export async function GET(
       invoice_id: string;
       amount: number;
       method: string;
-      date: string;
+      date?: string;
       reference?: string;
+      description?: string;
+      bank_account_id?: string;
     } = {
       invoice_id: invoice.id,
       amount: parseFloat(amount),
-      method,
-      date: payment_date || new Date().toISOString().split('T')[0]
+      method: method
     };
+
+    // Use the date field (date type) - simpler approach
+    paymentData.date = payment_date || new Date().toISOString().split('T')[0];
 
     // Add reference if provided
     if (reference && reference.trim() !== '') {
-      paymentData.reference = reference;
+      paymentData.reference = reference.trim();
     }
 
-    const { data: payment, error } = await supabase
-      .from('payments')
-      .insert(paymentData)
-      .select('id, invoice_id, amount, date, method')
-      .single();
+    // Add description if provided
+    if (body.description && body.description.trim() !== '') {
+      paymentData.description = body.description.trim();
+    }
 
-    if (error) {
-      console.error('Error creating payment:', error);
+    // Add bank_account_id if applicable
+    if (method === 'bank_transfer' || method === 'cheque') {
+      if (bank_account_id && bank_account_id.trim() !== '') {
+        paymentData.bank_account_id = bank_account_id;
+      }
+    } else if (method === 'upi') {
+      if (upi_account_id && upi_account_id.trim() !== '') {
+        paymentData.bank_account_id = upi_account_id;
+      }
+    }
+
+    console.log('Final payment data to insert:', paymentData);
+
+    // Try using raw SQL to bypass any potential triggers
+    let { data: payment, error } = await supabase.rpc('insert_payment', {
+      p_invoice_id: paymentData.invoice_id,
+      p_amount: paymentData.amount,
+      p_method: paymentData.method,
+      p_date: paymentData.date,
+      p_reference: paymentData.reference || null,
+      p_description: paymentData.description || null,
+      p_bank_account_id: paymentData.bank_account_id || null
+    });
+
+    // If the function doesn't exist, fall back to direct insert
+    if (error && error.message.includes('function')) {
+      console.log('Custom function not found, trying simplified approach...');
+      
+      // Simple approach: Insert payment and manually update invoice
+      const result = await supabase
+        .from('payments')
+        .insert({
+          invoice_id: paymentData.invoice_id,
+          amount: paymentData.amount,
+          method: paymentData.method,
+          date: paymentData.date,
+          ...(paymentData.reference && { reference: paymentData.reference }),
+          ...(paymentData.description && { description: paymentData.description }),
+          ...(paymentData.bank_account_id && { bank_account_id: paymentData.bank_account_id })
+        })
+        .select('id, invoice_id, amount, date, method, reference, description, bank_account_id')
+        .single();
+
+      if (result.error) {
+        console.error('Simplified insert failed:', result.error);
+        console.error('Error details:', {
+          code: result.error.code,
+          message: result.error.message,
+          details: result.error.details,
+          hint: result.error.hint
+        });
+        
+        return NextResponse.json({ 
+          error: `Payment creation failed due to database trigger issue: ${result.error.message}. Please contact administrator to fix the 'paid_amount' column ambiguity in stored procedures.` 
+        }, { status: 500 });
+      } else {
+        payment = result.data;
+        error = null;
+      }
+    } else if (error) {
+      console.error('Error creating payment via function:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 

@@ -91,18 +91,19 @@ export async function GET() {
   try {
     console.log('=== AGING REPORTS API CALLED ===');
 
-    // Get accounts receivable data from sales orders/invoices
+    // Get accounts receivable data from sales orders
     const { data: salesOrders, error: salesError } = await supabase
       .from('sales_orders')
       .select(`
         id,
-        customer_name,
-        invoice_number,
+        customer_id,
         created_at,
-        due_date,
+        expected_delivery_date,
         final_price,
-        total_paid,
-        payment_status
+        status,
+        customers (
+          name
+        )
       `)
       .not('final_price', 'is', null)
       .gt('final_price', 0);
@@ -111,13 +112,34 @@ export async function GET() {
       console.error('Error fetching sales orders:', salesError);
     }
 
+    // Get invoice data separately and we'll join it manually
+    const { data: invoices, error: invoicesError } = await supabase
+      .from('invoices')
+      .select(`
+        id,
+        sales_order_id,
+        customer_id,
+        total,
+        paid_amount,
+        status,
+        created_at,
+        customers (
+          name
+        )
+      `)
+      .not('total', 'is', null)
+      .gt('total', 0);
+
+    if (invoicesError) {
+      console.error('Error fetching invoices:', invoicesError);
+    }
+
     // Get accounts payable data from purchase orders/vendor bills
     const { data: purchaseOrders, error: purchaseError } = await supabase
       .from('purchase_orders')
       .select(`
         id,
         supplier_id,
-        po_number,
         created_at,
         due_date,
         total,
@@ -157,23 +179,38 @@ export async function GET() {
       console.error('Error fetching vendor bills:', vendorBillsError);
     }
 
-    // Process receivables data
+    // Process receivables data from sales orders and their invoices
     const receivables: AgingData[] = [];
     
     if (salesOrders) {
       salesOrders.forEach(order => {
         const totalAmount = order.final_price || 0;
-        const paidAmount = order.total_paid || 0;
+        
+        // Find invoices for this sales order
+        let paidAmount = 0;
+        let hasInvoices = false;
+        
+        if (invoices) {
+          const orderInvoices = invoices.filter(invoice => invoice.sales_order_id === order.id);
+          if (orderInvoices.length > 0) {
+            hasInvoices = true;
+            // Sum up paid amounts from all invoices for this sales order
+            paidAmount = orderInvoices.reduce((sum, invoice) => sum + (invoice.paid_amount || 0), 0);
+          }
+        }
+        
         const outstandingAmount = totalAmount - paidAmount;
 
-        if (outstandingAmount > 0) {
-          const dueDate = order.due_date || new Date(new Date(order.created_at).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        // Include all sales orders (both with and without outstanding amounts for comprehensive view)
+        if (totalAmount > 0) {
+          // Use expected_delivery_date as due date, or create one 30 days from creation
+          const dueDate = order.expected_delivery_date || new Date(new Date(order.created_at).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
           const daysOutstanding = calculateDaysOutstanding(dueDate);
           
           receivables.push({
             id: order.id,
-            customer_name: order.customer_name || 'Unknown Customer',
-            invoice_number: order.invoice_number || order.id.slice(0, 8),
+            customer_name: Array.isArray(order.customers) ? order.customers[0]?.name || 'Unknown Customer' : (order.customers as { name: string } | null)?.name || 'Unknown Customer',
+            invoice_number: hasInvoices ? `INV-${order.id.slice(0, 8)}` : `SO-${order.id.slice(0, 8)}`,
             invoice_date: order.created_at.split('T')[0],
             due_date: dueDate,
             total_amount: totalAmount,
@@ -183,6 +220,38 @@ export async function GET() {
             aging_bucket: getAgingBucket(daysOutstanding),
             status: getStatus(daysOutstanding)
           });
+        }
+      });
+    }
+    
+    // Also add standalone invoices that are not linked to any sales order
+    if (invoices) {
+      invoices.forEach(invoice => {
+        // Only add if this invoice is not linked to a sales order
+        if (!invoice.sales_order_id) {
+          const totalAmount = invoice.total || 0;
+          const paidAmount = invoice.paid_amount || 0;
+          const outstandingAmount = totalAmount - paidAmount;
+
+          if (totalAmount > 0) {
+            // Create due date 30 days from invoice creation
+            const dueDate = new Date(new Date(invoice.created_at).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            const daysOutstanding = calculateDaysOutstanding(dueDate);
+            
+            receivables.push({
+              id: invoice.id,
+              customer_name: Array.isArray(invoice.customers) ? invoice.customers[0]?.name || 'Unknown Customer' : (invoice.customers as { name: string } | null)?.name || 'Unknown Customer',
+              invoice_number: `INV-${invoice.id.slice(0, 8)}`,
+              invoice_date: invoice.created_at.split('T')[0],
+              due_date: dueDate,
+              total_amount: totalAmount,
+              paid_amount: paidAmount,
+              outstanding_amount: outstandingAmount,
+              days_outstanding: daysOutstanding,
+              aging_bucket: getAgingBucket(daysOutstanding),
+              status: getStatus(daysOutstanding)
+            });
+          }
         }
       });
     }
@@ -204,7 +273,7 @@ export async function GET() {
           payables.push({
             id: order.id,
             supplier_name: Array.isArray(order.suppliers) ? order.suppliers[0]?.name || 'Unknown Supplier' : (order.suppliers as { name: string } | null)?.name || 'Unknown Supplier',
-            invoice_number: order.po_number || order.id.slice(0, 8),
+            invoice_number: `PO-${order.id.slice(0, 8)}`,
             invoice_date: order.created_at.split('T')[0],
             due_date: dueDate,
             total_amount: totalAmount,

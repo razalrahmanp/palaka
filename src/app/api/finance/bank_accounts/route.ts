@@ -36,26 +36,112 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // If fetching UPI accounts, join with linked bank account info
-  if (accountType === 'UPI' && data) {
+  // Calculate actual balances from bank transactions AND payments
+  if (data) {
     const enrichedData = await Promise.all(
-      data.map(async (upiAccount) => {
-        if (upiAccount.linked_bank_account_id) {
-          const { data: linkedBank } = await supabase
-            .from("bank_accounts")
-            .select("name, account_number")
-            .eq("id", upiAccount.linked_bank_account_id)
-            .single();
-          
-          return {
-            ...upiAccount,
-            linked_bank_name: linkedBank?.name,
-            linked_account_number: linkedBank?.account_number
-          };
+      data.map(async (account) => {
+        // Get all bank transactions for this account
+        const { data: transactions, error: transError } = await supabase
+          .from('bank_transactions')
+          .select('type, amount')
+          .eq('bank_account_id', account.id);
+
+        let transactionBalance = 0;
+        if (!transError && transactions) {
+          transactionBalance = transactions.reduce((balance, transaction) => {
+            if (transaction.type === 'deposit') {
+              return balance + Number(transaction.amount);
+            } else if (transaction.type === 'withdrawal') {
+              return balance - Number(transaction.amount);
+            }
+            return balance;
+          }, 0);
         }
-        return upiAccount;
+
+        // Get all payments that should be attributed to this account based on method
+        let paymentMethods: string[] = [];
+        if (account.account_type === 'BANK') {
+          paymentMethods = ['BANK TRANSFER', 'CARD'];
+        } else if (account.account_type === 'UPI') {
+          paymentMethods = ['UPI'];
+        }
+
+        let paymentsBalance = 0;
+        let paymentCount = 0;
+        if (paymentMethods.length > 0) {
+          const { data: payments, error: paymentsError } = await supabase
+            .from('payments')
+            .select('amount, method')
+            .in('method', paymentMethods);
+
+          if (!paymentsError && payments) {
+            paymentCount = payments.length;
+            // For bank accounts, divide payments among all bank accounts
+            // For UPI accounts, divide UPI payments among all UPI accounts
+            const accountsOfSameType = data.filter(acc => acc.account_type === account.account_type);
+            const totalPayments = payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+            paymentsBalance = totalPayments / (accountsOfSameType.length || 1);
+          }
+        }
+
+        // For UPI accounts, also get the linked bank account balance
+        let linkedBankBalance = 0;
+        if (account.account_type === 'UPI' && account.linked_bank_account_id) {
+          const { data: linkedTransactions } = await supabase
+            .from('bank_transactions')
+            .select('type, amount')
+            .eq('bank_account_id', account.linked_bank_account_id);
+
+          if (linkedTransactions) {
+            linkedBankBalance = linkedTransactions.reduce((balance, transaction) => {
+              if (transaction.type === 'deposit') {
+                return balance + Number(transaction.amount);
+              } else if (transaction.type === 'withdrawal') {
+                return balance - Number(transaction.amount);
+              }
+              return balance;
+            }, 0);
+          }
+        }
+
+        const totalCalculatedBalance = transactionBalance + paymentsBalance + linkedBankBalance;
+
+        return {
+          ...account,
+          calculated_balance: totalCalculatedBalance,
+          transaction_balance: transactionBalance,
+          payments_balance: paymentsBalance,
+          linked_bank_balance: linkedBankBalance,
+          transaction_count: transactions?.length || 0,
+          payment_count: paymentCount,
+          payment_methods: paymentMethods
+        };
       })
     );
+
+    // If fetching UPI accounts, also join with linked bank account info
+    if (accountType === 'UPI') {
+      const finalData = await Promise.all(
+        enrichedData.map(async (upiAccount) => {
+          if (upiAccount.linked_bank_account_id) {
+            const { data: linkedBank } = await supabase
+              .from("bank_accounts")
+              .select("name, account_number")
+              .eq("id", upiAccount.linked_bank_account_id)
+              .single();
+            
+            return {
+              ...upiAccount,
+              linked_bank_name: linkedBank?.name,
+              linked_account_number: linkedBank?.account_number
+            };
+          }
+          return upiAccount;
+        })
+      );
+      return NextResponse.json({ data: finalData });
+    }
+
     return NextResponse.json({ data: enrichedData });
   }
 

@@ -42,6 +42,13 @@ interface BankAccount {
   name: string;
   account_number: string;
   current_balance: number;
+  calculated_balance?: number;
+  transaction_balance?: number;
+  payments_balance?: number;
+  linked_bank_balance?: number;
+  payment_count?: number;
+  transaction_count?: number;
+  payment_methods?: string[];
   currency: string;
   account_type?: 'BANK' | 'UPI';
   upi_id?: string;
@@ -56,6 +63,13 @@ interface UpiAccount {
   name: string;
   upi_id: string;
   current_balance: number;
+  calculated_balance?: number;
+  transaction_balance?: number;
+  payments_balance?: number;
+  linked_bank_balance?: number;
+  payment_count?: number;
+  transaction_count?: number;
+  payment_methods?: string[];
   linked_bank_account_id: string | null;
   linked_bank_name?: string;
   linked_account_number?: string;
@@ -237,8 +251,17 @@ export function BankAccountManager() {
     }).format(amount);
   };
 
+  const getDisplayBalance = (account: BankAccount | UpiAccount) => {
+    // Use calculated_balance if available, otherwise fall back to current_balance
+    const balance = account.calculated_balance ?? account.current_balance;
+    return formatCurrency(balance);
+  };
+
   const getTotalBalance = () => {
-    return bankAccounts.reduce((total, account) => total + account.current_balance, 0);
+    return bankAccounts.reduce((total, account) => {
+      const balance = account.calculated_balance ?? account.current_balance;
+      return total + balance;
+    }, 0);
   };
 
   const getBankIcon = (bankName: string) => {
@@ -423,7 +446,7 @@ export function BankAccountManager() {
                           </div>
                           <div className="text-right">
                             <p className="text-lg font-bold text-gray-900">
-                              {formatCurrency(account.current_balance, account.currency)}
+                              {getDisplayBalance(account)}
                             </p>
                             <Button
                               size="sm"
@@ -544,7 +567,7 @@ export function BankAccountManager() {
                         </div>
                         <div className="text-right">
                           <p className="text-lg font-bold text-gray-900">
-                            {formatCurrency(account.current_balance)}
+                            {getDisplayBalance(account)}
                           </p>
                           <Badge className={account.is_active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}>
                             {account.is_active ? 'Active' : 'Inactive'}
@@ -712,7 +735,7 @@ export function BankAccountManager() {
                 {selectedAccount?.name} - Bank Transactions
               </DialogTitle>
               <p className="text-sm text-gray-600">
-                Current Balance: {selectedAccount && formatCurrency(selectedAccount.current_balance, selectedAccount.currency)}
+                Current Balance: {selectedAccount && getDisplayBalance(selectedAccount)}
               </p>
             </DialogHeader>
             

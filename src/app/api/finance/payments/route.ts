@@ -34,11 +34,51 @@ export async function GET() {
 
     console.log(`💸 Found ${payments?.length || 0} payments`);
 
-    // Enhance payments with customer and invoice data
+    // Also fetch bank transactions to link with payments
+    const { data: bankTransactions, error: bankError } = await supabase
+      .from("bank_transactions")
+      .select(`
+        id,
+        bank_account_id,
+        amount,
+        date,
+        reference,
+        description,
+        bank_accounts!bank_account_id(
+          id,
+          name,
+          account_type,
+          account_number
+        )
+      `)
+      .eq('type', 'deposit')
+      .order("date", { ascending: false });
+
+    if (bankError) {
+      console.error('❌ Error fetching bank transactions:', bankError);
+    }
+
+    // Enhance payments with customer and invoice data, and link with bank transactions
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const enhancedPayments = payments?.map((payment: any) => {
       const invoice = payment.invoices;
       const customer = invoice?.customers;
+      
+      // Try to find matching bank transaction based on amount, date, and method
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const matchingBankTransaction = bankTransactions?.find((transaction: any) => {
+        const amountMatch = Math.abs(Number(transaction.amount) - Number(payment.amount)) < 0.01;
+        const dateMatch = transaction.date === payment.date;
+        const methodMatch = (
+          (payment.method === 'BANK TRANSFER' && Array.isArray(transaction.bank_accounts) ? transaction.bank_accounts[0]?.account_type === 'BANK' : transaction.bank_accounts?.account_type === 'BANK') ||
+          (payment.method === 'UPI' && Array.isArray(transaction.bank_accounts) ? transaction.bank_accounts[0]?.account_type === 'UPI' : transaction.bank_accounts?.account_type === 'UPI')
+        );
+        return amountMatch && dateMatch && methodMatch;
+      });
+      
+      const bankAccount = Array.isArray(matchingBankTransaction?.bank_accounts) 
+        ? matchingBankTransaction?.bank_accounts[0] 
+        : matchingBankTransaction?.bank_accounts;
       
       return {
         id: payment.id,
@@ -49,6 +89,11 @@ export async function GET() {
         method: payment.method || 'Unknown',
         reference: payment.reference || '',
         description: payment.description || '',
+        // Bank account information from linked transaction
+        bank_account_id: matchingBankTransaction?.bank_account_id || null,
+        bank_account_name: bankAccount?.name || '',
+        bank_account_type: bankAccount?.account_type || '',
+        bank_account_number: bankAccount?.account_number || '',
         // Invoice information
         invoice_total: Number(invoice?.total) || 0,
         sales_order_id: invoice?.sales_order_id || '',
@@ -156,6 +201,7 @@ export async function POST(req: Request) {
 }
 
 // Fallback method for when stored procedure is not available
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function createPaymentManually(body: any) {
   const { invoice_id, amount, payment_date, date, method } = body;
   
@@ -165,7 +211,7 @@ async function createPaymentManually(body: any) {
 
   try {
     // 1. Create payment record
-    const { data: payment, error: insertError } = await supabase
+    const { error: insertError } = await supabase
       .from("payments")
       .insert([{ 
         invoice_id, 

@@ -431,46 +431,114 @@ export interface CartItem {
 
 
 export const subcategoryMap = {
-  // Administration
-  "Office Supplies": { category: "Administration", type: "Indirect" },
-
-  // Insurance
-  "Insurance": { category: "Insurance", type: "Fixed" },
-
-  // Logistics
-  "Packaging": { category: "Logistics", type: "Variable" },
-  "Transportation": { category: "Logistics", type: "Variable" },
-  "Shipping": { category: "Logistics", type: "Variable" },
-  "Freight": { category: "Logistics", type: "Variable" },
-
-  // Maintenance
-  "Maintenance": { category: "Maintenance", type: "Fixed" },
-  "Tools": { category: "Maintenance", type: "Fixed" },
-
-  // Manufacturing
-  "Furniture": { category: "Manufacturing", type: "Direct" },
-  "Wood": { category: "Manufacturing", type: "Direct" },
-
-  // Marketing
-  "Marketing Campaign": { category: "Marketing", type: "Variable" },
-
-  // Other
-  "Other": { category: "Other", type: "Indirect" },
-
-  // Production
-  "Fabric": { category: "Production", type: "Direct" },
-  "Machinery": { category: "Production", type: "Fixed" },
-
-  // Rent
-  "Rent": { category: "Rent", type: "Fixed" },
-
-  // Salaries
-  "Salaries": { category: "Salaries", type: "Fixed" },
-
-  // Utilities
-  "Electricity": { category: "Utilities", type: "Fixed" },
-  "Internet": { category: "Utilities", type: "Fixed" },
-  "Utilities": { category: "Utilities", type: "Fixed" },
+  // ============= DIRECT EXPENSES (Cost of Goods Sold) =============
+  // Raw Materials
+  "Raw Materials - Wood": { category: "Raw Materials", type: "Direct", accountCode: "5100" },
+  "Raw Materials - Metal": { category: "Raw Materials", type: "Direct", accountCode: "5101" },
+  "Raw Materials - Fabric": { category: "Raw Materials", type: "Direct", accountCode: "5102" },
+  "Raw Materials - Hardware": { category: "Raw Materials", type: "Direct", accountCode: "5103" },
+  "Raw Materials - Foam": { category: "Raw Materials", type: "Direct", accountCode: "5104" },
+  "Raw Materials - Glass": { category: "Raw Materials", type: "Direct", accountCode: "5105" },
+  
+  // Direct Labor
+  "Direct Labor - Manufacturing": { category: "Direct Labor", type: "Direct", accountCode: "5200" },
+  "Direct Labor - Assembly": { category: "Direct Labor", type: "Direct", accountCode: "5201" },
+  "Direct Labor - Finishing": { category: "Direct Labor", type: "Direct", accountCode: "5202" },
+  "Direct Labor - Quality Control": { category: "Direct Labor", type: "Direct", accountCode: "5203" },
+  
+  // Manufacturing Overhead
+  "Factory Utilities": { category: "Manufacturing Overhead", type: "Variable", accountCode: "5300" },
+  "Factory Rent": { category: "Manufacturing Overhead", type: "Fixed", accountCode: "5301" },
+  "Factory Maintenance": { category: "Manufacturing Overhead", type: "Variable", accountCode: "5302" },
+  "Factory Supplies": { category: "Manufacturing Overhead", type: "Variable", accountCode: "5303" },
+  "Equipment Depreciation": { category: "Manufacturing Overhead", type: "Fixed", accountCode: "5304" },
+  
+  // ============= INDIRECT EXPENSES (Operating Expenses) =============
+  // Administrative Expenses
+  "Office Rent": { category: "Administrative", type: "Fixed", accountCode: "6100" },
+  "Office Utilities": { category: "Administrative", type: "Fixed", accountCode: "6101" },
+  "Office Supplies": { category: "Administrative", type: "Variable", accountCode: "6102" },
+  "Office Equipment": { category: "Administrative", type: "Variable", accountCode: "6103" },
+  "Telephone & Internet": { category: "Administrative", type: "Fixed", accountCode: "6104" },
+  "Professional Services": { category: "Administrative", type: "Variable", accountCode: "6105" },
+  "Legal & Audit Fees": { category: "Administrative", type: "Variable", accountCode: "6106" },
+  "Bank Charges": { category: "Administrative", type: "Variable", accountCode: "6107" },
+  
+  // Salaries & Benefits
+  "Administrative Salaries": { category: "Salaries & Benefits", type: "Fixed", accountCode: "6200" },
+  "Sales Salaries": { category: "Salaries & Benefits", type: "Fixed", accountCode: "6201" },
+  "Management Salaries": { category: "Salaries & Benefits", type: "Fixed", accountCode: "6202" },
+  "Employee Benefits": { category: "Salaries & Benefits", type: "Fixed", accountCode: "6203" },
+  "Provident Fund": { category: "Salaries & Benefits", type: "Fixed", accountCode: "6204" },
+  "Employee Insurance": { category: "Salaries & Benefits", type: "Fixed", accountCode: "6205" },
+  "Training & Development": { category: "Salaries & Benefits", type: "Variable", accountCode: "6206" },
+  
+  // Marketing & Sales
+  "Advertising": { category: "Marketing & Sales", type: "Variable", accountCode: "6300" },
+  "Digital Marketing": { category: "Marketing & Sales", type: "Variable", accountCode: "6301" },
+  "Sales Promotion": { category: "Marketing & Sales", type: "Variable", accountCode: "6302" },
+  "Trade Shows": { category: "Marketing & Sales", type: "Variable", accountCode: "6303" },
+  "Sales Commission": { category: "Marketing & Sales", type: "Variable", accountCode: "6304" },
+  "Customer Entertainment": { category: "Marketing & Sales", type: "Variable", accountCode: "6305" },
+  
+  // Logistics & Distribution
+  "Transportation": { category: "Logistics & Distribution", type: "Variable", accountCode: "6400" },
+  "Freight & Shipping": { category: "Logistics & Distribution", type: "Variable", accountCode: "6401" },
+  "Packaging Materials": { category: "Logistics & Distribution", type: "Variable", accountCode: "6402" },
+  "Warehouse Rent": { category: "Logistics & Distribution", type: "Fixed", accountCode: "6403" },
+  "Storage & Handling": { category: "Logistics & Distribution", type: "Variable", accountCode: "6404" },
+  "Delivery Vehicle Expenses": { category: "Logistics & Distribution", type: "Variable", accountCode: "6405" },
+  
+  // Technology & Software
+  "Software Licenses": { category: "Technology", type: "Fixed", accountCode: "6500" },
+  "IT Support": { category: "Technology", type: "Variable", accountCode: "6501" },
+  "Website Maintenance": { category: "Technology", type: "Fixed", accountCode: "6502" },
+  "Cloud Services": { category: "Technology", type: "Variable", accountCode: "6503" },
+  "Hardware & Equipment": { category: "Technology", type: "Variable", accountCode: "6504" },
+  
+  // Insurance & Protection
+  "General Insurance": { category: "Insurance", type: "Fixed", accountCode: "6600" },
+  "Product Liability": { category: "Insurance", type: "Fixed", accountCode: "6601" },
+  "Property Insurance": { category: "Insurance", type: "Fixed", accountCode: "6602" },
+  "Vehicle Insurance": { category: "Insurance", type: "Fixed", accountCode: "6603" },
+  "Workers Compensation": { category: "Insurance", type: "Fixed", accountCode: "6604" },
+  
+  // Maintenance & Repairs
+  "Equipment Maintenance": { category: "Maintenance & Repairs", type: "Variable", accountCode: "6700" },
+  "Building Maintenance": { category: "Maintenance & Repairs", type: "Variable", accountCode: "6701" },
+  "Vehicle Maintenance": { category: "Maintenance & Repairs", type: "Variable", accountCode: "6702" },
+  "Tools & Equipment": { category: "Maintenance & Repairs", type: "Variable", accountCode: "6703" },
+  
+  // Travel & Entertainment
+  "Business Travel": { category: "Travel & Entertainment", type: "Variable", accountCode: "6800" },
+  "Accommodation": { category: "Travel & Entertainment", type: "Variable", accountCode: "6801" },
+  "Meals & Entertainment": { category: "Travel & Entertainment", type: "Variable", accountCode: "6802" },
+  "Vehicle Expenses": { category: "Travel & Entertainment", type: "Variable", accountCode: "6803" },
+  
+  // Miscellaneous
+  "Research & Development": { category: "Research & Development", type: "Variable", accountCode: "6900" },
+  "Donations & CSR": { category: "Miscellaneous", type: "Variable", accountCode: "6901" },
+  "Miscellaneous Expenses": { category: "Miscellaneous", type: "Variable", accountCode: "6902" },
+  "Bad Debts": { category: "Miscellaneous", type: "Variable", accountCode: "6903" },
+  
+  // Legacy categories for backward compatibility
+  "Insurance": { category: "Insurance", type: "Fixed", accountCode: "6600" },
+  "Packaging": { category: "Logistics & Distribution", type: "Variable", accountCode: "6402" },
+  "Shipping": { category: "Logistics & Distribution", type: "Variable", accountCode: "6401" },
+  "Freight": { category: "Logistics & Distribution", type: "Variable", accountCode: "6401" },
+  "Maintenance": { category: "Maintenance & Repairs", type: "Variable", accountCode: "6700" },
+  "Tools": { category: "Maintenance & Repairs", type: "Variable", accountCode: "6703" },
+  "Furniture": { category: "Raw Materials", type: "Direct", accountCode: "5100" },
+  "Wood": { category: "Raw Materials", type: "Direct", accountCode: "5100" },
+  "Marketing Campaign": { category: "Marketing & Sales", type: "Variable", accountCode: "6300" },
+  "Other": { category: "Miscellaneous", type: "Variable", accountCode: "6902" },
+  "Fabric": { category: "Raw Materials", type: "Direct", accountCode: "5102" },
+  "Machinery": { category: "Technology", type: "Variable", accountCode: "6504" },
+  "Rent": { category: "Administrative", type: "Fixed", accountCode: "6100" },
+  "Salaries": { category: "Salaries & Benefits", type: "Fixed", accountCode: "6200" },
+  "Electricity": { category: "Administrative", type: "Fixed", accountCode: "6101" },
+  "Internet": { category: "Administrative", type: "Fixed", accountCode: "6104" },
+  "Utilities": { category: "Administrative", type: "Fixed", accountCode: "6101" },
 };
 
 

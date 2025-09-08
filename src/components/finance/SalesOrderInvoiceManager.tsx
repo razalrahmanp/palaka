@@ -123,6 +123,7 @@ export function SalesOrderInvoiceManager() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [payments, setPayments] = useState<PaymentDetails[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<{id: string; account_name: string; account_number: string; account_type?: string}[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [paymentTrackingOpen, setPaymentTrackingOpen] = useState(false);
@@ -143,8 +144,9 @@ export function SalesOrderInvoiceManager() {
     date: new Date().toISOString().split('T')[0],
     description: '',
     amount: '',
-    category: 'Other',
-    payment_method: 'cash'
+    category: 'Office Supplies',
+    payment_method: 'cash',
+    bank_account_id: ''
   });
 
   useEffect(() => {
@@ -173,26 +175,41 @@ export function SalesOrderInvoiceManager() {
       console.log('📈 Summary:', ordersData.summary);
       
       // Fetch the rest separately for other components that might need them
-      const [invoicesRes, paymentsRes, expensesRes] = await Promise.all([
+      const [invoicesRes, paymentsRes, expensesRes, bankAccountsRes] = await Promise.all([
         fetch('/api/finance/invoices'),
         fetch('/api/finance/payments'),
-        fetch('/api/finance/expenses')
+        fetch('/api/finance/expenses'),
+        fetch('/api/finance/bank-accounts')
       ]);
       
       const invoicesData = await invoicesRes.json();
       const paymentsData = await paymentsRes.json();
       const expensesData = await expensesRes.json();
       
+      // Handle bank accounts with error checking
+      let bankAccountsData = [];
+      if (bankAccountsRes.ok) {
+        bankAccountsData = await bankAccountsRes.json();
+      } else {
+        console.error('Failed to fetch bank accounts:', bankAccountsRes.statusText);
+        // Continue without bank accounts - user will see "No bank accounts available"
+      }
+      
       console.log('Raw Invoices Data:', invoicesData); // Enhanced debugging
       console.log('Raw Payments Data:', paymentsData); // Enhanced debugging
       console.log('Raw Expenses Data:', expensesData); // Enhanced debugging
+      console.log('Raw Bank Accounts Data:', bankAccountsData); // Enhanced debugging
 
       // Handle different API response structures
       const invoices = Array.isArray(invoicesData) ? invoicesData : (invoicesData.data || []);
       const payments = Array.isArray(paymentsData) ? paymentsData : (paymentsData.data || []);
       const expenses = Array.isArray(expensesData) ? expensesData : (expensesData.data || []);
+      const bankAccounts = Array.isArray(bankAccountsData) ? bankAccountsData : (bankAccountsData.data || []);
 
       console.log('Processed Invoices:', invoices); // Enhanced debugging
+      console.log('Processed Payments:', payments); // Enhanced debugging
+      console.log('Processed Expenses:', expenses); // Enhanced debugging
+      console.log('Processed Bank Accounts:', bankAccounts); // Enhanced debugging
       console.log('Processed Payments:', payments); // Enhanced debugging
       console.log('Payments structure check:', payments.length > 0 ? payments[0] : 'No payments found'); // Check structure
 
@@ -217,6 +234,7 @@ export function SalesOrderInvoiceManager() {
       setInvoices(invoices);
       setPayments(payments);
       setExpenses(expenses);
+      setBankAccounts(bankAccounts);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -484,6 +502,24 @@ export function SalesOrderInvoiceManager() {
   };
 
   const handleCreateExpense = async () => {
+    // Validation
+    if (!expenseForm.amount || parseFloat(expenseForm.amount) <= 0) {
+      alert('Please enter a valid amount greater than 0');
+      return;
+    }
+
+    if (!expenseForm.description.trim()) {
+      alert('Please enter a description for the expense');
+      return;
+    }
+
+    // Validate bank account selection for non-cash payments
+    const requiresBankAccount = ['bank_transfer', 'card', 'cheque', 'online'].includes(expenseForm.payment_method);
+    if (requiresBankAccount && !expenseForm.bank_account_id) {
+      alert('Please select a bank account for this payment method');
+      return;
+    }
+
     try {
       const response = await fetch('/api/finance/expenses', {
         method: 'POST',
@@ -496,7 +532,7 @@ export function SalesOrderInvoiceManager() {
           description: expenseForm.description,
           amount: parseFloat(expenseForm.amount),
           payment_method: expenseForm.payment_method,
-          bank_account_id: 1, // Default bank account - you may want to make this selectable
+          bank_account_id: expenseForm.bank_account_id || (bankAccounts.length > 0 ? bankAccounts[0].id : 1), // Use selected bank account or first available
           created_by: 'system' // You may want to get this from auth context
         }),
       });
@@ -507,8 +543,9 @@ export function SalesOrderInvoiceManager() {
           date: new Date().toISOString().split('T')[0],
           description: '',
           amount: '',
-          category: 'Other',
-          payment_method: 'cash'
+          category: 'Office Supplies',
+          payment_method: 'cash',
+          bank_account_id: ''
         });
         fetchData(); // Refresh data
         alert('Expense created successfully!');
@@ -1476,21 +1513,112 @@ export function SalesOrderInvoiceManager() {
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="category" className="text-right">
-                Category
+                Expense Category
               </Label>
               <Select value={expenseForm.category} onValueChange={(value) => setExpenseForm({ ...expenseForm, category: value })}>
                 <SelectTrigger className="col-span-3">
-                  <SelectValue placeholder="Select category" />
+                  <SelectValue placeholder="Select expense category" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-60">
+                  {/* Raw Materials - Direct Expenses */}
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Raw Materials (Direct Expenses)</div>
+                  <SelectItem value="Raw Materials - Wood">Raw Materials - Wood</SelectItem>
+                  <SelectItem value="Raw Materials - Metal">Raw Materials - Metal</SelectItem>
+                  <SelectItem value="Raw Materials - Fabric">Raw Materials - Fabric</SelectItem>
+                  <SelectItem value="Raw Materials - Hardware">Raw Materials - Hardware</SelectItem>
+                  <SelectItem value="Raw Materials - Foam">Raw Materials - Foam</SelectItem>
+                  <SelectItem value="Raw Materials - Glass">Raw Materials - Glass</SelectItem>
+                  
+                  {/* Direct Labor */}
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Direct Labor</div>
+                  <SelectItem value="Direct Labor - Manufacturing">Direct Labor - Manufacturing</SelectItem>
+                  <SelectItem value="Direct Labor - Assembly">Direct Labor - Assembly</SelectItem>
+                  <SelectItem value="Direct Labor - Finishing">Direct Labor - Finishing</SelectItem>
+                  <SelectItem value="Direct Labor - Quality Control">Direct Labor - Quality Control</SelectItem>
+                  
+                  {/* Manufacturing Overhead */}
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Manufacturing Overhead</div>
+                  <SelectItem value="Factory Utilities">Factory Utilities</SelectItem>
+                  <SelectItem value="Factory Rent">Factory Rent</SelectItem>
+                  <SelectItem value="Factory Maintenance">Factory Maintenance</SelectItem>
+                  <SelectItem value="Factory Supplies">Factory Supplies</SelectItem>
+                  <SelectItem value="Equipment Depreciation">Equipment Depreciation</SelectItem>
+                  
+                  {/* Administrative Expenses */}
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Administrative Expenses</div>
+                  <SelectItem value="Office Rent">Office Rent</SelectItem>
+                  <SelectItem value="Office Utilities">Office Utilities</SelectItem>
                   <SelectItem value="Office Supplies">Office Supplies</SelectItem>
-                  <SelectItem value="Marketing">Marketing</SelectItem>
-                  <SelectItem value="Travel">Travel</SelectItem>
-                  <SelectItem value="Utilities">Utilities</SelectItem>
-                  <SelectItem value="Equipment">Equipment</SelectItem>
-                  <SelectItem value="Software">Software</SelectItem>
-                  <SelectItem value="Insurance">Insurance</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
+                  <SelectItem value="Office Equipment">Office Equipment</SelectItem>
+                  <SelectItem value="Telephone & Internet">Telephone & Internet</SelectItem>
+                  <SelectItem value="Professional Services">Professional Services</SelectItem>
+                  <SelectItem value="Legal & Audit Fees">Legal & Audit Fees</SelectItem>
+                  <SelectItem value="Bank Charges">Bank Charges</SelectItem>
+                  
+                  {/* Salaries & Benefits */}
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Salaries & Benefits</div>
+                  <SelectItem value="Administrative Salaries">Administrative Salaries</SelectItem>
+                  <SelectItem value="Sales Salaries">Sales Salaries</SelectItem>
+                  <SelectItem value="Management Salaries">Management Salaries</SelectItem>
+                  <SelectItem value="Employee Benefits">Employee Benefits</SelectItem>
+                  <SelectItem value="Provident Fund">Provident Fund</SelectItem>
+                  <SelectItem value="Employee Insurance">Employee Insurance</SelectItem>
+                  <SelectItem value="Training & Development">Training & Development</SelectItem>
+                  
+                  {/* Marketing & Sales */}
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Marketing & Sales</div>
+                  <SelectItem value="Advertising">Advertising</SelectItem>
+                  <SelectItem value="Digital Marketing">Digital Marketing</SelectItem>
+                  <SelectItem value="Sales Promotion">Sales Promotion</SelectItem>
+                  <SelectItem value="Trade Shows">Trade Shows</SelectItem>
+                  <SelectItem value="Sales Commission">Sales Commission</SelectItem>
+                  <SelectItem value="Customer Entertainment">Customer Entertainment</SelectItem>
+                  
+                  {/* Logistics & Distribution */}
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Logistics & Distribution</div>
+                  <SelectItem value="Transportation">Transportation</SelectItem>
+                  <SelectItem value="Freight & Shipping">Freight & Shipping</SelectItem>
+                  <SelectItem value="Packaging Materials">Packaging Materials</SelectItem>
+                  <SelectItem value="Warehouse Rent">Warehouse Rent</SelectItem>
+                  <SelectItem value="Storage & Handling">Storage & Handling</SelectItem>
+                  <SelectItem value="Delivery Vehicle Expenses">Delivery Vehicle Expenses</SelectItem>
+                  
+                  {/* Technology & Software */}
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Technology & Software</div>
+                  <SelectItem value="Software Licenses">Software Licenses</SelectItem>
+                  <SelectItem value="IT Support">IT Support</SelectItem>
+                  <SelectItem value="Website Maintenance">Website Maintenance</SelectItem>
+                  <SelectItem value="Cloud Services">Cloud Services</SelectItem>
+                  <SelectItem value="Hardware & Equipment">Hardware & Equipment</SelectItem>
+                  
+                  {/* Insurance & Protection */}
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Insurance & Protection</div>
+                  <SelectItem value="General Insurance">General Insurance</SelectItem>
+                  <SelectItem value="Product Liability">Product Liability</SelectItem>
+                  <SelectItem value="Property Insurance">Property Insurance</SelectItem>
+                  <SelectItem value="Vehicle Insurance">Vehicle Insurance</SelectItem>
+                  <SelectItem value="Workers Compensation">Workers Compensation</SelectItem>
+                  
+                  {/* Maintenance & Repairs */}
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Maintenance & Repairs</div>
+                  <SelectItem value="Equipment Maintenance">Equipment Maintenance</SelectItem>
+                  <SelectItem value="Building Maintenance">Building Maintenance</SelectItem>
+                  <SelectItem value="Vehicle Maintenance">Vehicle Maintenance</SelectItem>
+                  <SelectItem value="Tools & Equipment">Tools & Equipment</SelectItem>
+                  
+                  {/* Travel & Entertainment */}
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Travel & Entertainment</div>
+                  <SelectItem value="Business Travel">Business Travel</SelectItem>
+                  <SelectItem value="Accommodation">Accommodation</SelectItem>
+                  <SelectItem value="Meals & Entertainment">Meals & Entertainment</SelectItem>
+                  <SelectItem value="Vehicle Expenses">Vehicle Expenses</SelectItem>
+                  
+                  {/* Miscellaneous */}
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Miscellaneous</div>
+                  <SelectItem value="Research & Development">Research & Development</SelectItem>
+                  <SelectItem value="Donations & CSR">Donations & CSR</SelectItem>
+                  <SelectItem value="Bad Debts">Bad Debts</SelectItem>
+                  <SelectItem value="Miscellaneous Expenses">Miscellaneous Expenses</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1511,6 +1639,42 @@ export function SalesOrderInvoiceManager() {
                 </SelectContent>
               </Select>
             </div>
+            {(expenseForm.payment_method === 'bank_transfer' || expenseForm.payment_method === 'card' || expenseForm.payment_method === 'cheque' || expenseForm.payment_method === 'online') && (
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="bank_account" className="text-right">
+                  Bank Account
+                </Label>
+                <div className="col-span-3 flex gap-2">
+                  <Select value={expenseForm.bank_account_id} onValueChange={(value) => setExpenseForm({ ...expenseForm, bank_account_id: value })}>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Select bank account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {bankAccounts && bankAccounts.length > 0 ? (
+                        bankAccounts.map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            {account.account_name}{account.account_number ? ` - ${account.account_number}` : ''} {account.account_type ? `(${account.account_type})` : ''}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="" disabled>
+                          No bank accounts available
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchData()}
+                    title="Refresh bank accounts"
+                  >
+                    🔄
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button

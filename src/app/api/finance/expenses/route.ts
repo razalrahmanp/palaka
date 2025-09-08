@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseAdmin";
 import { subcategoryMap } from "@/types";
+import { createExpenseJournalEntry } from "@/lib/journalHelper";
 
 export async function GET() {
   const { data, error } = await supabase
@@ -24,8 +25,8 @@ export async function POST(req: Request) {
   } = await req.json();
 
   type SubcategoryKey = keyof typeof subcategoryMap;
-  const fallback = { category: "Other", type: "Indirect" };
-  const { category, type } =
+  const fallback = { category: "Miscellaneous", type: "Variable", accountCode: "6902" };
+  const { category, type, accountCode } =
     subcategoryMap[(subcategory as SubcategoryKey)] || fallback;
 
   try {
@@ -75,17 +76,25 @@ export async function POST(req: Request) {
     });
 
     // 5. Create accounting journal entry for the expense
-    // Dr. Expense Account / Cr. Cash/Bank Account
     try {
-      // TODO: Accounting integration removed
-      // await createExpenseJournalEntry({
-      //   id: exp.id,
-      //   date: date,
-      //   category: category,
-      //   description: description,
-      //   amount: amount
-      // });
-      console.log(`✅ Journal entry creation skipped for expense ${exp.id}`);
+      const journalResult = await createExpenseJournalEntry({
+        expenseId: exp.id,
+        amount: amount,
+        date: date,
+        description: description,
+        category: category,
+        type: type,
+        accountCode: accountCode,
+        paymentMethod: payment_method,
+        bankAccountId: bank_account_id
+      });
+      
+      if (journalResult.success) {
+        console.log(`✅ Journal entry created for expense ${exp.id}:`, journalResult.journalEntryId);
+      } else {
+        console.error('❌ Failed to create journal entry for expense:', journalResult.error);
+        // Don't fail the expense creation, but log the error
+      }
     } catch (journalError) {
       console.error('❌ Failed to create journal entry for expense:', journalError);
       // Don't fail the expense creation, but log the error
@@ -94,7 +103,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ 
       data: exp,
       accounting_integration: true,
-      message: "Expense recorded with automatic journal entry"
+      category: category,
+      type: type,
+      accountCode: accountCode,
+      message: "Expense recorded with automatic journal entry and proper categorization"
     }, { status: 201 });
   } catch (error) {
     console.error('Error creating expense:', error);

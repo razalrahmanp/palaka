@@ -131,6 +131,7 @@ export async function POST(req: Request) {
       description,
       bank_account_id,
       upi_account_id,
+      cash_account_id,
       created_by
     } = body;
 
@@ -141,7 +142,8 @@ export async function POST(req: Request) {
       payment_date: payment_date || date,
       method,
       bank_account_id,
-      upi_account_id
+      upi_account_id,
+      cash_account_id
     });
 
     // Validate required fields
@@ -169,8 +171,8 @@ export async function POST(req: Request) {
     }
 
     // Determine the correct bank account ID for journal entry
-    // For UPI payments, use upi_account_id; for bank transfers, use bank_account_id
-    const journalBankAccountId = method === 'upi' ? upi_account_id : bank_account_id;
+    // For UPI payments, use upi_account_id; for cash payments, use cash_account_id; for bank transfers, use bank_account_id
+    const journalBankAccountId = method === 'upi' ? upi_account_id : method === 'cash' ? cash_account_id : bank_account_id;
 
     // Use stored procedure for atomic transaction with accounting
     const { data: paymentId, error } = await supabase.rpc('create_payment_with_accounting', {
@@ -234,7 +236,7 @@ export async function POST(req: Request) {
 // Fallback method for when stored procedure is not available
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function createPaymentManually(body: any) {
-  const { invoice_id, amount, payment_date, date, method, reference, description, bank_account_id, upi_account_id } = body;
+  const { invoice_id, amount, payment_date, date, method, reference, description, bank_account_id, upi_account_id, cash_account_id } = body;
   
   if (!invoice_id || !amount || !(payment_date || date) || !method) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -264,7 +266,7 @@ async function createPaymentManually(body: any) {
     console.log('💰 Payment created manually, creating journal entry...');
     
     // Determine the correct bank account ID for journal entry
-    const journalBankAccountId = method === 'upi' ? upi_account_id : bank_account_id;
+    const journalBankAccountId = method === 'upi' ? upi_account_id : method === 'cash' ? cash_account_id : bank_account_id;
     
     const journalResult = await createPaymentJournalEntry({
       paymentId: payment.id,

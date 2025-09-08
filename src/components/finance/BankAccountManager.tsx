@@ -50,7 +50,7 @@ interface BankAccount {
   transaction_count?: number;
   payment_methods?: string[];
   currency: string;
-  account_type?: 'BANK' | 'UPI';
+  account_type?: 'BANK' | 'UPI' | 'CASH';
   upi_id?: string;
   linked_bank_account_id?: string;
   is_active?: boolean;
@@ -77,6 +77,21 @@ interface UpiAccount {
   created_at: string;
 }
 
+interface CashAccount {
+  id: string;
+  name: string;
+  current_balance: number;
+  calculated_balance?: number;
+  transaction_balance?: number;
+  payments_balance?: number;
+  payment_count?: number;
+  transaction_count?: number;
+  payment_methods?: string[];
+  currency: string;
+  is_active: boolean;
+  created_at: string;
+}
+
 interface BankTransaction {
   id: string;
   bank_account_id: string;
@@ -91,14 +106,16 @@ export function BankAccountManager() {
   const router = useRouter();
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [upiAccounts, setUpiAccounts] = useState<UpiAccount[]>([]);
+  const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([]);
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [bankTransactions, setBankTransactions] = useState<Record<string, BankTransaction[]>>({});
   const [selectedAccount, setSelectedAccount] = useState<BankAccount | null>(null);
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [showAddUpi, setShowAddUpi] = useState(false);
+  const [showAddCash, setShowAddCash] = useState(false);
   const [showTransactions, setShowTransactions] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'bank' | 'upi'>('bank');
+  const [activeTab, setActiveTab] = useState<'bank' | 'upi' | 'cash'>('bank');
   
   const [newAccount, setNewAccount] = useState({
     name: '',
@@ -110,13 +127,20 @@ export function BankAccountManager() {
   const [newUpiAccount, setNewUpiAccount] = useState({
     name: '',
     upi_id: '',
-    linked_bank_account_id: 'none',
+    linked_bank_account_id: '',
+    current_balance: 0
+  });
+
+  const [newCashAccount, setNewCashAccount] = useState({
+    name: '',
+    currency: 'INR',
     current_balance: 0
   });
 
   useEffect(() => {
     fetchBankAccounts();
     fetchUpiAccounts();
+    fetchCashAccounts();
   }, []);
 
   const fetchBankAccounts = async () => {
@@ -161,6 +185,18 @@ export function BankAccountManager() {
       }
     } catch (error) {
       console.error('Error fetching UPI accounts:', error);
+    }
+  };
+
+  const fetchCashAccounts = async () => {
+    try {
+      const response = await fetch('/api/finance/bank_accounts?type=CASH');
+      if (response.ok) {
+        const result = await response.json();
+        setCashAccounts(result.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching cash accounts:', error);
     }
   };
 
@@ -221,7 +257,7 @@ export function BankAccountManager() {
         setNewUpiAccount({
           name: '',
           upi_id: '',
-          linked_bank_account_id: 'none',
+          linked_bank_account_id: '',
           current_balance: 0
         });
         setShowAddUpi(false);
@@ -230,6 +266,34 @@ export function BankAccountManager() {
       }
     } catch (error) {
       console.error('Error adding UPI account:', error);
+    }
+  };
+
+  const addCashAccount = async () => {
+    try {
+      const response = await fetch('/api/finance/bank_accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newCashAccount.name,
+          current_balance: newCashAccount.current_balance,
+          account_type: 'CASH',
+          currency: newCashAccount.currency,
+          account_number: null // Cash accounts don't have account numbers
+        })
+      });
+
+      if (response.ok) {
+        setNewCashAccount({
+          name: '',
+          currency: 'INR',
+          current_balance: 0
+        });
+        setShowAddCash(false);
+        fetchCashAccounts();
+      }
+    } catch (error) {
+      console.error('Error adding cash account:', error);
     }
   };
 
@@ -251,17 +315,24 @@ export function BankAccountManager() {
     }).format(amount);
   };
 
-  const getDisplayBalance = (account: BankAccount | UpiAccount) => {
+  const getDisplayBalance = (account: BankAccount | UpiAccount | CashAccount) => {
     // Use calculated_balance if available, otherwise fall back to current_balance
     const balance = account.calculated_balance ?? account.current_balance;
     return formatCurrency(balance);
   };
 
   const getTotalBalance = () => {
-    return bankAccounts.reduce((total, account) => {
+    const bankTotal = bankAccounts.reduce((total, account) => {
       const balance = account.calculated_balance ?? account.current_balance;
       return total + balance;
     }, 0);
+    
+    const cashTotal = cashAccounts.reduce((total, account) => {
+      const balance = account.calculated_balance ?? account.current_balance;
+      return total + balance;
+    }, 0);
+    
+    return bankTotal + cashTotal;
   };
 
   const getBankIcon = (bankName: string) => {
@@ -383,10 +454,10 @@ export function BankAccountManager() {
         </Card>
       </div>
 
-      {/* Tabbed Interface for Bank and UPI Accounts */}
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'bank' | 'upi')}>
+      {/* Tabbed Interface for Bank, UPI and Cash Accounts */}
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'bank' | 'upi' | 'cash')}>
         <div className="flex justify-between items-center mb-4">
-          <TabsList className="grid w-[400px] grid-cols-2">
+          <TabsList className="grid w-[600px] grid-cols-3">
             <TabsTrigger value="bank" className="flex items-center gap-2">
               <Building2 className="h-4 w-4" />
               Bank Accounts
@@ -394,6 +465,10 @@ export function BankAccountManager() {
             <TabsTrigger value="upi" className="flex items-center gap-2">
               <Smartphone className="h-4 w-4" />
               UPI Accounts
+            </TabsTrigger>
+            <TabsTrigger value="cash" className="flex items-center gap-2">
+              <Wallet className="h-4 w-4" />
+              Cash Accounts
             </TabsTrigger>
           </TabsList>
           
@@ -412,6 +487,15 @@ export function BankAccountManager() {
                 <Button className="bg-green-600 hover:bg-green-700" disabled={activeTab !== 'upi'}>
                   <Plus className="h-4 w-4 mr-2" />
                   Add UPI Account
+                </Button>
+              </DialogTrigger>
+            </Dialog>
+
+            <Dialog open={showAddCash} onOpenChange={setShowAddCash}>
+              <DialogTrigger asChild>
+                <Button className="bg-orange-600 hover:bg-orange-700" disabled={activeTab !== 'cash'}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Cash Account
                 </Button>
               </DialogTrigger>
             </Dialog>
@@ -588,6 +672,59 @@ export function BankAccountManager() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Cash Accounts Tab */}
+        <TabsContent value="cash">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Wallet className="h-5 w-5" />
+                Cash Accounts ({cashAccounts.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4">
+                {cashAccounts.map((account) => (
+                  <Card key={account.id} className="border border-gray-200 hover:shadow-md transition-shadow">
+                    <CardContent className="p-4">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-orange-100 rounded-lg">
+                            <Wallet className="h-6 w-6 text-orange-600" />
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-gray-900">{account.name}</h3>
+                            <p className="text-sm text-gray-600">Cash Account • {account.currency}</p>
+                            <div className="flex items-center gap-1 mt-1">
+                              <p className="text-xs text-gray-500">
+                                Physical cash handling
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-gray-900">
+                            {getDisplayBalance(account)}
+                          </p>
+                          <Badge className={account.is_active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}>
+                            {account.is_active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+                {cashAccounts.length === 0 && (
+                  <div className="text-center py-8 text-gray-500">
+                    <Wallet className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                    <p>No cash accounts found</p>
+                    <p className="text-sm">Add your first cash account to get started</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       {/* Add Bank Account Dialog */}
@@ -675,7 +812,7 @@ export function BankAccountManager() {
             <div>
               <Label htmlFor="linked_bank">Linked Bank Account (Optional)</Label>
               <Select
-                value={newUpiAccount.linked_bank_account_id}
+                value={newUpiAccount.linked_bank_account_id || "none"}
                 onValueChange={(value) => setNewUpiAccount({ ...newUpiAccount, linked_bank_account_id: value === "none" ? "" : value })}
               >
                 <SelectTrigger>
@@ -720,6 +857,67 @@ export function BankAccountManager() {
             <Button onClick={addUpiAccount} className="bg-green-600 hover:bg-green-700">
               <Smartphone className="h-4 w-4 mr-2" />
               Add UPI Account
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Cash Account Dialog */}
+      <Dialog open={showAddCash} onOpenChange={setShowAddCash}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wallet className="h-5 w-5" />
+              Add Cash Account
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="cash_name">Cash Account Name</Label>
+              <Input
+                id="cash_name"
+                value={newCashAccount.name}
+                onChange={(e) => setNewCashAccount({ ...newCashAccount, name: e.target.value })}
+                placeholder="e.g., Main Cash Register, Petty Cash, Counter Cash"
+              />
+            </div>
+            <div>
+              <Label htmlFor="cash_currency">Currency</Label>
+              <Select
+                value={newCashAccount.currency}
+                onValueChange={(value) => setNewCashAccount({ ...newCashAccount, currency: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select currency" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="INR">INR (Indian Rupee)</SelectItem>
+                  <SelectItem value="USD">USD (US Dollar)</SelectItem>
+                  <SelectItem value="EUR">EUR (Euro)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="cash_balance">Initial Balance</Label>
+              <Input
+                id="cash_balance"
+                type="number"
+                value={newCashAccount.current_balance}
+                onChange={(e) => setNewCashAccount({ ...newCashAccount, current_balance: parseFloat(e.target.value) || 0 })}
+                placeholder="0.00"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Enter the current physical cash amount in this account
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddCash(false)}>
+              Cancel
+            </Button>
+            <Button onClick={addCashAccount} className="bg-orange-600 hover:bg-orange-700">
+              <Wallet className="h-4 w-4 mr-2" />
+              Add Cash Account
             </Button>
           </DialogFooter>
         </DialogContent>

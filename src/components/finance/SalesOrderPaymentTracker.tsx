@@ -40,6 +40,14 @@ interface UpiAccount {
   is_active: boolean;
 }
 
+interface CashAccount {
+  id: string;
+  name: string;
+  current_balance: number;
+  currency: string;
+  is_active: boolean;
+}
+
 interface SalesOrderPaymentTrackerProps {
   orderId: string;
   orderTotal: number;
@@ -53,6 +61,7 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
   const [totalPaid, setTotalPaid] = useState(0);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [upiAccounts, setUpiAccounts] = useState<UpiAccount[]>([]);
+  const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([]);
   
   // Simplified form data that matches database schema
   const [formData, setFormData] = useState({
@@ -61,6 +70,7 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
     method: '',
     bank_account_id: '',
     upi_account_id: '',
+    cash_account_id: '',
     reference: '',
     description: ''
   });
@@ -105,15 +115,29 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
     }
   }, []);
 
+  // Fetch cash accounts for the form
+  const fetchCashAccounts = useCallback(async () => {
+    try {
+      const response = await fetch('/api/finance/bank_accounts?type=CASH');
+      if (response.ok) {
+        const data = await response.json();
+        setCashAccounts(data.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching cash accounts:', error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchPayments();
   }, [fetchPayments]);
 
   // Fetch bank accounts and UPI accounts only once when dialog opens
   useEffect(() => {
-    if (open && (bankAccounts.length === 0 || upiAccounts.length === 0)) {
+    if (open && (bankAccounts.length === 0 || upiAccounts.length === 0 || cashAccounts.length === 0)) {
       fetchBankAccounts();
       fetchUpiAccounts();
+      fetchCashAccounts();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -200,6 +224,27 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
         }
       }
 
+      // If payment method is cash, create cash account transaction
+      if (formData.cash_account_id && formData.method === 'cash') {
+        try {
+          await fetch('/api/finance/bank_accounts/transactions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              bank_account_id: formData.cash_account_id,
+              type: 'deposit',
+              amount: parseFloat(formData.amount),
+              description: `Cash Payment received for Order ${orderId}`,
+              reference: formData.reference || `Order-${orderId}`,
+              transaction_date: formData.payment_date
+            })
+          });
+        } catch (cashError) {
+          console.warn('Cash transaction creation failed:', cashError);
+          // Don't fail the payment if cash transaction fails
+        }
+      }
+
       // Reset form and close dialog
       setFormData({
         payment_date: new Date().toISOString().split('T')[0],
@@ -207,6 +252,7 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
         method: '',
         bank_account_id: '',
         upi_account_id: '',
+        cash_account_id: '',
         reference: '',
         description: ''
       });
@@ -354,6 +400,38 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
                 {upiAccounts.length === 0 && (
                   <p className="text-xs text-orange-600 mt-1">
                     No UPI accounts found. Please add a UPI account first.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {formData.method === 'cash' && (
+              <div>
+                <Label htmlFor="cash_account">Cash Account *</Label>
+                <Select 
+                  value={formData.cash_account_id} 
+                  onValueChange={(value) => handleInputChange('cash_account_id', value)}
+                >
+                  <SelectTrigger id="cash_account">
+                    <SelectValue placeholder="Select cash account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {cashAccounts.map((account) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        <div className="flex items-center gap-2">
+                          <DollarSign className="h-4 w-4" />
+                          <span>{account.name}</span>
+                          <span className="text-gray-500 text-xs">
+                            (Balance: {account.currency} {account.current_balance.toFixed(2)})
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {cashAccounts.length === 0 && (
+                  <p className="text-xs text-orange-600 mt-1">
+                    No cash accounts found. Please add a cash account first.
                   </p>
                 )}
               </div>

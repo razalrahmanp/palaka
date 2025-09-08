@@ -49,6 +49,14 @@ interface UpiAccount {
   is_active: boolean;
 }
 
+interface CashAccount {
+  id: string;
+  name: string;
+  current_balance: number;
+  currency: string;
+  is_active: boolean;
+}
+
 interface PaymentTrackingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -67,11 +75,13 @@ export function PaymentTrackingDialog({
   const [showAddPayment, setShowAddPayment] = useState(false);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [upiAccounts, setUpiAccounts] = useState<UpiAccount[]>([]);
+  const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([]);
   const [paymentData, setPaymentData] = useState({
     amount: 0,
     method: 'cash' as 'cash' | 'card' | 'bank_transfer' | 'check' | 'upi',
     bank_account_id: '',
     upi_account_id: '',
+    cash_account_id: '',
     reference: '',
     notes: '',
     date: new Date().toISOString().split('T')[0]
@@ -115,10 +125,23 @@ export function PaymentTrackingDialog({
     }
   }, []);
 
+  const fetchCashAccounts = useCallback(async () => {
+    try {
+      const response = await fetch('/api/finance/bank_accounts?type=CASH');
+      if (response.ok) {
+        const result = await response.json();
+        setCashAccounts(result.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching cash accounts:', error);
+    }
+  }, []);
+
   useEffect(() => {
-    if (open && (bankAccounts.length === 0 || upiAccounts.length === 0)) {
+    if (open && (bankAccounts.length === 0 || upiAccounts.length === 0 || cashAccounts.length === 0)) {
       fetchBankAccounts();
       fetchUpiAccounts();
+      fetchCashAccounts();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -234,6 +257,7 @@ export function PaymentTrackingDialog({
           method: 'cash',
           bank_account_id: '',
           upi_account_id: '',
+          cash_account_id: '',
           reference: '',
           notes: '',
           date: new Date().toISOString().split('T')[0]
@@ -283,6 +307,7 @@ export function PaymentTrackingDialog({
   const paymentProgress = (invoice.paid_amount / invoice.total) * 100;
   const requiresBankAccount = ['bank_transfer', 'check', 'card'].includes(paymentData.method);
   const requiresUpiAccount = paymentData.method === 'upi';
+  const requiresCashAccount = paymentData.method === 'cash';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -426,7 +451,9 @@ export function PaymentTrackingDialog({
                               // Reset bank account when method changes
                               bank_account_id: ['bank_transfer', 'check', 'card'].includes(value) ? prev.bank_account_id : '',
                               // Reset UPI account when method changes
-                              upi_account_id: value === 'upi' ? prev.upi_account_id : ''
+                              upi_account_id: value === 'upi' ? prev.upi_account_id : '',
+                              // Reset cash account when method changes
+                              cash_account_id: value === 'cash' ? prev.cash_account_id : ''
                             }))}
                           >
                             <SelectTrigger>
@@ -507,6 +534,42 @@ export function PaymentTrackingDialog({
                           {upiAccounts.length === 0 && (
                             <p className="text-xs text-orange-600 mt-1">
                               No UPI accounts found. Please add a UPI account first.
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Cash Account Selection - only show for cash */}
+                      {requiresCashAccount && (
+                        <div>
+                          <Label htmlFor="cash_account_id">Cash Account *</Label>
+                          <Select
+                            value={paymentData.cash_account_id}
+                            onValueChange={(value: string) => setPaymentData(prev => ({ 
+                              ...prev, 
+                              cash_account_id: value 
+                            }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select cash account" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {cashAccounts.map((account) => (
+                                <SelectItem key={account.id} value={account.id}>
+                                  <div className="flex items-center gap-2">
+                                    <DollarSign className="h-4 w-4" />
+                                    <span>{account.name}</span>
+                                    <span className="text-gray-500 text-xs">
+                                      (Balance: {account.currency} {account.current_balance.toFixed(2)})
+                                    </span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {cashAccounts.length === 0 && (
+                            <p className="text-xs text-orange-600 mt-1">
+                              No cash accounts found. Please add a cash account first.
                             </p>
                           )}
                         </div>

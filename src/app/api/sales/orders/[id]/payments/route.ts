@@ -93,6 +93,7 @@ export async function GET(
       payment_date,
       bank_account_id,
       upi_account_id,
+      cash_account_id,
       reference
     } = body;
 
@@ -106,10 +107,12 @@ export async function GET(
     }
 
     // Validate account selection for applicable payment methods
-    if (['bank_transfer', 'cheque', 'upi'].includes(method)) {
-      const accountId = method === 'upi' ? upi_account_id : bank_account_id;
+    if (['bank_transfer', 'cheque', 'upi', 'cash'].includes(method)) {
+      const accountId = method === 'upi' ? upi_account_id : 
+                       method === 'cash' ? cash_account_id : 
+                       bank_account_id;
       if (!accountId || accountId.trim() === '') {
-        console.log('Validation failed: Missing account for method', { method, bank_account_id, upi_account_id });
+        console.log('Validation failed: Missing account for method', { method, bank_account_id, upi_account_id, cash_account_id });
         return NextResponse.json(
           { error: `Account selection is required for ${method} payments` },
           { status: 400 }
@@ -217,6 +220,10 @@ export async function GET(
     } else if (method === 'upi') {
       if (upi_account_id && upi_account_id.trim() !== '') {
         paymentData.bank_account_id = upi_account_id;
+      }
+    } else if (method === 'cash') {
+      if (cash_account_id && cash_account_id.trim() !== '') {
+        paymentData.bank_account_id = cash_account_id;
       }
     }
 

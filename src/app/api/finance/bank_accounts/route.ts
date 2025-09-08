@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const accountType = searchParams.get('type'); // 'BANK' or 'UPI'
+  const accountType = searchParams.get('type'); // 'BANK', 'UPI', or 'CASH'
 
   let query = supabase
     .from("bank_accounts")
@@ -27,6 +27,8 @@ export async function GET(req: Request) {
     query = query.eq('account_type', 'BANK');
   } else if (accountType === 'UPI') {
     query = query.eq('account_type', 'UPI');
+  } else if (accountType === 'CASH') {
+    query = query.eq('account_type', 'CASH');
   }
 
   const { data, error } = await query;
@@ -64,6 +66,8 @@ export async function GET(req: Request) {
           paymentMethods = ['BANK TRANSFER', 'CARD'];
         } else if (account.account_type === 'UPI') {
           paymentMethods = ['UPI'];
+        } else if (account.account_type === 'CASH') {
+          paymentMethods = ['CASH'];
         }
 
         let paymentsBalance = 0;
@@ -196,7 +200,8 @@ export async function POST(req: Request) {
     insertData.account_number = account_number;
   } else if (account_type === 'UPI') {
     insertData.upi_id = upi_id;
-    if (linked_bank_account_id) {
+    // Only add linked_bank_account_id if it's a valid UUID, not "none" or empty string
+    if (linked_bank_account_id && linked_bank_account_id !== 'none' && linked_bank_account_id.trim() !== '') {
       insertData.linked_bank_account_id = linked_bank_account_id;
     }
   }

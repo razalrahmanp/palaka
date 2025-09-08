@@ -281,7 +281,7 @@ export function PaymentTrackingDialog({
 
   const remainingAmount = invoice.total - invoice.paid_amount;
   const paymentProgress = (invoice.paid_amount / invoice.total) * 100;
-  const requiresBankAccount = ['bank_transfer', 'check'].includes(paymentData.method);
+  const requiresBankAccount = ['bank_transfer', 'check', 'card'].includes(paymentData.method);
   const requiresUpiAccount = paymentData.method === 'upi';
 
   return (
@@ -424,7 +424,7 @@ export function PaymentTrackingDialog({
                               ...prev, 
                               method: value,
                               // Reset bank account when method changes
-                              bank_account_id: ['bank_transfer', 'check'].includes(value) ? prev.bank_account_id : '',
+                              bank_account_id: ['bank_transfer', 'check', 'card'].includes(value) ? prev.bank_account_id : '',
                               // Reset UPI account when method changes
                               upi_account_id: value === 'upi' ? prev.upi_account_id : ''
                             }))}

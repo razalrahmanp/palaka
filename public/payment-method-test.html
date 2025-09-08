@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Method Journal Entry Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .result { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 3px; }
+        .error { background: #ffebee; color: #c62828; }
+        .success { background: #e8f5e8; color: #2e7d2e; }
+        .warning { background: #fff3cd; color: #856404; }
+        button { padding: 10px 15px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto; font-size: 12px; }
+        .method-test { border: 1px solid #ddd; margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Payment Method Journal Entry Test</h1>
+        
+        <div class="section">
+            <h2>Chart of Accounts Status</h2>
+            <button onclick="checkChartOfAccounts()">Check Chart of Accounts</button>
+            <div id="chartStatus" class="result"></div>
+        </div>
+        
+        <div class="section">
+            <h2>Test Payment Journal Entries by Method</h2>
+            <p>This will test journal entry creation for different payment methods</p>
+            <div class="grid">
+                <div class="method-test">
+                    <h3>Cash Payments</h3>
+                    <button onclick="testPaymentMethod('cash')">Test Cash</button>
+                    <div id="cash-result" class="result"></div>
+                </div>
+                
+                <div class="method-test">
+                    <h3>Bank Transfer</h3>
+                    <button onclick="testPaymentMethod('bank_transfer')">Test Bank Transfer</button>
+                    <div id="bank_transfer-result" class="result"></div>
+                </div>
+                
+                <div class="method-test">
+                    <h3>UPI Payments</h3>
+                    <button onclick="testPaymentMethod('upi')">Test UPI</button>
+                    <div id="upi-result" class="result"></div>
+                </div>
+                
+                <div class="method-test">
+                    <h3>Card Payments</h3>
+                    <button onclick="testPaymentMethod('card')">Test Card</button>
+                    <div id="card-result" class="result"></div>
+                </div>
+                
+                <div class="method-test">
+                    <h3>Cheque Payments</h3>
+                    <button onclick="testPaymentMethod('cheque')">Test Cheque</button>
+                    <div id="cheque-result" class="result"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Recent Journal Entries</h2>
+            <button onclick="checkRecentJournalEntries()">View Recent Journal Entries</button>
+            <div id="recentJournals" class="result"></div>
+        </div>
+    </div>
+
+    <script>
+        async function checkChartOfAccounts() {
+            const resultDiv = document.getElementById('chartStatus');
+            resultDiv.innerHTML = 'Checking chart of accounts...';
+            
+            try {
+                // We'll simulate this by checking the system status
+                const response = await fetch('/api/debug/payment-journal');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const accounts = data.systemStatus?.accounts || [];
+                    const paymentAccounts = accounts.filter(acc => 
+                        ['1001', '1010', '1011', '1020', '1025', '1030', '1200'].includes(acc.account_code)
+                    );
+                    
+                    if (paymentAccounts.length > 0) {
+                        resultDiv.className = 'result success';
+                        resultDiv.innerHTML = `
+                            <h3>Chart of Accounts Ready ✅</h3>
+                            <pre>${JSON.stringify(paymentAccounts, null, 2)}</pre>
+                        `;
+                    } else {
+                        resultDiv.className = 'result warning';
+                        resultDiv.innerHTML = `
+                            <h3>Setup Required ⚠️</h3>
+                            <p>Payment method accounts not found. Please run the setup script.</p>
+                            <pre>${JSON.stringify(accounts, null, 2)}</pre>
+                        `;
+                    }
+                } else {
+                    resultDiv.className = 'result error';
+                    resultDiv.innerHTML = `<h3>Error ❌</h3><pre>${JSON.stringify(data, null, 2)}</pre>`;
+                }
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `<h3>Network Error ❌</h3><p>${error.message}</p>`;
+            }
+        }
+        
+        async function testPaymentMethod(method) {
+            const resultDiv = document.getElementById(`${method}-result`);
+            resultDiv.innerHTML = `Testing ${method} payment...`;
+            
+            try {
+                // Create a test payment with the specific method
+                const testPayment = {
+                    paymentId: `test-${method}-${Date.now()}`,
+                    amount: 100.00,
+                    date: new Date().toISOString().split('T')[0],
+                    reference: `TEST-${method.toUpperCase()}`,
+                    description: `Test ${method} payment journal entry`,
+                    paymentMethod: method,
+                    bankAccountId: method !== 'cash' ? 'test-bank-id' : undefined
+                };
+                
+                // We'll use the debug endpoint to test this
+                const response = await fetch('/api/debug/payment-journal', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ testPayment })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    resultDiv.className = 'result success';
+                    resultDiv.innerHTML = `
+                        <h4>${method.toUpperCase()} Success ✅</h4>
+                        <p><strong>Account Used:</strong> ${data.journalResult?.paymentAccount || 'Unknown'}</p>
+                        <pre>${JSON.stringify(data.journalResult, null, 2)}</pre>
+                    `;
+                } else {
+                    resultDiv.className = 'result error';
+                    resultDiv.innerHTML = `
+                        <h4>${method.toUpperCase()} Failed ❌</h4>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `<h4>Network Error ❌</h4><p>${error.message}</p>`;
+            }
+        }
+        
+        async function checkRecentJournalEntries() {
+            const resultDiv = document.getElementById('recentJournals');
+            resultDiv.innerHTML = 'Loading recent journal entries...';
+            
+            try {
+                // Check recent payments journal entries
+                const response = await fetch('/api/debug/payment-journal');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const journals = data.systemStatus?.recentJournals || [];
+                    
+                    resultDiv.className = 'result';
+                    resultDiv.innerHTML = `
+                        <h3>Recent Payment Journal Entries</h3>
+                        <pre>${JSON.stringify(journals, null, 2)}</pre>
+                    `;
+                } else {
+                    resultDiv.className = 'result error';
+                    resultDiv.innerHTML = `<h3>Error ❌</h3><pre>${JSON.stringify(data, null, 2)}</pre>`;
+                }
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `<h3>Network Error ❌</h3><p>${error.message}</p>`;
+            }
+        }
+        
+        // Auto-check on page load
+        window.onload = function() {
+            checkChartOfAccounts();
+        };
+    </script>
+</body>
+</html>

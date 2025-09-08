@@ -8,6 +8,8 @@ export interface CreateJournalEntryParams {
   date: string;
   reference?: string;
   description?: string;
+  paymentMethod?: string;
+  bankAccountId?: string;
 }
 
 export interface CreateVendorPaymentJournalEntryParams {
@@ -34,11 +36,99 @@ export interface CreateExpenseJournalEntryParams {
   bankAccountId?: string;
 }
 
+// Function to get the appropriate asset account based on payment method
+async function getPaymentAssetAccount(paymentMethod: string, bankAccountId?: string) {
+  const { supabase } = await import('@/lib/supabaseClient');
+  
+  // If bank account is specified, try to get the corresponding chart account
+  if (bankAccountId && (paymentMethod === 'bank_transfer' || paymentMethod === 'cheque' || paymentMethod === 'upi' || paymentMethod === 'card')) {
+    console.log(`🏦 Looking for chart account for bank account: ${bankAccountId} with method: ${paymentMethod}`);
+    
+    // First try to get the bank account's corresponding chart account
+    const { data: bankAccount } = await supabase
+      .from('bank_accounts')
+      .select('name, account_type, chart_account_id')
+      .eq('id', bankAccountId)
+      .single();
+    
+    if (bankAccount?.chart_account_id) {
+      console.log(`📊 Found linked chart account: ${bankAccount.chart_account_id}`);
+      const { data: chartAccount } = await supabase
+        .from('chart_of_accounts')
+        .select('id, account_code, account_name')
+        .eq('id', bankAccount.chart_account_id)
+        .single();
+      
+      if (chartAccount) {
+        console.log(`✅ Using chart account: ${chartAccount.account_code} - ${chartAccount.account_name}`);
+        return chartAccount;
+      }
+    }
+    
+    // Fallback: Find account by bank name or create generic bank account
+    console.log(`🔍 Fallback: Looking for chart account matching bank: ${bankAccount?.name}`);
+    const { data: chartByName } = await supabase
+      .from('chart_of_accounts')
+      .select('id, account_code, account_name')
+      .ilike('account_name', `%${bankAccount?.name || ''}%`)
+      .eq('account_type', 'ASSET')
+      .limit(1);
+    
+    if (chartByName && chartByName.length > 0) {
+      console.log(`✅ Found matching chart account by name: ${chartByName[0].account_code} - ${chartByName[0].account_name}`);
+      return chartByName[0];
+    }
+  }
+  
+  // Default mapping based on payment method
+  const accountMappings = {
+    'cash': ['1010', '1001'], // Cash accounts
+    'bank_transfer': ['1020', '1011', '1010'], // Bank accounts, fallback to cash
+    'cheque': ['1020', '1011', '1010'], // Bank accounts, fallback to cash  
+    'upi': ['1025', '1020', '1010'], // UPI accounts, fallback to bank, then cash
+    'card': ['1030', '1020', '1010'], // Card accounts, fallback to bank, then cash
+    'other': ['1010'] // Default to cash
+  };
+  
+  const accountCodes = accountMappings[paymentMethod as keyof typeof accountMappings] || accountMappings['cash'];
+  console.log(`📋 Mapping payment method '${paymentMethod}' to account codes: ${accountCodes.join(', ')}`);
+  
+  // Try to find the account in order of preference
+  for (const accountCode of accountCodes) {
+    const { data: account } = await supabase
+      .from('chart_of_accounts')
+      .select('id, account_code, account_name')
+      .eq('account_code', accountCode)
+      .single();
+    
+    if (account) {
+      console.log(`✅ Found account: ${account.account_code} - ${account.account_name}`);
+      return account;
+    }
+  }
+  
+  // Ultimate fallback - any cash-like account
+  console.log('⚠️ No specific account found, using fallback cash account');
+  const { data: fallbackAccount } = await supabase
+    .from('chart_of_accounts')
+    .select('id, account_code, account_name')
+    .in('account_code', ['1010', '1001', '1000'])
+    .order('account_code')
+    .limit(1);
+  
+  if (fallbackAccount && fallbackAccount.length > 0) {
+    console.log(`💰 Using fallback account: ${fallbackAccount[0].account_code} - ${fallbackAccount[0].account_name}`);
+    return fallbackAccount[0];
+  }
+  
+  return null;
+}
+
 export async function createPaymentJournalEntry(params: CreateJournalEntryParams) {
-  const { paymentId, amount, date, reference, description } = params;
+  const { paymentId, amount, date, reference, description, paymentMethod = 'cash', bankAccountId } = params;
   
   try {
-    console.log('📝 Creating journal entry for payment:', paymentId);
+    console.log('📝 Creating journal entry for payment:', paymentId, 'Method:', paymentMethod);
     
     // Get first active user for journal entry
     const { data: users, error: userError } = await supabase
@@ -55,23 +145,29 @@ export async function createPaymentJournalEntry(params: CreateJournalEntryParams
     
     const userId = users?.[0]?.id || '00000000-0000-0000-0000-000000000000';
     
-    // Get chart of accounts - Cash and AR
-    const { data: accounts, error: accountError } = await supabase
-      .from('chart_of_accounts')
-      .select('id, account_code, account_name')
-      .in('account_code', ['1010', '1200']);
-    
-    if (accountError) {
-      console.error('Error fetching accounts:', accountError);
-      return { success: false, error: 'Failed to get chart of accounts' };
+    // Get the appropriate payment account based on method and bank account
+    const paymentAccount = await getPaymentAssetAccount(paymentMethod, bankAccountId);
+    if (!paymentAccount) {
+      console.error('No payment account found for method:', paymentMethod);
+      return { success: false, error: `No appropriate account found for payment method: ${paymentMethod}` };
     }
     
-    const cashAccount = accounts?.find(acc => acc.account_code === '1010');
-    const arAccount = accounts?.find(acc => acc.account_code === '1200');
+    // Get Accounts Receivable account
+    const { data: arAccounts, error: arError } = await supabase
+      .from('chart_of_accounts')
+      .select('id, account_code, account_name')
+      .in('account_code', ['1200', '1100']);
     
-    if (!cashAccount || !arAccount) {
-      console.error('Required accounts not found. Cash:', cashAccount, 'AR:', arAccount);
-      return { success: false, error: 'Required accounts (1010 Cash, 1200 AR) not found in chart of accounts' };
+    if (arError) {
+      console.error('Error fetching AR accounts:', arError);
+      return { success: false, error: 'Failed to get Accounts Receivable account' };
+    }
+    
+    const arAccount = arAccounts?.find(acc => acc.account_code === '1200') || arAccounts?.[0];
+    
+    if (!arAccount) {
+      console.error('Accounts Receivable account not found');
+      return { success: false, error: 'Accounts Receivable account (1200/1100) not found in chart of accounts' };
     }
     
     // Create journal entry
@@ -105,15 +201,15 @@ export async function createPaymentJournalEntry(params: CreateJournalEntryParams
       return { success: false, error: 'Failed to create journal entry' };
     }
     
-    // Create journal entry lines - Debit Cash, Credit AR
+    // Create journal entry lines - Debit Payment Account, Credit AR
     const journalLines = [
       {
         journal_entry_id: journalEntry.id,
-        account_id: cashAccount.id,
+        account_id: paymentAccount.id,
         line_number: 1,
         debit_amount: amount,
         credit_amount: 0,
-        description: 'Cash received from payment'
+        description: `Payment received via ${paymentMethod}`
       },
       {
         journal_entry_id: journalEntry.id,
@@ -147,29 +243,29 @@ export async function createPaymentJournalEntry(params: CreateJournalEntryParams
     const { data: currentAccounts, error: balanceError } = await supabase
       .from('chart_of_accounts')
       .select('id, current_balance')
-      .in('id', [cashAccount.id, arAccount.id]);
+      .in('id', [paymentAccount.id, arAccount.id]);
     
     if (balanceError) {
       console.error('Error fetching current balances:', balanceError);
     } else {
-      const currentCash = currentAccounts?.find(acc => acc.id === cashAccount.id);
+      const currentPayment = currentAccounts?.find(acc => acc.id === paymentAccount.id);
       const currentAR = currentAccounts?.find(acc => acc.id === arAccount.id);
       
-      // Update Cash account (Debit increases balance for asset accounts)
-      if (currentCash) {
-        const newCashBalance = (currentCash.current_balance || 0) + amount;
-        const { error: cashUpdateError } = await supabase
+      // Update Payment account (Debit increases balance for asset accounts)
+      if (currentPayment) {
+        const newPaymentBalance = (currentPayment.current_balance || 0) + amount;
+        const { error: paymentUpdateError } = await supabase
           .from('chart_of_accounts')
           .update({
-            current_balance: newCashBalance,
+            current_balance: newPaymentBalance,
             updated_at: new Date().toISOString()
           })
-          .eq('id', cashAccount.id);
+          .eq('id', paymentAccount.id);
         
-        if (cashUpdateError) {
-          console.error('Error updating cash account balance:', cashUpdateError);
+        if (paymentUpdateError) {
+          console.error('Error updating payment account balance:', paymentUpdateError);
         } else {
-          console.log(`💰 Updated Cash balance: ${currentCash.current_balance} + ${amount} = ${newCashBalance}`);
+          console.log(`💰 Updated ${paymentAccount.account_name} balance: ${currentPayment.current_balance} + ${amount} = ${newPaymentBalance}`);
         }
       }
       
@@ -196,7 +292,7 @@ export async function createPaymentJournalEntry(params: CreateJournalEntryParams
     return { 
       success: true, 
       journalEntryId: journalEntry.id,
-      cashAccount: cashAccount.account_name,
+      paymentAccount: paymentAccount.account_name,
       arAccount: arAccount.account_name
     };
     

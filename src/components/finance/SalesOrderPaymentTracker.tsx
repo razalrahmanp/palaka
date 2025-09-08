@@ -140,7 +140,7 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
       }
 
       // If payment method involves a bank account, create bank transaction
-      if (formData.bank_account_id && (formData.method === 'bank_transfer' || formData.method === 'cheque')) {
+      if (formData.bank_account_id && (formData.method === 'bank_transfer' || formData.method === 'cheque' || formData.method === 'card')) {
         try {
           await fetch('/api/finance/bank_accounts/transactions', {
             method: 'POST',
@@ -308,7 +308,7 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
               </Select>
             </div>
 
-            {(formData.method === 'bank_transfer' || formData.method === 'cheque') && (
+            {(formData.method === 'bank_transfer' || formData.method === 'cheque' || formData.method === 'card') && (
               <div>
                 <Label htmlFor="bank_account">Bank Account</Label>
                 <Select 

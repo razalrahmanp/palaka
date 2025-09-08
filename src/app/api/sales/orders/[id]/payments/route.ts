@@ -375,12 +375,14 @@ export async function GET(
         amount: parseFloat(amount),
         date: paymentData.date || new Date().toISOString().split('T')[0],
         reference: paymentData.reference,
-        description: `Sales Order #${orderId} payment via ${method}`
+        description: `Sales Order #${orderId} payment via ${method}`,
+        paymentMethod: method,
+        bankAccountId: paymentData.bank_account_id
       });
       
       if (journalResult.success) {
         console.log('✅ Journal entry created:', journalResult.journalEntryId);
-        console.log(`📊 Dr. ${journalResult.cashAccount} ${amount}, Cr. ${journalResult.arAccount} ${amount}`);
+        console.log(`📊 Dr. ${journalResult.paymentAccount} ${amount}, Cr. ${journalResult.arAccount} ${amount}`);
       } else {
         console.error('❌ Failed to create journal entry:', journalResult.error);
         // Don't fail the payment, just log the error

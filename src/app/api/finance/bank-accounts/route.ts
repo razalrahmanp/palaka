@@ -6,7 +6,7 @@ export async function GET() {
   try {
     const { data, error } = await supabase
       .from("bank_accounts")
-      .select("id, name as account_name, account_number, current_balance, account_type, is_active")
+      .select("id, name, account_number, current_balance, account_type, is_active")
       .eq("is_active", true)
       .order("name", { ascending: true });
 
@@ -15,7 +15,13 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ data });
+    // Map the data to include account_name
+    const mappedData = data?.map(account => ({
+      ...account,
+      account_name: account.name
+    })) || [];
+
+    return NextResponse.json({ data: mappedData });
   } catch (error) {
     console.error('Unexpected error fetching bank accounts:', error);
     return NextResponse.json({ error: "Failed to fetch bank accounts" }, { status: 500 });

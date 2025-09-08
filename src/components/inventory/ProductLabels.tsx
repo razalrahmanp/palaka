@@ -83,14 +83,7 @@ export const ProductLabels: React.FC<Props> = ({ products }) => {
 
   // Filter products based on all filter criteria
   const filteredProducts = useMemo(() => {
-    // Debug: Log total products loaded
-    console.log(`Debug: Total products received in ProductLabels: ${products.length}`)
-    
-    // Debug: Look for SKU 8914 specifically
-    const sku8914Products = products.filter(p => p.sku && p.sku.includes('8914'))
-    console.log('Debug: Products with SKU containing 8914:', sku8914Products.length, sku8914Products)
-    
-    return products.filter(product => {
+  return products.filter(product => {
       // Search filter (product name, SKU, category)
       if (filters.search) {
         const searchLower = filters.search.toLowerCase()

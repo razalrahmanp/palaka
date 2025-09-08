@@ -21,7 +21,6 @@ import {
 } from 'lucide-react';
 
 // Import subcomponents
-import { SalesOrderInvoiceManager } from '@/components/finance/SalesOrderInvoiceManager';
 import { BankAccountManager } from '@/components/finance/BankAccountManager';
 import ChartOfAccounts from '@/components/finance/ChartOfAccounts';
 import JournalEntryManager from '@/components/finance/JournalEntryManager';
@@ -411,14 +410,10 @@ export default function FinancePage() {
       <Card>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <CardHeader className="pb-0">
-            <TabsList className="grid w-full grid-cols-8 h-12">
+            <TabsList className="grid w-full grid-cols-7 h-12">
               <TabsTrigger value="overview" className="flex items-center gap-2">
                 <PieChart className="h-4 w-4" />
                 Overview
-              </TabsTrigger>
-              <TabsTrigger value="invoices" className="flex items-center gap-2">
-                <FileText className="h-4 w-4" />
-                Invoices
               </TabsTrigger>
               <TabsTrigger value="bank-accounts" className="flex items-center gap-2">
                 <CreditCard className="h-4 w-4" />
@@ -527,11 +522,6 @@ export default function FinancePage() {
                   </div>
                 </CardContent>
               </Card>
-            </TabsContent>
-
-            {/* Invoice Management Tab */}
-            <TabsContent value="invoices">
-              <SalesOrderInvoiceManager />
             </TabsContent>
 
             {/* Bank Accounts Management Tab */}

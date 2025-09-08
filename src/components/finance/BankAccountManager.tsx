@@ -153,9 +153,11 @@ export function BankAccountManager() {
         
         // Fetch transactions for each bank account
         const transactionsPromises = accounts.map(async (account: BankAccount) => {
+          console.log(`Fetching transactions for account ${account.name} (ID: ${account.id})`); // Debug log
           const txResponse = await fetch(`/api/finance/bank_accounts/transactions?bank_account_id=${account.id}`);
           if (txResponse.ok) {
             const txResult = await txResponse.json();
+            console.log(`Account ${account.name} transactions:`, txResult.data?.length || 0, 'transactions'); // Debug log
             return { accountId: account.id, transactions: txResult.data || [] };
           }
           return { accountId: account.id, transactions: [] };
@@ -167,6 +169,7 @@ export function BankAccountManager() {
           return acc;
         }, {} as Record<string, BankTransaction[]>);
         
+        console.log('Final transactions map:', transactionsMap); // Debug log
         setBankTransactions(transactionsMap);
       }
     } catch (error) {
@@ -925,9 +928,9 @@ export function BankAccountManager() {
 
       {/* Bank Account Transactions Dialog */}
       <Dialog open={showTransactions} onOpenChange={setShowTransactions}>
-        <DialogContent className="max-w-[95vw] w-[95vw] max-h-[90vh] h-[90vh] p-0">
-          <div className="flex flex-col h-full">
-            <DialogHeader className="px-6 py-4 border-b">
+        <DialogContent className="max-w-7xl w-[95vw] max-h-[90vh] h-auto p-0 overflow-hidden">
+          <div className="flex flex-col max-h-[90vh]">
+            <DialogHeader className="px-6 py-4 border-b shrink-0">
               <DialogTitle className="flex items-center gap-2">
                 {selectedAccount && getBankIcon(selectedAccount.name)}
                 {selectedAccount?.name} - Bank Transactions
@@ -937,19 +940,19 @@ export function BankAccountManager() {
               </p>
             </DialogHeader>
             
-            <div className="flex-1 overflow-auto px-6 py-4">
-              <div className="space-y-4">
+            <div className="flex-1 overflow-hidden px-6 py-4">
+              <div className="h-full overflow-auto">
                 {transactions.length > 0 ? (
                   <div className="border rounded-lg overflow-hidden">
-                    <div className="overflow-x-auto">
+                    <div className="overflow-auto max-h-[70vh]">
                       <Table className="w-full">
-                        <TableHeader>
+                        <TableHeader className="sticky top-0 bg-white z-10">
                           <TableRow>
-                            <TableHead className="w-[120px]">Date</TableHead>
-                            <TableHead className="w-[150px]">Type</TableHead>
-                            <TableHead className="min-w-[200px]">Description</TableHead>
-                            <TableHead className="w-[150px]">Reference</TableHead>
-                            <TableHead className="text-right w-[120px]">Amount</TableHead>
+                            <TableHead className="w-[140px]">Date</TableHead>
+                            <TableHead className="w-[140px]">Type</TableHead>
+                            <TableHead className="min-w-[300px]">Description</TableHead>
+                            <TableHead className="w-[250px]">Reference</TableHead>
+                            <TableHead className="text-right w-[140px]">Amount</TableHead>
                           </TableRow>
                         </TableHeader>
                       <TableBody>
@@ -973,8 +976,16 @@ export function BankAccountManager() {
                                 </Badge>
                               </div>
                             </TableCell>
-                            <TableCell>{transaction.description}</TableCell>
-                            <TableCell>{transaction.reference || 'N/A'}</TableCell>
+                            <TableCell className="max-w-[300px]">
+                              <div className="truncate" title={transaction.description}>
+                                {transaction.description}
+                              </div>
+                            </TableCell>
+                            <TableCell className="max-w-[250px]">
+                              <div className="truncate" title={transaction.reference || 'N/A'}>
+                                {transaction.reference || 'N/A'}
+                              </div>
+                            </TableCell>
                             <TableCell className="text-right">
                               <span className={transaction.type === 'deposit' ? 'text-green-600' : 'text-red-600'}>
                                 {transaction.type === 'deposit' ? '+' : '-'}
@@ -995,6 +1006,16 @@ export function BankAccountManager() {
                 )}
               </div>
             </div>
+            
+            <DialogFooter className="px-6 py-4 border-t shrink-0">
+              <Button 
+                variant="outline" 
+                onClick={() => setShowTransactions(false)}
+                className="w-full sm:w-auto"
+              >
+                Close
+              </Button>
+            </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>

@@ -6,12 +6,14 @@ import { NextResponse, NextRequest } from "next/server";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const accountId = searchParams.get('account_id');
+  const accountId = searchParams.get('bank_account_id'); // Changed from 'account_id' to 'bank_account_id'
+
+  console.log('Fetching transactions for bank_account_id:', accountId); // Debug log
 
   let query = supabase
     .from("bank_transactions")
     .select("*")
-    .order("date", { ascending: false });
+    .order("date", { ascending: false }); // Changed back to 'date' as per database schema
 
   // Filter by account_id if provided
   if (accountId) {
@@ -19,6 +21,13 @@ export async function GET(request: NextRequest) {
   }
 
   const { data, error } = await query;
+
+  console.log('Query result:', { 
+    accountId, 
+    dataCount: data?.length || 0, 
+    firstRowBankAccountId: data?.[0]?.bank_account_id,
+    error 
+  }); // Debug log
 
   if (error) {
     console.error("Error fetching bank transactions:", error);

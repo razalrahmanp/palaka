@@ -118,10 +118,14 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
   // Fetch cash accounts for the form
   const fetchCashAccounts = useCallback(async () => {
     try {
+      console.log('Fetching cash accounts...');
       const response = await fetch('/api/finance/bank_accounts?type=CASH');
       if (response.ok) {
         const data = await response.json();
+        console.log('Cash accounts fetched:', data.data);
         setCashAccounts(data.data || []);
+      } else {
+        console.error('Failed to fetch cash accounts:', response.status);
       }
     } catch (error) {
       console.error('Error fetching cash accounts:', error);

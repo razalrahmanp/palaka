@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     // Check if entry exists and is in draft status
     const { data: existingEntry, error: fetchError } = await supabase
       .from('journal_entries')
-      .select('id, status, entry_number')
+      .select('id, status, journal_number')
       .eq('id', id)
       .single();
 
@@ -68,9 +68,64 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // Now update the chart of accounts balances
+    const { data: journalLines, error: postingLinesError } = await supabase
+      .from('journal_entry_lines')
+      .select('account_id, debit_amount, credit_amount')
+      .eq('journal_entry_id', id);
+
+    if (postingLinesError) {
+      console.error('Error fetching journal lines for posting:', postingLinesError);
+      return NextResponse.json({ error: 'Failed to fetch journal lines' }, { status: 500 });
+    }
+
+    // Update each account balance in the chart of accounts
+    for (const line of journalLines || []) {
+      const { account_id, debit_amount = 0, credit_amount = 0 } = line;
+      
+      // Get current account info
+      const { data: account, error: accountError } = await supabase
+        .from('chart_of_accounts')
+        .select('current_balance, normal_balance, account_type')
+        .eq('id', account_id)
+        .single();
+
+      if (accountError) {
+        console.error(`Error fetching account ${account_id}:`, accountError);
+        continue; // Skip this line but continue with others
+      }
+
+      // Calculate the new balance based on normal balance type
+      let balanceChange = 0;
+      
+      if (account.normal_balance === 'DEBIT') {
+        // For DEBIT accounts: debits increase, credits decrease
+        balanceChange = debit_amount - credit_amount;
+      } else {
+        // For CREDIT accounts: credits increase, debits decrease  
+        balanceChange = credit_amount - debit_amount;
+      }
+
+      const newBalance = (account.current_balance || 0) + balanceChange;
+
+      // Update the account balance
+      const { error: updateError } = await supabase
+        .from('chart_of_accounts')
+        .update({ 
+          current_balance: newBalance,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', account_id);
+
+      if (updateError) {
+        console.error(`Error updating account ${account_id} balance:`, updateError);
+        // Continue with other accounts even if one fails
+      }
+    }
+
     return NextResponse.json({ 
       data,
-      message: `Journal entry ${existingEntry.entry_number} posted successfully` 
+      message: `Journal entry ${existingEntry.journal_number} posted successfully and chart of accounts updated` 
     });
   } catch (error) {
     console.error('Server error:', error);

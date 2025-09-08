@@ -130,6 +130,7 @@ export async function POST(req: Request) {
       reference,
       description,
       bank_account_id,
+      upi_account_id,
       created_by
     } = body;
 
@@ -138,7 +139,9 @@ export async function POST(req: Request) {
       purchase_order_id, 
       amount, 
       payment_date: payment_date || date,
-      method 
+      method,
+      bank_account_id,
+      upi_account_id
     });
 
     // Validate required fields
@@ -164,6 +167,10 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    // Determine the correct bank account ID for journal entry
+    // For UPI payments, use upi_account_id; for bank transfers, use bank_account_id
+    const journalBankAccountId = method === 'upi' ? upi_account_id : bank_account_id;
 
     // Use stored procedure for atomic transaction with accounting
     const { data: paymentId, error } = await supabase.rpc('create_payment_with_accounting', {
@@ -193,12 +200,14 @@ export async function POST(req: Request) {
         amount: parseFloat(amount),
         date: new Date(finalPaymentDate).toISOString().split('T')[0],
         reference: reference,
-        description: description || `Payment via ${method}`
+        description: description || `Payment via ${method}`,
+        paymentMethod: method,
+        bankAccountId: journalBankAccountId
       });
       
       if (journalResult.success) {
         console.log('✅ Journal entry created:', journalResult.journalEntryId);
-        console.log(`📊 Dr. ${journalResult.cashAccount} ${amount}, Cr. ${journalResult.arAccount} ${amount}`);
+        console.log(`📊 Dr. ${journalResult.paymentAccount} ${amount}, Cr. ${journalResult.arAccount} ${amount}`);
       } else {
         console.error('❌ Failed to create journal entry:', journalResult.error);
         // Don't fail the payment, just log the error
@@ -225,7 +234,7 @@ export async function POST(req: Request) {
 // Fallback method for when stored procedure is not available
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function createPaymentManually(body: any) {
-  const { invoice_id, amount, payment_date, date, method, reference, description } = body;
+  const { invoice_id, amount, payment_date, date, method, reference, description, bank_account_id, upi_account_id } = body;
   
   if (!invoice_id || !amount || !(payment_date || date) || !method) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -254,17 +263,22 @@ async function createPaymentManually(body: any) {
     // 2. Create journal entry for the payment
     console.log('💰 Payment created manually, creating journal entry...');
     
+    // Determine the correct bank account ID for journal entry
+    const journalBankAccountId = method === 'upi' ? upi_account_id : bank_account_id;
+    
     const journalResult = await createPaymentJournalEntry({
       paymentId: payment.id,
       amount: parseFloat(amount),
       date: payment_date || date,
       reference: reference,
-      description: description || `Invoice payment via ${method}`
+      description: description || `Invoice payment via ${method}`,
+      paymentMethod: method,
+      bankAccountId: journalBankAccountId
     });
     
     if (journalResult.success) {
       console.log('✅ Journal entry created:', journalResult.journalEntryId);
-      console.log(`📊 Dr. ${journalResult.cashAccount} ${amount}, Cr. ${journalResult.arAccount} ${amount}`);
+      console.log(`📊 Dr. ${journalResult.paymentAccount} ${amount}, Cr. ${journalResult.arAccount} ${amount}`);
     } else {
       console.error('❌ Failed to create journal entry:', journalResult.error);
       // Don't fail the payment, just log the error

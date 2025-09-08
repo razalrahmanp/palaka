@@ -1,5 +1,3 @@
-'use client';
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -26,6 +24,14 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
 import { format } from 'date-fns';
 import { 
   BookOpen, 
@@ -71,6 +77,44 @@ export default function GeneralLedger() {
   const [dateFrom, setDateFrom] = useState<Date>();
   const [dateTo, setDateTo] = useState<Date>();
   const [showFilters, setShowFilters] = useState(false);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
+  const [totalPages, setTotalPages] = useState(1);
+
+  // Keyboard navigation for pagination
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey) {
+        switch (event.key) {
+          case 'ArrowLeft':
+            event.preventDefault();
+            if (currentPage > 1) {
+              setCurrentPage(currentPage - 1);
+            }
+            break;
+          case 'ArrowRight':
+            event.preventDefault();
+            if (currentPage < totalPages) {
+              setCurrentPage(currentPage + 1);
+            }
+            break;
+          case 'Home':
+            event.preventDefault();
+            setCurrentPage(1);
+            break;
+          case 'End':
+            event.preventDefault();
+            setCurrentPage(totalPages);
+            break;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentPage, totalPages]);
 
   const fetchAccounts = async () => {
     try {
@@ -146,10 +190,39 @@ export default function GeneralLedger() {
     return matchesSearch;
   });
 
+  // Calculate pagination
+  const totalItems = filteredEntries.length;
+  const calculatedTotalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedEntries = filteredEntries.slice(startIndex, endIndex);
+
+  // Update total pages when filtered entries change
+  React.useEffect(() => {
+    setTotalPages(calculatedTotalPages);
+    if (currentPage > calculatedTotalPages && calculatedTotalPages > 0) {
+      setCurrentPage(1);
+    }
+  }, [calculatedTotalPages, currentPage]);
+
+  // Reset to first page when filters change
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedAccount, searchTerm, dateFrom, dateTo]);
+
   const selectedAccountInfo = accounts.find(acc => acc.id === selectedAccount);
   const totalDebits = filteredEntries.reduce((sum, entry) => sum + entry.debit_amount, 0);
   const totalCredits = filteredEntries.reduce((sum, entry) => sum + entry.credit_amount, 0);
   const netBalance = totalDebits - totalCredits;
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handleItemsPerPageChange = (value: string) => {
+    setItemsPerPage(parseInt(value));
+    setCurrentPage(1); // Reset to first page when changing items per page
+  };
 
   const exportToCSV = () => {
     const csvContent = [
@@ -188,7 +261,15 @@ export default function GeneralLedger() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">General Ledger</h2>
-          <p className="text-gray-600">Detailed transaction history for all accounts</p>
+          <p className="text-gray-600">
+            Detailed transaction history for all accounts
+            {entries.length > 0 && (
+              <span className="ml-2 text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                Page {currentPage} of {Math.ceil(filteredEntries.length / itemsPerPage)} • 
+                Showing {((currentPage - 1) * itemsPerPage) + 1}-{Math.min(currentPage * itemsPerPage, filteredEntries.length)} of {filteredEntries.length}
+              </span>
+            )}
+          </p>
         </div>
         <div className="flex gap-3">
           <Button variant="outline" onClick={() => setShowFilters(!showFilters)}>
@@ -244,7 +325,15 @@ export default function GeneralLedger() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Entries</p>
-                <p className="text-xl font-bold text-blue-600">{filteredEntries.length}</p>
+                <p className="text-xl font-bold text-blue-600">
+                  {filteredEntries.length}
+                  {filteredEntries.length !== entries.length && (
+                    <span className="text-sm text-gray-500 ml-1">of {entries.length}</span>
+                  )}
+                </p>
+                {paginatedEntries.length !== filteredEntries.length && (
+                  <p className="text-xs text-gray-500">Showing {paginatedEntries.length} on this page</p>
+                )}
               </div>
               <BookOpen className="h-8 w-8 text-blue-500" />
             </div>
@@ -351,7 +440,8 @@ export default function GeneralLedger() {
             </CardTitle>
             <CardDescription>
               {selectedAccountInfo.account_type} Account • 
-              {filteredEntries.length} transaction{filteredEntries.length !== 1 ? 's' : ''}
+              Showing {paginatedEntries.length} of {filteredEntries.length} transaction{filteredEntries.length !== 1 ? 's' : ''}
+              {filteredEntries.length !== entries.length && ` (filtered from ${entries.length})`}
             </CardDescription>
           </CardHeader>
         </Card>
@@ -375,7 +465,7 @@ export default function GeneralLedger() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredEntries.map((entry) => (
+              {paginatedEntries.map((entry) => (
                 <TableRow key={entry.id}>
                   <TableCell className="font-mono text-sm">
                     {formatDate(entry.transaction_date)}
@@ -426,6 +516,102 @@ export default function GeneralLedger() {
           )}
         </CardContent>
       </Card>
+
+      {/* Pagination Controls - Enhanced Visibility */}
+      {filteredEntries.length > 0 && !loading && (
+        <Card className="mt-6 bg-blue-50 border-blue-200">
+          <CardContent className="p-6">
+            <div className="flex flex-col lg:flex-row items-center justify-between gap-6">
+              {/* Items per page selector */}
+              <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-lg border shadow-sm">
+                <span className="text-sm font-medium text-gray-700">Show</span>
+                <Select value={itemsPerPage.toString()} onValueChange={handleItemsPerPageChange}>
+                  <SelectTrigger className="w-20 border-blue-200">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="25">25</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                    <SelectItem value="200">200</SelectItem>
+                  </SelectContent>
+                </Select>
+                <span className="text-sm font-medium text-gray-700">entries per page</span>
+              </div>
+
+              {/* Page info */}
+              <div className="text-center bg-white px-4 py-2 rounded-lg border shadow-sm">
+                <div className="text-sm font-medium text-gray-700">
+                  Showing {startIndex + 1} to {Math.min(endIndex, totalItems)} of {totalItems} entries
+                  {totalItems !== filteredEntries.length && ` (filtered from ${entries.length} total)`}
+                </div>
+                <div className="text-xs text-blue-600 mt-1">
+                  Use Ctrl + ← → for navigation, Ctrl + Home/End for first/last page
+                </div>
+              </div>
+
+              {/* Pagination - Always visible if more than 1 page */}
+              {calculatedTotalPages > 1 ? (
+                <div className="bg-white px-4 py-2 rounded-lg border shadow-sm">
+                  <Pagination>
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious 
+                          onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                          className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer hover:bg-blue-50"}
+                        />
+                      </PaginationItem>
+                      
+                      {/* Page numbers */}
+                      {[...Array(Math.min(5, calculatedTotalPages))].map((_, index) => {
+                        const pageNumber = Math.max(1, Math.min(calculatedTotalPages - 4, currentPage - 2)) + index;
+                        if (pageNumber <= calculatedTotalPages) {
+                          return (
+                            <PaginationItem key={pageNumber}>
+                              <PaginationLink
+                                onClick={() => handlePageChange(pageNumber)}
+                                isActive={currentPage === pageNumber}
+                                className={`cursor-pointer ${
+                                  currentPage === pageNumber 
+                                    ? "bg-blue-600 text-white hover:bg-blue-700" 
+                                    : "hover:bg-blue-50"
+                                }`}
+                              >
+                                {pageNumber}
+                              </PaginationLink>
+                            </PaginationItem>
+                          );
+                        }
+                        return null;
+                      })}
+                      
+                      <PaginationItem>
+                        <PaginationNext 
+                          onClick={() => handlePageChange(Math.min(calculatedTotalPages, currentPage + 1))}
+                          className={currentPage === calculatedTotalPages ? "pointer-events-none opacity-50" : "cursor-pointer hover:bg-blue-50"}
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                </div>
+              ) : (
+                <div className="bg-white px-4 py-2 rounded-lg border shadow-sm">
+                  <span className="text-sm text-gray-500">All entries displayed on single page</span>
+                </div>
+              )}
+            </div>
+            
+            {/* Additional pagination info */}
+            <div className="mt-4 text-center text-sm text-gray-600">
+              <strong>Page {currentPage} of {calculatedTotalPages}</strong> • 
+              <span className="ml-2">Total: {totalItems} entries</span>
+              {calculatedTotalPages > 1 && (
+                <span className="ml-2 text-blue-600">• Navigation: ← → keys or click buttons above</span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

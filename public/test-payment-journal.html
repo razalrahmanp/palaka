@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Payment Journal Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { border: 1px solid #ccc; padding: 15px; margin: 10px 0; }
+        .result { background: #f5f5f5; padding: 10px; margin-top: 10px; }
+        button { padding: 10px 15px; margin: 5px; cursor: pointer; }
+        input, select { padding: 5px; margin: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Payment Journal Test</h1>
+    
+    <div class="test-section">
+        <h3>1. Check Recent Journal Entries</h3>
+        <button onclick="checkRecentJournalEntries()">Check Recent Journal Entries</button>
+        <div id="journal-result" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>2. Test Invoice Payment (Bank Transfer)</h3>
+        <input type="text" id="invoice-id" placeholder="Invoice ID" value="">
+        <input type="number" id="bank-amount" placeholder="Amount" value="1000">
+        <select id="bank-account">
+            <option value="">Select Bank Account</option>
+        </select>
+        <input type="text" id="bank-reference" placeholder="Reference" value="TEST-BANK-001">
+        <button onclick="testBankTransferPayment()">Test Bank Transfer Payment</button>
+        <div id="bank-result" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>3. Test Invoice Payment (UPI)</h3>
+        <input type="text" id="upi-invoice-id" placeholder="Invoice ID" value="">
+        <input type="number" id="upi-amount" placeholder="Amount" value="1000">
+        <select id="upi-account">
+            <option value="">Select UPI Account</option>
+        </select>
+        <input type="text" id="upi-reference" placeholder="Reference" value="TEST-UPI-001">
+        <button onclick="testUpiPayment()">Test UPI Payment</button>
+        <div id="upi-result" class="result"></div>
+    </div>
+
+    <script>
+        // Load bank accounts and UPI accounts on page load
+        window.onload = async function() {
+            await loadBankAccounts();
+            await loadUpiAccounts();
+            await loadRecentInvoices();
+        };
+
+        async function loadBankAccounts() {
+            try {
+                const response = await fetch('/api/finance/bank_accounts?type=BANK');
+                const data = await response.json();
+                const select = document.getElementById('bank-account');
+                
+                data.data?.forEach(account => {
+                    const option = document.createElement('option');
+                    option.value = account.id;
+                    option.textContent = `${account.name} (${account.account_number || 'N/A'})`;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading bank accounts:', error);
+            }
+        }
+
+        async function loadUpiAccounts() {
+            try {
+                const response = await fetch('/api/finance/bank_accounts?type=UPI');
+                const data = await response.json();
+                const select = document.getElementById('upi-account');
+                
+                data.data?.forEach(account => {
+                    const option = document.createElement('option');
+                    option.value = account.id;
+                    option.textContent = `${account.name} (UPI)`;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading UPI accounts:', error);
+            }
+        }
+
+        async function loadRecentInvoices() {
+            try {
+                const response = await fetch('/api/finance/invoices');
+                const data = await response.json();
+                if (data.data && data.data.length > 0) {
+                    const recentInvoice = data.data[0];
+                    document.getElementById('invoice-id').value = recentInvoice.id;
+                    document.getElementById('upi-invoice-id').value = recentInvoice.id;
+                }
+            } catch (error) {
+                console.error('Error loading invoices:', error);
+            }
+        }
+
+        async function checkRecentJournalEntries() {
+            try {
+                const response = await fetch('/api/finance/journal-entries?limit=10');
+                const data = await response.json();
+                
+                let result = '<h4>Recent Journal Entries:</h4>';
+                if (data.data && data.data.length > 0) {
+                    result += '<table border="1" style="width: 100%; border-collapse: collapse;">';
+                    result += '<tr><th>Date</th><th>Description</th><th>Reference</th><th>Lines</th></tr>';
+                    
+                    data.data.slice(0, 5).forEach(entry => {
+                        result += `<tr>`;
+                        result += `<td>${entry.entry_date}</td>`;
+                        result += `<td>${entry.description}</td>`;
+                        result += `<td>${entry.reference_number || 'N/A'}</td>`;
+                        result += `<td>${entry.journal_entry_lines?.length || 0} lines</td>`;
+                        result += `</tr>`;
+                    });
+                    result += '</table>';
+                } else {
+                    result += '<p>No journal entries found</p>';
+                }
+                
+                document.getElementById('journal-result').innerHTML = result;
+            } catch (error) {
+                document.getElementById('journal-result').innerHTML = 'Error: ' + error.message;
+            }
+        }
+
+        async function testBankTransferPayment() {
+            const invoiceId = document.getElementById('invoice-id').value;
+            const amount = document.getElementById('bank-amount').value;
+            const bankAccountId = document.getElementById('bank-account').value;
+            const reference = document.getElementById('bank-reference').value;
+
+            if (!invoiceId || !amount || !bankAccountId) {
+                alert('Please fill in all fields');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/finance/payments', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        invoice_id: invoiceId,
+                        amount: parseFloat(amount),
+                        method: 'bank_transfer',
+                        bank_account_id: bankAccountId,
+                        reference: reference,
+                        date: new Date().toISOString().split('T')[0],
+                        description: 'Test bank transfer payment'
+                    })
+                });
+
+                const result = await response.json();
+                document.getElementById('bank-result').innerHTML = 
+                    '<pre>' + JSON.stringify(result, null, 2) + '</pre>';
+                
+                // Check journal entry after payment
+                setTimeout(checkRecentJournalEntries, 1000);
+            } catch (error) {
+                document.getElementById('bank-result').innerHTML = 'Error: ' + error.message;
+            }
+        }
+
+        async function testUpiPayment() {
+            const invoiceId = document.getElementById('upi-invoice-id').value;
+            const amount = document.getElementById('upi-amount').value;
+            const upiAccountId = document.getElementById('upi-account').value;
+            const reference = document.getElementById('upi-reference').value;
+
+            if (!invoiceId || !amount || !upiAccountId) {
+                alert('Please fill in all fields');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/finance/payments', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        invoice_id: invoiceId,
+                        amount: parseFloat(amount),
+                        method: 'upi',
+                        upi_account_id: upiAccountId,
+                        reference: reference,
+                        date: new Date().toISOString().split('T')[0],
+                        description: 'Test UPI payment'
+                    })
+                });
+
+                const result = await response.json();
+                document.getElementById('upi-result').innerHTML = 
+                    '<pre>' + JSON.stringify(result, null, 2) + '</pre>';
+                
+                // Check journal entry after payment
+                setTimeout(checkRecentJournalEntries, 1000);
+            } catch (error) {
+                document.getElementById('upi-result').innerHTML = 'Error: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>

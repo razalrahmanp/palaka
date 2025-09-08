@@ -8,7 +8,7 @@ const supabase = createClient(
 
 export async function GET() {
   try {
-    // First get all accounts
+    // Get all accounts with their current balances (already corrected)
     const { data: accounts, error } = await supabase
       .from('chart_of_accounts')
       .select('*')
@@ -19,53 +19,15 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Calculate current balances from journal entries for each account
-    const accountsWithBalances = await Promise.all(
-      accounts?.map(async (account) => {
-        // Get all journal entry lines for this account
-        const { data: journalLines, error: linesError } = await supabase
-          .from('journal_entry_lines')
-          .select(`
-            debit_amount,
-            credit_amount,
-            journal_entries!inner(status)
-          `)
-          .eq('account_id', account.id);
-
-        if (linesError) {
-          console.error('Error fetching journal lines for account:', account.account_code, linesError);
-          return { ...account, calculated_balance: 0 };
-        }
-
-        // Calculate balance based on account's normal balance and posted entries
-        let calculatedBalance = 0;
-        
-        if (journalLines?.length > 0) {
-          const totalDebits = journalLines.reduce((sum, line) => 
-            sum + (parseFloat(String(line.debit_amount || 0))), 0);
-          const totalCredits = journalLines.reduce((sum, line) => 
-            sum + (parseFloat(String(line.credit_amount || 0))), 0);
-
-          // Calculate balance based on normal balance type
-          if (account.normal_balance === 'DEBIT') {
-            // For debit accounts: debits increase, credits decrease
-            calculatedBalance = totalDebits - totalCredits;
-          } else {
-            // For credit accounts: credits increase, debits decrease  
-            calculatedBalance = totalCredits - totalDebits;
-          }
-        }
-
-        return {
-          ...account,
-          calculated_balance: calculatedBalance,
-          total_debits: journalLines?.reduce((sum, line) => 
-            sum + (parseFloat(String(line.debit_amount || 0))), 0) || 0,
-          total_credits: journalLines?.reduce((sum, line) => 
-            sum + (parseFloat(String(line.credit_amount || 0))), 0) || 0
-        };
-      }) || []
-    );
+    // Use the corrected current_balance values instead of calculating from journal entries
+    const accountsWithBalances = accounts?.map((account) => {
+      return {
+        ...account,
+        calculated_balance: account.current_balance, // Use the corrected balance
+        total_debits: 0, // Set to 0 as we're using corrected balances
+        total_credits: 0 // Set to 0 as we're using corrected balances
+      };
+    }) || [];
 
     return NextResponse.json({ data: accountsWithBalances });
   } catch (error) {

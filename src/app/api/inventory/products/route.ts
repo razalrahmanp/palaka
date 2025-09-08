@@ -157,12 +157,21 @@ export async function GET(request: NextRequest) {
       });
     } else {
       // For backward compatibility, return simple array when no pagination
+      // Use range() to explicitly fetch all rows without limit
       const { data: inventoryItems, error } = await query
-        .order('updated_at', { ascending: false });
+        .range(0, 49999) // Explicitly set range to get first 50,000 rows
+        .order('id', { ascending: false }); // Order by ID to get latest entries first
 
       if (error) {
         console.error('Error fetching inventory data:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      console.log(`Non-paginated request: Fetched ${inventoryItems?.length || 0} inventory items`);
+
+      // Also log if we hit any limits
+      if (inventoryItems && inventoryItems.length >= 1000) {
+        console.log(`Warning: Fetched exactly ${inventoryItems.length} items - might be hitting a limit`);
       }
 
       // Transform to ProductWithInventory format
@@ -193,6 +202,7 @@ export async function GET(request: NextRequest) {
         };
       }) || [];
 
+      console.log(`Non-paginated request: Returning ${transformedItems.length} transformed products`);
       return NextResponse.json(transformedItems);
     }
   } catch (error) {

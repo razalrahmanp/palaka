@@ -23,10 +23,14 @@ export default function InventoryPage() {
 
   const fetchAll = useCallback(() => {
     const timestamp = Date.now(); // Cache buster
+    console.log('Fetching products from API...')
     fetch(`/api/inventory/products?_t=${timestamp}`).then(r => r.json()).then(data => {
       // Handle both old format (array) and new format (object with products array)
       const productsArray = Array.isArray(data) ? data : data.products || [];
+      console.log(`Received ${productsArray.length} products from API`)
       setItems(productsArray);
+    }).catch(error => {
+      console.error('Error fetching products:', error)
     })
     fetch(`/api/suppliers?_t=${timestamp}`).then(r => r.json()).then(setSuppliers)
   }, [])

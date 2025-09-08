@@ -71,6 +71,9 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
     bank_account_id: '',
     upi_account_id: '',
     cash_account_id: '',
+    bajaj_downpayment_amount: '',
+    bajaj_downpayment_method: '',
+    bajaj_bank_account_id: '',
     reference: '',
     description: ''
   });
@@ -249,6 +252,63 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
         }
       }
 
+      // If payment method is Bajaj Finance, handle down payment and credit balance
+      if (formData.method === 'bajaj' && formData.bajaj_downpayment_amount && formData.bajaj_bank_account_id) {
+        try {
+          const downPaymentAmount = parseFloat(formData.bajaj_downpayment_amount);
+          const totalAmount = parseFloat(formData.amount);
+          const balanceAmount = totalAmount - downPaymentAmount;
+
+          // Create down payment transaction (customer payment)
+          if (downPaymentAmount > 0) {
+            // The down payment logic will depend on the down payment method
+            let downPaymentAccountId = '';
+            
+            if (formData.bajaj_downpayment_method === 'cash') {
+              downPaymentAccountId = formData.cash_account_id;
+            } else if (formData.bajaj_downpayment_method === 'upi') {
+              downPaymentAccountId = formData.upi_account_id;
+            } else {
+              downPaymentAccountId = formData.bank_account_id;
+            }
+
+            if (downPaymentAccountId) {
+              await fetch('/api/finance/bank_accounts/transactions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  bank_account_id: downPaymentAccountId,
+                  type: 'deposit',
+                  amount: downPaymentAmount,
+                  description: `Bajaj Finance Down Payment for Order ${orderId}`,
+                  reference: `BAJAJ-DP-${formData.reference || orderId}`,
+                  transaction_date: formData.payment_date
+                })
+              });
+            }
+          }
+
+          // Create Bajaj credit transaction (balance amount from Bajaj to our bank)
+          if (balanceAmount > 0) {
+            await fetch('/api/finance/bank_accounts/transactions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                bank_account_id: formData.bajaj_bank_account_id,
+                type: 'deposit',
+                amount: balanceAmount,
+                description: `Bajaj Finance Credit for Order ${orderId}`,
+                reference: `BAJAJ-CREDIT-${formData.reference || orderId}`,
+                transaction_date: formData.payment_date
+              })
+            });
+          }
+        } catch (bajajError) {
+          console.warn('Bajaj Finance transaction creation failed:', bajajError);
+          // Don't fail the payment if Bajaj transaction fails
+        }
+      }
+
       // Reset form and close dialog
       setFormData({
         payment_date: new Date().toISOString().split('T')[0],
@@ -257,6 +317,9 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
         bank_account_id: '',
         upi_account_id: '',
         cash_account_id: '',
+        bajaj_downpayment_amount: '',
+        bajaj_downpayment_method: '',
+        bajaj_bank_account_id: '',
         reference: '',
         description: ''
       });
@@ -275,6 +338,29 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
   };
 
   const remainingBalance = orderTotal - totalPaid;
+
+  // Validation function for form submission
+  const isFormValid = () => {
+    if (!formData.amount || !formData.method) return false;
+    
+    if (formData.method === 'bajaj') {
+      // Check basic Bajaj fields
+      if (!formData.bajaj_downpayment_amount || !formData.bajaj_downpayment_method || !formData.bajaj_bank_account_id) {
+        return false;
+      }
+      
+      // Check down payment account based on method
+      if (formData.bajaj_downpayment_method === 'cash') {
+        return !!formData.cash_account_id;
+      } else if (formData.bajaj_downpayment_method === 'upi') {
+        return !!formData.upi_account_id;
+      } else if (['cheque', 'bank_transfer', 'card'].includes(formData.bajaj_downpayment_method)) {
+        return !!formData.bank_account_id;
+      }
+    }
+    
+    return true;
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -353,6 +439,7 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
                   <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
                   <SelectItem value="upi">UPI</SelectItem>
                   <SelectItem value="card">Card</SelectItem>
+                  <SelectItem value="bajaj">Bajaj Finance</SelectItem>
                   <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
               </Select>
@@ -441,6 +528,162 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
               </div>
             )}
 
+            {formData.method === 'bajaj' && (
+              <div className="space-y-4 p-4 border-2 border-blue-200 rounded-lg bg-blue-50">
+                <div className="flex items-center gap-2 text-blue-700 font-medium">
+                  <DollarSign className="h-4 w-4" />
+                  <span>Bajaj Finance Payment Details</span>
+                </div>
+                
+                <div>
+                  <Label htmlFor="bajaj_downpayment_amount">Down Payment Amount *</Label>
+                  <Input
+                    id="bajaj_downpayment_amount"
+                    type="number"
+                    step="0.01"
+                    value={formData.bajaj_downpayment_amount}
+                    onChange={(e) => handleInputChange('bajaj_downpayment_amount', e.target.value)}
+                    placeholder="Enter down payment amount"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="bajaj_downpayment_method">Down Payment Method *</Label>
+                  <Select 
+                    value={formData.bajaj_downpayment_method} 
+                    onValueChange={(value) => handleInputChange('bajaj_downpayment_method', value)}
+                  >
+                    <SelectTrigger id="bajaj_downpayment_method">
+                      <SelectValue placeholder="Select down payment method" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="cheque">Cheque</SelectItem>
+                      <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                      <SelectItem value="upi">UPI</SelectItem>
+                      <SelectItem value="card">Card</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Show account selection based on down payment method */}
+                {(formData.bajaj_downpayment_method === 'cheque' || formData.bajaj_downpayment_method === 'bank_transfer' || formData.bajaj_downpayment_method === 'card') && (
+                  <div>
+                    <Label htmlFor="bajaj_dp_bank_account">Down Payment Bank Account *</Label>
+                    <Select 
+                      value={formData.bank_account_id} 
+                      onValueChange={(value) => handleInputChange('bank_account_id', value)}
+                    >
+                      <SelectTrigger id="bajaj_dp_bank_account">
+                        <SelectValue placeholder="Select bank account for down payment" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {bankAccounts.map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            <div className="flex items-center gap-2">
+                              <DollarSign className="h-4 w-4" />
+                              <span>{account.name}</span>
+                              <span className="text-gray-500 text-xs">
+                                ({account.account_number})
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {formData.bajaj_downpayment_method === 'upi' && (
+                  <div>
+                    <Label htmlFor="bajaj_dp_upi_account">Down Payment UPI Account *</Label>
+                    <Select 
+                      value={formData.upi_account_id} 
+                      onValueChange={(value) => handleInputChange('upi_account_id', value)}
+                    >
+                      <SelectTrigger id="bajaj_dp_upi_account">
+                        <SelectValue placeholder="Select UPI account for down payment" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {upiAccounts.map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            <div className="flex items-center gap-2">
+                              <Smartphone className="h-4 w-4" />
+                              <span>{account.name}</span>
+                              <span className="text-gray-500 text-xs">
+                                ({account.upi_id})
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {formData.bajaj_downpayment_method === 'cash' && (
+                  <div>
+                    <Label htmlFor="bajaj_dp_cash_account">Down Payment Cash Account *</Label>
+                    <Select 
+                      value={formData.cash_account_id} 
+                      onValueChange={(value) => handleInputChange('cash_account_id', value)}
+                    >
+                      <SelectTrigger id="bajaj_dp_cash_account">
+                        <SelectValue placeholder="Select cash account for down payment" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {cashAccounts.map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            <div className="flex items-center gap-2">
+                              <DollarSign className="h-4 w-4" />
+                              <span>{account.name}</span>
+                              <span className="text-gray-500 text-xs">
+                                (Balance: {account.currency} {account.current_balance.toFixed(2)})
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div>
+                  <Label htmlFor="bajaj_bank_account">Bajaj Credit Bank Account *</Label>
+                  <Select 
+                    value={formData.bajaj_bank_account_id} 
+                    onValueChange={(value) => handleInputChange('bajaj_bank_account_id', value)}
+                  >
+                    <SelectTrigger id="bajaj_bank_account">
+                      <SelectValue placeholder="Select bank account for Bajaj credit" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {bankAccounts.map((account) => (
+                        <SelectItem key={account.id} value={account.id}>
+                          <div className="flex items-center gap-2">
+                            <DollarSign className="h-4 w-4" />
+                            <span>{account.name}</span>
+                            <span className="text-gray-500 text-xs">
+                              ({account.account_number})
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {bankAccounts.length === 0 && (
+                    <p className="text-xs text-orange-600 mt-1">
+                      No bank accounts found. Please add a bank account first.
+                    </p>
+                  )}
+                </div>
+
+                <div className="text-sm text-blue-600 bg-blue-100 p-2 rounded">
+                  <strong>Note:</strong> Balance amount (₹{parseFloat(formData.amount || '0') - parseFloat(formData.bajaj_downpayment_amount || '0')}) will be credited from Bajaj Finance to the selected bank account.
+                </div>
+              </div>
+            )}
+
             <div>
               <Label htmlFor="reference">Reference</Label>
               <Input
@@ -474,7 +717,7 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
             </Button>
             <Button 
               onClick={handleAddPayment}
-              disabled={isAddingPayment || !formData.amount || !formData.method}
+              disabled={isAddingPayment || !isFormValid()}
               className="bg-green-600 hover:bg-green-700"
             >
               {isAddingPayment ? (

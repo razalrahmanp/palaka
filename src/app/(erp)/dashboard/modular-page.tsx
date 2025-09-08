@@ -132,7 +132,7 @@ export default function EnhancedModularDashboard() {
           <div className="flex items-center space-x-4">
             <div>
               <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-700 bg-clip-text text-transparent">
-                Al Rams Furniture ERP
+                Palaka Furniture ERP
               </h1>
               <p className="text-sm text-gray-600">Executive Dashboard & Business Intelligence</p>
             </div>

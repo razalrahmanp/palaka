@@ -77,13 +77,12 @@ export const Sidebar = ({ isOpen, onToggle }: SidebarProps) => {
       className={`fixed md:fixed top-0 left-0 z-50 h-full bg-gradient-to-b from-white to-gray-50 border-r border-gray-200 shadow-xl transition-all duration-300 ease-in-out
         ${isOpen ? 'w-64 md:translate-x-0' : 'w-0 md:-translate-x-64'}
       `}
-      style={{ minWidth: isOpen ? '16rem' : '0', width: isOpen ? '16rem' : '0' }}
     >
     {/* Header */}
     <div className="flex items-center justify-between h-16 px-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white">
       <div className="flex items-center">
         <Package className="h-8 w-8 text-white" />
-        <span className="ml-3 text-xl font-bold">Al Rams ERP</span>
+        <span className="ml-3 text-xl font-bold">Palaka ERP</span>
       </div>
       {/* Toggle button for both desktop and mobile */}
       <button onClick={onToggle} className="text-white">

@@ -6,10 +6,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { 
-  FileText, 
+  // FileText, 
   DollarSign, 
   TrendingUp, 
-  Calculator,
+  // Calculator,
   BookOpen,
   Receipt,
   CreditCard,
@@ -24,7 +24,7 @@ import {
 import { BankAccountManager } from '@/components/finance/BankAccountManager';
 import ChartOfAccounts from '@/components/finance/ChartOfAccounts';
 import JournalEntryManager from '@/components/finance/JournalEntryManager';
-import LedgerManager from '@/components/finance/LedgerManager';
+import OptimizedLedgerManager from '@/components/finance/OptimizedLedgerManager';
 import GeneralLedger from '@/components/finance/GeneralLedger';
 import FinancialReportsManager from '@/components/finance/FinancialReportsManager';
 
@@ -184,7 +184,7 @@ export default function FinancePage() {
       </div>
 
       {/* Key Performance Indicators */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -239,7 +239,7 @@ export default function FinancePage() {
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+        {/* <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -252,122 +252,107 @@ export default function FinancePage() {
               </div>
             </div>
           </CardContent>
-        </Card>
+        </Card> */}
       </div>
 
       {/* Sales Payment Analytics - Real Payment Data */}
-      <Card className="border-black bg-white">
-        <CardHeader className="border-b border-black">
-          <CardTitle className="text-black">Real-Time Sales Payment Analytics</CardTitle>
+      <Card className="border-gray-200 bg-white shadow-sm">
+        <CardHeader className="border-b border-gray-100">
+          <CardTitle className="text-gray-900 flex items-center gap-2">
+            <BarChart3 className="h-5 w-5" />
+            Real-Time Sales Payment Analytics
+          </CardTitle>
           <CardDescription className="text-gray-600">
             Live payment metrics from sales orders and invoices
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-            {/* Total Sales Revenue */}
-            <Card className="border-black bg-white">
-              <CardContent className="p-4">
-                <div className="flex flex-col space-y-2">
-                  <div className="flex items-center justify-between">
-                    <FileText className="h-5 w-5 text-black" />
-                    <Badge variant="outline" className="text-xs border-black text-black">SALES</Badge>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-black">
-                      Rs. {(salesMetrics.totalSalesRevenue || 0).toLocaleString()}
-                    </p>
-                    <p className="text-xs text-gray-600">Total Sales Revenue</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             {/* Total Collected */}
-            <Card className="border-black bg-white">
+            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
               <CardContent className="p-4">
                 <div className="flex flex-col space-y-2">
                   <div className="flex items-center justify-between">
                     <DollarSign className="h-5 w-5 text-green-600" />
-                    <Badge variant="outline" className="text-xs border-green-600 text-green-600">PAID</Badge>
+                    <Badge variant="outline" className="text-xs border-green-600 text-green-600 bg-green-50">PAID</Badge>
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-green-600">
+                    <p className="text-2xl font-bold text-green-900">
                       Rs. {(salesMetrics.totalPaymentsReceived || 0).toLocaleString()}
                     </p>
-                    <p className="text-xs text-gray-600">Payments Received</p>
+                    <p className="text-xs text-green-700">Payments Received</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
             {/* Outstanding Amount */}
-            <Card className="border-black bg-white">
+            <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
               <CardContent className="p-4">
                 <div className="flex flex-col space-y-2">
                   <div className="flex items-center justify-between">
                     <CreditCard className="h-5 w-5 text-red-600" />
-                    <Badge variant="outline" className="text-xs border-red-600 text-red-600">DUE</Badge>
+                    <Badge variant="outline" className="text-xs border-red-600 text-red-600 bg-red-50">DUE</Badge>
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-red-600">
+                    <p className="text-2xl font-bold text-red-900">
                       Rs. {(salesMetrics.totalOutstanding || 0).toLocaleString()}
                     </p>
-                    <p className="text-xs text-gray-600">Outstanding Balance</p>
+                    <p className="text-xs text-red-700">Outstanding Balance</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
             {/* Collection Rate */}
-            <Card className="border-black bg-white">
+            <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
               <CardContent className="p-4">
                 <div className="flex flex-col space-y-2">
                   <div className="flex items-center justify-between">
                     <TrendingUp className="h-5 w-5 text-blue-600" />
-                    <Badge variant="outline" className="text-xs border-blue-600 text-blue-600">RATE</Badge>
+                    <Badge variant="outline" className="text-xs border-blue-600 text-blue-600 bg-blue-50">RATE</Badge>
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-blue-600">
+                    <p className="text-2xl font-bold text-blue-900">
                       {(salesMetrics.collectionRate || 0).toFixed(1)}%
                     </p>
-                    <p className="text-xs text-gray-600">Collection Rate</p>
+                    <p className="text-xs text-blue-700">Collection Rate</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
             {/* Fully Paid Orders */}
-            <Card className="border-black bg-white">
+            <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200">
               <CardContent className="p-4">
                 <div className="flex flex-col space-y-2">
                   <div className="flex items-center justify-between">
-                    <Receipt className="h-5 w-5 text-green-600" />
-                    <Badge variant="outline" className="text-xs border-green-600 text-green-600">FULL</Badge>
+                    <Receipt className="h-5 w-5 text-emerald-600" />
+                    <Badge variant="outline" className="text-xs border-emerald-600 text-emerald-600 bg-emerald-50">FULL</Badge>
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-green-600">
+                    <p className="text-2xl font-bold text-emerald-900">
                       {salesMetrics.fullyPaidOrders || 0}
                     </p>
-                    <p className="text-xs text-gray-600">Fully Paid Orders</p>
+                    <p className="text-xs text-emerald-700">Fully Paid Orders</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
             {/* Pending Payments */}
-            <Card className="border-black bg-white">
+            <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
               <CardContent className="p-4">
                 <div className="flex flex-col space-y-2">
                   <div className="flex items-center justify-between">
                     <RefreshCw className="h-5 w-5 text-orange-600" />
-                    <Badge variant="outline" className="text-xs border-orange-600 text-orange-600">PENDING</Badge>
+                    <Badge variant="outline" className="text-xs border-orange-600 text-orange-600 bg-orange-50">PENDING</Badge>
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-orange-600">
+                    <p className="text-2xl font-bold text-orange-900">
                       {salesMetrics.pendingPaymentOrders || 0}
                     </p>
-                    <p className="text-xs text-gray-600">Pending Payments</p>
+                    <p className="text-xs text-orange-700">Pending Payments</p>
                   </div>
                 </div>
               </CardContent>
@@ -398,7 +383,7 @@ export default function FinancePage() {
                   )}
                 </div>
               </div>
-              <Button size="sm" onClick={() => setActiveTab('invoices')}>
+              <Button size="sm" onClick={() => window.location.href = '/invoices'}>
                 Review
               </Button>
             </div>
@@ -536,7 +521,7 @@ export default function FinancePage() {
 
             {/* Ledgers Tab */}
             <TabsContent value="journals">
-              <LedgerManager />
+              <OptimizedLedgerManager />
             </TabsContent>
 
             {/* Journal Entries Tab */}

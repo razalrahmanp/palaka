@@ -21,6 +21,8 @@ export interface PurchaseOrderFilters {
   createdDateFrom: Date | null;
   createdDateTo: Date | null;
   salesRep: string;
+  sortBy: string;
+  sortOrder: 'asc' | 'desc';
 }
 
 interface PurchaseOrderFiltersProps {
@@ -266,6 +268,51 @@ export function PurchaseOrderFilters({
             </div>
           </div>
         )}
+
+        {/* Sort Options */}
+        <div className="border-t pt-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Sort By */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-gray-700">Sort By</Label>
+              <Select
+                value={filters.sortBy || 'created_at'}
+                onValueChange={(value) => updateFilter('sortBy', value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select sort column" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="created_at">Created Date</SelectItem>
+                  <SelectItem value="total">Total Amount</SelectItem>
+                  <SelectItem value="quantity">Quantity</SelectItem>
+                  <SelectItem value="supplier">Supplier</SelectItem>
+                  <SelectItem value="product">Product</SelectItem>
+                  <SelectItem value="status">Status</SelectItem>
+                  <SelectItem value="customer">Customer</SelectItem>
+                  <SelectItem value="expected_delivery">Expected Delivery</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Sort Order */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-gray-700">Sort Order</Label>
+              <Select
+                value={filters.sortOrder || 'desc'}
+                onValueChange={(value) => updateFilter('sortOrder', value as 'asc' | 'desc')}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select sort order" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="asc">Ascending (A-Z, 1-9, Old-New)</SelectItem>
+                  <SelectItem value="desc">Descending (Z-A, 9-1, New-Old)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
 
         {/* Active filters display */}
         {activeFiltersCount > 0 && (

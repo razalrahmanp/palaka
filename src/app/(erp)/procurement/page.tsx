@@ -30,6 +30,8 @@ export default function ProcurementPage() {
     createdDateFrom: null as Date | null,
     createdDateTo: null as Date | null,
     salesRep: 'all',
+    sortBy: 'created_at',
+    sortOrder: 'desc' as 'asc' | 'desc',
   });
 
   const fetchAll = useCallback(async () => {
@@ -180,6 +182,58 @@ export default function ProcurementPage() {
       );
     }
 
+    // Apply sorting
+    filtered.sort((a, b) => {
+      let aValue: string | number | Date;
+      let bValue: string | number | Date;
+
+      switch (newFilters.sortBy) {
+        case 'created_at':
+          aValue = new Date(a.created_at || 0);
+          bValue = new Date(b.created_at || 0);
+          break;
+        case 'total':
+          aValue = a.total || 0;
+          bValue = b.total || 0;
+          break;
+        case 'quantity':
+          aValue = a.quantity || 0;
+          bValue = b.quantity || 0;
+          break;
+        case 'supplier':
+          aValue = a.supplier?.name || '';
+          bValue = b.supplier?.name || '';
+          break;
+        case 'product':
+          aValue = a.product?.name || a.product_name || '';
+          bValue = b.product?.name || b.product_name || '';
+          break;
+        case 'status':
+          aValue = a.status || '';
+          bValue = b.status || '';
+          break;
+        case 'customer':
+          aValue = a.sales_order?.customer?.[0]?.name || a.sales_order?.customer_name || '';
+          bValue = b.sales_order?.customer?.[0]?.name || b.sales_order?.customer_name || '';
+          break;
+        case 'expected_delivery':
+          aValue = new Date(a.sales_order?.expected_delivery_date || 0);
+          bValue = new Date(b.sales_order?.expected_delivery_date || 0);
+          break;
+        default:
+          aValue = a.created_at || '';
+          bValue = b.created_at || '';
+      }
+
+      if (aValue < bValue) {
+        return newFilters.sortOrder === 'asc' ? -1 : 1;
+      }
+      if (aValue > bValue) {
+        return newFilters.sortOrder === 'asc' ? 1 : -1;
+      }
+      return 0;
+    });
+
     setFilteredOrders(filtered);
   };
 
@@ -208,6 +262,8 @@ export default function ProcurementPage() {
       createdDateFrom: null as Date | null,
       createdDateTo: null as Date | null,
       salesRep: 'all',
+      sortBy: 'created_at',
+      sortOrder: 'desc' as 'asc' | 'desc',
     };
     setFilters(resetFilters);
     setFilteredOrders(orders);

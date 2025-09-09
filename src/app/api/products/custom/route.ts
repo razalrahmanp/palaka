@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
         name,
         description,
         price,
+        cost_price,
         sku,
         supplier_name,
         supplier_id,
@@ -54,6 +55,7 @@ export async function POST(request: NextRequest) {
       name,
       description,
       price,
+      cost_price,
       sku,
       supplier_name,
       supplier_id,
@@ -74,6 +76,7 @@ export async function POST(request: NextRequest) {
         name,
         description,
         price,
+        cost_price: cost_price || null, // Include cost_price, will trigger auto-calculation if null
         sku,
         supplier_name,
         supplier_id,

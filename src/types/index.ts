@@ -289,8 +289,9 @@ export interface PurchaseOrder {
     created_by: string; 
     customer_id: string;
     customer_name: string;
+    expected_delivery_date?: string | null;
     sales_rep: { id: string; name: string }[];
-    customer: { id: string; name: string }[];
+    customer: { id: string; name: string; address?: string; city?: string; state?: string; pincode?: string }[];
   };
   images?:        string[]; // URLs of uploaded images
   total?:         number | null; // Total cost, calculated if product_id exists

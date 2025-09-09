@@ -114,6 +114,7 @@ export function InvoiceBillingDashboard({
     category: '',
     subcategory: '',
     price: 0,
+    cost_price: null, // Add cost_price field
     material: '',
     lead_time_days: 30,
     supplier_id: '',
@@ -969,6 +970,7 @@ export function InvoiceBillingDashboard({
           category: '',
           subcategory: '',
           price: 0,
+          cost_price: null,
           material: '',
           lead_time_days: 30,
           supplier_id: '',
@@ -2139,9 +2141,40 @@ export function InvoiceBillingDashboard({
                 />
               </div>
               
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4">
                 <div>
-                  <Label htmlFor="custom-price">Price *</Label>
+                                 <div>
+                  <Label htmlFor="custom-cost-price">
+                    Cost Price 
+                    <span className="text-sm text-gray-500 ml-1">
+                      (Optional - auto-calculated if blank)
+                    </span>
+                  </Label>
+                  <Input
+                    id="custom-cost-price"
+                    type="number"
+                    value={customProductForm.cost_price || ''}
+                    onChange={(e) => setCustomProductForm({
+                      ...customProductForm, 
+                      cost_price: e.target.value ? Number(e.target.value) : null
+                    })}
+                    placeholder={customProductForm.price > 0 ? `Auto: ${(customProductForm.price * 0.70).toFixed(2)}` : "0.00"}
+                    min="0"
+                    step="0.01"
+                  />
+                  {customProductForm.price > 0 && (
+                    <div className="text-xs text-gray-600 mt-1">
+                      {customProductForm.cost_price ? (
+                        <span className="font-medium">
+                          Margin: {(((customProductForm.price - customProductForm.cost_price) / customProductForm.price) * 100).toFixed(1)}%
+                        </span>
+                      ) : (
+                        <span>Default margin: 30% (Cost: ₹{(customProductForm.price * 0.70).toFixed(2)})</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                  <Label htmlFor="custom-price">Selling Price (MRP) *</Label>
                   <Input
                     id="custom-price"
                     type="number"
@@ -2152,7 +2185,11 @@ export function InvoiceBillingDashboard({
                     step="0.01"
                   />
                 </div>
-                <div>
+
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                {/* <div>
                   <Label htmlFor="custom-category">Category</Label>
                   <Input
                     id="custom-category"
@@ -2160,10 +2197,17 @@ export function InvoiceBillingDashboard({
                     onChange={(e) => setCustomProductForm({...customProductForm, category: e.target.value})}
                     placeholder="Category"
                   />
-                </div>
+                </div> */}
+                {/* <div>
+                  <Label htmlFor="custom-subcategory">Subcategory</Label>
+                  <Input
+                    id="custom-subcategory"
+                    value={customProductForm.subcategory}
+                    onChange={(e) => setCustomProductForm({...customProductForm, subcategory: e.target.value})}
+                    placeholder="Subcategory"
+                  />
+                </div> */}
               </div>
-
-              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="custom-material">Material</Label>
                   <Input
@@ -2173,7 +2217,7 @@ export function InvoiceBillingDashboard({
                     placeholder="Material"
                   />
                 </div>
-                <div>
+                {/* <div>
                   <Label htmlFor="custom-subcategory">Subcategory</Label>
                   <Input
                     id="custom-subcategory"
@@ -2181,8 +2225,8 @@ export function InvoiceBillingDashboard({
                     onChange={(e) => setCustomProductForm({...customProductForm, subcategory: e.target.value})}
                     placeholder="Subcategory"
                   />
-                </div>
-              </div>
+                </div> */}
+              
 
               <div className="grid grid-cols-2 gap-4">
                 <div>

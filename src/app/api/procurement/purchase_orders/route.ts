@@ -149,23 +149,23 @@ export async function GET(request: NextRequest) {
           id,
           created_by,
           customer_id,
-          sales_representative_id
+          sales_representative_id,
+          expected_delivery_date
         `)
         .in('id', salesOrderIds);
 
       if (salesOrders && salesOrders.length > 0) {
-        // Get sales rep and customer data for sales orders
-        // Sales rep can be either created_by or sales_representative_id
+        // Get all unique customer IDs
+        const customerIds = [...new Set(salesOrders.map(so => so.customer_id).filter(Boolean))];
+        
+        // Get sales rep data separately
         const allSalesRepIds = [
           ...salesOrders.map(so => so.created_by).filter(Boolean),
           ...salesOrders.map(so => so.sales_representative_id).filter(Boolean)
         ];
         const salesRepIds = [...new Set(allSalesRepIds)];
-        const customerIds = [...new Set(salesOrders.map(so => so.customer_id).filter(Boolean))];
-
+        
         let salesRepsData: Record<string, unknown>[] = [];
-        let customersData: Record<string, unknown>[] = [];
-
         if (salesRepIds.length > 0) {
           const { data: salesReps } = await supabase
             .from('users')
@@ -174,26 +174,34 @@ export async function GET(request: NextRequest) {
           salesRepsData = salesReps || [];
         }
 
+        // Fetch customer data separately to ensure we get the address
+        let customersData: Record<string, unknown>[] = [];
         if (customerIds.length > 0) {
-          const { data: customers } = await supabase
+          const { data: customers, error: customersError } = await supabase
             .from('customers')
-            .select('id, name')
+            .select('id, name, address, city, state, pincode')
             .in('id', customerIds);
+          
+          if (customersError) {
+            console.error('Error fetching customers:', customersError);
+          }
           customersData = customers || [];
         }
 
-        // Enrich sales orders with related data
+        // Transform the data to match expected structure
         salesOrdersData = salesOrders.map(so => {
-          // Try sales_representative_id first, then created_by
+          // Get the sales rep - prefer sales_representative_id over created_by
           const salesRepId = so.sales_representative_id || so.created_by;
-          const salesRep = salesRepsData.filter(sr => sr.id === salesRepId);
-          const customer = customersData.filter(c => c.id === so.customer_id);
+          const salesRep = salesRepsData.find(sr => sr.id === salesRepId);
+          
+          // Find the customer data
+          const customerData = customersData.find(c => c.id === so.customer_id);
           
           return {
             ...so,
-            sales_rep: salesRep,
-            customer: customer,
-            customer_name: customer.length > 0 ? customer[0].name : null
+            sales_rep: salesRep ? [salesRep] : [],
+            customer: customerData ? [customerData] : [],
+            customer_name: customerData?.name || null
           };
         });
       }

@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Calendar, User, Building2, DollarSign, Package } from 'lucide-react';
+import { Calendar, User, Building2, DollarSign, Package, Truck } from 'lucide-react';
 import { PurchaseOrder } from '@/types';
 import { formatDate } from '@/lib/utils';
 
@@ -60,6 +60,12 @@ export function PurchaseOrderList({
                 </TableHead>
                 <TableHead className="font-semibold text-gray-700">
                   <div className="flex items-center gap-2">
+                    <Truck className="h-4 w-4" />
+                    Expected Delivery
+                  </div>
+                </TableHead>
+                <TableHead className="font-semibold text-gray-700">
+                  <div className="flex items-center gap-2">
                     <Building2 className="h-4 w-4" />
                     Supplier
                   </div>
@@ -95,7 +101,7 @@ export function PurchaseOrderList({
             <TableBody>
               {orders.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-12 text-gray-500">
+                  <TableCell colSpan={10} className="text-center py-12 text-gray-500">
                     <div className="flex flex-col items-center gap-3">
                       <Package className="h-12 w-12 text-gray-300" />
                       <div>
@@ -119,7 +125,30 @@ export function PurchaseOrderList({
                            order.sales_order?.customer_name || 
                            'N/A'}
                         </span>
-                        <span className="text-sm text-gray-500">Customer</span>
+                        <span className="text-sm text-gray-500">
+                          {(() => {
+                            const customer = order.sales_order?.customer?.[0];
+                            if (!customer) return 'No Customer Data';
+                            
+                            const addressParts = [
+                              customer.address,
+                              customer.city,
+                              customer.state,
+                              customer.pincode
+                            ].filter(Boolean);
+                            
+                            return addressParts.length > 0 ? addressParts.join(', ') : 'No Address';
+                          })()}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-medium text-gray-900">
+                          {order.sales_order?.expected_delivery_date ? 
+                           formatDate(order.sales_order.expected_delivery_date) : 
+                           'Not Set'}
+                        </span>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -184,7 +213,6 @@ export function PurchaseOrderList({
                            order.creator?.name || 
                            'Unknown Sales Rep'}
                         </span>
-                        <span className="text-sm text-gray-500">Sales Rep</span>
                       </div>
                     </TableCell>
                     <TableCell>

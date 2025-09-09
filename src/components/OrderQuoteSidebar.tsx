@@ -416,7 +416,7 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
 
   return (
     <Card className={`w-80 h-full flex flex-col ${className}`}>
-      <CardHeader className="pb-3">
+      <CardHeader className="pb-3 flex-shrink-0">
         <CardTitle className="text-lg font-semibold">
           Quotes & Orders
         </CardTitle>
@@ -529,7 +529,7 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
         )}
       </div>
 
-      <CardContent className="flex-1 p-0">
+      <CardContent className="flex-1 p-0 overflow-hidden min-h-0">
         <ScrollArea className="h-full px-4">
           {loading && (
             <div className="flex items-center justify-center py-8">

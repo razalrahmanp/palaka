@@ -860,7 +860,7 @@ export default function BillingPage() {
   };
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen bg-background overflow-hidden">
       {/* Main Billing Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header with New Invoice Button */}
@@ -902,7 +902,7 @@ export default function BillingPage() {
       </div>
       
       {/* Right Sidebar */}
-      <div className="border-l bg-card">
+      <div className="border-l bg-card h-screen overflow-hidden flex flex-col">
         <OrderQuoteSidebar
           onQuoteSelect={handleQuoteSelect}
           onOrderSelect={handleOrderSelect}

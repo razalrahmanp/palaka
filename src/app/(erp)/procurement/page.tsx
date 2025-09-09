@@ -16,11 +16,14 @@ import { normalizeProduct } from '@/lib/helper';
 export default function ProcurementPage() {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [filteredOrders, setFilteredOrders] = useState<PurchaseOrder[]>([]);
+  const [paginatedOrders, setPaginatedOrders] = useState<PurchaseOrder[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [ordersPerPage] = useState(10);
   const [filters, setFilters] = useState({
     search: '',
     status: 'all',
@@ -237,6 +240,24 @@ export default function ProcurementPage() {
     setFilteredOrders(filtered);
   };
 
+  // Handle pagination
+  useEffect(() => {
+    const startIndex = (currentPage - 1) * ordersPerPage;
+    const endIndex = startIndex + ordersPerPage;
+    setPaginatedOrders(filteredOrders.slice(startIndex, endIndex));
+  }, [filteredOrders, currentPage, ordersPerPage]);
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters]);
+
+  const totalPages = Math.ceil(filteredOrders.length / ordersPerPage);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
   const handleDelete = async (order: PurchaseOrder) => {
     try {
       const res = await fetch(`/api/procurement/purchase_orders?id=${order.id}`, {
@@ -423,12 +444,59 @@ export default function ProcurementPage() {
           </CardHeader>
           <CardContent className="p-6">
             <PurchaseOrderList 
-              orders={Array.isArray(filteredOrders) ? filteredOrders : []}
+              orders={Array.isArray(paginatedOrders) ? paginatedOrders : []}
               onViewDetails={handleViewDetails}
               onUpdateStatus={handleUpdateStatus}
               onDelete={handleDelete}
               loading={loading}
             />
+            
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="mt-6 flex items-center justify-between">
+                <div className="flex items-center text-sm text-gray-700">
+                  <span>
+                    Showing {((currentPage - 1) * ordersPerPage) + 1} to{' '}
+                    {Math.min(currentPage * ordersPerPage, filteredOrders.length)} of{' '}
+                    {filteredOrders.length} results
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                  >
+                    Previous
+                  </Button>
+                  
+                  {/* Page numbers */}
+                  <div className="flex items-center space-x-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                      <Button
+                        key={page}
+                        variant={currentPage === page ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => handlePageChange(page)}
+                        className="w-8 h-8 p-0"
+                      >
+                        {page}
+                      </Button>
+                    ))}
+                  </div>
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 

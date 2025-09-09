@@ -58,6 +58,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format } from 'date-fns';
 import {
   PlusCircle, Edit, Trash2, MessageSquare, Users, CalendarIcon, ArrowUpDown, ArrowUp, ArrowDown, X, ChevronDown, ChevronRight, Package, DollarSign, MapPin, FileText
@@ -83,6 +84,9 @@ export default function CrmPage() {
   // Date filter states
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  
+  // Time period filter for customer creation analysis
+  const [timePeriod, setTimePeriod] = useState<'daily' | 'weekly' | 'monthly' | 'custom'>('daily');
   
   // Sorting state - Default sort by created_at descending (newest first)
   const [sortField, setSortField] = useState<string>('created_at');
@@ -268,6 +272,84 @@ export default function CrmPage() {
     console.log('=== CRM Sales Data Calculation END ===');
     return salesData;
   }, [salesOrders, customers]);
+
+  // Calculate time-based customer statistics (now controls ALL stats)
+  const timeBasedStats = useMemo(() => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    let startDate: Date;
+    let endDate: Date = now;
+    
+    switch (timePeriod) {
+      case 'daily':
+        startDate = today;
+        break;
+      case 'weekly':
+        startDate = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case 'monthly':
+        startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+        break;
+      case 'custom':
+        if (dateFrom && dateTo) {
+          startDate = new Date(dateFrom.getFullYear(), dateFrom.getMonth(), dateFrom.getDate());
+          endDate = new Date(dateTo.getFullYear(), dateTo.getMonth(), dateTo.getDate(), 23, 59, 59);
+        } else {
+          // Default to today if custom dates not set
+          startDate = today;
+        }
+        break;
+      default:
+        startDate = today;
+    }
+    
+    // Filter customers created in the period
+    const periodCustomers = customers.filter(c => {
+      const customerDate = new Date(c.created_at || '');
+      return customerDate >= startDate && customerDate <= endDate;
+    });
+    
+    // Filter customers with purchases in the period
+    const customersWithPurchases = customers.filter(c => {
+      const customerSales = customerSalesData[c.id];
+      if (!customerSales?.salesCount) return false;
+      
+      // Check if any purchase was made in the period
+      return customerSales.orders?.some((order: SalesOrder) => {
+        const orderDate = new Date(order.created_at);
+        return orderDate >= startDate && orderDate <= endDate;
+      });
+    });
+    
+    // Calculate purchase values for the period
+    const periodSalesOrders = salesOrders.filter(order => {
+      const orderDate = new Date(order.created_at);
+      return orderDate >= startDate && orderDate <= endDate;
+    });
+    
+    const totalPurchaseValue = periodSalesOrders.reduce(
+      (sum, order) => sum + (order.final_price || order.grand_total || 0), 0
+    );
+    
+    // Calculate interactions in the period
+    const periodInteractions = interactions.filter(interaction => {
+      const interactionDate = new Date(interaction.interaction_date || '');
+      return interactionDate >= startDate && interactionDate <= endDate;
+    });
+    
+    return {
+      periodCustomers: periodCustomers.length,
+      totalCustomersWithPurchases: customersWithPurchases.length,
+      periodPurchases: periodSalesOrders.length,
+      totalPurchaseValue,
+      periodInteractions: periodInteractions.length,
+      purchaseRate: periodCustomers.length > 0 ? (customersWithPurchases.length / periodCustomers.length) * 100 : 0,
+      avgOrderValue: periodSalesOrders.length > 0 ? totalPurchaseValue / periodSalesOrders.length : 0,
+      startDate,
+      endDate
+    };
+  }, [customers, customerSalesData, salesOrders, interactions, timePeriod, dateFrom, dateTo]);
 
   // Function to toggle row expansion
   const toggleRowExpansion = (customerId: string) => {
@@ -492,22 +574,95 @@ export default function CrmPage() {
         </div>
       </div>
 
-      {/* Summary Cards */}
+      {/* Enhanced Summary Cards */}
+      <div className="flex flex-col sm:flex-row gap-4 mb-6">
+        <div className="flex-1">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Period Filter (Controls All Stats)</label>
+          <Select value={timePeriod} onValueChange={(value: 'daily' | 'weekly' | 'monthly' | 'custom') => setTimePeriod(value)}>
+            <SelectTrigger className="w-full sm:w-[180px] border-gray-200 hover:border-purple-500">
+              <SelectValue placeholder="Select period" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="daily">Today</SelectItem>
+              <SelectItem value="weekly">This Week</SelectItem>
+              <SelectItem value="monthly">This Month</SelectItem>
+              <SelectItem value="custom">Custom Range</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        
+        {/* Custom Date Range Pickers */}
+        {timePeriod === 'custom' && (
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-2">From Date</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full sm:w-[200px] justify-start text-left font-normal border-gray-200 hover:border-purple-500"
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dateFrom ? format(dateFrom, "PPP") : <span>Pick a date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dateFrom}
+                    onSelect={setDateFrom}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-2">To Date</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full sm:w-[200px] justify-start text-left font-normal border-gray-200 hover:border-purple-500"
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dateTo ? format(dateTo, "PPP") : <span>Pick a date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dateTo}
+                    onSelect={setDateTo}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Customers</p>
-                <p className="text-2xl font-bold text-gray-900">{customers.length}</p>
+                <p className="text-sm font-medium text-gray-600">
+                  {timePeriod === 'daily' ? 'Today' : 
+                   timePeriod === 'weekly' ? 'This Week' : 
+                   timePeriod === 'monthly' ? 'This Month' : 
+                   'Custom Period'} Customers
+                </p>
+                <p className="text-2xl font-bold text-gray-900">{timeBasedStats.periodCustomers}</p>
               </div>
               <div className="h-12 w-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center">
                 <PlusCircle className="h-6 w-6 text-white" />
               </div>
             </div>
             <div className="mt-4 flex items-center text-sm">
-              <span className="text-green-600 font-medium">+{customers.filter(c => new Date(c.created_at || '').getMonth() === new Date().getMonth()).length}</span>
-              <span className="text-gray-600 ml-1">this month</span>
+              <span className="text-blue-600 font-medium">{customers.length}</span>
+              <span className="text-gray-600 ml-1">total customers</span>
             </div>
           </CardContent>
         </Card>
@@ -516,16 +671,21 @@ export default function CrmPage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Active Customers</p>
-                <p className="text-2xl font-bold text-gray-900">{customers.filter(c => c.status === 'Active').length}</p>
+                <p className="text-sm font-medium text-gray-600">
+                  {timePeriod === 'daily' ? 'Today' : 
+                   timePeriod === 'weekly' ? 'This Week' : 
+                   timePeriod === 'monthly' ? 'This Month' : 
+                   'Custom Period'} Purchases
+                </p>
+                <p className="text-2xl font-bold text-gray-900">{timeBasedStats.totalCustomersWithPurchases}</p>
               </div>
               <div className="h-12 w-12 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center">
-                <Badge className="h-6 w-6 text-white bg-transparent border-0" />
+                <DollarSign className="h-6 w-6 text-white" />
               </div>
             </div>
             <div className="mt-4 flex items-center text-sm">
-              <span className="text-green-600 font-medium">{Math.round((customers.filter(c => c.status === 'Active').length / customers.length) * 100) || 0}%</span>
-              <span className="text-gray-600 ml-1">of total</span>
+              <span className="text-green-600 font-medium">{Math.round(timeBasedStats.purchaseRate)}%</span>
+              <span className="text-gray-600 ml-1">of period customers</span>
             </div>
           </CardContent>
         </Card>
@@ -534,34 +694,48 @@ export default function CrmPage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Interactions</p>
-                <p className="text-2xl font-bold text-gray-900">{interactions.length}</p>
+                <p className="text-sm font-medium text-gray-600">
+                  {timePeriod === 'daily' ? 'Today' : 
+                   timePeriod === 'weekly' ? 'This Week' : 
+                   timePeriod === 'monthly' ? 'This Month' : 
+                   'Custom Period'} Revenue
+                </p>
+                <p className="text-2xl font-bold text-gray-900">
+                  ₹{timeBasedStats.totalPurchaseValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                </p>
               </div>
               <div className="h-12 w-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center">
+                <DollarSign className="h-6 w-6 text-white" />
+              </div>
+            </div>
+            <div className="mt-4 flex items-center text-sm">
+              <span className="text-purple-600 font-medium">
+                ₹{timeBasedStats.avgOrderValue > 0 ? Math.round(timeBasedStats.avgOrderValue).toLocaleString('en-IN') : 0}
+              </span>
+              <span className="text-gray-600 ml-1">avg order value</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">
+                  {timePeriod === 'daily' ? 'Today' : 
+                   timePeriod === 'weekly' ? 'This Week' : 
+                   timePeriod === 'monthly' ? 'This Month' : 
+                   'Custom Period'} Interactions
+                </p>
+                <p className="text-2xl font-bold text-gray-900">{timeBasedStats.periodInteractions}</p>
+              </div>
+              <div className="h-12 w-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center">
                 <MessageSquare className="h-6 w-6 text-white" />
               </div>
             </div>
             <div className="mt-4 flex items-center text-sm">
-              <span className="text-green-600 font-medium">+{interactions.filter(i => new Date(i.interaction_date || '').getMonth() === new Date().getMonth()).length}</span>
-              <span className="text-gray-600 ml-1">this month</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Customers</p>
-                <p className="text-2xl font-bold text-gray-900">{customers?.length || 0}</p>
-              </div>
-              <div className="h-12 w-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center">
-                <Users className="h-6 w-6 text-white" />
-              </div>
-            </div>
-            <div className="mt-4 flex items-center text-sm">
-              <span className="text-blue-600 font-medium">{sortedCustomers.length}</span>
-              <span className="text-gray-600 ml-1">filtered results</span>
+              <span className="text-orange-600 font-medium">{timeBasedStats.periodPurchases}</span>
+              <span className="text-gray-600 ml-1">orders in period</span>
             </div>
           </CardContent>
         </Card>
@@ -660,61 +834,98 @@ export default function CrmPage() {
                     filterSource={filterSource}
                     onFilterSourceChange={setFilterSource}
                   />
-                  
-                  {/* Clear All Filters Button */}
-                  {(searchQuery || filterStatus !== 'all' || filterSource !== 'all' || dateFrom || dateTo || selectedSalespersonId) && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSearchQuery('');
-                        setFilterStatus('all');
-                        setFilterSource('all');
-                        setDateFrom(undefined);
-                        setDateTo(undefined);
-                        setSelectedSalespersonId(null);
-                        setSortField('created_at');
-                        setSortDirection('desc');
-                        setCurrentPage(1);
-                      }}
-                      className="h-10 px-4 border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 transition-colors"
-                    >
-                      <X className="mr-2 h-4 w-4" />
-                      Clear All
-                    </Button>
-                  )}
                 </div>
               </div>
 
-              {/* Active Filters Display */}
+              {/* Enhanced Active Filters Display */}
               {(searchQuery || filterStatus !== 'all' || filterSource !== 'all' || dateFrom || dateTo || selectedSalespersonId || sortField) && (
-                <div className="flex flex-wrap gap-2 items-center text-sm">
-                  <span className="text-gray-600 font-medium">Active:</span>
-                  {searchQuery && (
-                    <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-                      Search: &quot;{searchQuery}&quot;
-                    </Badge>
-                  )}
-                  {filterStatus !== 'all' && (
-                    <Badge variant="secondary" className="bg-green-100 text-green-800">
-                      Status: {filterStatus}
-                    </Badge>
-                  )}
-                  {filterSource !== 'all' && (
-                    <Badge variant="secondary" className="bg-purple-100 text-purple-800">
-                      Source: {filterSource}
-                    </Badge>
-                  )}
-                  {(dateFrom || dateTo) && (
-                    <Badge variant="secondary" className="bg-orange-100 text-orange-800">
-                      Date: {dateFrom ? format(dateFrom, "MMM dd") : "Start"} - {dateTo ? format(dateTo, "MMM dd") : "End"}
-                    </Badge>
-                  )}
-                  {sortField && (
-                    <Badge variant="secondary" className="bg-indigo-100 text-indigo-800">
-                      Sort: {sortField} ({sortDirection})
-                    </Badge>
-                  )}
+                <div className="bg-gradient-to-r from-purple-50 to-blue-50 p-4 rounded-lg border border-purple-100">
+                  <div className="flex flex-wrap gap-3 items-center">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-gray-700">Active Filters:</span>
+                      <div className="h-4 w-0.5 bg-gray-300"></div>
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-2">
+                      {searchQuery && (
+                        <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200 px-3 py-1 rounded-full font-medium shadow-sm">
+                          <span className="text-xs mr-1">🔍</span>
+                          Search: &quot;{searchQuery}&quot;
+                        </Badge>
+                      )}
+                      {filterStatus !== 'all' && (
+                        <Badge variant="secondary" className="bg-green-100 text-green-800 border-green-200 px-3 py-1 rounded-full font-medium shadow-sm">
+                          <span className="text-xs mr-1">📊</span>
+                          Status: {filterStatus}
+                        </Badge>
+                      )}
+                      {filterSource !== 'all' && (
+                        <Badge variant="secondary" className="bg-purple-100 text-purple-800 border-purple-200 px-3 py-1 rounded-full font-medium shadow-sm">
+                          <span className="text-xs mr-1">📍</span>
+                          Source: {filterSource}
+                        </Badge>
+                      )}
+                      {(dateFrom || dateTo) && (
+                        <Badge variant="secondary" className="bg-orange-100 text-orange-800 border-orange-200 px-3 py-1 rounded-full font-medium shadow-sm">
+                          <span className="text-xs mr-1">📅</span>
+                          Date: {dateFrom ? format(dateFrom, "MMM dd") : "Start"} - {dateTo ? format(dateTo, "MMM dd") : "End"}
+                        </Badge>
+                      )}
+                      {selectedSalespersonId && (
+                        <Badge variant="secondary" className="bg-indigo-100 text-indigo-800 border-indigo-200 px-3 py-1 rounded-full font-medium shadow-sm">
+                          <span className="text-xs mr-1">👤</span>
+                          Salesperson
+                        </Badge>
+                      )}
+                      {sortField && (
+                        <Badge variant="secondary" className="bg-gray-100 text-gray-800 border-gray-200 px-3 py-1 rounded-full font-medium shadow-sm">
+                          <span className="text-xs mr-1">↕️</span>
+                          Sort: {sortField} ({sortDirection})
+                        </Badge>
+                      )}
+                    </div>
+                    
+                    <div className="ml-auto">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setSearchQuery('');
+                          setFilterStatus('all');
+                          setFilterSource('all');
+                          setDateFrom(undefined);
+                          setDateTo(undefined);
+                          setSelectedSalespersonId(null);
+                          setSortField('created_at');
+                          setSortDirection('desc');
+                          setCurrentPage(1);
+                        }}
+                        className="h-8 px-3 text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors border border-gray-200 hover:border-red-200 rounded-full"
+                      >
+                        <X className="mr-1 h-3 w-3" />
+                        Clear All
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-3 pt-3 border-t border-purple-100/50">
+                    <div className="flex items-center gap-4 text-sm">
+                      <span className="text-gray-600">Results:</span>
+                      <span className="font-semibold text-purple-700 bg-purple-100 px-2 py-1 rounded-full">
+                        {sortedCustomers.length} customers
+                      </span>
+                      {timeBasedStats.totalCustomersWithPurchases > 0 && (
+                        <span className="font-semibold text-green-700 bg-green-100 px-2 py-1 rounded-full">
+                          {timeBasedStats.totalCustomersWithPurchases} with purchases
+                        </span>
+                      )}
+                      {timeBasedStats.totalPurchaseValue > 0 && (
+                        <span className="font-semibold text-blue-700 bg-blue-100 px-2 py-1 rounded-full">
+                          ₹{timeBasedStats.totalPurchaseValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })} total value
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
 

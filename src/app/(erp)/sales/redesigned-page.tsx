@@ -22,7 +22,6 @@ import {
   Percent,
   Truck,
   User,
-  Settings,
   BarChart3,
   TrendingUp,
   Grid3X3,
@@ -1481,11 +1480,11 @@ function OrdersTabContent({
                   <Button 
                     variant="outline" 
                     size="sm" 
-                    className="w-full rounded-lg hover:bg-orange-50 hover:border-orange-300 hover:text-orange-700"
+                    className="w-full rounded-lg hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700"
                     onClick={() => onAssignRep(order)}
                   >
-                    <Settings className="mr-1 h-4 w-4" />
-                    Change Sales Rep
+                    <User className="mr-1 h-4 w-4" />
+                    Assign Sales Rep
                   </Button>
                 )}
               </div>

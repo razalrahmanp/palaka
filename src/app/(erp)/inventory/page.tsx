@@ -264,7 +264,6 @@ export default function InventoryPage() {
               onAddItem={() => setAddItemOpen(true)}
               onManageMargins={() => setManageMarginsOpen(true)}
               onAddSupplier={() => setAddSupplierOpen(true)}
-              suppliers={suppliers}
             />
             
             <div className="bg-gradient-to-r from-red-50 to-orange-50 rounded-xl border border-red-100/50 p-4">

@@ -9,8 +9,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { SlidersHorizontal, AlertCircle, Settings, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
-import { ProductWithInventory, Supplier } from '@/types'
-import EnhancedSearchFilter, { FilterOption } from '@/components/ui/enhanced-search-filter'
+import { ProductWithInventory } from '@/types'
 
 interface PaginationData {
   page: number;
@@ -30,16 +29,14 @@ type Props = {
   onAdjustClick: (item: ProductWithInventory) => void,
   onAddItem: () => void,
   onManageMargins: () => void,
-  onAddSupplier: () => void,
-  suppliers: Supplier[]
+  onAddSupplier: () => void
 }
 
 export const PaginatedInventoryTable: React.FC<Props> = ({ 
   onAdjustClick, 
   onAddItem, 
   onManageMargins, 
-  onAddSupplier,
-  suppliers 
+  onAddSupplier
 }) => {
   const [items, setItems] = useState<ProductWithInventory[]>([])
   const [pagination, setPagination] = useState<PaginationData>({
@@ -51,22 +48,6 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
     hasPrev: false
   })
   const [loading, setLoading] = useState(false)
-  const [search, setSearch] = useState('')
-  const [category, setCategory] = useState('')
-  const [supplier, setSupplier] = useState('')
-  const [categories, setCategories] = useState<string[]>([])
-
-  // Fetch unique categories for filter
-  const fetchCategories = useCallback(async () => {
-    try {
-      const response = await fetch('/api/products?limit=1000') // Get all products to extract categories
-      const data = await response.json()
-      const uniqueCategories = [...new Set(data.products?.map((item: ProductWithInventory) => item.category).filter(Boolean))] as string[]
-      setCategories(uniqueCategories)
-    } catch (error) {
-      console.error('Error fetching categories:', error)
-    }
-  }, [])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -74,10 +55,7 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
       const params = new URLSearchParams({
         page: pagination.page.toString(),
         limit: pagination.limit.toString(),
-        _t: Date.now().toString(), // Cache buster to ensure fresh data
-        ...(search && { search }),
-        ...(category && { category }),
-        ...(supplier && { supplier })
+        _t: Date.now().toString() // Cache buster to ensure fresh data
       })
 
       const response = await fetch(`/api/inventory/products?${params}`)
@@ -90,7 +68,7 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
     } finally {
       setLoading(false)
     }
-  }, [pagination.page, pagination.limit, search, category, supplier])
+  }, [pagination.page, pagination.limit])
 
   // Real-time update interval
   useEffect(() => {
@@ -104,25 +82,6 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
   useEffect(() => {
     fetchData()
   }, [fetchData])
-
-  useEffect(() => {
-    fetchCategories()
-  }, [fetchCategories])
-
-  const handleSearch = (value: string) => {
-    setSearch(value)
-    setPagination(prev => ({ ...prev, page: 1 }))
-  }
-
-  const handleCategoryFilter = (value: string) => {
-    setCategory(value === 'all' ? '' : value)
-    setPagination(prev => ({ ...prev, page: 1 }))
-  }
-
-  const handleSupplierFilter = (value: string) => {
-    setSupplier(value === 'all' ? '' : value)
-    setPagination(prev => ({ ...prev, page: 1 }))
-  }
 
   const handlePageChange = (newPage: number) => {
     setPagination(prev => ({ ...prev, page: newPage }))
@@ -156,52 +115,7 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
         </div>
       </CardHeader>
       
-      {/* Enhanced Search and Filters */}
       <CardContent className="space-y-4">
-        <EnhancedSearchFilter
-          searchValue={search}
-          onSearchChange={handleSearch}
-          searchPlaceholder="Search products, SKU, or description..."
-          filters={[
-            {
-              key: 'category',
-              label: 'Categories',
-              value: category || 'all',
-              options: categories.map((cat): FilterOption => ({
-                label: cat,
-                value: cat,
-                count: items.filter(item => item.category === cat).length
-              })),
-              placeholder: 'Filter by category'
-            },
-            {
-              key: 'supplier',
-              label: 'Suppliers',
-              value: supplier || 'all',
-              options: suppliers.map((sup): FilterOption => ({
-                label: sup.name,
-                value: sup.id,
-                count: items.filter(item => item.supplier_id === sup.id).length
-              })),
-              placeholder: 'Filter by supplier'
-            }
-          ]}
-          onFilterChange={(key, value) => {
-            if (key === 'category') {
-              handleCategoryFilter(value === 'all' ? 'all' : value);
-            } else if (key === 'supplier') {
-              handleSupplierFilter(value === 'all' ? 'all' : value);
-            }
-          }}
-          onClearFilters={() => {
-            handleSearch('');
-            handleCategoryFilter('all');
-            handleSupplierFilter('all');
-          }}
-          theme="glass"
-          className="mb-6"
-        />
-
         {/* Table */}
         <div className="relative">
           {loading && (
@@ -235,10 +149,15 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
                     <TableCell>{i.subcategory}</TableCell>
                     <TableCell>{i.material}</TableCell>
                     <TableCell>{i.location}</TableCell>
-                    <TableCell>${Number(i.cost).toFixed(2)}</TableCell>
-                    <TableCell className="font-bold">${Number(i.price).toFixed(2)}</TableCell>
+                    <TableCell>₹{Number(i.cost).toFixed(2)}</TableCell>
+                    <TableCell className="font-bold">₹{Number(i.price).toFixed(2)}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{i.applied_margin}%</Badge>
+                      <Badge variant="outline">
+                        {i.cost && i.price && Number(i.cost) > 0 
+                          ? (((Number(i.price) - Number(i.cost)) / Number(i.cost)) * 100).toFixed(1)
+                          : i.applied_margin || 0
+                        }%
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <Badge variant={i.quantity > i.reorder_point ? 'default' : 'destructive'}>

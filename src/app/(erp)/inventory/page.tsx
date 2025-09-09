@@ -24,6 +24,7 @@ export default function InventoryPage() {
   const fetchAll = useCallback(() => {
     const timestamp = Date.now(); // Cache buster
     console.log('Fetching products from API...')
+    // Fetch without pagination to get all products
     fetch(`/api/inventory/products?_t=${timestamp}`).then(r => r.json()).then(data => {
       // Handle both old format (array) and new format (object with products array)
       const productsArray = Array.isArray(data) ? data : data.products || [];
@@ -111,6 +112,9 @@ export default function InventoryPage() {
   )
 
   const uniqueProducts = Array.from(new Map(items.map(item => [item.product_id, item])).values())
+  
+  // For labels, we want all items (not deduplicated) so users can print labels for specific locations
+  const allProductsForLabels = items
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 p-6 space-y-8">
@@ -277,7 +281,7 @@ export default function InventoryPage() {
               <h2 className="text-2xl font-bold text-gray-900">Product Labels</h2>
               <p className="text-gray-600">Generate and print product labels</p>
             </div>
-            <ProductLabels products={uniqueProducts} />
+            <ProductLabels products={allProductsForLabels} />
           </TabsContent>
         </Tabs>
       </div>

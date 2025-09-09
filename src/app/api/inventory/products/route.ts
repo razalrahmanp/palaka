@@ -157,9 +157,10 @@ export async function GET(request: NextRequest) {
       });
     } else {
       // For backward compatibility, return simple array when no pagination
-      // Use range() to explicitly fetch all rows without limit
+      // Remove explicit range limit to get all records
+      // Note: Supabase has a default limit of 1000 rows, so we need to use a larger limit
       const { data: inventoryItems, error } = await query
-        .range(0, 49999) // Explicitly set range to get first 50,000 rows
+        .limit(100000) // Set a high limit to effectively get all records
         .order('id', { ascending: false }); // Order by ID to get latest entries first
 
       if (error) {
@@ -168,11 +169,6 @@ export async function GET(request: NextRequest) {
       }
 
       console.log(`Non-paginated request: Fetched ${inventoryItems?.length || 0} inventory items`);
-
-      // Also log if we hit any limits
-      if (inventoryItems && inventoryItems.length >= 1000) {
-        console.log(`Warning: Fetched exactly ${inventoryItems.length} items - might be hitting a limit`);
-      }
 
       // Transform to ProductWithInventory format
       const transformedItems = inventoryItems?.map(item => {

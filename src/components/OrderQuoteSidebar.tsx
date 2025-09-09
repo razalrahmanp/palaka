@@ -46,6 +46,18 @@ interface Quote {
   tax_percentage?: number; // Tax rate
 }
 
+interface Customer {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  floor?: string;
+}
+
 interface SalesOrder {
   id: string;
   quote_id?: string;
@@ -87,6 +99,7 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
   const [showQuotes, setShowQuotes] = useState(true);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [orders, setOrders] = useState<SalesOrder[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -95,6 +108,19 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
   // Handle date range selection
   const handleDateSelect = (range: DateRange | undefined) => {
     setDateFilter(range);
+  };
+
+  // Fetch customers
+  const fetchCustomers = async () => {
+    try {
+      const response = await fetch('/api/crm/customers');
+      if (!response.ok) throw new Error('Failed to fetch customers');
+      const data = await response.json();
+      setCustomers(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Error fetching customers:', err);
+      setCustomers([]);
+    }
   };
 
   // Fetch quotes
@@ -134,12 +160,72 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
 
   // Load data based on current view
   useEffect(() => {
+    fetchCustomers(); // Always fetch customers for address lookup
     if (showQuotes) {
       fetchQuotes();
     } else {
       fetchOrders();
     }
   }, [showQuotes]);
+
+  // Get customer details from customers array
+  const getCustomerDetails = (item: Quote | SalesOrder) => {
+    const customerId = item.customer_id;
+    return customers.find(customer => customer.id === customerId) || null;
+  };
+
+  // Format customer address
+  const getCustomerAddress = (customer: Customer | null) => {
+    if (!customer) return '';
+    
+    const addressParts = [];
+    if (customer.address) addressParts.push(customer.address);
+    if (customer.floor) addressParts.push(`Floor: ${customer.floor}`);
+    if (customer.city) addressParts.push(customer.city);
+    if (customer.state) addressParts.push(customer.state);
+    if (customer.pincode) addressParts.push(customer.pincode);
+    
+    return addressParts.join(', ');
+  };
+
+  // Fuzzy search function
+  const fuzzyMatch = (text: string, query: string): boolean => {
+    const textLower = text.toLowerCase().trim();
+    const queryLower = query.toLowerCase().trim();
+    
+    // Exact match
+    if (textLower.includes(queryLower)) return true;
+    
+    // Remove spaces and check
+    const textNoSpaces = textLower.replace(/\s+/g, '');
+    const queryNoSpaces = queryLower.replace(/\s+/g, '');
+    if (textNoSpaces.includes(queryNoSpaces)) return true;
+    
+    // Word boundary matching (for names like "NOUFAL" matching "noufal")
+    const textWords = textLower.split(/\s+/);
+    const queryWords = queryLower.split(/\s+/);
+    
+    // Check if any word in text starts with any word in query
+    for (const queryWord of queryWords) {
+      for (const textWord of textWords) {
+        if (textWord.startsWith(queryWord) || queryWord.startsWith(textWord)) {
+          return true;
+        }
+      }
+    }
+    
+    // Character-by-character fuzzy matching (for partial matches)
+    let queryIndex = 0;
+    for (let i = 0; i < textLower.length && queryIndex < queryLower.length; i++) {
+      if (textLower[i] === queryLower[queryIndex]) {
+        queryIndex++;
+      }
+    }
+    
+    // Return true if we matched most of the query (at least 80% for short queries)
+    const matchPercentage = queryIndex / queryLower.length;
+    return matchPercentage >= (queryLower.length <= 3 ? 1.0 : 0.8);
+  };
 
   // Status badge color mapping
   const getStatusBadge = (status: string) => {
@@ -269,25 +355,32 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(item => {
-        // Search by customer name
-        const customerName = getCustomerName(item).toLowerCase();
-        if (customerName.includes(query)) return true;
+        // Get customer details for enhanced search
+        const customerDetails = getCustomerDetails(item);
+        
+        // PRIMARY SEARCH: Customer name (main priority)
+        const customerName = getCustomerName(item);
+        if (fuzzyMatch(customerName, query)) return true;
 
-        // Search by created by name
-        const createdByName = getCreatedByName(item).toLowerCase();
-        if (createdByName.includes(query)) return true;
+        // SECONDARY SEARCH: Customer contact and address info
+        if (customerDetails) {
+          const customerAddress = getCustomerAddress(customerDetails);
+          if (fuzzyMatch(customerAddress, query)) return true;
+          
+          // Search by individual address fields
+          if (customerDetails.phone && fuzzyMatch(customerDetails.phone, query)) return true;
+          if (customerDetails.email && fuzzyMatch(customerDetails.email, query)) return true;
+          if (customerDetails.city && fuzzyMatch(customerDetails.city, query)) return true;
+          if (customerDetails.state && fuzzyMatch(customerDetails.state, query)) return true;
+          if (customerDetails.pincode && fuzzyMatch(customerDetails.pincode, query)) return true;
+        }
 
-        // Search by date
-        const dateStr = formatDate(showQuotes ? (item as Quote).created_at : (item as SalesOrder).date).toLowerCase();
-        if (dateStr.includes(query)) return true;
-
+        // TERTIARY SEARCH: Order/Quote metadata (lower priority)
         // Search by order/quote ID
-        const idStr = item.id.toLowerCase();
-        if (idStr.includes(query)) return true;
+        if (fuzzyMatch(item.id, query)) return true;
 
         // Search by status
-        const status = item.status.toLowerCase();
-        if (status.includes(query)) return true;
+        if (fuzzyMatch(item.status, query)) return true;
 
         // Search by amount
         const amount = (item.grand_total || item.final_price || 0).toString();
@@ -367,7 +460,7 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
             <Input
-              placeholder="Search customer, mobile, status..."
+              placeholder="Search customer name, address, phone..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
@@ -420,6 +513,18 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
             >
               Clear
             </Button>
+          </div>
+        )}
+        
+        {/* Search Results Indicator */}
+        {searchQuery.trim() && (
+          <div className="text-xs text-muted-foreground bg-blue-50 p-2 rounded">
+            <span className="font-medium">Searching for customers:</span> &ldquo;{searchQuery}&rdquo;
+            {filteredData.length > 0 ? (
+              <span className="ml-2 text-blue-600">• {filteredData.length} results found</span>
+            ) : (
+              <span className="ml-2 text-orange-600">• No customers found with this name/address</span>
+            )}
           </div>
         )}
       </div>
@@ -502,6 +607,21 @@ const OrderQuoteSidebar: React.FC<OrderQuoteSidebarProps> = ({
                         <User className="w-3 h-3" />
                         <span className="truncate">{String(getCustomerName(item))}</span>
                       </div>
+
+                      {/* Customer Address */}
+                      {(() => {
+                        const customerDetails = getCustomerDetails(item);
+                        const address = getCustomerAddress(customerDetails);
+                        if (address) {
+                          return (
+                            <div className="flex items-start gap-2 text-xs text-muted-foreground">
+                              <span className="text-muted-foreground/60">📍</span>
+                              <span className="leading-tight truncate max-w-[200px]">{address}</span>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
 
                       {/* Amount */}
                       <div className="flex items-center gap-2">

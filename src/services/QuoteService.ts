@@ -174,7 +174,8 @@ export class QuoteService {
     const original_price = subtotal;
     const discount_amount = additional_discount;
     const freight_charges = pricingOptions.freight_charges || (subtotal > 50000 ? 0 : 2000);
-    const tax_amount = (subtotal - discount_amount) * 0.18; // 18% GST
+    const tax_rate = (pricingOptions.tax_percentage || 0) / 100; // Use provided tax percentage or 0%
+    const tax_amount = (subtotal - discount_amount) * tax_rate;
     const total_price = subtotal - discount_amount + tax_amount + freight_charges;
     const final_price = pricingOptions.emi_enabled ? 
       pricingOptions.emi_plan?.total_amount || total_price : total_price;
@@ -185,6 +186,7 @@ export class QuoteService {
       discount_amount,
       discount_percentage: additional_discount_percentage,
       tax_amount,
+      tax_percentage: pricingOptions.tax_percentage || 0, // Include tax percentage in response
       freight_charges,
       total_price,
       final_price,

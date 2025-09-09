@@ -310,7 +310,7 @@ export default function BillingPage() {
           final_price: data.finalTotal,
           discount_amount: data.totals.original_price + data.totals.freight_charges - data.finalTotal,
           freight_charges: data.totals.freight_charges,
-          tax_percentage: data.totals.tax_percentage || 18.00,
+          tax_percentage: data.totals.tax_percentage || 0, // No default tax unless specified
           tax_amount: data.totals.tax,
           taxable_amount: data.totals.subtotal,
           grand_total: data.totals.grandTotal,
@@ -414,7 +414,7 @@ export default function BillingPage() {
           final_price: data.finalTotal,
           discount_amount: data.totals.original_price + data.totals.freight_charges - data.finalTotal,
           freight_charges: data.totals.freight_charges,
-          tax_percentage: data.totals.tax_percentage || 18.00,
+          tax_percentage: data.totals.tax_percentage || 0, // No default tax unless specified
           tax_amount: data.totals.tax,
           taxable_amount: data.totals.subtotal,
           grand_total: data.totals.grandTotal,
@@ -751,7 +751,7 @@ export default function BillingPage() {
           discount_amount: correctedDiscountAmount, // Use corrected discount amount
           freight_charges: data.totals.freight_charges,
           // Tax information
-          tax_percentage: data.totals.tax_percentage || 18.00, // Use billing component tax percentage
+          tax_percentage: data.totals.tax_percentage || 0, // No default tax unless specified
           tax_amount: data.totals.tax,
           taxable_amount: data.totals.subtotal,
           grand_total: data.totals.grandTotal,
@@ -810,7 +810,7 @@ export default function BillingPage() {
           discount_amount: createdQuote.discount_amount,
           freight_charges: createdQuote.freight_charges,
           // Tax information
-          tax_percentage: createdQuote.tax_percentage || 18.00,
+          tax_percentage: createdQuote.tax_percentage || 0, // No default tax unless specified
           tax_amount: createdQuote.tax_amount || data.totals.tax,
           taxable_amount: createdQuote.taxable_amount || data.totals.subtotal,
           grand_total: createdQuote.grand_total || data.totals.grandTotal,

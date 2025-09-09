@@ -47,6 +47,7 @@ export interface CartTotals {
   subtotal: number;
   discount_amount: number;
   tax_amount: number;
+  tax_percentage?: number; // Added tax percentage
   freight_estimate: number;
   total: number;
   items_count: number;
@@ -84,6 +85,7 @@ export interface CreateQuoteRequest {
     discount_percentage?: number;
     discount_amount?: number;
     freight_charges?: number;
+    tax_percentage?: number; // Added tax percentage option
     emi_enabled?: boolean;
     emi_plan?: EMIPlan;
   };
@@ -232,11 +234,11 @@ export class CartService {
     return Math.max(0, baseTotal - discountAmount);
   }
 
-  private static calculateCartTotals(items: CartItem[]): CartTotals {
+  private static calculateCartTotals(items: CartItem[], taxPercentage: number = 0): CartTotals {
     const subtotal = items.reduce((sum, item) => sum + item.line_total, 0);
     const discount_amount = items.reduce((sum, item) => 
       sum + (item.quantity * item.unit_price * item.discount_percentage / 100) + item.discount_amount, 0);
-    const tax_amount = subtotal * 0.18; // 18% GST
+    const tax_amount = subtotal * (taxPercentage / 100); // Use provided tax percentage
     const freight_estimate = subtotal > 50000 ? 0 : 2000; // Free freight above 50k
     const total = subtotal + tax_amount + freight_estimate;
     
@@ -244,6 +246,7 @@ export class CartService {
       subtotal,
       discount_amount,
       tax_amount,
+      tax_percentage: taxPercentage,
       freight_estimate,
       total,
       items_count: items.length

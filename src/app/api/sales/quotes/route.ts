@@ -45,8 +45,8 @@ export async function POST(req: NextRequest) {
       final_price: body.final_price ?? body.total_price, // Use nullish coalescing  
       discount_amount: body.discount_amount || 0,
       freight_charges: body.freight_charges || 0,
-      // Tax fields
-      tax_percentage: body.tax_percentage || 18.00,
+      // Tax fields - only set tax if explicitly provided
+      tax_percentage: body.tax_percentage || 0, // No default tax unless specified
       tax_amount: body.tax_amount || 0,
       taxable_amount: body.taxable_amount || 0,
       grand_total: body.grand_total || body.total_price,

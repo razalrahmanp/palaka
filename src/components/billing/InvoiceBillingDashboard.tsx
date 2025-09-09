@@ -128,7 +128,7 @@ export function InvoiceBillingDashboard({
   
   // Pricing States
   const [globalDiscount, setGlobalDiscount] = useState(0);
-  const [taxPercentage, setTaxPercentage] = useState(18);
+  const [taxPercentage, setTaxPercentage] = useState(0); // Default to 0% tax unless specified
   const [freightCharges, setFreightCharges] = useState(0);
   const [deliveryFloor, setDeliveryFloor] = useState('ground'); // New floor selection
   const [isFirstFloorAwareness, setIsFirstFloorAwareness] = useState(false); // Track 1st floor awareness
@@ -505,17 +505,30 @@ export function InvoiceBillingDashboard({
           
           const loadedItems: BillingItem[] = data.items.map((item: Record<string, unknown>, index: number) => {
             // Use the stored unit_price as the original price (before discount)
-            // This is the correct approach - don't reverse calculate, use stored values
             const originalPrice = Number(item.unit_price || item.price || 0);
-            const finalPrice = Number(item.final_price || originalPrice);
             const quantity = Number(item.quantity || 1);
             const discountPercentage = Number(item.discount_percentage || 0);
-            const totalPrice = Number(item.total_price || finalPrice * quantity);
+            
+            // Calculate finalPrice correctly - should be unit price after discount, not line total
+            let finalPrice = Number(item.final_price || originalPrice);
+            
+            // If final_price looks like a line total (roughly originalPrice * quantity), 
+            // then divide by quantity to get the unit price
+            if (quantity > 1 && Math.abs(finalPrice - (originalPrice * quantity)) < 1) {
+              console.log(`Correcting final_price from line total (${finalPrice}) to unit price (${originalPrice})`);
+              finalPrice = originalPrice - (originalPrice * discountPercentage / 100);
+            } else if (discountPercentage > 0) {
+              // If there's a discount percentage, calculate final price from original price
+              finalPrice = originalPrice - (originalPrice * discountPercentage / 100);
+            }
+            
+            // Always calculate totalPrice based on finalPrice * quantity for accuracy
+            const totalPrice = finalPrice * quantity;
             
             // Calculate discount amount based on stored prices
             const discountAmount = originalPrice > finalPrice ? (originalPrice - finalPrice) * quantity : 0;
             
-            console.log(`Loading item ${index}: "${item.name}" - Unit Price: ${originalPrice.toFixed(2)}, Final: ${finalPrice.toFixed(2)}, Discount: ${discountPercentage}%`);
+            console.log(`Loading item ${index}: "${item.name}" - Original: ₹${originalPrice.toFixed(2)}, Final: ₹${finalPrice.toFixed(2)}, Qty: ${quantity}, Total: ₹${totalPrice.toFixed(2)}, Discount: ${discountPercentage}%`);
             
             // Reconstruct product data if it's not a custom product
             let productData: ProductWithInventory | undefined = undefined;

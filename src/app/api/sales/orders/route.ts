@@ -538,8 +538,8 @@ export async function POST(req: Request) {
     final_price: Number(grand_total ?? final_price ?? total_price ?? 0), // Use grand_total (includes tax + freight) as final_price
     original_price: Number(original_price ?? 0), // Ensure numeric type
     discount_amount: Number(discount_amount || 0), // Ensure numeric type
-    // Tax fields
-    tax_percentage: Number(tax_percentage ?? 18.00), // Default to 18% GST
+    // Tax fields - only set tax if explicitly provided
+    tax_percentage: tax_percentage ? Number(tax_percentage) : 0, // No default tax unless specified
     tax_amount: Number(tax_amount ?? 0), // Ensure numeric type
     taxable_amount: Number(taxable_amount ?? 0), // Ensure numeric type
     grand_total: Number(grand_total ?? final_price ?? total_price ?? 0), // Ensure numeric type
@@ -790,10 +790,10 @@ export async function POST(req: Request) {
       final_price: item.final_price || (item.unit_price * item.quantity * (1 - (item.discount_percentage || 0) / 100)),
       cost: 0, // Default cost
       image_url: item.image_url || null,
-      // Tax calculations for each item
-      tax_percentage: Number(tax_percentage ?? 18.00), // Use sales order tax percentage
+      // Tax calculations for each item - only apply tax if specified
+      tax_percentage: tax_percentage ? Number(tax_percentage) : 0, // Use sales order tax percentage, default to 0
       taxable_amount: Number((item.final_price || (item.unit_price * item.quantity * (1 - (item.discount_percentage || 0) / 100)))),
-      tax_amount: Number(((item.final_price || (item.unit_price * item.quantity * (1 - (item.discount_percentage || 0) / 100))) * (tax_percentage ?? 18.00) / 100).toFixed(2))
+      tax_amount: Number(((item.final_price || (item.unit_price * item.quantity * (1 - (item.discount_percentage || 0) / 100))) * (tax_percentage || 0) / 100).toFixed(2))
     };
   }).filter(Boolean); // Remove null items
 

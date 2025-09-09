@@ -406,6 +406,20 @@ export function InvoiceBillingDashboard({
       
       const data = initialData.data;
       
+      // Debug: Log all available fields in the data
+      console.log("Available fields in sales order/quote data:", Object.keys(data));
+      console.log("Financial fields:", {
+        discount_amount: data.discount_amount,
+        global_discount: data.global_discount,
+        total_discount: data.total_discount,
+        discount_percentage: data.discount_percentage,
+        total_amount: data.total_amount,
+        final_amount: data.final_amount,
+        subtotal: data.subtotal,
+        freight_charges: data.freight_charges,
+        tax_percentage: data.tax_percentage
+      });
+      
       try {
         // Populate customer data if available - check multiple sources
         let customerData: Record<string, unknown> | null = null;
@@ -504,22 +518,51 @@ export function InvoiceBillingDashboard({
           console.log("Raw quote items from API:", data.items);
           
           const loadedItems: BillingItem[] = data.items.map((item: Record<string, unknown>, index: number) => {
-            // Use the stored unit_price as the original price (before discount)
-            const originalPrice = Number(item.unit_price || item.price || 0);
+            // Debug: Log all available fields
+            console.log(`Item ${index} raw data:`, {
+              name: item.name,
+              unit_price: item.unit_price,
+              price: item.price,
+              original_price: item.original_price,
+              final_price: item.final_price,
+              quantity: item.quantity,
+              discount_percentage: item.discount_percentage,
+              discount_amount: item.discount_amount,
+              total_price: item.total_price
+            });
+            
+            // Determine the original price (before any discounts)
+            let originalPrice = Number(item.original_price || item.unit_price || item.price || 0);
+            
+            // If original_price is not available but we have unit_price and discount info,
+            // try to reverse calculate the original price
+            if (!item.original_price && item.unit_price && typeof item.discount_percentage === 'number' && item.discount_percentage > 0) {
+              const unitPrice = Number(item.unit_price);
+              const discountPercent = Number(item.discount_percentage);
+              // If unit_price is the discounted price, calculate original
+              originalPrice = unitPrice / (1 - discountPercent / 100);
+              console.log(`Reverse calculated original price: ₹${originalPrice.toFixed(2)} from unit_price: ₹${unitPrice} with ${discountPercent}% discount`);
+            }
+            
             const quantity = Number(item.quantity || 1);
             const discountPercentage = Number(item.discount_percentage || 0);
             
-            // Calculate finalPrice correctly - should be unit price after discount, not line total
-            let finalPrice = Number(item.final_price || originalPrice);
+            // Calculate finalPrice correctly - should be unit price after discount
+            let finalPrice = originalPrice - (originalPrice * discountPercentage / 100);
             
-            // If final_price looks like a line total (roughly originalPrice * quantity), 
-            // then divide by quantity to get the unit price
-            if (quantity > 1 && Math.abs(finalPrice - (originalPrice * quantity)) < 1) {
-              console.log(`Correcting final_price from line total (${finalPrice}) to unit price (${originalPrice})`);
-              finalPrice = originalPrice - (originalPrice * discountPercentage / 100);
-            } else if (discountPercentage > 0) {
-              // If there's a discount percentage, calculate final price from original price
-              finalPrice = originalPrice - (originalPrice * discountPercentage / 100);
+            // If we have a stored final_price, verify it makes sense
+            if (item.final_price) {
+              const storedFinalPrice = Number(item.final_price);
+              // Check if stored final_price looks like a line total vs unit price
+              if (quantity > 1 && Math.abs(storedFinalPrice - (finalPrice * quantity)) < 1) {
+                console.log(`Stored final_price (${storedFinalPrice}) appears to be line total, using calculated unit final price: ₹${finalPrice.toFixed(2)}`);
+              } else if (Math.abs(storedFinalPrice - finalPrice) < 0.1) {
+                // Stored final_price matches our calculation, use it
+                finalPrice = storedFinalPrice;
+                console.log(`Using stored final_price: ₹${finalPrice.toFixed(2)}`);
+              } else {
+                console.log(`Stored final_price (${storedFinalPrice}) differs from calculated (${finalPrice.toFixed(2)}), using calculated`);
+              }
             }
             
             // Always calculate totalPrice based on finalPrice * quantity for accuracy
@@ -609,6 +652,31 @@ export function InvoiceBillingDashboard({
           setFreightCharges(Number(data.freight_charges));
         } else {
           console.log("No freight charges found in quote/order data");
+        }
+
+        // Populate global discount if available
+        console.log("Checking for global discount fields:", {
+          discount_amount: data.discount_amount,
+          global_discount: data.global_discount,
+          total_discount: data.total_discount,
+          discount_percentage: data.discount_percentage
+        });
+        
+        const discountAmount = data.discount_amount ? Number(data.discount_amount) : 0;
+        const globalDiscount = data.global_discount ? Number(data.global_discount) : 0;
+        const totalDiscount = data.total_discount ? Number(data.total_discount) : 0;
+        
+        if (discountAmount > 0) {
+          console.log("Loading global discount from discount_amount:", discountAmount);
+          setGlobalDiscount(discountAmount);
+        } else if (globalDiscount > 0) {
+          console.log("Loading global discount from global_discount:", globalDiscount);
+          setGlobalDiscount(globalDiscount);
+        } else if (totalDiscount > 0) {
+          console.log("Loading global discount from total_discount:", totalDiscount);
+          setGlobalDiscount(totalDiscount);
+        } else {
+          console.log("No global discount found in quote/order data, keeping default 0");
         }
 
         // Populate salesman if available - check multiple sources

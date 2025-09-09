@@ -11,7 +11,6 @@ import {
   FileText, 
   ShoppingCart, 
   DollarSign, 
-  Plus, 
   Search, 
   Filter,
   Calendar,
@@ -25,13 +24,19 @@ import {
   User,
   Settings,
   BarChart3,
-  TrendingUp
+  TrendingUp,
+  Grid3X3,
+  List,
+  CalendarDays,
+  ArrowUp,
+  ArrowDown,
+  MapPin
 } from 'lucide-react';
 import { useSalesDataFixed as useSalesData } from '@/components/sales/SalesDataLoaderFixed';
 import { createSalesHandlers } from '@/components/sales/SalesHandlers';
 import { SalesModals } from '@/components/sales/SalesModals';
 import QuoteDetails from '@/components/sales/QuoteDetails';
-import { Order, Quote } from '@/types';
+import { Order, Quote, Customer } from '@/types';
 import { AssignSalesRepModal } from '@/components/sales/AssignSalesRepModal';
 import { hasPermission } from '@/lib/auth';
 
@@ -62,6 +67,12 @@ export default function RedesignedSalesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [timeFilter, setTimeFilter] = useState('all'); // New time filter state
+  
+  // View and date range states for orders tab
+  const [ordersViewMode, setOrdersViewMode] = useState<'cards' | 'list'>('cards');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const { handleSaveQuote, handleDeleteOrder, handleDeleteQuote } = createSalesHandlers(
     currentUser,
@@ -129,6 +140,11 @@ export default function RedesignedSalesPage() {
     const matchesStatus = statusFilter === 'all' || quote.status === statusFilter;
     const matchesTime = filterByTimePeriod(quote, timeFilter);
     return matchesSearch && matchesStatus && matchesTime;
+  }).sort((a, b) => {
+    // Sort by date/created_at
+    const dateA = new Date(a.created_at || '').getTime();
+    const dateB = new Date(b.created_at || '').getTime();
+    return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
   });
 
   const filteredOrders = orders.filter(order => {
@@ -137,7 +153,28 @@ export default function RedesignedSalesPage() {
       order.id?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
     const matchesTime = filterByTimePeriod(order, timeFilter);
-    return matchesSearch && matchesStatus && matchesTime;
+    
+    // Date range filtering (only when in orders tab and date range is specified)
+    let matchesDateRange = true;
+    if (activeTab === 'orders' && (dateFrom || dateTo)) {
+      const orderDate = new Date(order.date || '');
+      if (dateFrom) {
+        const fromDate = new Date(dateFrom);
+        matchesDateRange = matchesDateRange && orderDate >= fromDate;
+      }
+      if (dateTo) {
+        const toDate = new Date(dateTo);
+        toDate.setHours(23, 59, 59, 999); // End of day
+        matchesDateRange = matchesDateRange && orderDate <= toDate;
+      }
+    }
+    
+    return matchesSearch && matchesStatus && matchesTime && matchesDateRange;
+  }).sort((a, b) => {
+    // Sort by date/created_at
+    const dateA = new Date(a.date || '').getTime();
+    const dateB = new Date(b.date || '').getTime();
+    return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
   });
 
   // Enhanced statistics with real payment and invoice data - based on filtered data
@@ -555,57 +592,128 @@ export default function RedesignedSalesPage() {
 
           {/* Enterprise Search and Filter Bar */}
           <div className="p-4 bg-white border-b border-gray-200">
-            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-              <div className="flex-1 max-w-md">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <Input
-                    placeholder="Search by customer name, ID, or reference..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 pr-4 py-2 border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-md"
-                  />
+            <div className="flex flex-col gap-4">
+              {/* First Row - Main Search and Filters */}
+              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                <div className="flex-1 max-w-md">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Input
+                      placeholder="Search by customer name, ID, or reference..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10 pr-4 py-2 border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-md"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-3 items-center">
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white text-sm"
+                    aria-label="Filter by status"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="draft">Draft</option>
+                    <option value="pending">Pending</option>
+                    <option value="confirmed">Confirmed</option>
+                    <option value="delivered">Delivered</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                  
+                  {/* View Mode Toggle - Only for Orders Tab */}
+                  {activeTab === 'orders' && (
+                    <div className="flex items-center border border-gray-300 rounded-md overflow-hidden">
+                      <Button
+                        variant={ordersViewMode === 'cards' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setOrdersViewMode('cards')}
+                        className="rounded-none border-0 px-3 py-2"
+                      >
+                        <Grid3X3 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant={ordersViewMode === 'list' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setOrdersViewMode('list')}
+                        className="rounded-none border-0 px-3 py-2"
+                      >
+                        <List className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+                  
+                  {/* Sort Order Toggle */}
+                  <div className="flex items-center border border-gray-300 rounded-md overflow-hidden">
+                    <Button
+                      variant={sortOrder === 'asc' ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => setSortOrder('asc')}
+                      className="rounded-none border-0 px-3 py-2 text-xs"
+                      title="Ascending Order (Oldest First)"
+                    >
+                      <ArrowUp className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant={sortOrder === 'desc' ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => setSortOrder('desc')}
+                      className="rounded-none border-0 px-3 py-2 text-xs"
+                      title="Descending Order (Newest First)"
+                    >
+                      <ArrowDown className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  
+                  <Button variant="outline" size="sm" className="border-gray-300 hover:bg-gray-50">
+                    <Filter className="h-4 w-4" />
+                    <span className="sr-only">More filters</span>
+                  </Button>
                 </div>
               </div>
-              <div className="flex gap-3 items-center">
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white text-sm"
-                  aria-label="Filter by status"
-                >
-                  <option value="all">All Status</option>
-                  <option value="draft">Draft</option>
-                  <option value="pending">Pending</option>
-                  <option value="confirmed">Confirmed</option>
-                  <option value="delivered">Delivered</option>
-                  <option value="rejected">Rejected</option>
-                </select>
-                <Button variant="outline" size="sm" className="border-gray-300 hover:bg-gray-50">
-                  <Filter className="h-4 w-4" />
-                  <span className="sr-only">More filters</span>
-                </Button>
-                <Button 
-                  size="sm"
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2"
-                  onClick={() => {
-                    if (activeTab === 'quotes') {
-                      setSelectedQuote(null);
-                      setIsQuoteModalOpen(true);
-                    } else if (activeTab === 'orders') {
-                      setSelectedOrder(null);
-                      setIsOrderModalOpen(true);
-                    }
-                    // No action for performance tab
-                  }}
-                  disabled={activeTab === 'performance'}
-                >
-                  <Plus className="mr-2 h-5 w-5" />
-                  {activeTab === 'quotes' ? 'New Quote' : activeTab === 'orders' ? 'New Order' : 'View Analytics'}
-                </Button>
-              </div>
-            </div>
+              
+              {/* Second Row - Date Range Filter (Only for Orders Tab) */}
+              {activeTab === 'orders' && (
+                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <CalendarDays className="h-4 w-4" />
+                    <span>Date Range:</span>
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <Input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(e) => setDateFrom(e.target.value)}
+                      className="w-40 text-sm"
+                      placeholder="From date"
+                    />
+                    <span className="text-gray-400">to</span>
+                    <Input
+                      type="date"
+                      value={dateTo}
+                      onChange={(e) => setDateTo(e.target.value)}
+                      className="w-40 text-sm"
+                      placeholder="To date"
+                    />
+                    {(dateFrom || dateTo) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setDateFrom('');
+                          setDateTo('');
+                        }}
+                        className="text-xs px-2"
+                      >
+                        Clear Dates
+                      </Button>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500 ml-auto">
+                    Showing {filteredOrders.length} orders
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -627,6 +735,8 @@ export default function RedesignedSalesPage() {
             <TabsContent value="orders" className="mt-0">
               <OrdersTabContent 
                 orders={filteredOrders}
+                customers={customers}
+                viewMode={ordersViewMode}
                 onView={(order) => {
                   setSelectedOrder(order);
                   setIsOrderModalOpen(true);
@@ -922,6 +1032,8 @@ function QuotesTabContent({
 // Orders Tab Component
 function OrdersTabContent({ 
   orders, 
+  customers,
+  viewMode,
   onView,
   onEdit, 
   onDelete, 
@@ -930,6 +1042,8 @@ function OrdersTabContent({
   getStatusColor 
 }: {
   orders: Order[];
+  customers: Customer[];
+  viewMode: 'cards' | 'list';
   onView: (order: Order) => void;
   onEdit: (order: Order) => void;
   onDelete: (orderId: string) => void;
@@ -938,36 +1052,205 @@ function OrdersTabContent({
   getStatusColor: (status: string) => string;
 }) {
   
+  // Helper function to get customer details by customer_id or customer name
+  const getCustomerDetails = (order: Order) => {
+    if (order.customer_id) {
+      // Try to find by customer_id first
+      const customer = customers.find(c => c.id === order.customer_id);
+      if (customer) return customer;
+    }
+    
+    // Fallback: try to find by customer name
+    if (order.customer?.name) {
+      const customer = customers.find(c => c.name.toLowerCase() === order.customer?.name.toLowerCase());
+      if (customer) return customer;
+    }
+    
+    return null;
+  };
+
+  // Helper function to format customer address
+  const formatCustomerAddress = (customer: Customer | null) => {
+    if (!customer) return 'No address provided';
+    
+    const addressParts = [];
+    if (customer.address) addressParts.push(customer.address);
+    if (customer.floor) addressParts.push(`Floor: ${customer.floor}`);
+    if (customer.city) addressParts.push(customer.city);
+    if (customer.state) addressParts.push(customer.state);
+    if (customer.pincode) addressParts.push(customer.pincode);
+    
+    return addressParts.length > 0 ? addressParts.join(', ') : 'No address provided';
+  };
+  
+  if (viewMode === 'list') {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        {/* Table Header */}
+        <div className="bg-gray-50 px-6 py-3 border-b border-gray-200">
+          <div className="grid grid-cols-12 gap-4 text-sm font-medium text-gray-700">
+            <div className="col-span-1">Order ID</div>
+            <div className="col-span-2">Customer</div>
+            <div className="col-span-2">Address</div>
+            <div className="col-span-1">Status</div>
+            <div className="col-span-1">Amount</div>
+            <div className="col-span-1">Date</div>
+            <div className="col-span-2">Sales Rep</div>
+            <div className="col-span-2">Actions</div>
+          </div>
+        </div>
+        
+        {/* Table Body */}
+        <div className="divide-y divide-gray-200">
+          {orders.map((order) => {
+            const orderWithFinalPrice = order as Order & { 
+              final_price?: number, 
+              original_price?: number, 
+              discount_amount?: number,
+              discount_percentage?: number 
+            };
+            const displayPrice = orderWithFinalPrice.final_price || order.total || 0;
+            const customerDetails = getCustomerDetails(order);
+            const customerAddress = formatCustomerAddress(customerDetails);
+            
+            return (
+              <div key={order.id} className="px-6 py-4 hover:bg-gray-50 transition-colors">
+                <div className="grid grid-cols-12 gap-4 items-center text-sm">
+                  <div className="col-span-1">
+                    <div className="font-medium text-gray-900">#{order.id?.slice(-8)}</div>
+                  </div>
+                  <div className="col-span-2">
+                    <div className="text-gray-900">{order.customer?.name || 'Unknown Customer'}</div>
+                    {order.items && order.items.length > 0 && (
+                      <div className="text-xs text-gray-500">{order.items.length} items</div>
+                    )}
+                  </div>
+                  <div className="col-span-2">
+                    <div className="text-gray-900 flex items-start">
+                      <MapPin className="h-3 w-3 mr-1 text-gray-400 flex-shrink-0 mt-0.5" />
+                      <span className="text-xs leading-tight">{customerAddress}</span>
+                    </div>
+                  </div>
+                  <div className="col-span-1">
+                    <Badge className={getStatusColor(order.status || '')}>
+                      {order.status}
+                    </Badge>
+                  </div>
+                  <div className="col-span-1">
+                    <div className="font-medium text-gray-900">{formatCurrency(displayPrice)}</div>
+                    {orderWithFinalPrice.final_price && orderWithFinalPrice.original_price && 
+                     orderWithFinalPrice.final_price !== orderWithFinalPrice.original_price && (
+                      <div className="text-xs text-red-600">
+                        Original: <span className="line-through">{formatCurrency(orderWithFinalPrice.original_price)}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="col-span-1">
+                    <div className="text-gray-900">
+                      {order.date ? new Date(order.date).toLocaleDateString() : 'N/A'}
+                    </div>
+                  </div>
+                  <div className="col-span-2">
+                    <div className="text-gray-900">
+                      {order.sales_representative?.name || 'Unassigned'}
+                    </div>
+                  </div>
+                  <div className="col-span-2">
+                    <div className="flex gap-1 flex-wrap">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onView(order)}
+                        className="h-8 w-8 p-0"
+                        title="View Order"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onEdit(order)}
+                        className="h-8 w-8 p-0"
+                        title="Edit Order"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      {onAssignRep && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onAssignRep(order)}
+                          className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700"
+                          title="Assign Sales Rep"
+                        >
+                          <User className="h-4 w-4" />
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onDelete(order.id)}
+                        className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                        title="Delete Order"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        
+        {orders.length === 0 && (
+          <div className="text-center py-12">
+            <div className="text-gray-500">No orders found</div>
+          </div>
+        )}
+      </div>
+    );
+  }
+  
+  // Cards view (default)
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-      {orders.map((order) => (
-        <Card key={order.id} className="bg-white/80 backdrop-blur-sm border border-gray-200 shadow-md hover:shadow-lg transition-all duration-300 hover:scale-[1.02] rounded-lg overflow-hidden">
-          <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 pb-3 pt-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base font-medium text-gray-800">
-                Order #{order.id?.slice(-8)}
-              </CardTitle>
-              <Badge className={getStatusColor(order.status || '')}>
-                {order.status}
-              </Badge>
-            </div>
-            <p className="text-xs text-gray-600 flex items-center">
-              <User className="mr-1 h-3 w-3" />
-              {order.customer?.name || 'Unknown Customer'}
-            </p>
-            {order.sales_representative && (
-              <p className="text-xs text-blue-600 flex items-center">
+      {orders.map((order) => {
+        const customerDetails = getCustomerDetails(order);
+        const customerAddress = formatCustomerAddress(customerDetails);
+        
+        return (
+          <Card key={order.id} className="bg-white/80 backdrop-blur-sm border border-gray-200 shadow-md hover:shadow-lg transition-all duration-300 hover:scale-[1.02] rounded-lg overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 pb-3 pt-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base font-medium text-gray-800">
+                  Order #{order.id?.slice(-8)}
+                </CardTitle>
+                <Badge className={getStatusColor(order.status || '')}>
+                  {order.status}
+                </Badge>
+              </div>
+              <p className="text-xs text-gray-600 flex items-center">
                 <User className="mr-1 h-3 w-3" />
-                Sales Rep: {order.sales_representative.name}
+                {order.customer?.name || 'Unknown Customer'}
               </p>
-            )}
-            {order.date && (
-              <p className="text-xs text-gray-500 flex items-center">
-                <Calendar className="mr-1 h-2.5 w-2.5" />
-                {new Date(order.date).toLocaleDateString()}
+              <p className="text-xs text-gray-500 flex items-start">
+                <MapPin className="mr-1 h-3 w-3 flex-shrink-0 mt-0.5" />
+                <span className="leading-tight">{customerAddress}</span>
               </p>
-            )}
-          </CardHeader>
+              {order.sales_representative && (
+                <p className="text-xs text-blue-600 flex items-center">
+                  <User className="mr-1 h-3 w-3" />
+                  Sales Rep: {order.sales_representative.name}
+                </p>
+              )}
+              {order.date && (
+                <p className="text-xs text-gray-500 flex items-center">
+                  <Calendar className="mr-1 h-2.5 w-2.5" />
+                  {new Date(order.date).toLocaleDateString()}
+                </p>
+              )}
+            </CardHeader>
           <CardContent className="p-4">
             <div className="space-y-3">
               {/* Order Summary */}
@@ -1209,7 +1492,14 @@ function OrdersTabContent({
             </div>
           </CardContent>
         </Card>
-      ))}
+        );
+      })}
+      
+      {orders.length === 0 && (
+        <div className="col-span-full text-center py-12">
+          <div className="text-gray-500">No orders found</div>
+        </div>
+      )}
     </div>
   );
 }

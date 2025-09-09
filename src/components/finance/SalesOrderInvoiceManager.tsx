@@ -25,7 +25,8 @@ import {
   Plus,
   Printer,
   MessageCircle,
-  Minus
+  Minus,
+  Search
 } from 'lucide-react';
 import { SalesOrder, Invoice } from '@/types';
 import { PaymentTrackingDialog } from './PaymentTrackingDialog';
@@ -139,6 +140,12 @@ export function SalesOrderInvoiceManager() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(20);
   const [activeTab, setActiveTab] = useState('orders');
+  
+  // Search states for each tab
+  const [ordersSearchQuery, setOrdersSearchQuery] = useState('');
+  const [invoicesSearchQuery, setInvoicesSearchQuery] = useState('');
+  const [paymentsSearchQuery, setPaymentsSearchQuery] = useState('');
+  const [expensesSearchQuery, setExpensesSearchQuery] = useState('');
   
   const [expenseForm, setExpenseForm] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -308,6 +315,73 @@ export function SalesOrderInvoiceManager() {
     return Math.ceil(dataLength / perPage);
   };
 
+  // Filter functions for search
+  const filterInvoices = (invoices: Invoice[], searchQuery: string): Invoice[] => {
+    if (!searchQuery.trim()) return invoices;
+    
+    const query = searchQuery.toLowerCase();
+    return invoices.filter((invoice) => {
+      return (
+        invoice.id.toLowerCase().includes(query) ||
+        invoice.customer_name?.toLowerCase().includes(query) ||
+        invoice.sales_order_id?.toLowerCase().includes(query) ||
+        invoice.status?.toLowerCase().includes(query) ||
+        invoice.total?.toString().includes(query) ||
+        formatDate(invoice.created_at).toLowerCase().includes(query)
+      );
+    });
+  };
+
+  const filterSalesOrders = (orders: SalesOrderWithInvoice[], searchQuery: string): SalesOrderWithInvoice[] => {
+    if (!searchQuery.trim()) return orders;
+    
+    const query = searchQuery.toLowerCase();
+    return orders.filter((order) => {
+      return (
+        order.id.toLowerCase().includes(query) ||
+        order.customer?.name?.toLowerCase().includes(query) ||
+        order.customer?.phone?.toLowerCase().includes(query) ||
+        order.status?.toLowerCase().includes(query) ||
+        order.total?.toString().includes(query) ||
+        formatDate(order.created_at).toLowerCase().includes(query)
+      );
+    });
+  };
+
+  const filterPayments = (payments: PaymentDetails[], searchQuery: string): PaymentDetails[] => {
+    if (!searchQuery.trim()) return payments;
+    
+    const query = searchQuery.toLowerCase();
+    return payments.filter((payment) => {
+      return (
+        payment.id.toLowerCase().includes(query) ||
+        payment.customer_name?.toLowerCase().includes(query) ||
+        payment.payment_method?.toLowerCase().includes(query) ||
+        payment.method?.toLowerCase().includes(query) ||
+        payment.reference?.toLowerCase().includes(query) ||
+        payment.amount?.toString().includes(query) ||
+        formatDate(payment.date).toLowerCase().includes(query)
+      );
+    });
+  };
+
+  const filterExpenses = (expenses: Expense[], searchQuery: string): Expense[] => {
+    if (!searchQuery.trim()) return expenses;
+    
+    const query = searchQuery.toLowerCase();
+    return expenses.filter((expense) => {
+      return (
+        expense.id.toLowerCase().includes(query) ||
+        expense.description?.toLowerCase().includes(query) ||
+        expense.category?.toLowerCase().includes(query) ||
+        expense.type?.toLowerCase().includes(query) ||
+        expense.payment_method?.toLowerCase().includes(query) ||
+        expense.amount?.toString().includes(query) ||
+        formatDate(expense.date).toLowerCase().includes(query)
+      );
+    });
+  };
+
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
     setCurrentPage(1); // Reset to first page when changing tabs
@@ -316,13 +390,13 @@ export function SalesOrderInvoiceManager() {
   const getCurrentDataLength = () => {
     switch (activeTab) {
       case 'orders':
-        return salesOrders.length;
+        return filterSalesOrders(salesOrders, ordersSearchQuery).length;
       case 'invoices':
-        return invoices.length;
+        return filterInvoices(invoices, invoicesSearchQuery).length;
       case 'payments':
-        return payments.length;
+        return filterPayments(payments, paymentsSearchQuery).length;
       case 'expenses':
-        return expenses.length;
+        return filterExpenses(expenses, expensesSearchQuery).length;
       default:
         return 0;
     }
@@ -915,6 +989,36 @@ export function SalesOrderInvoiceManager() {
                       </Button>
                     </div>
                   </div>
+
+                  {/* Search Bar for Sales Orders */}
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="relative flex-1 max-w-md">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                      <Input
+                        type="text"
+                        placeholder="Search orders by ID, customer, status, amount..."
+                        value={ordersSearchQuery}
+                        onChange={(e) => {
+                          setOrdersSearchQuery(e.target.value);
+                          setCurrentPage(1); // Reset to first page when searching
+                        }}
+                        className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                    {ordersSearchQuery && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setOrdersSearchQuery('');
+                          setCurrentPage(1);
+                        }}
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+
                   <div className="rounded-lg border border-gray-200 overflow-hidden bg-white shadow-sm">
                     <Table>
                       <TableHeader className="bg-gray-50/75">
@@ -932,18 +1036,29 @@ export function SalesOrderInvoiceManager() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {getPaginatedData(salesOrders, currentPage, itemsPerPage).length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={10} className="text-center py-8">
-                              <div className="flex flex-col items-center gap-2">
-                                <Package className="h-8 w-8 text-gray-400" />
-                                <p className="text-gray-500">No sales orders found</p>
-                                <p className="text-xs text-gray-400">Create a sales order to get started</p>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          getPaginatedData(salesOrders, currentPage, itemsPerPage).map((order) => (
+                        {(() => {
+                          const filteredOrders = filterSalesOrders(salesOrders, ordersSearchQuery);
+                          const paginatedOrders = getPaginatedData(filteredOrders, currentPage, itemsPerPage);
+                          
+                          if (paginatedOrders.length === 0) {
+                            return (
+                              <TableRow>
+                                <TableCell colSpan={10} className="text-center py-8">
+                                  <div className="flex flex-col items-center gap-2">
+                                    <Package className="h-8 w-8 text-gray-400" />
+                                    <p className="text-gray-500">
+                                      {ordersSearchQuery ? 'No sales orders found matching your search.' : 'No sales orders found'}
+                                    </p>
+                                    <p className="text-xs text-gray-400">
+                                      {ordersSearchQuery ? 'Try adjusting your search terms.' : 'Create a sales order to get started'}
+                                    </p>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          }
+                          
+                          return paginatedOrders.map((order) => (
                             <TableRow key={order.id} className="hover:bg-gray-50/75 transition-colors border-b">
                             <TableCell className="font-medium">
                               <div className="flex flex-col">
@@ -1091,7 +1206,8 @@ export function SalesOrderInvoiceManager() {
                               </div>
                             </TableCell>
                       </TableRow>
-                    )))}
+                      )); // Close the map function and IIFE
+                    })()}
                   </TableBody>
                 </Table>
                 </div>
@@ -1117,6 +1233,35 @@ export function SalesOrderInvoiceManager() {
                   </Button>
                 </div>
               </div>
+
+              {/* Search Bar */}
+              <div className="flex items-center gap-4 mb-4">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                  <Input
+                    type="text"
+                    placeholder="Search invoices by ID, customer, status, amount..."
+                    value={invoicesSearchQuery}
+                    onChange={(e) => {
+                      setInvoicesSearchQuery(e.target.value);
+                      setCurrentPage(1); // Reset to first page when searching
+                    }}
+                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                {invoicesSearchQuery && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setInvoicesSearchQuery('');
+                      setCurrentPage(1);
+                    }}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
               
               <div className="rounded-lg border border-gray-200 overflow-hidden">
                 <Table>
@@ -1135,7 +1280,21 @@ export function SalesOrderInvoiceManager() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {getPaginatedData(invoices, currentPage, itemsPerPage).map((invoice) => (
+                    {(() => {
+                      const filteredInvoices = filterInvoices(invoices, invoicesSearchQuery);
+                      const paginatedInvoices = getPaginatedData(filteredInvoices, currentPage, itemsPerPage);
+                      
+                      if (paginatedInvoices.length === 0) {
+                        return (
+                          <TableRow>
+                            <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                              {invoicesSearchQuery ? 'No invoices found matching your search.' : 'No invoices available.'}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      }
+                      
+                      return paginatedInvoices.map((invoice) => (
                       <TableRow key={invoice.id} className="hover:bg-gray-50 transition-colors">
                         <TableCell className="font-medium text-blue-600">{invoice.id.slice(0, 8)}</TableCell>
                         <TableCell>{invoice.sales_order_id?.slice(0, 8) || 'N/A'}</TableCell>
@@ -1209,7 +1368,8 @@ export function SalesOrderInvoiceManager() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))}
+                      )); // Close the map function and IIFE
+                    })()}
                   </TableBody>
                 </Table>
               </div>
@@ -1233,6 +1393,35 @@ export function SalesOrderInvoiceManager() {
                   </Button>
                 </div>
               </div>
+
+              {/* Search Bar for Payments */}
+              <div className="flex items-center gap-4 mb-4">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                  <Input
+                    type="text"
+                    placeholder="Search payments by ID, customer, method, reference..."
+                    value={paymentsSearchQuery}
+                    onChange={(e) => {
+                      setPaymentsSearchQuery(e.target.value);
+                      setCurrentPage(1); // Reset to first page when searching
+                    }}
+                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                {paymentsSearchQuery && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setPaymentsSearchQuery('');
+                      setCurrentPage(1);
+                    }}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
               
               <div className="rounded-lg border border-gray-200 overflow-hidden">
                 <Table>
@@ -1248,7 +1437,21 @@ export function SalesOrderInvoiceManager() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {getPaginatedData(payments, currentPage, itemsPerPage).map((payment) => (
+                    {(() => {
+                      const filteredPayments = filterPayments(payments, paymentsSearchQuery);
+                      const paginatedPayments = getPaginatedData(filteredPayments, currentPage, itemsPerPage);
+                      
+                      if (paginatedPayments.length === 0) {
+                        return (
+                          <TableRow>
+                            <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                              {paymentsSearchQuery ? 'No payments found matching your search.' : 'No payments available.'}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      }
+                      
+                      return paginatedPayments.map((payment) => (
                       <TableRow key={payment.id} className="hover:bg-gray-50 transition-colors">
                         <TableCell className="font-medium text-blue-600">{payment.id.slice(0, 8)}</TableCell>
                         <TableCell>{payment.invoice_id?.slice(0, 8) || 'N/A'}</TableCell>
@@ -1272,7 +1475,8 @@ export function SalesOrderInvoiceManager() {
                         </TableCell>
                         <TableCell className="text-gray-600">{payment.reference || 'N/A'}</TableCell>
                       </TableRow>
-                    ))}
+                      )); // Close the map function and IIFE
+                    })()}
                   </TableBody>
                 </Table>
               </div>
@@ -1380,6 +1584,35 @@ export function SalesOrderInvoiceManager() {
                 </Card>
               </div>
 
+              {/* Search Bar for Expenses */}
+              <div className="flex items-center gap-4 mb-4">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                  <Input
+                    type="text"
+                    placeholder="Search expenses by description, category, type, amount..."
+                    value={expensesSearchQuery}
+                    onChange={(e) => {
+                      setExpensesSearchQuery(e.target.value);
+                      setCurrentPage(1); // Reset to first page when searching
+                    }}
+                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                {expensesSearchQuery && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setExpensesSearchQuery('');
+                      setCurrentPage(1);
+                    }}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+
               {/* Expenses Table */}
               <div className="rounded-lg border border-gray-200 overflow-hidden bg-white shadow-sm">
                 <Table>
@@ -1395,18 +1628,29 @@ export function SalesOrderInvoiceManager() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {expenses.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8">
-                          <div className="flex flex-col items-center gap-2">
-                            <Minus className="h-8 w-8 text-gray-400" />
-                            <p className="text-gray-500">No expenses found</p>
-                            <p className="text-xs text-gray-400">Add an expense to get started</p>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      getPaginatedData(expenses, currentPage, itemsPerPage).map((expense) => (
+                    {(() => {
+                      const filteredExpenses = filterExpenses(expenses, expensesSearchQuery);
+                      const paginatedExpenses = getPaginatedData(filteredExpenses, currentPage, itemsPerPage);
+                      
+                      if (paginatedExpenses.length === 0) {
+                        return (
+                          <TableRow>
+                            <TableCell colSpan={7} className="text-center py-8">
+                              <div className="flex flex-col items-center gap-2">
+                                <Minus className="h-8 w-8 text-gray-400" />
+                                <p className="text-gray-500">
+                                  {expensesSearchQuery ? 'No expenses found matching your search.' : 'No expenses found'}
+                                </p>
+                                <p className="text-xs text-gray-400">
+                                  {expensesSearchQuery ? 'Try adjusting your search terms.' : 'Add an expense to get started'}
+                                </p>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      }
+                      
+                      return paginatedExpenses.map((expense) => (
                         <TableRow key={expense.id} className="hover:bg-gray-50 transition-colors">
                           <TableCell>
                             <div className="flex items-center gap-2">
@@ -1445,8 +1689,8 @@ export function SalesOrderInvoiceManager() {
                             </div>
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
+                      )); // Close the map function and IIFE
+                    })()}
                   </TableBody>
                 </Table>
               </div>

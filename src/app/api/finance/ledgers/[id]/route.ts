@@ -4,13 +4,7 @@ import { supabase as supabaseAdmin } from '@/lib/supabaseAdmin';
 interface LedgerTransaction {
   id: string;
   date: string;
-       // Third try: Through invoices relationship (if exists)
-      const { data: paymentsViaInvoices, error: invoicesError } = await supabaseAdmin
-        .from('payments')
-        .select('*')
-        .gte('payment_date', dateFrom || '1900-01-01')
-        .lte('payment_date', dateTo || '2100-12-31')
-        .order('payment_date', { ascending: false });ing;
+  description: string;
   reference_number?: string;
   transaction_type: string;
   debit_amount: number;
@@ -112,13 +106,16 @@ async function fetchCustomerTransactions(
 
     if (salesOrders) {
       salesOrders.forEach((order, index) => {
+        // Use original_price as the invoice amount (before discount)
+        const billAmount = order.original_price || order.final_price || 0;
+        
         transactions.push({
           id: `so_${order.id}`,
           date: order.created_at,
           description: `Sales Order #${index + 1} - ${order.notes || 'Sale'}`,
           reference_number: `SO-${order.id.slice(-8)}`,
           transaction_type: 'invoice',
-          debit_amount: order.final_price || 0,
+          debit_amount: billAmount,
           credit_amount: 0,
           balance: 0,
           source_document: 'sales_order',
@@ -126,12 +123,12 @@ async function fetchCustomerTransactions(
           document_id: order.id
         });
 
-        // Add discount as separate transaction if exists
+        // Add discount as separate credit transaction if exists
         if (order.discount_amount && order.discount_amount > 0) {
           transactions.push({
             id: `disc_${order.id}`,
             date: order.created_at,
-            description: `Discount on Sales Order #${index + 1}`,
+            description: `Discount Applied on Sales Order #${index + 1}`,
             reference_number: `DISC-${order.id.slice(-8)}`,
             transaction_type: 'discount',
             debit_amount: 0,
@@ -162,137 +159,82 @@ async function fetchCustomerTransactions(
       });
     }
 
-    // 2. PAYMENTS RECEIVED (try multiple approaches to find payments)
+    // 2. PAYMENTS RECEIVED (through invoices for sales orders)
     let payments = null;
     
-    console.log(`Searching for payments for customer: ${customerId}`);
+    console.log(`Searching for payments for customer: ${customerId} through invoices...`);
     
-    // First try: Direct customer_id match (selecting only columns that exist)
-    const { data: paymentsDirects, error: directError } = await supabaseAdmin
-      .from('payments')
-      .select('*')
-      .eq('customer_id', customerId)
-      .gte('payment_date', dateFrom || '1900-01-01')
-      .lte('payment_date', dateTo || '2100-12-31')
-      .order('payment_date', { ascending: false });
-
-    console.log(`Direct payments query result:`, { count: paymentsDirects?.length || 0, error: directError });
-
-    // Second try: Through sales_orders relationship (if the relationship exists)
-    if (!paymentsDirects || paymentsDirects.length === 0) {
-      const { data: paymentsViaOrders, error: ordersError } = await supabaseAdmin
-        .from('payments')
-        .select('*')
-        .gte('payment_date', dateFrom || '1900-01-01')
-        .lte('payment_date', dateTo || '2100-12-31')
-        .order('payment_date', { ascending: false });
+    if (salesOrders && salesOrders.length > 0) {
+      const salesOrderIds = salesOrders.map(order => order.id);
       
-      console.log(`Via sales_orders query result:`, { count: paymentsViaOrders?.length || 0, error: ordersError });
-      payments = paymentsViaOrders;
-    } else {
-      payments = paymentsDirects;
-    }
-
-    // Third try: Through invoices relationship
-    if (!payments || payments.length === 0) {
-      const { data: paymentsViaInvoices, error: invoicesError } = await supabaseAdmin
-        .from('payments')
-        .select(`
-          id,
-          payment_date,
-          amount,
-          payment_method,
-          reference_number,
-          notes,
-          status,
-          invoices!inner(customer_id)
-        `)
-        .eq('invoices.customer_id', customerId)
-        .gte('payment_date', dateFrom || '1900-01-01')
-        .lte('payment_date', dateTo || '2100-12-31')
-        .order('payment_date', { ascending: false });
+      // First get all invoices for this customer's sales orders
+      const { data: invoices, error: invoicesError } = await supabaseAdmin
+        .from('invoices')
+        .select('id, sales_order_id')
+        .in('sales_order_id', salesOrderIds);
       
-      console.log(`Via invoices query result:`, { count: paymentsViaInvoices?.length || 0, error: invoicesError });
-      payments = paymentsViaInvoices;
-    }
-
-    // Fourth try: Find payments by sales order IDs from this customer
-    if (!payments || payments.length === 0) {
-      // Get all sales order IDs for this customer
-      const salesOrderIds = salesOrders?.map(order => order.id) || [];
-      
-      if (salesOrderIds.length > 0) {
-        const { data: paymentsBySalesOrder, error: salesOrderError } = await supabaseAdmin
+      if (invoicesError) {
+        console.error('Error fetching invoices for payments:', invoicesError);
+      } else if (invoices && invoices.length > 0) {
+        console.log(`Found ${invoices.length} invoices for customer sales orders`);
+        
+        // Now get payments for these invoices
+        const { data: paymentsData, error: paymentsError } = await supabaseAdmin
           .from('payments')
           .select(`
             id,
             payment_date,
             amount,
-            payment_method,
-            reference_number,
-            notes,
-            status,
-            sales_order_id
+            method,
+            reference,
+            description,
+            invoice_id
           `)
-          .in('sales_order_id', salesOrderIds)
-          .gte('payment_date', dateFrom || '1900-01-01')
-          .lte('payment_date', dateTo || '2100-12-31')
-          .order('payment_date', { ascending: false });
-        
-        console.log(`Via sales_order_id query result:`, { count: paymentsBySalesOrder?.length || 0, error: salesOrderError });
-        payments = paymentsBySalesOrder;
-      }
-    }
+          .in('invoice_id', invoices.map(inv => inv.id))
+          .order('id', { ascending: false }); // Order by ID since payment_date might be null
 
-    // Fifth try: Get ALL payments and filter by description/notes containing customer ID
-    if (!payments || payments.length === 0) {
-      console.log(`Trying to find payments by customer ID in description/notes...`);
-      const { data: allPayments, error: allPaymentsError } = await supabaseAdmin
-        .from('payments')
-        .select(`
-          id,
-          payment_date,
-          amount,
-          payment_method,
-          reference_number,
-          notes,
-          status
-        `)
-        .gte('payment_date', dateFrom || '1900-01-01')
-        .lte('payment_date', dateTo || '2100-12-31')
-        .order('payment_date', { ascending: false })
-        .limit(100); // Limit to avoid too many results
-
-      console.log(`All payments query result:`, { count: allPayments?.length || 0, error: allPaymentsError });
-      
-      // Filter payments that might be related to this customer
-      if (allPayments) {
-        const customerPayments = allPayments.filter(payment => 
-          payment.notes?.includes(customerId) || 
-          payment.reference_number?.includes(customerId)
-        );
-        console.log(`Filtered customer payments:`, { count: customerPayments.length });
-        if (customerPayments.length > 0) {
-          payments = customerPayments;
+        if (paymentsError) {
+          console.error('Error fetching payment transactions:', paymentsError);
+        } else {
+          console.log(`Found ${paymentsData?.length || 0} payment transactions for customer ${customerId}`);
+          
+          // Filter by date range if payment_date is not null
+          if (paymentsData && paymentsData.length > 0) {
+            const filteredPayments = paymentsData.filter(payment => {
+              // Include payments with null payment_date or within date range
+              if (!payment.payment_date) return true;
+              
+              const paymentDate = new Date(payment.payment_date);
+              const fromDate = dateFrom ? new Date(dateFrom) : new Date('1900-01-01');
+              const toDate = dateTo ? new Date(dateTo) : new Date('2100-12-31');
+              
+              return paymentDate >= fromDate && paymentDate <= toDate;
+            });
+            payments = filteredPayments;
+            console.log(`After date filtering: ${payments.length} payment transactions`);
+          } else {
+            payments = paymentsData;
+          }
         }
       }
     }
 
-    console.log(`Final payments result for customer ${customerId}:`, { count: payments?.length || 0 });
-
     if (payments) {
       payments.forEach((payment) => {
+        // Use current date if payment_date is null
+        const paymentDate = payment.payment_date || new Date().toISOString();
+        
         transactions.push({
           id: `pay_${payment.id}`,
-          date: payment.payment_date,
-          description: `Payment Received - ${payment.payment_method} ${payment.notes ? `(${payment.notes})` : ''}`,
-          reference_number: payment.reference_number || `PAY-${payment.id.slice(-8)}`,
+          date: paymentDate,
+          description: `Payment Received - ${payment.method}${payment.reference ? ` (Ref: ${payment.reference})` : ''}${payment.description ? ` - ${payment.description}` : ''}`,
+          reference_number: payment.reference || `PAY-${payment.id.slice(-8)}`,
           transaction_type: 'payment',
           debit_amount: 0,
           credit_amount: payment.amount || 0,
           balance: 0,
           source_document: 'payment',
-          status: payment.status,
+          status: 'received',
           document_id: payment.id
         });
       });

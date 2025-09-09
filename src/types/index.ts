@@ -48,6 +48,12 @@ export interface Customer {
   email?: string;
   phone?: string;
   company?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  floor?: string;
+  notes?: string;
   status: 'Lead' | 'Active' | 'Churned';
   source: 'Website' | 'Referral' | 'Trade Show';
   tags: string[];
@@ -184,6 +190,7 @@ export interface SalesOrder {
 
 export interface Order {
   id: string;
+  customer_id?: string;
   customer: { name: string } | null;
   supplier_name?: string;
   items: OrderItem[];

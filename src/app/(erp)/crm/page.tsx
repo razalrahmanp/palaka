@@ -86,7 +86,7 @@ export default function CrmPage() {
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   
   // Time period filter for customer creation analysis
-  const [timePeriod, setTimePeriod] = useState<'daily' | 'weekly' | 'monthly' | 'custom'>('daily');
+  const [timePeriod, setTimePeriod] = useState<'all' | 'daily' | 'weekly' | 'monthly' | 'custom'>('all');
   
   // Sorting state - Default sort by created_at descending (newest first)
   const [sortField, setSortField] = useState<string>('created_at');
@@ -280,8 +280,15 @@ export default function CrmPage() {
     
     let startDate: Date;
     let endDate: Date = now;
+    let isAllTime = false;
     
     switch (timePeriod) {
+      case 'all':
+        // Show all data - no filtering
+        isAllTime = true;
+        startDate = new Date(2000, 0, 1); // Very old date to include all records
+        endDate = new Date(2099, 11, 31); // Very future date to include all records
+        break;
       case 'daily':
         startDate = today;
         break;
@@ -304,26 +311,28 @@ export default function CrmPage() {
         startDate = today;
     }
     
-    // Filter customers created in the period
-    const periodCustomers = customers.filter(c => {
+    // Filter customers created in the period (or all if 'all' selected)
+    const periodCustomers = isAllTime ? customers : customers.filter(c => {
       const customerDate = new Date(c.created_at || '');
       return customerDate >= startDate && customerDate <= endDate;
     });
     
-    // Filter customers with purchases in the period
-    const customersWithPurchases = customers.filter(c => {
-      const customerSales = customerSalesData[c.id];
-      if (!customerSales?.salesCount) return false;
-      
-      // Check if any purchase was made in the period
-      return customerSales.orders?.some((order: SalesOrder) => {
-        const orderDate = new Date(order.created_at);
-        return orderDate >= startDate && orderDate <= endDate;
+    // Filter customers with purchases in the period (or all if 'all' selected)
+    const customersWithPurchases = isAllTime ? 
+      customers.filter(c => customerSalesData[c.id]?.salesCount > 0) :
+      customers.filter(c => {
+        const customerSales = customerSalesData[c.id];
+        if (!customerSales?.salesCount) return false;
+        
+        // Check if any purchase was made in the period
+        return customerSales.orders?.some((order: SalesOrder) => {
+          const orderDate = new Date(order.created_at);
+          return orderDate >= startDate && orderDate <= endDate;
+        });
       });
-    });
     
-    // Calculate purchase values for the period
-    const periodSalesOrders = salesOrders.filter(order => {
+    // Calculate purchase values for the period (or all if 'all' selected)
+    const periodSalesOrders = isAllTime ? salesOrders : salesOrders.filter(order => {
       const orderDate = new Date(order.created_at);
       return orderDate >= startDate && orderDate <= endDate;
     });
@@ -332,8 +341,8 @@ export default function CrmPage() {
       (sum, order) => sum + (order.final_price || order.grand_total || 0), 0
     );
     
-    // Calculate interactions in the period
-    const periodInteractions = interactions.filter(interaction => {
+    // Calculate interactions in the period (or all if 'all' selected)
+    const periodInteractions = isAllTime ? interactions : interactions.filter(interaction => {
       const interactionDate = new Date(interaction.interaction_date || '');
       return interactionDate >= startDate && interactionDate <= endDate;
     });
@@ -347,9 +356,31 @@ export default function CrmPage() {
       purchaseRate: periodCustomers.length > 0 ? (customersWithPurchases.length / periodCustomers.length) * 100 : 0,
       avgOrderValue: periodSalesOrders.length > 0 ? totalPurchaseValue / periodSalesOrders.length : 0,
       startDate,
-      endDate
+      endDate,
+      isAllTime
     };
   }, [customers, customerSalesData, salesOrders, interactions, timePeriod, dateFrom, dateTo]);
+
+  // Helper function to get period display text
+  const getPeriodDisplayText = () => {
+    switch (timePeriod) {
+      case 'all':
+        return 'All Time';
+      case 'daily':
+        return 'Today';
+      case 'weekly':
+        return 'This Week';
+      case 'monthly':
+        return 'This Month';
+      case 'custom':
+        if (dateFrom && dateTo) {
+          return `${format(dateFrom, "MMM dd")} - ${format(dateTo, "MMM dd, yyyy")}`;
+        }
+        return 'Custom Period';
+      default:
+        return 'Period';
+    }
+  };
 
   // Function to toggle row expansion
   const toggleRowExpansion = (customerId: string) => {
@@ -578,11 +609,12 @@ export default function CrmPage() {
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         <div className="flex-1">
           <label className="block text-sm font-medium text-gray-700 mb-2">Period Filter (Controls All Stats)</label>
-          <Select value={timePeriod} onValueChange={(value: 'daily' | 'weekly' | 'monthly' | 'custom') => setTimePeriod(value)}>
+          <Select value={timePeriod} onValueChange={(value: 'all' | 'daily' | 'weekly' | 'monthly' | 'custom') => setTimePeriod(value)}>
             <SelectTrigger className="w-full sm:w-[180px] border-gray-200 hover:border-purple-500">
               <SelectValue placeholder="Select period" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="all">All Time</SelectItem>
               <SelectItem value="daily">Today</SelectItem>
               <SelectItem value="weekly">This Week</SelectItem>
               <SelectItem value="monthly">This Month</SelectItem>
@@ -649,10 +681,7 @@ export default function CrmPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">
-                  {timePeriod === 'daily' ? 'Today' : 
-                   timePeriod === 'weekly' ? 'This Week' : 
-                   timePeriod === 'monthly' ? 'This Month' : 
-                   'Custom Period'} Customers
+                  {getPeriodDisplayText()} Customers
                 </p>
                 <p className="text-2xl font-bold text-gray-900">{timeBasedStats.periodCustomers}</p>
               </div>
@@ -672,10 +701,7 @@ export default function CrmPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">
-                  {timePeriod === 'daily' ? 'Today' : 
-                   timePeriod === 'weekly' ? 'This Week' : 
-                   timePeriod === 'monthly' ? 'This Month' : 
-                   'Custom Period'} Purchases
+                  {getPeriodDisplayText()} Purchases
                 </p>
                 <p className="text-2xl font-bold text-gray-900">{timeBasedStats.totalCustomersWithPurchases}</p>
               </div>
@@ -695,10 +721,7 @@ export default function CrmPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">
-                  {timePeriod === 'daily' ? 'Today' : 
-                   timePeriod === 'weekly' ? 'This Week' : 
-                   timePeriod === 'monthly' ? 'This Month' : 
-                   'Custom Period'} Revenue
+                  {getPeriodDisplayText()} Revenue
                 </p>
                 <p className="text-2xl font-bold text-gray-900">
                   ₹{timeBasedStats.totalPurchaseValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
@@ -722,10 +745,7 @@ export default function CrmPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">
-                  {timePeriod === 'daily' ? 'Today' : 
-                   timePeriod === 'weekly' ? 'This Week' : 
-                   timePeriod === 'monthly' ? 'This Month' : 
-                   'Custom Period'} Interactions
+                  {getPeriodDisplayText()} Interactions
                 </p>
                 <p className="text-2xl font-bold text-gray-900">{timeBasedStats.periodInteractions}</p>
               </div>

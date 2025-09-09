@@ -268,21 +268,32 @@ export interface ProductionRun {
 // 1. More detailed (for procurement process)
 
 export interface PurchaseOrder {
-  id:           string;
-  supplier_id:  string;
-  product_id:   string;
-  quantity:     number;
-  status:       'pending' | 'approved' | 'received';
-  is_custom?:   boolean;
-  custom_type?: string | null;
-  materials?:   string[] | null;
-  description?: string | null;
-  created_by?:  string;
-  created_at?:  string;
-  supplier?:    { id: string; name: string };
-  product?:     { id: string; name: string };
-  images?:      string[]; // URLs of uploaded images
-  total?:       number | null; // Total cost, calculated if product_id exists
+  id:             string;
+  supplier_id:    string;
+  product_id:     string;
+  quantity:       number;
+  status:         'pending' | 'approved' | 'received';
+  is_custom?:     boolean;
+  custom_type?:   string | null;
+  product_name?:  string | null;
+  materials?:     string[] | null;
+  description?:   string | null;
+  created_by?:    string;
+  created_at?:    string;
+  sales_order_id?: string;
+  supplier?:      { id: string; name: string };
+  product?:       { id: string; name: string };
+  creator?:       { id: string; name: string };
+  sales_order?:   { 
+    id: string; 
+    created_by: string; 
+    customer_id: string;
+    customer_name: string;
+    sales_rep: { id: string; name: string }[];
+    customer: { id: string; name: string }[];
+  };
+  images?:        string[]; // URLs of uploaded images
+  total?:         number | null; // Total cost, calculated if product_id exists
 }
 
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'partially_paid';

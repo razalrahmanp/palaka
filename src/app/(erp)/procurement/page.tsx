@@ -155,32 +155,47 @@ export default function ProcurementPage() {
     setFilters(newFilters);
     
     // Apply filters to orders
-    let filtered = orders;
-    
+    let filtered = [...orders];
+
     if (newFilters.search) {
-      filtered = filtered.filter(order => 
+      filtered = filtered.filter(order =>
         order.id.toLowerCase().includes(newFilters.search.toLowerCase()) ||
         order.supplier?.name?.toLowerCase().includes(newFilters.search.toLowerCase()) ||
         order.product?.name?.toLowerCase().includes(newFilters.search.toLowerCase()) ||
         order.description?.toLowerCase().includes(newFilters.search.toLowerCase())
       );
     }
-    
+
     if (newFilters.status && newFilters.status !== 'all') {
       filtered = filtered.filter(order => order.status === newFilters.status);
     }
-    
+
     if (newFilters.supplier && newFilters.supplier !== 'all') {
       filtered = filtered.filter(order => order.supplier_id === newFilters.supplier);
     }
-    
+
     if (newFilters.salesRep && newFilters.salesRep !== 'all') {
       filtered = filtered.filter(order => 
         (order.sales_order?.sales_rep?.[0]?.name || order.creator?.name) === newFilters.salesRep
       );
     }
-    
+
     setFilteredOrders(filtered);
+  };
+
+  const handleDelete = async (order: PurchaseOrder) => {
+    try {
+      const res = await fetch(`/api/procurement/purchase_orders?id=${order.id}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) throw new Error('Failed to delete purchase order');
+      
+      // Refresh the data
+      fetchAll();
+    } catch (error) {
+      console.error('Failed to delete purchase order:', error);
+      alert('Failed to delete purchase order. Please try again.');
+    }
   };
 
   const handleFilterReset = () => {
@@ -355,6 +370,7 @@ export default function ProcurementPage() {
               orders={Array.isArray(filteredOrders) ? filteredOrders : []}
               onViewDetails={handleViewDetails}
               onUpdateStatus={handleUpdateStatus}
+              onDelete={handleDelete}
               loading={loading}
             />
           </CardContent>

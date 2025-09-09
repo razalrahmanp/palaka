@@ -118,6 +118,11 @@ export async function GET(request: NextRequest) {
       const transformedItems = inventoryItems?.map(item => {
         const product = Array.isArray(item.products) ? item.products[0] : item.products;
         
+        // Calculate margin: ((selling_price - cost_price) / cost_price) * 100
+        const cost = Number(product?.cost || 0);
+        const price = Number(product?.price || 0);
+        const calculatedMargin = cost > 0 ? ((price - cost) / cost) * 100 : 0;
+        
         return {
           inventory_id: item.id,
           product_id: product?.id || '',
@@ -137,7 +142,7 @@ export async function GET(request: NextRequest) {
           product_category: product?.category,
           product_image_url: product?.image_url,
           sku: product?.sku,
-          applied_margin: 0, // Default value
+          applied_margin: Math.round(calculatedMargin * 10) / 10, // Round to 1 decimal place
           cost: product?.cost || 0
         };
       }) || [];
@@ -174,6 +179,11 @@ export async function GET(request: NextRequest) {
       const transformedItems = inventoryItems?.map(item => {
         const product = Array.isArray(item.products) ? item.products[0] : item.products;
         
+        // Calculate margin: ((selling_price - cost_price) / cost_price) * 100
+        const cost = Number(product?.cost || 0);
+        const price = Number(product?.price || 0);
+        const calculatedMargin = cost > 0 ? ((price - cost) / cost) * 100 : 0;
+        
         return {
           inventory_id: item.id,
           product_id: product?.id || '',
@@ -193,7 +203,7 @@ export async function GET(request: NextRequest) {
           product_category: product?.category,
           product_image_url: product?.image_url,
           sku: product?.sku,
-          applied_margin: 0, // Default value
+          applied_margin: Math.round(calculatedMargin * 10) / 10, // Round to 1 decimal place
           cost: product?.cost || 0
         };
       }) || [];

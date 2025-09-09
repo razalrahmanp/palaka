@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Calendar, User, Building2, DollarSign, Package, Truck } from 'lucide-react';
+import { Calendar, User, Building2, DollarSign, Package, Truck, Trash2 } from 'lucide-react';
 import { PurchaseOrder } from '@/types';
 import { formatDate } from '@/lib/utils';
 
@@ -13,6 +13,7 @@ interface PurchaseOrderListProps {
   orders: PurchaseOrder[];
   onViewDetails: (order: PurchaseOrder) => void;
   onUpdateStatus: (order: PurchaseOrder) => void;
+  onDelete: (order: PurchaseOrder) => void;
   loading?: boolean;
 }
 
@@ -20,6 +21,7 @@ export function PurchaseOrderList({
   orders, 
   onViewDetails, 
   onUpdateStatus,
+  onDelete,
   loading = false 
 }: PurchaseOrderListProps) {
   
@@ -96,12 +98,13 @@ export function PurchaseOrderList({
                     Created
                   </div>
                 </TableHead>
+                <TableHead className="font-semibold text-gray-700">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {orders.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-12 text-gray-500">
+                  <TableCell colSpan={11} className="text-center py-12 text-gray-500">
                     <div className="flex flex-col items-center gap-3">
                       <Package className="h-12 w-12 text-gray-300" />
                       <div>
@@ -226,6 +229,24 @@ export function PurchaseOrderList({
                             minute: '2-digit'
                           }) : ''}
                         </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm('Are you sure you want to delete this purchase order?')) {
+                              onDelete(order);
+                            }
+                          }}
+                          className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Delete purchase order"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>

@@ -8,6 +8,7 @@ import { List, Tags, Package, CheckCircle, AlertTriangle, Users } from 'lucide-r
 import { LiveInventoryAlerts } from '@/components/inventory/LiveInventoryAlerts'
 import InventoryItemForm from '@/components/inventory/InventoryItemForm'
 import { SupplierForm } from '@/components/inventory/SupplierForm'
+import { StockAdjustmentForm } from '@/components/inventory/StockAdjustmentForm'
 import { ProductWithInventory, Supplier } from '@/types'
 import { PaginatedInventoryTable } from '@/components/inventory/PaginatedInventoryTable'
 import { ProductLabels } from '@/components/inventory/ProductLabels'
@@ -20,6 +21,8 @@ export default function InventoryPage() {
   const [addItemOpen, setAddItemOpen] = useState(false)
   const [addSupplierOpen, setAddSupplierOpen] = useState(false)
   const [manageMarginsOpen, setManageMarginsOpen] = useState(false)
+  const [adjustmentOpen, setAdjustmentOpen] = useState(false)
+  const [selectedItem, setSelectedItem] = useState<ProductWithInventory | null>(null)
 
   const fetchAll = useCallback(() => {
     const timestamp = Date.now(); // Cache buster
@@ -110,6 +113,41 @@ export default function InventoryPage() {
     },
     [suppliers]
   )
+
+  const handleAdjustClick = (item: ProductWithInventory) => {
+    setSelectedItem(item)
+    setAdjustmentOpen(true)
+  }
+
+  const handleStockAdjustment = async (adjustment: { quantity: number; type: 'increase' | 'decrease'; reason: string }) => {
+    if (!selectedItem) return
+
+    try {
+      const response = await fetch('/api/inventory/adjust', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          product_id: selectedItem.product_id,
+          type: adjustment.type,
+          quantity: adjustment.quantity,
+          reason: adjustment.reason
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to adjust stock')
+      }
+
+      // Refresh data
+      fetchAll()
+      setAdjustmentOpen(false)
+      setSelectedItem(null)
+    } catch (error) {
+      console.error('Error adjusting stock:', error)
+      alert('Failed to adjust stock: ' + (error instanceof Error ? error.message : 'Unknown error'))
+    }
+  }
 
   const uniqueProducts = Array.from(new Map(items.map(item => [item.product_id, item])).values())
   
@@ -260,7 +298,7 @@ export default function InventoryPage() {
             </div>
             
             <PaginatedInventoryTable
-              onAdjustClick={() => {}}
+              onAdjustClick={handleAdjustClick}
               onAddItem={() => setAddItemOpen(true)}
               onManageMargins={() => setManageMarginsOpen(true)}
               onAddSupplier={() => setAddSupplierOpen(true)}
@@ -337,6 +375,37 @@ export default function InventoryPage() {
             }}
             onCancel={() => setAddSupplierOpen(false)}
           />
+        </DialogContent>
+      </Dialog>
+
+      {/* Stock Adjustment Dialog */}
+      <Dialog open={adjustmentOpen} onOpenChange={setAdjustmentOpen}>
+        <DialogContent className="max-w-md bg-white/95 backdrop-blur-sm border-0 shadow-2xl rounded-2xl">
+          <DialogHeader className="pb-6 border-b border-gray-100">
+            <DialogTitle className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+              Adjust Stock
+            </DialogTitle>
+            <DialogDescription className="text-gray-600">
+              Adjust inventory levels for this product
+            </DialogDescription>
+          </DialogHeader>
+          {selectedItem && (
+            <StockAdjustmentForm
+              item={{
+                name: selectedItem.product_name,
+                stock: selectedItem.quantity,
+                id: selectedItem.inventory_id,
+                quantity: selectedItem.quantity,
+                reorder_point: selectedItem.reorder_point,
+                updated_at: selectedItem.updated_at
+              }}
+              onSubmit={handleStockAdjustment}
+              onCancel={() => {
+                setAdjustmentOpen(false)
+                setSelectedItem(null)
+              }}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </div>

@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   } = await req.json();
 
   type SubcategoryKey = keyof typeof subcategoryMap;
-  const fallback = { category: "Miscellaneous", type: "Variable", accountCode: "6902" };
+  const fallback = { category: "Miscellaneous", type: "Variable", accountCode: "7000" }; // Updated to use OTHER EXPENSES
   const { category, type, accountCode } =
     subcategoryMap[(subcategory as SubcategoryKey)] || fallback;
 

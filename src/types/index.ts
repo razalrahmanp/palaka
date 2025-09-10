@@ -494,16 +494,16 @@ export const subcategoryMap = {
   
   // Marketing & Sales
   "Advertising": { category: "Marketing & Sales", type: "Variable", accountCode: "6300" },
-  "Digital Marketing": { category: "Marketing & Sales", type: "Variable", accountCode: "6301" },
-  "Sales Promotion": { category: "Marketing & Sales", type: "Variable", accountCode: "6302" },
-  "Trade Shows": { category: "Marketing & Sales", type: "Variable", accountCode: "6303" },
+  "Digital Marketing": { category: "Marketing & Sales", type: "Variable", accountCode: "6010" }, // Advertising & Marketing
+  "Sales Promotion": { category: "Marketing & Sales", type: "Variable", accountCode: "6010" }, // Advertising & Marketing
+  "Trade Shows": { category: "Marketing & Sales", type: "Variable", accountCode: "6010" }, // Advertising & Marketing
   "Sales Commission": { category: "Marketing & Sales", type: "Variable", accountCode: "6304" },
   "Customer Entertainment": { category: "Marketing & Sales", type: "Variable", accountCode: "6305" },
   
   // Logistics & Distribution
   "Transportation": { category: "Logistics & Distribution", type: "Variable", accountCode: "6400" },
   "Freight & Shipping": { category: "Logistics & Distribution", type: "Variable", accountCode: "6401" },
-  "Packaging Materials": { category: "Logistics & Distribution", type: "Variable", accountCode: "6402" },
+  "Packaging Materials": { category: "Logistics & Distribution", type: "Variable", accountCode: "6040" }, // Showroom Expenses
   "Warehouse Rent": { category: "Logistics & Distribution", type: "Fixed", accountCode: "6403" },
   "Storage & Handling": { category: "Logistics & Distribution", type: "Variable", accountCode: "6404" },
   "Delivery Vehicle Expenses": { category: "Logistics & Distribution", type: "Variable", accountCode: "6405" },
@@ -516,7 +516,7 @@ export const subcategoryMap = {
   "Hardware & Equipment": { category: "Technology", type: "Variable", accountCode: "6504" },
   
   // Insurance & Protection
-  "General Insurance": { category: "Insurance", type: "Fixed", accountCode: "6600" },
+  "General Insurance": { category: "Insurance", type: "Fixed", accountCode: "6520" }, // Insurance
   "Product Liability": { category: "Insurance", type: "Fixed", accountCode: "6601" },
   "Property Insurance": { category: "Insurance", type: "Fixed", accountCode: "6602" },
   "Vehicle Insurance": { category: "Insurance", type: "Fixed", accountCode: "6603" },
@@ -534,15 +534,40 @@ export const subcategoryMap = {
   "Meals & Entertainment": { category: "Travel & Entertainment", type: "Variable", accountCode: "6802" },
   "Vehicle Expenses": { category: "Travel & Entertainment", type: "Variable", accountCode: "6803" },
   
-  // Miscellaneous
-  "Research & Development": { category: "Research & Development", type: "Variable", accountCode: "6900" },
-  "Donations & CSR": { category: "Miscellaneous", type: "Variable", accountCode: "6901" },
-  "Miscellaneous Expenses": { category: "Miscellaneous", type: "Variable", accountCode: "6902" },
-  "Bad Debts": { category: "Miscellaneous", type: "Variable", accountCode: "6903" },
+  // Vehicle Fleet Management (using existing chart of accounts)
+  "Vehicle Fuel - Truck 001": { category: "Vehicle Fleet", type: "Variable", accountCode: "6030" }, // Delivery Expenses
+  "Vehicle Fuel - Truck 002": { category: "Vehicle Fleet", type: "Variable", accountCode: "6030" }, // Delivery Expenses
+  "Vehicle Fuel - Delivery Van": { category: "Vehicle Fleet", type: "Variable", accountCode: "6030" }, // Delivery Expenses
+  "Vehicle Maintenance - Truck 001": { category: "Vehicle Fleet", type: "Variable", accountCode: "6430" }, // Maintenance & Repairs
+  "Vehicle Maintenance - Truck 002": { category: "Vehicle Fleet", type: "Variable", accountCode: "6430" }, // Maintenance & Repairs
+  "Vehicle Maintenance - Delivery Van": { category: "Vehicle Fleet", type: "Variable", accountCode: "6430" }, // Maintenance & Repairs
+  "Vehicle Insurance - Fleet": { category: "Vehicle Fleet", type: "Fixed", accountCode: "6520" }, // Insurance
+  "Vehicle Registration & Tax": { category: "Vehicle Fleet", type: "Fixed", accountCode: "6250" }, // Payroll Taxes (govt fees)
+  "Driver Salaries": { category: "Vehicle Fleet", type: "Fixed", accountCode: "6200" }, // Salaries & Wages
+  "Vehicle Parking & Tolls": { category: "Vehicle Fleet", type: "Variable", accountCode: "6550" }, // Travel & Entertainment
+  
+  // Daily Wages & Contract Labor (using existing salary accounts)
+  "Daily Wages - Construction": { category: "Salaries & Benefits", type: "Variable", accountCode: "6220" }, // Production Wages
+  "Daily Wages - Loading": { category: "Salaries & Benefits", type: "Variable", accountCode: "6220" }, // Production Wages
+  "Daily Wages - Cleaning": { category: "Salaries & Benefits", type: "Variable", accountCode: "6440" }, // Cleaning & Janitorial
+  "Contract Labor": { category: "Salaries & Benefits", type: "Variable", accountCode: "6510" }, // Professional Services
+  "Overtime Payment": { category: "Salaries & Benefits", type: "Variable", accountCode: "6240" }, // Overtime Pay
+  "Temporary Staff": { category: "Salaries & Benefits", type: "Variable", accountCode: "6200" }, // Salaries & Wages
+  
+  // Vendor/Supplier Payments (using existing accounts)
+  "Vendor Payment - Raw Materials": { category: "Accounts Payable", type: "Variable", accountCode: "2010" }, // Accounts Payable
+  "Vendor Payment - Services": { category: "Accounts Payable", type: "Variable", accountCode: "2010" }, // Accounts Payable
+  "Supplier Advance": { category: "Prepaid Expenses", type: "Variable", accountCode: "1400" }, // Prepaid Expenses
+  
+  // Miscellaneous (using existing accounts)
+  "Research & Development": { category: "Research & Development", type: "Variable", accountCode: "7000" }, // OTHER EXPENSES
+  "Donations & CSR": { category: "Miscellaneous", type: "Variable", accountCode: "7000" }, // OTHER EXPENSES
+  "Miscellaneous Expenses": { category: "Miscellaneous", type: "Variable", accountCode: "7000" }, // OTHER EXPENSES
+  "Bad Debts": { category: "Miscellaneous", type: "Variable", accountCode: "7040" }, // Bad Debt Expense
   
   // Legacy categories for backward compatibility
-  "Insurance": { category: "Insurance", type: "Fixed", accountCode: "6600" },
-  "Packaging": { category: "Logistics & Distribution", type: "Variable", accountCode: "6402" },
+  "Insurance": { category: "Insurance", type: "Fixed", accountCode: "6520" }, // Insurance
+  "Packaging": { category: "Logistics & Distribution", type: "Variable", accountCode: "6040" }, // Showroom Expenses
   "Shipping": { category: "Logistics & Distribution", type: "Variable", accountCode: "6401" },
   "Freight": { category: "Logistics & Distribution", type: "Variable", accountCode: "6401" },
   "Maintenance": { category: "Maintenance & Repairs", type: "Variable", accountCode: "6700" },
@@ -550,7 +575,7 @@ export const subcategoryMap = {
   "Furniture": { category: "Raw Materials", type: "Direct", accountCode: "5100" },
   "Wood": { category: "Raw Materials", type: "Direct", accountCode: "5100" },
   "Marketing Campaign": { category: "Marketing & Sales", type: "Variable", accountCode: "6300" },
-  "Other": { category: "Miscellaneous", type: "Variable", accountCode: "6902" },
+  "Other": { category: "Miscellaneous", type: "Variable", accountCode: "7000" }, // OTHER EXPENSES
   "Fabric": { category: "Raw Materials", type: "Direct", accountCode: "5102" },
   "Machinery": { category: "Technology", type: "Variable", accountCode: "6504" },
   "Rent": { category: "Administrative", type: "Fixed", accountCode: "6100" },

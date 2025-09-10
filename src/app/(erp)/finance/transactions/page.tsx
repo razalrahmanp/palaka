@@ -12,15 +12,22 @@ import { useRouter } from 'next/navigation';
 
 interface PaymentTransaction {
   id: string;
-  payment_number: string;
+  invoice_id?: string;
   amount: number;
-  payment_date: string;
+  payment_date?: string;
+  date?: string;
   method: string;
   reference?: string;
   description?: string;
-  customer_name: string;
-  invoice_id?: string;
+  bank_account_id?: string;
+  bank_account_name?: string;
+  bank_account_type?: string;
+  bank_account_number?: string;
+  invoice_total?: number;
   sales_order_id?: string;
+  customer_name?: string;
+  customer_phone?: string;
+  customer_email?: string;
 }
 
 const getPaymentMethodIcon = (method: string) => {
@@ -113,9 +120,10 @@ export default function AllTransactionsPage() {
   };
 
   const filteredTransactions = transactions.filter(transaction => {
+    const paymentNumber = transaction.id ? `PAY-${transaction.id.slice(0, 8)}` : '';
     const matchesSearch = 
       transaction.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      transaction.payment_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      paymentNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       transaction.reference?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       transaction.description?.toLowerCase().includes(searchTerm.toLowerCase());
 
@@ -280,12 +288,14 @@ export default function AllTransactionsPage() {
                         <div className="flex items-center gap-2">
                           <Calendar className="h-4 w-4 text-muted-foreground" />
                           <span className="font-mono text-sm">
-                            {formatDate(payment.payment_date)}
+                            {payment.date ? formatDate(payment.date) : 
+                             payment.payment_date ? formatDate(payment.payment_date) : 
+                             'N/A'}
                           </span>
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-sm">
-                        {payment.payment_number}
+                        {payment.id ? `PAY-${payment.id.slice(0, 8)}` : 'N/A'}
                       </TableCell>
                       <TableCell className="font-medium">
                         {payment.customer_name || 'N/A'}

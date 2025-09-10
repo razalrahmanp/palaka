@@ -38,35 +38,49 @@ export async function GET() {
     // Get all invoices
     const { data: invoices, error: invoicesError } = await supabase
       .from('invoices')
-      .select('sales_order_id, paid_amount, total');
+      .select('id, sales_order_id, total');
 
     if (invoicesError) {
       console.error('Error fetching invoices:', invoicesError);
     }
 
-    // Calculate metrics
+    // Get all payments - use TOTAL actual payments for accurate collected amount
+    const { data: payments, error: paymentsError } = await supabase
+      .from('payments')
+      .select('amount');
+
+    if (paymentsError) {
+      console.error('Error fetching payments:', paymentsError);
+    }
+
+    // Calculate total collected amount from ALL payments (not filtered by sales orders)
+    const totalPaymentsReceived = payments?.reduce((sum, payment) => 
+      sum + (payment.amount || 0), 0) || 0;
+
+    // Calculate total sales revenue and payment status metrics
     let totalSalesRevenue = 0;
-    let totalPaymentsReceived = 0;
     let fullyPaidOrders = 0;
     let partialPaidOrders = 0;
     let pendingPaymentOrders = 0;
 
+    // For order-level payment status, we still need to check individual orders
+    // But for total collected, we use ALL payments
     salesOrders.forEach(order => {
       const orderTotal = order.final_price || 0;
       totalSalesRevenue += orderTotal;
       
       // Find invoices for this order
       const orderInvoices = invoices?.filter(inv => inv.sales_order_id === order.id) || [];
-      let orderPaidAmount = 0;
       
+      // For status determination, estimate payment based on invoice totals
+      // (This is simplified since we're now using total payments for accuracy)
+      let orderPaidAmount = 0;
       if (orderInvoices.length > 0) {
-        orderPaidAmount = orderInvoices.reduce((sum, invoice) => 
-          sum + (invoice.paid_amount || 0), 0);
+        const invoiceTotal = orderInvoices.reduce((sum, inv) => sum + (inv.total || 0), 0);
+        orderPaidAmount = Math.min(orderTotal, invoiceTotal); // Simplified estimation
       }
       
-      totalPaymentsReceived += orderPaidAmount;
-      
-      // Determine payment status
+      // Determine payment status (this is approximate, but total collected is accurate)
       if (orderPaidAmount === 0) {
         pendingPaymentOrders++;
       } else if (orderPaidAmount >= orderTotal) {

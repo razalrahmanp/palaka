@@ -15,11 +15,24 @@ export async function GET() {
     // Get all invoices to calculate payment metrics
     const { data: allInvoicesData, error: allInvoicesError } = await supabase
       .from('invoices')
-      .select('sales_order_id, paid_amount, total');
+      .select('id, sales_order_id, total');
 
     if (allInvoicesError) {
       console.error('Error fetching invoices data:', allInvoicesError);
     }
+
+    // Get all payments for accurate calculation of cash balance (collected amount)
+    const { data: allPayments, error: paymentsError } = await supabase
+      .from('payments')
+      .select('invoice_id, amount');
+
+    if (paymentsError) {
+      console.error('Error fetching payments data:', paymentsError);
+    }
+
+    // Calculate total actual payments received (cash balance) from ALL payments
+    const actualCashBalance = allPayments?.reduce((sum, payment) => 
+      sum + (payment.amount || 0), 0) || 0;
 
     // Calculate real revenue and payment metrics from sales data
     const salesOrders = salesOrdersData || [];
@@ -36,7 +49,16 @@ export async function GET() {
     salesOrders.forEach(order => {
       const orderTotal = order.final_price || 0;
       const orderInvoices = allInvoices.filter(inv => inv.sales_order_id === order.id);
-      const orderPaidAmount = orderInvoices.reduce((sum, inv) => sum + (inv.paid_amount || 0), 0);
+      
+      // Calculate actual payments for this order using payments table
+      let orderPaidAmount = 0;
+      if (orderInvoices.length > 0 && allPayments) {
+        const invoiceIds = orderInvoices.map(inv => inv.id);
+        const orderPayments = allPayments.filter(payment => 
+          invoiceIds.includes(payment.invoice_id));
+        orderPaidAmount = orderPayments.reduce((sum, payment) => 
+          sum + (payment.amount || 0), 0);
+      }
       
       totalPaymentsReceived += orderPaidAmount;
       
@@ -89,7 +111,6 @@ export async function GET() {
     let totalLiabilities = 0;
     let totalEquity = 0;
     let totalExpenses = 0;
-    let cashBalance = 0;
     let accountsPayable = 0;
 
     accounts?.forEach(account => {
@@ -101,11 +122,6 @@ export async function GET() {
                 !account.name?.toLowerCase().includes('inventory') && 
                 !account.name?.toLowerCase().includes('stock')) {
               totalNonInventoryAssets += account.current_balance || 0;
-            }
-            
-            // Check for cash
-            if (account.account_subtype === 'CASH_AND_EQUIVALENTS') {
-              cashBalance += account.current_balance || 0;
             }
             break;
             
@@ -198,7 +214,7 @@ export async function GET() {
         totalRevenue: totalSalesRevenue, // Use real sales revenue
         totalExpenses,
         netIncome,
-        cashBalance: cashBalance + totalPaymentsReceived, // Include collected payments
+        cashBalance: actualCashBalance, // Use actual total payments (not filtered by sales orders)
         accountsReceivable,
         accountsPayable,
         currentRatio,

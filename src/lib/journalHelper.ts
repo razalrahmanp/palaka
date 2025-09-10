@@ -36,6 +36,133 @@ export interface CreateExpenseJournalEntryParams {
   bankAccountId?: string;
 }
 
+export interface DeletePaymentJournalParams {
+  paymentId: string;
+  paymentAmount: number;
+  description?: string;
+}
+
+// Function to reverse journal entries for deleted payments
+export async function reversePaymentJournalEntry(params: DeletePaymentJournalParams) {
+  const { paymentId } = params;
+  
+  console.log('🔄 Starting journal entry reversal for payment:', paymentId);
+  
+  try {
+    // Find existing journal entries for this payment
+    const { data: journalEntries, error: journalError } = await supabase
+      .from('journal_entries')
+      .select(`
+        id,
+        journal_number,
+        total_debit,
+        total_credit,
+        journal_entry_lines(
+          id,
+          account_id,
+          debit_amount,
+          credit_amount,
+          chart_of_accounts(
+            id,
+            account_name,
+            current_balance,
+            account_type
+          )
+        )
+      `)
+      .eq('source_document_type', 'PAYMENT')
+      .eq('source_document_id', paymentId);
+
+    if (journalError) {
+      throw new Error(`Failed to fetch journal entries: ${journalError.message}`);
+    }
+
+    if (!journalEntries || journalEntries.length === 0) {
+      console.log('⚠️ No journal entries found for payment:', paymentId);
+      return { success: true, message: 'No journal entries to reverse' };
+    }
+
+    // Reverse the account balances
+    for (const entry of journalEntries) {
+      const entryLines = entry.journal_entry_lines || [];
+      
+      for (const line of entryLines) {
+        if (line.chart_of_accounts) {
+          // Handle both single object and array cases from Supabase
+          const account = Array.isArray(line.chart_of_accounts) 
+            ? line.chart_of_accounts[0] 
+            : line.chart_of_accounts;
+          
+          if (!account) continue;
+          
+          const currentBalance = account.current_balance || 0;
+          
+          // Reverse the effect: subtract debits, add back credits
+          const reversalAmount = (line.debit_amount || 0) - (line.credit_amount || 0);
+          const newBalance = currentBalance - reversalAmount;
+          
+          console.log(`💰 Reversing balance for ${account.account_name}:`, {
+            currentBalance,
+            reversalAmount,
+            newBalance
+          });
+
+          const { error: balanceUpdateError } = await supabase
+            .from('chart_of_accounts')
+            .update({
+              current_balance: newBalance,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', account.id);
+
+          if (balanceUpdateError) {
+            console.error(`Error updating balance for ${account.account_name}:`, balanceUpdateError);
+            throw new Error(`Failed to update account balance: ${balanceUpdateError.message}`);
+          } else {
+            console.log(`✅ Updated ${account.account_name} balance: ${currentBalance} → ${newBalance}`);
+          }
+        }
+      }
+
+      // Delete journal entry lines
+      const { error: linesDeleteError } = await supabase
+        .from('journal_entry_lines')
+        .delete()
+        .eq('journal_entry_id', entry.id);
+
+      if (linesDeleteError) {
+        throw new Error(`Failed to delete journal entry lines: ${linesDeleteError.message}`);
+      }
+    }
+
+    // Delete journal entries
+    const { error: journalDeleteError } = await supabase
+      .from('journal_entries')
+      .delete()
+      .eq('source_document_type', 'PAYMENT')
+      .eq('source_document_id', paymentId);
+
+    if (journalDeleteError) {
+      throw new Error(`Failed to delete journal entries: ${journalDeleteError.message}`);
+    }
+
+    console.log('✅ Successfully reversed journal entries for payment:', paymentId);
+    
+    return {
+      success: true,
+      message: `Journal entries reversed for payment ${paymentId}`,
+      reversedEntries: journalEntries.length
+    };
+
+  } catch (error) {
+    console.error('❌ Error reversing payment journal entry:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    };
+  }
+}
+
 // Function to get the appropriate asset account based on payment method
 async function getPaymentAssetAccount(paymentMethod: string, bankAccountId?: string) {
   const { supabase } = await import('@/lib/supabaseClient');
@@ -328,7 +455,7 @@ export async function createVendorPaymentJournalEntry(params: CreateVendorPaymen
     const { data: accounts, error: accountError } = await supabase
       .from('chart_of_accounts')
       .select('id, account_code, account_name')
-      .in('account_code', ['1010', '2100']); // Cash and Accounts Payable
+      .in('account_code', ['1010', '2010']); // Cash and Accounts Payable
     
     if (accountError) {
       console.error('Error fetching accounts:', accountError);
@@ -336,11 +463,11 @@ export async function createVendorPaymentJournalEntry(params: CreateVendorPaymen
     }
     
     const cashAccount = accounts?.find(acc => acc.account_code === '1010');
-    const apAccount = accounts?.find(acc => acc.account_code === '2100');
+    const apAccount = accounts?.find(acc => acc.account_code === '2010');
     
     if (!cashAccount || !apAccount) {
       console.error('Required accounts not found. Cash:', cashAccount, 'AP:', apAccount);
-      return { success: false, error: 'Required accounts (1010 Cash, 2100 Accounts Payable) not found in chart of accounts' };
+      return { success: false, error: 'Required accounts (1010 Cash, 2010 Accounts Payable) not found in chart of accounts' };
     }
     
     // Create journal entry
@@ -544,7 +671,7 @@ export async function createExpenseJournalEntry(params: CreateExpenseJournalEntr
     const userId = users?.[0]?.id || '00000000-0000-0000-0000-000000000000';
     
     // Determine the expense account based on category and account code
-    let expenseAccountCode = accountCode || '6902'; // Default to Miscellaneous Expenses
+    let expenseAccountCode = accountCode || '7000'; // Default to OTHER EXPENSES
     
     // Map specific categories to expense accounts if account code not provided
     const categoryToAccountMap: { [key: string]: string } = {
@@ -559,8 +686,11 @@ export async function createExpenseJournalEntry(params: CreateExpenseJournalEntr
       'Insurance': '6600',
       'Maintenance & Repairs': '6700',
       'Travel & Entertainment': '6800',
+      'Vehicle Fleet': '6030', // Updated to use Delivery Expenses account
       'Research & Development': '6900',
-      'Miscellaneous': '6902'
+      'Accounts Payable': '2010', // Updated to use correct Accounts Payable account
+      'Prepaid Expenses': '1400', // Updated to use correct Prepaid Expenses account
+      'Miscellaneous': '7000' // Updated to use OTHER EXPENSES
     };
     
     if (!accountCode && categoryToAccountMap[category]) {

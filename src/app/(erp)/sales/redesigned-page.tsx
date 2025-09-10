@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -50,6 +50,14 @@ export default function RedesignedSalesPage() {
     refresh,
   } = useSalesData();
 
+  // State for actual payments data (for "collected" stat card only)
+  const [actualPayments, setActualPayments] = useState<Array<{ 
+    amount: number; 
+    payment_date?: string; 
+    date?: string; 
+  }>>([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(true);
+
   const [activeTab, setActiveTab] = useState('quotes');
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -72,6 +80,32 @@ export default function RedesignedSalesPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  // Fetch actual payments data for accurate "collected" calculations
+  const fetchActualPayments = async () => {
+    try {
+      setPaymentsLoading(true);
+      const response = await fetch('/api/finance/payments');
+      if (response.ok) {
+        const payments = await response.json();
+        setActualPayments(Array.isArray(payments) ? payments : []);
+        console.log('📄 Fetched actual payments for Sales tab:', payments.length);
+      } else {
+        console.error('Failed to fetch payments:', response.statusText);
+        setActualPayments([]);
+      }
+    } catch (error) {
+      console.error('Error fetching payments:', error);
+      setActualPayments([]);
+    } finally {
+      setPaymentsLoading(false);
+    }
+  };
+
+  // Fetch payments on component mount and when orders change
+  useEffect(() => {
+    fetchActualPayments();
+  }, []);
 
   const { handleSaveQuote, handleDeleteOrder, handleDeleteQuote } = createSalesHandlers(
     currentUser,
@@ -115,7 +149,7 @@ export default function RedesignedSalesPage() {
     if (!dateString) return false;
     
     const itemDate = new Date(dateString);
-    const now = new Date();
+    const now = new Date(); 
     
     switch (filter) {
       case 'daily':
@@ -209,10 +243,20 @@ export default function RedesignedSalesPage() {
       return sum + (order.final_price || order.total || 0);
     }, 0);
     
-    // Total amount actually collected (real payments)
-    const totalCollected = ordersWithPayment.reduce((sum, order) => {
-      return sum + (order.total_paid || 0);
-    }, 0);
+    // Total amount actually collected (real payments) - using actual payments data for accuracy
+    const totalCollected = !paymentsLoading && actualPayments.length > 0 
+      ? actualPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0)
+      : ordersWithPayment.reduce((sum, order) => sum + (order.total_paid || 0), 0);
+
+    // Debug: Compare old vs new calculation methods
+    const totalCollectedFromOrders = ordersWithPayment.reduce((sum, order) => sum + (order.total_paid || 0), 0);
+    const totalCollectedFromPayments = actualPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
+    console.log('💰 COLLECTED AMOUNT COMPARISON:', {
+      fromOrders: totalCollectedFromOrders,
+      fromActualPayments: totalCollectedFromPayments,
+      usingActualPayments: !paymentsLoading && actualPayments.length > 0,
+      paymentsCount: actualPayments.length
+    });
     
     // Outstanding balance across all orders
     const totalOutstanding = ordersWithPayment.reduce((sum, order) => {
@@ -241,9 +285,22 @@ export default function RedesignedSalesPage() {
       return sum + (order.final_price || order.total || 0);
     }, 0);
     
-    const monthlyCollected = monthlyOrders.reduce((sum, order) => {
-      return sum + (order.total_paid || 0);
-    }, 0);
+    // Calculate monthly collected using actual payments for current month
+    let monthlyCollected = 0;
+    if (!paymentsLoading && actualPayments.length > 0) {
+      // Filter actual payments by current month/year
+      monthlyCollected = actualPayments
+        .filter((payment: { payment_date?: string; date?: string }) => {
+          const paymentDate = new Date(payment.payment_date || payment.date || '');
+          return paymentDate.getMonth() === currentMonth && paymentDate.getFullYear() === currentYear;
+        })
+        .reduce((sum, payment) => sum + (payment.amount || 0), 0);
+    } else {
+      // Fallback to order-level data
+      monthlyCollected = monthlyOrders.reduce((sum, order) => {
+        return sum + (order.total_paid || 0);
+      }, 0);
+    }
     
     // Collection rate
     const collectionRate = totalRevenue > 0 ? Math.round((totalCollected / totalRevenue) * 100) : 0;

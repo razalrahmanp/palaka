@@ -28,11 +28,12 @@ import {
   Minus,
   Search
 } from 'lucide-react';
-import { SalesOrder, Invoice } from '@/types';
+import { SalesOrder, Invoice, subcategoryMap } from '@/types';
 import { PaymentTrackingDialog } from './PaymentTrackingDialog';
 import { SalesOrderPaymentTracker } from './SalesOrderPaymentTracker';
 import { WhatsAppService, WhatsAppBillData } from '@/lib/whatsappService';
 import { WaiveOffDialog } from './WaiveOffDialog';
+import { PaymentDeletionManager } from './PaymentDeletionManager';
 
 // Component interfaces and types
 
@@ -643,23 +644,29 @@ export function SalesOrderInvoiceManager() {
       return sum + (order.invoices?.reduce((invSum, inv) => invSum + inv.total, 0) || 0);
     }, 0);
   
-  // Calculate total paid from new API
-  const totalPaid = salesOrders.reduce((sum, order) => sum + (order.total_paid || 0), 0);
+  // Calculate total paid from actual payments data (consistent with This Month calculation)
+  const totalPaid = payments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
   
   // Calculate pending amounts
   const pendingInvoicing = salesOrders
     .filter(order => !order.is_invoiced)
     .reduce((sum, order) => sum + (order.final_price || order.total || 0), 0);
     
-  const pendingPayments = salesOrders.reduce((sum, order) => sum + (order.balance_due || 0), 0);
+  // Calculate pending payments based on actual data: invoiced - paid (consistent with payment calculations)
+  const pendingPayments = Math.max(0, totalInvoiced - totalPaid);
 
   // Debug stat calculations
+  const totalPaidFromOrders = salesOrders.reduce((sum, order) => sum + (order.total_paid || 0), 0);
+  const pendingPaymentsFromOrders = salesOrders.reduce((sum, order) => sum + (order.balance_due || 0), 0);
   console.log('STAT CALCULATIONS:', {
     totalOrderValue,
     totalInvoiced,
-    totalPaid,
+    totalPaid, // Now from actual payments
+    totalPaidFromOrders, // For comparison
     pendingInvoicing,
-    pendingPayments,
+    pendingPayments, // Now calculated: invoiced - paid
+    pendingPaymentsFromOrders, // For comparison
+    paymentsCount: payments.length,
     ordersWithPayments: salesOrders.filter(order => (order.total_paid || 0) > 0).length,
     invoicedOrders: salesOrders.filter(order => order.is_invoiced).length,
     notInvoicedOrders: salesOrders.filter(order => !order.is_invoiced).length
@@ -692,7 +699,7 @@ export function SalesOrderInvoiceManager() {
         
         {/* Main Navigation Tabs */}
         <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 h-12 bg-gray-50 rounded-none border-b">
+          <TabsList className="grid w-full grid-cols-5 h-12 bg-gray-50 rounded-none border-b">
             <TabsTrigger 
               value="orders" 
               className="text-sm font-medium h-full data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-blue-500"
@@ -713,6 +720,13 @@ export function SalesOrderInvoiceManager() {
             >
               <CreditCard className="h-4 w-4 mr-2" />
               Payments ({payments.length})
+            </TabsTrigger>
+            <TabsTrigger 
+              value="payment-manager"
+              className="text-sm font-medium h-full data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-red-500"
+            >
+              <Receipt className="h-4 w-4 mr-2" />
+              Payment Manager
             </TabsTrigger>
             <TabsTrigger 
               value="expenses"
@@ -903,7 +917,12 @@ export function SalesOrderInvoiceManager() {
                         <p className="text-sm text-green-600 font-medium">This Month</p>
                         <p className="text-xl font-bold text-green-900">
                           {formatCurrency(payments
-                            .filter(p => new Date(p.date).getMonth() === new Date().getMonth())
+                            .filter(p => {
+                              const paymentDate = new Date(p.date);
+                              const currentDate = new Date();
+                              return paymentDate.getMonth() === currentDate.getMonth() && 
+                                     paymentDate.getFullYear() === currentDate.getFullYear();
+                            })
                             .reduce((sum, p) => sum + p.amount, 0)
                           )}
                         </p>
@@ -1493,6 +1512,11 @@ export function SalesOrderInvoiceManager() {
               <PaginationComponent />
             </TabsContent>
 
+            {/* Payment Manager Tab */}
+            <TabsContent value="payment-manager" className="space-y-4 p-6">
+              <PaymentDeletionManager />
+            </TabsContent>
+
             {/* Expenses Tab */}
             <TabsContent value="expenses" className="space-y-4 p-6">
               <div className="flex items-center justify-between mb-4">
@@ -1772,105 +1796,12 @@ export function SalesOrderInvoiceManager() {
                   <SelectValue placeholder="Select expense category" />
                 </SelectTrigger>
                 <SelectContent className="max-h-60">
-                  {/* Raw Materials - Direct Expenses */}
-                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Raw Materials (Direct Expenses)</div>
-                  <SelectItem value="Raw Materials - Wood">Raw Materials - Wood</SelectItem>
-                  <SelectItem value="Raw Materials - Metal">Raw Materials - Metal</SelectItem>
-                  <SelectItem value="Raw Materials - Fabric">Raw Materials - Fabric</SelectItem>
-                  <SelectItem value="Raw Materials - Hardware">Raw Materials - Hardware</SelectItem>
-                  <SelectItem value="Raw Materials - Foam">Raw Materials - Foam</SelectItem>
-                  <SelectItem value="Raw Materials - Glass">Raw Materials - Glass</SelectItem>
-                  
-                  {/* Direct Labor */}
-                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Direct Labor</div>
-                  <SelectItem value="Direct Labor - Manufacturing">Direct Labor - Manufacturing</SelectItem>
-                  <SelectItem value="Direct Labor - Assembly">Direct Labor - Assembly</SelectItem>
-                  <SelectItem value="Direct Labor - Finishing">Direct Labor - Finishing</SelectItem>
-                  <SelectItem value="Direct Labor - Quality Control">Direct Labor - Quality Control</SelectItem>
-                  
-                  {/* Manufacturing Overhead */}
-                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Manufacturing Overhead</div>
-                  <SelectItem value="Factory Utilities">Factory Utilities</SelectItem>
-                  <SelectItem value="Factory Rent">Factory Rent</SelectItem>
-                  <SelectItem value="Factory Maintenance">Factory Maintenance</SelectItem>
-                  <SelectItem value="Factory Supplies">Factory Supplies</SelectItem>
-                  <SelectItem value="Equipment Depreciation">Equipment Depreciation</SelectItem>
-                  
-                  {/* Administrative Expenses */}
-                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Administrative Expenses</div>
-                  <SelectItem value="Office Rent">Office Rent</SelectItem>
-                  <SelectItem value="Office Utilities">Office Utilities</SelectItem>
-                  <SelectItem value="Office Supplies">Office Supplies</SelectItem>
-                  <SelectItem value="Office Equipment">Office Equipment</SelectItem>
-                  <SelectItem value="Telephone & Internet">Telephone & Internet</SelectItem>
-                  <SelectItem value="Professional Services">Professional Services</SelectItem>
-                  <SelectItem value="Legal & Audit Fees">Legal & Audit Fees</SelectItem>
-                  <SelectItem value="Bank Charges">Bank Charges</SelectItem>
-                  
-                  {/* Salaries & Benefits */}
-                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Salaries & Benefits</div>
-                  <SelectItem value="Administrative Salaries">Administrative Salaries</SelectItem>
-                  <SelectItem value="Sales Salaries">Sales Salaries</SelectItem>
-                  <SelectItem value="Management Salaries">Management Salaries</SelectItem>
-                  <SelectItem value="Employee Benefits">Employee Benefits</SelectItem>
-                  <SelectItem value="Provident Fund">Provident Fund</SelectItem>
-                  <SelectItem value="Employee Insurance">Employee Insurance</SelectItem>
-                  <SelectItem value="Training & Development">Training & Development</SelectItem>
-                  
-                  {/* Marketing & Sales */}
-                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Marketing & Sales</div>
-                  <SelectItem value="Advertising">Advertising</SelectItem>
-                  <SelectItem value="Digital Marketing">Digital Marketing</SelectItem>
-                  <SelectItem value="Sales Promotion">Sales Promotion</SelectItem>
-                  <SelectItem value="Trade Shows">Trade Shows</SelectItem>
-                  <SelectItem value="Sales Commission">Sales Commission</SelectItem>
-                  <SelectItem value="Customer Entertainment">Customer Entertainment</SelectItem>
-                  
-                  {/* Logistics & Distribution */}
-                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Logistics & Distribution</div>
-                  <SelectItem value="Transportation">Transportation</SelectItem>
-                  <SelectItem value="Freight & Shipping">Freight & Shipping</SelectItem>
-                  <SelectItem value="Packaging Materials">Packaging Materials</SelectItem>
-                  <SelectItem value="Warehouse Rent">Warehouse Rent</SelectItem>
-                  <SelectItem value="Storage & Handling">Storage & Handling</SelectItem>
-                  <SelectItem value="Delivery Vehicle Expenses">Delivery Vehicle Expenses</SelectItem>
-                  
-                  {/* Technology & Software */}
-                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Technology & Software</div>
-                  <SelectItem value="Software Licenses">Software Licenses</SelectItem>
-                  <SelectItem value="IT Support">IT Support</SelectItem>
-                  <SelectItem value="Website Maintenance">Website Maintenance</SelectItem>
-                  <SelectItem value="Cloud Services">Cloud Services</SelectItem>
-                  <SelectItem value="Hardware & Equipment">Hardware & Equipment</SelectItem>
-                  
-                  {/* Insurance & Protection */}
-                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Insurance & Protection</div>
-                  <SelectItem value="General Insurance">General Insurance</SelectItem>
-                  <SelectItem value="Product Liability">Product Liability</SelectItem>
-                  <SelectItem value="Property Insurance">Property Insurance</SelectItem>
-                  <SelectItem value="Vehicle Insurance">Vehicle Insurance</SelectItem>
-                  <SelectItem value="Workers Compensation">Workers Compensation</SelectItem>
-                  
-                  {/* Maintenance & Repairs */}
-                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Maintenance & Repairs</div>
-                  <SelectItem value="Equipment Maintenance">Equipment Maintenance</SelectItem>
-                  <SelectItem value="Building Maintenance">Building Maintenance</SelectItem>
-                  <SelectItem value="Vehicle Maintenance">Vehicle Maintenance</SelectItem>
-                  <SelectItem value="Tools & Equipment">Tools & Equipment</SelectItem>
-                  
-                  {/* Travel & Entertainment */}
-                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Travel & Entertainment</div>
-                  <SelectItem value="Business Travel">Business Travel</SelectItem>
-                  <SelectItem value="Accommodation">Accommodation</SelectItem>
-                  <SelectItem value="Meals & Entertainment">Meals & Entertainment</SelectItem>
-                  <SelectItem value="Vehicle Expenses">Vehicle Expenses</SelectItem>
-                  
-                  {/* Miscellaneous */}
-                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Miscellaneous</div>
-                  <SelectItem value="Research & Development">Research & Development</SelectItem>
-                  <SelectItem value="Donations & CSR">Donations & CSR</SelectItem>
-                  <SelectItem value="Bad Debts">Bad Debts</SelectItem>
-                  <SelectItem value="Miscellaneous Expenses">Miscellaneous Expenses</SelectItem>
+                  {/* Dynamic categories from subcategoryMap */}
+                  {Object.entries(subcategoryMap).map(([category, details]) => (
+                    <SelectItem key={category} value={category}>
+                      {category} ({details.accountCode})
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

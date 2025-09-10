@@ -1,10 +1,11 @@
--- Enhanced Expense Categories Migration
--- This script updates the expense table to support the new comprehensive expense categories
+-- Updated Expense Categories Migration
+-- This script updates the expense table constraint to include all the new categories
+-- with account codes aligned to existing chart of accounts
 
 -- First, remove the existing constraint
 ALTER TABLE public.expenses DROP CONSTRAINT IF EXISTS expenses_category_check;
 
--- Add the new comprehensive constraint with all expense categories
+-- Add the updated comprehensive constraint with all expense categories including new ones
 ALTER TABLE public.expenses ADD CONSTRAINT expenses_category_check 
 CHECK (category = ANY (ARRAY[
   -- Direct Expense Categories (COGS)
@@ -23,6 +24,11 @@ CHECK (category = ANY (ARRAY[
   'Travel & Entertainment'::text,
   'Research & Development'::text,
   'Miscellaneous'::text,
+  
+  -- NEW CATEGORIES (aligned with existing chart of accounts)
+  'Vehicle Fleet'::text,         -- Uses accounts 6030, 6430, 6520, 6250, 6200, 6550
+  'Accounts Payable'::text,      -- Uses account 2010 
+  'Prepaid Expenses'::text,      -- Uses account 1400
   
   -- Legacy categories for backward compatibility
   'Rent'::text,
@@ -80,8 +86,8 @@ SET category = 'Administrative'
 WHERE category = 'Utilities';
 
 -- Add comment to document the enhancement
-COMMENT ON TABLE public.expenses IS 'Enhanced expense tracking with comprehensive categorization following proper accounting principles. Categories include direct expenses (COGS) and indirect expenses (Operating Expenses) with detailed subcategories for better financial analysis.';
+COMMENT ON TABLE public.expenses IS 'Enhanced expense tracking with comprehensive categorization following proper accounting principles. Categories include direct expenses (COGS) and indirect expenses (Operating Expenses) with detailed subcategories for better financial analysis. Account codes aligned with existing chart of accounts.';
 
-COMMENT ON COLUMN public.expenses.category IS 'Comprehensive expense category following accounting standards. Direct expenses include Raw Materials, Direct Labor, and Manufacturing Overhead. Indirect expenses include Administrative, Marketing & Sales, Technology, Insurance, etc.';
+COMMENT ON COLUMN public.expenses.category IS 'Comprehensive expense category following accounting standards. NEW CATEGORIES: Vehicle Fleet (account codes 6030,6430,6520,6250,6200,6550), Accounts Payable (2010), Prepaid Expenses (1400).';
 
-COMMENT ON COLUMN public.expenses.type IS 'Expense classification: Direct (part of COGS), Indirect (operating expense), Fixed (constant regardless of production), Variable (changes with activity level)';
+COMMENT ON CONSTRAINT expenses_category_check ON public.expenses IS 'Updated expense category constraint including Vehicle Fleet Management, Accounts Payable, and Prepaid Expenses categories with account codes aligned to existing chart of accounts.';

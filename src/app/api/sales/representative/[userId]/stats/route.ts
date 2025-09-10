@@ -16,45 +16,59 @@ export async function GET(
       complaintsResult,
       performanceResult
     ] = await Promise.all([
-      // Orders statistics
+      // Orders statistics - Use sales_representative_id instead of created_by
       supabase
         .from('sales_orders')
         .select(`
           id, 
           status, 
           created_at,
+          final_price,
           sales_order_items(
             quantity,
             unit_price
           )
         `)
-        .eq('created_by', userId),
+        .eq('sales_representative_id', userId),
 
-      // Customer statistics
+      // Customer statistics - Use customer_assignments table for better tracking
       supabase
-        .from('customers')
-        .select('id, created_at')
-        .eq('assigned_sales_rep', userId),
+        .from('customer_assignments')
+        .select(`
+          customer_id,
+          assigned_date,
+          customers(id, created_at)
+        `)
+        .eq('sales_rep_id', userId)
+        .eq('is_active', true),
 
-      // Returns/exchanges statistics - assuming this table might not exist yet
+      // Returns/exchanges statistics
       supabase
-        .from('order_returns')
-        .select('id, status, created_at')
-        .eq('sales_rep_id', userId),
+        .from('returns')
+        .select(`
+          id, 
+          status, 
+          created_at,
+          order_id,
+          sales_orders!inner(sales_representative_id)
+        `)
+        .eq('sales_orders.sales_representative_id', userId),
 
-      // Complaints statistics - assuming this table might not exist yet
+      // Complaints statistics
       supabase
         .from('customer_complaints')
         .select('id, status, created_at')
         .eq('sales_rep_id', userId),
 
-      // Performance targets (if exists)
+      // Performance targets
       supabase
         .from('sales_targets')
-        .select('target_amount, achieved_amount')
+        .select('revenue_target, achievement_revenue')
         .eq('sales_rep_id', userId)
-        .eq('month', new Date().getMonth() + 1)
-        .eq('year', new Date().getFullYear())
+        .eq('target_type', 'monthly')
+        .gte('target_period_start', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0])
+        .lte('target_period_end', new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0])
+        .eq('status', 'active')
         .single()
     ])
 
@@ -63,7 +77,7 @@ export async function GET(
     }
 
     const orders = ordersResult.data || []
-    const customers = customersResult.data || []
+    const customerAssignments = customersResult.data || []
     const returns = returnsResult.data || []
     const complaints = complaintsResult.data || []
     const performance = performanceResult.data
@@ -76,18 +90,21 @@ export async function GET(
     const pendingOrders = orders.filter(order => order.status === 'pending').length
     const completedOrders = orders.filter(order => order.status === 'delivered' || order.status === 'completed').length
     
-    // Calculate total revenue from order items
+    // Calculate total revenue using final_price from orders
     const totalRevenue = orders.reduce((sum, order) => {
-      const orderTotal = (order.sales_order_items || []).reduce((orderSum, item) => {
-        return orderSum + ((item.quantity || 0) * (item.unit_price || 0))
-      }, 0)
-      return sum + orderTotal
+      return sum + (order.final_price || 0)
     }, 0)
     
+    // Extract customers from assignments
+    const customers = customerAssignments.map(assignment => {
+      const customer = Array.isArray(assignment.customers) ? assignment.customers[0] : assignment.customers
+      return customer
+    }).filter(Boolean)
+    
     const totalCustomers = customers.length
-    const newCustomersThisMonth = customers.filter(customer => {
-      const createdDate = new Date(customer.created_at)
-      return createdDate.getMonth() === currentMonth && createdDate.getFullYear() === currentYear
+    const newCustomersThisMonth = customerAssignments.filter(assignment => {
+      const assignedDate = new Date(assignment.assigned_date)
+      return assignedDate.getMonth() === currentMonth && assignedDate.getFullYear() === currentYear
     }).length
 
     const pendingReturns = returns.filter(ret => ret.status === 'pending').length
@@ -96,8 +113,8 @@ export async function GET(
     const openComplaints = complaints.filter(complaint => complaint.status === 'open' || complaint.status === 'in_progress').length
     const resolvedComplaints = complaints.filter(complaint => complaint.status === 'resolved' || complaint.status === 'closed').length
 
-    const monthlyTarget = performance?.target_amount || 0
-    const monthlyAchievement = performance?.achieved_amount || totalRevenue
+    const monthlyTarget = performance?.revenue_target || 0
+    const monthlyAchievement = performance?.achievement_revenue || totalRevenue
     const achievementPercentage = monthlyTarget > 0 ? (monthlyAchievement / monthlyTarget) * 100 : 0
 
     const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0

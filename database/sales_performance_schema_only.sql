@@ -1,8 +1,10 @@
--- Sales Performance Enhancement Tables
--- This script creates the missing tables needed for sales representative performance tracking
+-- Minimal Sales Performance Schema Setup (No Sample Data)
+-- This script only creates the essential tables and relationships needed for sales performance tracking
+
+BEGIN;
 
 -- Sales Targets/Quotas Table
-CREATE TABLE public.sales_targets (
+CREATE TABLE IF NOT EXISTS public.sales_targets (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   sales_rep_id uuid NOT NULL,
   target_period_start date NOT NULL,
@@ -23,8 +25,8 @@ CREATE TABLE public.sales_targets (
   CONSTRAINT sales_targets_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
 );
 
--- Customer Sales Rep Assignment Table (to track which customers belong to which sales rep)
-CREATE TABLE public.customer_assignments (
+-- Customer Sales Rep Assignment Table
+CREATE TABLE IF NOT EXISTS public.customer_assignments (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   customer_id uuid NOT NULL,
   sales_rep_id uuid NOT NULL,
@@ -36,12 +38,11 @@ CREATE TABLE public.customer_assignments (
   CONSTRAINT customer_assignments_pkey PRIMARY KEY (id),
   CONSTRAINT customer_assignments_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id),
   CONSTRAINT customer_assignments_sales_rep_id_fkey FOREIGN KEY (sales_rep_id) REFERENCES public.users(id),
-  CONSTRAINT customer_assignments_assigned_by_fkey FOREIGN KEY (assigned_by) REFERENCES public.users(id),
-  CONSTRAINT customer_assignments_unique_active UNIQUE (customer_id, sales_rep_id, is_active)
+  CONSTRAINT customer_assignments_assigned_by_fkey FOREIGN KEY (assigned_by) REFERENCES public.users(id)
 );
 
 -- Customer Complaints Table
-CREATE TABLE public.customer_complaints (
+CREATE TABLE IF NOT EXISTS public.customer_complaints (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   customer_id uuid NOT NULL,
   sales_rep_id uuid,
@@ -66,61 +67,23 @@ CREATE TABLE public.customer_complaints (
   CONSTRAINT customer_complaints_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
 );
 
--- Sales Performance Metrics Cache Table (for faster queries)
-CREATE TABLE public.sales_performance_cache (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  sales_rep_id uuid NOT NULL,
-  metric_period_start date NOT NULL,
-  metric_period_end date NOT NULL,
-  period_type varchar NOT NULL CHECK (period_type IN ('daily', 'weekly', 'monthly', 'quarterly', 'yearly')),
-  total_revenue numeric NOT NULL DEFAULT 0,
-  total_orders integer NOT NULL DEFAULT 0,
-  total_customers integer NOT NULL DEFAULT 0,
-  new_customers integer NOT NULL DEFAULT 0,
-  customer_retention_rate numeric NOT NULL DEFAULT 0,
-  average_order_value numeric NOT NULL DEFAULT 0,
-  conversion_rate numeric NOT NULL DEFAULT 0,
-  target_achievement_percentage numeric NOT NULL DEFAULT 0,
-  ranking_position integer,
-  ranking_total integer,
-  last_calculated timestamp without time zone DEFAULT now(),
-  created_at timestamp without time zone DEFAULT now(),
-  CONSTRAINT sales_performance_cache_pkey PRIMARY KEY (id),
-  CONSTRAINT sales_performance_cache_sales_rep_id_fkey FOREIGN KEY (sales_rep_id) REFERENCES public.users(id),
-  CONSTRAINT sales_performance_cache_unique UNIQUE (sales_rep_id, metric_period_start, metric_period_end, period_type)
-);
-
--- Indexes for better performance
-CREATE INDEX idx_sales_targets_sales_rep_period ON public.sales_targets(sales_rep_id, target_period_start, target_period_end);
-CREATE INDEX idx_customer_assignments_sales_rep_active ON public.customer_assignments(sales_rep_id, is_active);
-CREATE INDEX idx_customer_complaints_sales_rep_status ON public.customer_complaints(sales_rep_id, status);
-CREATE INDEX idx_sales_performance_cache_lookup ON public.sales_performance_cache(sales_rep_id, period_type, metric_period_start);
-
--- Add assigned_sales_rep_id to customers table if it doesn't exist
-DO $$ 
+-- Add assigned_sales_rep_id column to customers table
+DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                   WHERE table_name = 'customers' AND column_name = 'assigned_sales_rep_id') THEN
+                   WHERE table_schema = 'public' 
+                   AND table_name = 'customers' 
+                   AND column_name = 'assigned_sales_rep_id') THEN
         ALTER TABLE public.customers ADD COLUMN assigned_sales_rep_id uuid;
-    END IF;
-END $$;
-
--- Add foreign key constraint if it doesn't exist
-DO $$ 
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints 
-                   WHERE constraint_name = 'customers_assigned_sales_rep_id_fkey' 
-                   AND table_name = 'customers') THEN
         ALTER TABLE public.customers ADD CONSTRAINT customers_assigned_sales_rep_id_fkey 
             FOREIGN KEY (assigned_sales_rep_id) REFERENCES public.users(id);
     END IF;
-END $$;
+END$$;
 
--- Create index for customer sales rep lookup if it doesn't exist
-DO $$ 
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_indexes 
-                   WHERE indexname = 'idx_customers_assigned_sales_rep') THEN
-        CREATE INDEX idx_customers_assigned_sales_rep ON public.customers(assigned_sales_rep_id);
-    END IF;
-END $$;
+-- Create essential indexes
+CREATE INDEX IF NOT EXISTS idx_sales_targets_sales_rep_period ON public.sales_targets(sales_rep_id, target_period_start, target_period_end);
+CREATE INDEX IF NOT EXISTS idx_customer_assignments_sales_rep_active ON public.customer_assignments(sales_rep_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_customer_complaints_sales_rep_status ON public.customer_complaints(sales_rep_id, status);
+CREATE INDEX IF NOT EXISTS idx_customers_assigned_sales_rep ON public.customers(assigned_sales_rep_id);
+
+COMMIT;

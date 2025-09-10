@@ -38,7 +38,7 @@ import { WaiveOffDialog } from './WaiveOffDialog';
 
 interface SalesOrderWithInvoice extends Omit<SalesOrder, 'customer' | 'invoices'> {
   // New API structure fields from /api/finance/sales-orders
-  customer?: { name?: string; phone?: string; email?: string };
+  customer?: { name?: string; phone?: string; email?: string; address?: string; formatted_address?: string };
   total_paid?: number;
   balance_due?: number;
   payment_status?: 'paid' | 'partial' | 'pending';
@@ -1080,6 +1080,14 @@ export function SalesOrderInvoiceManager() {
                                       '⚠️ No contact info'
                                   }
                                 </span>
+                                {(order.customer?.formatted_address || order.customer?.address) && (
+                                  <span className="text-xs text-gray-600 mt-1 flex items-start gap-1">
+                                    <span className="text-gray-400">📍</span>
+                                    <span className="line-clamp-2">
+                                      {order.customer?.formatted_address || order.customer?.address}
+                                    </span>
+                                  </span>
+                                )}
                               </div>
                             </TableCell>
                             <TableCell>

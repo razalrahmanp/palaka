@@ -42,7 +42,7 @@ export async function GET() {
         original_price,
         discount_amount,
         waived_amount,
-        customers!customer_id(name, phone, email)
+        customers!customer_id(name, phone, email, address, formatted_address)
       `)
       .order("created_at", { ascending: false });
 
@@ -239,6 +239,8 @@ export async function GET() {
       const customerName = customerData?.name || 'Unknown Customer';
       const customerPhone = customerData?.phone || '';
       const customerEmail = customerData?.email || '';
+      const customerAddress = customerData?.address || '';
+      const customerFormattedAddress = customerData?.formatted_address || '';
 
       return {
         id: order.id,
@@ -246,7 +248,9 @@ export async function GET() {
         customer: {
           name: customerName,
           phone: customerPhone,
-          email: customerEmail
+          email: customerEmail,
+          address: customerAddress,
+          formatted_address: customerFormattedAddress
         },
         date: order.created_at.split('T')[0], // Convert timestamp to date
         status: order.status,

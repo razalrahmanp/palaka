@@ -3,6 +3,40 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
+    // Get chart of accounts for expense categorization
+    const { data: chartOfAccounts, error: chartError } = await supabase
+      .from('chart_of_accounts')
+      .select('id, account_code, account_name, account_type, account_subtype, current_balance')
+      .eq('account_type', 'EXPENSE')
+      .eq('is_active', true);
+
+    if (chartError) {
+      console.error('Error fetching chart of accounts:', chartError);
+    }
+
+    // Get journal entries for more accurate expense tracking
+    const { data: journalEntries, error: journalError } = await supabase
+      .from('journal_entries')
+      .select(`
+        *,
+        journal_entry_lines (
+          account_id,
+          debit_amount,
+          credit_amount,
+          chart_of_accounts (
+            account_name,
+            account_type,
+            account_subtype
+          )
+        )
+      `)
+      .order('date', { ascending: false })
+      .limit(1000);
+
+    if (journalError) {
+      console.error('Error fetching journal entries:', journalError);
+    }
+
     // Get payments (cash inflows)
     const { data: payments, error: paymentsError } = await supabase
       .from('payments')
@@ -123,17 +157,59 @@ export async function GET() {
       });
     }
 
-    // Categorize expenses for expense breakdown
+    // Categorize expenses using journal entries and chart of accounts
     const expenseCategories: { [key: string]: number } = {};
-    expenses?.forEach(expense => {
-      const category = expense.subcategory || 'Uncategorized';
-      expenseCategories[category] = (expenseCategories[category] || 0) + (expense.amount || 0);
+    
+    // Process journal entries for expense categorization
+    journalEntries?.forEach(entry => {
+      entry.journal_entry_lines?.forEach((line: any) => {
+        if (line.chart_of_accounts?.account_type === 'EXPENSE' && line.debit_amount > 0) {
+          const category = line.chart_of_accounts?.account_subtype || 
+                          line.chart_of_accounts?.account_name || 
+                          'Other Expenses';
+          expenseCategories[category] = (expenseCategories[category] || 0) + (line.debit_amount || 0);
+        }
+      });
     });
 
+    // Use chart of accounts current balances if journal entries are empty or insufficient
+    if (Object.keys(expenseCategories).length === 0 || 
+        Object.values(expenseCategories).reduce((sum, val) => sum + val, 0) < 1000) {
+      
+      chartOfAccounts?.forEach(account => {
+        if (account.current_balance && account.current_balance > 0) {
+          const category = account.account_subtype?.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || 
+                          account.account_name || 
+                          'Operating Expenses';
+          expenseCategories[category] = (expenseCategories[category] || 0) + Math.abs(account.current_balance);
+        }
+      });
+    }
+
+    // Fallback to expense table if nothing else works
+    if (Object.keys(expenseCategories).length === 0) {
+      expenses?.forEach(expense => {
+        const category = expense.subcategory || 'Operating Expenses';
+        expenseCategories[category] = (expenseCategories[category] || 0) + (expense.amount || 0);
+      });
+    }
+
+    // Create expense breakdown with better categorization
     const expenseBreakdown = Object.entries(expenseCategories)
-      .map(([category, amount]) => ({ category, amount }))
+      .map(([category, amount]) => ({ 
+        category: category.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()), 
+        amount 
+      }))
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 10);
+
+    // Add chart of accounts summary
+    const accountsSummary = chartOfAccounts?.map(account => ({
+      code: account.account_code,
+      name: account.account_name,
+      type: account.account_subtype?.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
+      balance: account.current_balance || 0
+    })).sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance)).slice(0, 15) || [];
 
     // Payment method analysis
     const paymentMethods: { [key: string]: { amount: number; count: number } } = {};
@@ -197,6 +273,7 @@ export async function GET() {
       monthlyCashFlow,
       expenseBreakdown,
       paymentMethodBreakdown,
+      accountsSummary,
       metrics: {
         inflowTransactions: payments?.length || 0,
         outflowTransactions: expenses?.length || 0,

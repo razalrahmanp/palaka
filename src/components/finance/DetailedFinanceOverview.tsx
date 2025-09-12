@@ -17,7 +17,8 @@ import {
   Factory,
   Calendar,
   Package,
-  Wrench
+  Wrench,
+  FileText
 } from 'lucide-react';
 
 import {
@@ -104,6 +105,13 @@ interface ProfitAnalysisData {
     profit: number;
     margin: number;
   }>;
+  revenueAnalysis?: {
+    confirmedOrdersRevenue: number;
+    totalAllOrdersRevenue: number;
+    confirmedOrdersCount: number;
+    totalAllOrdersCount: number;
+    statusBreakdown: { [key: string]: { count: number; revenue: number } };
+  };
   metrics: {
     totalOrders: number;
     averageOrderValue: number;
@@ -142,22 +150,13 @@ interface CashFlowData {
     category: string;
     amount: number;
   }>;
+  accountsSummary?: Array<{
+    code: string;
+    name: string;
+    type: string;
+    balance: number;
+  }>;
 }
-
-const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#413ea0', '#ff8042'];
-
-// Color class mapping for consistent styling
-const getColorClass = (index: number): string => {
-  const colorClasses = [
-    'bg-blue-500',
-    'bg-green-500', 
-    'bg-yellow-500',
-    'bg-orange-500',
-    'bg-purple-500',
-    'bg-red-500'
-  ];
-  return colorClasses[index % colorClasses.length];
-};
 
 export function DetailedFinanceOverview() {
   const [loading, setLoading] = useState(true);
@@ -456,6 +455,84 @@ export function DetailedFinanceOverview() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Revenue Analysis Section */}
+          {profitData?.revenueAnalysis && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5" />
+                  Revenue Analysis & Reconciliation
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* Revenue Comparison */}
+                  <div className="space-y-4">
+                    <h4 className="font-medium text-gray-700">Revenue Breakdown</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
+                        <span className="text-sm text-green-700">Confirmed Orders</span>
+                        <span className="font-bold text-green-800">
+                          {formatCurrency(profitData.revenueAnalysis.confirmedOrdersRevenue)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
+                        <span className="text-sm text-blue-700">All Orders (Total)</span>
+                        <span className="font-bold text-blue-800">
+                          {formatCurrency(profitData.revenueAnalysis.totalAllOrdersRevenue)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
+                        <span className="text-sm text-orange-700">Difference</span>
+                        <span className="font-bold text-orange-800">
+                          {formatCurrency(profitData.revenueAnalysis.totalAllOrdersRevenue - profitData.revenueAnalysis.confirmedOrdersRevenue)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Order Status Breakdown */}
+                  <div className="space-y-4">
+                    <h4 className="font-medium text-gray-700">Order Status Breakdown</h4>
+                    <div className="space-y-2">
+                      {Object.entries(profitData.revenueAnalysis.statusBreakdown).map(([status, data]) => (
+                        <div key={status} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                          <span className="text-sm capitalize">{status.replace('_', ' ')}</span>
+                          <div className="text-right">
+                            <span className="text-sm font-medium">{formatCurrency(data.revenue)}</span>
+                            <p className="text-xs text-gray-500">({data.count} orders)</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Collection Analysis */}
+                  <div className="space-y-4">
+                    <h4 className="font-medium text-gray-700">Collection Analysis</h4>
+                    <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg">
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-blue-800">
+                          {((profitData.revenueAnalysis.confirmedOrdersRevenue / profitData.revenueAnalysis.totalAllOrdersRevenue) * 100).toFixed(1)}%
+                        </p>
+                        <p className="text-sm text-blue-600">Collection Rate</p>
+                        <p className="text-xs text-blue-500 mt-2">
+                          {formatCurrency(profitData.revenueAnalysis.confirmedOrdersRevenue)} collected from 
+                          {formatCurrency(profitData.revenueAnalysis.totalAllOrdersRevenue)} total
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-center p-3 bg-yellow-50 rounded-lg">
+                      <p className="text-sm text-yellow-700">
+                        <strong>Note:</strong> The revenue difference is due to orders in pending, draft, or cancelled status.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 
@@ -603,47 +680,119 @@ export function DetailedFinanceOverview() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <PieChart className="h-5 w-5" />
-                Top Expense Categories
+                <BarChart3 className="h-5 w-5" />
+                Expense Categories Breakdown
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <ResponsiveContainer width="100%" height={250}>
-                  <RechartsPieChart>
+              <div className="space-y-6">
+                {/* Horizontal Bar Chart */}
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart
+                    data={cashFlowData?.expenseBreakdown.slice(0, 8) || []}
+                    layout="horizontal"
+                    margin={{ top: 5, right: 30, left: 80, bottom: 5 }}
+                  >
+                    <XAxis type="number" />
+                    <YAxis dataKey="category" type="category" width={120} />
                     <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                    <Pie
-                      data={cashFlowData?.expenseBreakdown.slice(0, 6) || []}
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={80}
-                      dataKey="amount"
-                      label={({ category, amount }) => `${category}: ${formatCurrency(amount)}`}
-                    >
-                      {cashFlowData?.expenseBreakdown.slice(0, 6).map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Legend />
-                  </RechartsPieChart>
+                    <Bar dataKey="amount" fill="#ef4444" name="Amount" />
+                  </BarChart>
                 </ResponsiveContainer>
                 
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="p-4 bg-red-50 rounded-lg">
+                    <h4 className="font-medium text-red-800 mb-2">Total Expenses</h4>
+                    <p className="text-2xl font-bold text-red-600">
+                      {formatCurrency(cashFlowData?.expenseBreakdown.reduce((sum, cat) => sum + cat.amount, 0) || 0)}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-orange-50 rounded-lg">
+                    <h4 className="font-medium text-orange-800 mb-2">Top Category</h4>
+                    <p className="text-lg font-bold text-orange-600">
+                      {cashFlowData?.expenseBreakdown[0]?.category || 'N/A'}
+                    </p>
+                    <p className="text-sm text-orange-600">
+                      {formatCurrency(cashFlowData?.expenseBreakdown[0]?.amount || 0)}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-yellow-50 rounded-lg">
+                    <h4 className="font-medium text-yellow-800 mb-2">Categories</h4>
+                    <p className="text-2xl font-bold text-yellow-600">
+                      {cashFlowData?.expenseBreakdown.length || 0}
+                    </p>
+                    <p className="text-sm text-yellow-600">Active expense types</p>
+                  </div>
+                </div>
+                
+                {/* Detailed List */}
                 <div className="space-y-2">
-                  {cashFlowData?.expenseBreakdown.slice(0, 6).map((category, index) => (
-                    <div key={category.category} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-3 h-3 rounded-full ${getColorClass(index)}`} />
-                        <span className="text-sm">{category.category}</span>
+                  <h4 className="font-medium text-gray-700 mb-3">Expense Details</h4>
+                  {cashFlowData?.expenseBreakdown.slice(0, 8).map((category, index) => (
+                    <div key={category.category} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-4 h-4 rounded-full bg-red-${Math.min(500 + index * 50, 800)}`} />
+                        <span className="font-medium">{category.category}</span>
                       </div>
-                      <span className="text-sm font-medium">
-                        {formatCurrency(category.amount)}
-                      </span>
+                      <div className="text-right">
+                        <span className="text-lg font-bold text-gray-900">
+                          {formatCurrency(category.amount)}
+                        </span>
+                        <p className="text-xs text-gray-500">
+                          {((category.amount / (cashFlowData?.expenseBreakdown.reduce((sum, cat) => sum + cat.amount, 0) || 1)) * 100).toFixed(1)}%
+                        </p>
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
             </CardContent>
           </Card>
+
+          {/* Chart of Accounts Summary */}
+          {cashFlowData?.accountsSummary && cashFlowData.accountsSummary.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Expense Accounts Overview
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left p-2">Account Code</th>
+                        <th className="text-left p-2">Account Name</th>
+                        <th className="text-left p-2">Type</th>
+                        <th className="text-right p-2">Current Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cashFlowData.accountsSummary.slice(0, 10).map((account, index) => (
+                        <tr key={account.code} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
+                          <td className="p-2 font-mono text-xs">{account.code}</td>
+                          <td className="p-2">{account.name}</td>
+                          <td className="p-2">
+                            <span className="text-xs bg-gray-200 px-2 py-1 rounded">
+                              {account.type || 'N/A'}
+                            </span>
+                          </td>
+                          <td className="p-2 text-right font-medium">
+                            <span className={account.balance < 0 ? 'text-red-600' : 'text-gray-900'}>
+                              {formatCurrency(Math.abs(account.balance))}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 
@@ -972,29 +1121,74 @@ export function DetailedFinanceOverview() {
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={[
                     {
-                      type: 'Regular',
-                      revenue: profitData?.regularProducts?.revenue || 0,
-                      avgOrderValue: profitData?.regularProducts?.avgOrderValue || 0,
-                      margin: profitData?.regularProducts?.grossMargin || 0
+                      metric: 'Revenue',
+                      regular: profitData?.regularProducts?.revenue || 0,
+                      custom: profitData?.customProducts?.revenue || 0
                     },
                     {
-                      type: 'Custom',
-                      revenue: profitData?.customProducts?.revenue || 0,
-                      avgOrderValue: profitData?.customProducts?.avgOrderValue || 0,
-                      margin: profitData?.customProducts?.grossMargin || 0
+                      metric: 'Profit',
+                      regular: profitData?.regularProducts?.profit || 0,
+                      custom: profitData?.customProducts?.profit || 0
+                    },
+                    {
+                      metric: 'Avg Order Value',
+                      regular: profitData?.regularProducts?.avgOrderValue || 0,
+                      custom: profitData?.customProducts?.avgOrderValue || 0
                     }
                   ]}>
-                    <XAxis dataKey="type" />
+                    <XAxis dataKey="metric" />
                     <YAxis />
-                    <Tooltip formatter={(value, name) => {
-                      if (name === 'margin') return formatPercentage(Number(value));
-                      return formatCurrency(Number(value));
-                    }} />
+                    <Tooltip formatter={(value) => formatCurrency(Number(value))} />
                     <Legend />
-                    <Bar dataKey="avgOrderValue" fill="#8b5cf6" name="Avg Order Value" />
-                    <Bar dataKey="margin" fill="#f59e0b" name="Profit Margin %" />
+                    <Bar dataKey="regular" fill="#3b82f6" name="Regular Products" />
+                    <Bar dataKey="custom" fill="#10b981" name="Custom Products" />
                   </BarChart>
                 </ResponsiveContainer>
+                
+                {/* Performance Comparison Cards */}
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <div className="p-4 bg-blue-50 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-medium text-blue-800">Regular Products</h4>
+                      <div className="w-3 h-3 rounded-full bg-blue-500" />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-blue-600">Profit Margin:</span>
+                        <span className="font-medium">{formatPercentage(profitData?.regularProducts?.grossMargin || 0)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-blue-600">Items Sold:</span>
+                        <span className="font-medium">{profitData?.regularProducts?.count || 0}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-blue-600">Market Share:</span>
+                        <span className="font-medium">{formatPercentage(profitData?.metrics?.regularProductRatio || 0)}</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="p-4 bg-green-50 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-medium text-green-800">Custom Products</h4>
+                      <div className="w-3 h-3 rounded-full bg-green-500" />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-green-600">Profit Margin:</span>
+                        <span className="font-medium">{formatPercentage(profitData?.customProducts?.grossMargin || 0)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-green-600">Items Sold:</span>
+                        <span className="font-medium">{profitData?.customProducts?.count || 0}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-green-600">Market Share:</span>
+                        <span className="font-medium">{formatPercentage(profitData?.metrics?.customProductRatio || 0)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </div>

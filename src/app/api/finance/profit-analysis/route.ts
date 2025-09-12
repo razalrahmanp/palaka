@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     const startDate = new Date();
     startDate.setDate(endDate.getDate() - parseInt(period));
 
-    // Get all sales data with items for profit analysis
+    // Get all sales data with items for profit analysis (confirmed orders)
     const { data: salesData, error: salesError } = await supabase
       .from('sales_orders')
       .select(`
@@ -45,6 +45,13 @@ export async function GET(request: NextRequest) {
         )
       `)
       .eq('status', 'confirmed')
+      .gte('created_at', startDate.toISOString())
+      .lte('created_at', endDate.toISOString());
+
+    // Get ALL sales orders for revenue analysis (including all statuses)
+    const { data: allSalesData, error: allSalesError } = await supabase
+      .from('sales_orders')
+      .select('id, grand_total, created_at, status')
       .gte('created_at', startDate.toISOString())
       .lte('created_at', endDate.toISOString());
 
@@ -298,6 +305,19 @@ export async function GET(request: NextRequest) {
       dailyProfitData,
       topProducts,
       monthlyTrends: dailyProfitData, // Use daily data as monthly for now
+      revenueAnalysis: {
+        confirmedOrdersRevenue: totalRevenue,
+        totalAllOrdersRevenue: allSalesData?.reduce((sum, order) => sum + (order.grand_total || 0), 0) || 0,
+        confirmedOrdersCount: salesData?.length || 0,
+        totalAllOrdersCount: allSalesData?.length || 0,
+        statusBreakdown: allSalesData?.reduce((acc: { [key: string]: { count: number; revenue: number } }, order) => {
+          const status = order.status || 'unknown';
+          if (!acc[status]) acc[status] = { count: 0, revenue: 0 };
+          acc[status].count += 1;
+          acc[status].revenue += order.grand_total || 0;
+          return acc;
+        }, {}) || {}
+      },
       metrics: {
         totalOrders: (salesData?.length || 0),
         averageOrderValue: totalRevenue / (salesData?.length || 1),

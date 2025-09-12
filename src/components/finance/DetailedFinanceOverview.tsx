@@ -31,6 +31,7 @@ import {
   BarChart,
   Bar,
   PieChart as RechartsPieChart,
+  Pie,
   Cell,
   Area,
   AreaChart
@@ -39,6 +40,9 @@ import {
 interface ProfitAnalysisData {
   summary: {
     totalRevenue: number;
+    totalCost: number;
+    grossProfit: number;
+    grossProfitMargin: number;
     totalExpenses: number;
     netProfit: number;
     netProfitMargin: number;
@@ -78,6 +82,27 @@ interface ProfitAnalysisData {
     name: string;
     revenue: number;
     orders: number;
+  }>;
+  topProducts?: Array<{
+    name: string;
+    revenue: number;
+    profit: number;
+    quantity: number;
+  }>;
+  productComparison?: Array<{
+    type: string;
+    revenue: number;
+    cost: number;
+    profit: number;
+    margin: number;
+    quantity: number;
+  }>;
+  dailyProfitData?: Array<{
+    date: string;
+    revenue: number;
+    cost: number;
+    profit: number;
+    margin: number;
   }>;
   metrics: {
     totalOrders: number;
@@ -587,17 +612,19 @@ export function DetailedFinanceOverview() {
                 <ResponsiveContainer width="100%" height={250}>
                   <RechartsPieChart>
                     <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                    <RechartsPieChart
+                    <Pie
                       data={cashFlowData?.expenseBreakdown.slice(0, 6) || []}
                       cx="50%"
                       cy="50%"
                       outerRadius={80}
                       dataKey="amount"
+                      label={({ category, amount }) => `${category}: ${formatCurrency(amount)}`}
                     >
                       {cashFlowData?.expenseBreakdown.slice(0, 6).map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
-                    </RechartsPieChart>
+                    </Pie>
+                    <Legend />
                   </RechartsPieChart>
                 </ResponsiveContainer>
                 
@@ -620,16 +647,482 @@ export function DetailedFinanceOverview() {
         </div>
       )}
 
-      {/* Profitability and Products tabs would be implemented similarly */}
+      {/* Profitability Tab */}
       {activeView === 'profitability' && (
-        <div className="flex items-center justify-center h-64">
-          <p className="text-gray-500">Profitability analysis coming soon...</p>
+        <div className="space-y-6">
+          {/* Profitability Overview Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Gross Profit</p>
+                    <p className="text-2xl font-bold text-green-600">
+                      {formatCurrency(profitData?.summary?.grossProfit || 0)}
+                    </p>
+                    <p className="text-xs text-green-600">
+                      {formatPercentage(profitData?.summary?.grossProfitMargin || 0)} margin
+                    </p>
+                  </div>
+                  <DollarSign className="h-8 w-8 text-green-500" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Net Profit</p>
+                    <p className="text-2xl font-bold text-blue-600">
+                      {formatCurrency(profitData?.summary?.netProfit || 0)}
+                    </p>
+                    <p className="text-xs text-blue-600">
+                      {formatPercentage(profitData?.summary?.netProfitMargin || 0)} margin
+                    </p>
+                  </div>
+                  <TrendingUp className="h-8 w-8 text-blue-500" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Total Cost</p>
+                    <p className="text-2xl font-bold text-red-600">
+                      {formatCurrency(profitData?.summary?.totalCost || 0)}
+                    </p>
+                    <p className="text-xs text-red-600">
+                      Cost of goods sold
+                    </p>
+                  </div>
+                  <ArrowDownRight className="h-8 w-8 text-red-500" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Avg Order Value</p>
+                    <p className="text-2xl font-bold text-purple-600">
+                      {formatCurrency(profitData?.metrics?.averageOrderValue || 0)}
+                    </p>
+                    <p className="text-xs text-purple-600">
+                      {profitData?.metrics?.totalOrders || 0} orders
+                    </p>
+                  </div>
+                  <Target className="h-8 w-8 text-purple-500" />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Profitability Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Daily Profit Trend */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Daily Profit Trend
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={profitData?.dailyProfitData || []}>
+                    <XAxis dataKey="date" />
+                    <YAxis />
+                    <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="profit"
+                      stroke="#10b981"
+                      strokeWidth={3}
+                      name="Daily Profit"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="margin"
+                      stroke="#8b5cf6"
+                      strokeWidth={2}
+                      name="Profit Margin %"
+                      yAxisId="right"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Product Type Profitability Comparison */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5" />
+                  Product Type Profitability
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={profitData?.productComparison || []}>
+                    <XAxis dataKey="type" />
+                    <YAxis />
+                    <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                    <Legend />
+                    <Bar dataKey="revenue" fill="#3b82f6" name="Revenue" />
+                    <Bar dataKey="cost" fill="#ef4444" name="Cost" />
+                    <Bar dataKey="profit" fill="#10b981" name="Profit" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Profit Margin Analysis */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <PieChart className="h-5 w-5" />
+                Product Type Profit Distribution
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <ResponsiveContainer width="100%" height={250}>
+                  <RechartsPieChart>
+                    <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                    <Pie
+                      data={[
+                        { name: 'Regular Products', value: profitData?.regularProducts?.profit || 0 },
+                        { name: 'Custom Products', value: profitData?.customProducts?.profit || 0 }
+                      ]}
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={80}
+                      dataKey="value"
+                      label={({ name, value }) => `${name}: ${formatCurrency(value)}`}
+                    >
+                      <Cell fill="#3b82f6" />
+                      <Cell fill="#10b981" />
+                    </Pie>
+                    <Legend />
+                  </RechartsPieChart>
+                </ResponsiveContainer>
+                
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-blue-500" />
+                        <span className="text-sm">Regular Products</span>
+                      </div>
+                      <span className="text-sm font-medium">
+                        {formatCurrency(profitData?.regularProducts?.profit || 0)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between pl-5">
+                      <span className="text-xs text-gray-600">Margin:</span>
+                      <span className="text-xs font-medium">
+                        {formatPercentage(profitData?.regularProducts?.grossMargin || 0)}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-green-500" />
+                        <span className="text-sm">Custom Products</span>
+                      </div>
+                      <span className="text-sm font-medium">
+                        {formatCurrency(profitData?.customProducts?.profit || 0)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between pl-5">
+                      <span className="text-xs text-gray-600">Margin:</span>
+                      <span className="text-xs font-medium">
+                        {formatPercentage(profitData?.customProducts?.grossMargin || 0)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
+      {/* Products Tab */}
       {activeView === 'products' && (
-        <div className="flex items-center justify-center h-64">
-          <p className="text-gray-500">Product analysis coming soon...</p>
+        <div className="space-y-6">
+          {/* Product Performance Summary */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-blue-600">Regular Products</p>
+                    <p className="text-2xl font-bold text-blue-800">
+                      {profitData?.regularProducts?.count || 0}
+                    </p>
+                    <p className="text-xs text-blue-600">
+                      {formatCurrency(profitData?.regularProducts?.revenue || 0)} revenue
+                    </p>
+                  </div>
+                  <Package className="h-8 w-8 text-blue-500" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-green-600">Custom Products</p>
+                    <p className="text-2xl font-bold text-green-800">
+                      {profitData?.customProducts?.count || 0}
+                    </p>
+                    <p className="text-xs text-green-600">
+                      {formatCurrency(profitData?.customProducts?.revenue || 0)} revenue
+                    </p>
+                  </div>
+                  <Wrench className="h-8 w-8 text-green-500" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-purple-600">Total Orders</p>
+                    <p className="text-2xl font-bold text-purple-800">
+                      {profitData?.metrics?.totalOrders || 0}
+                    </p>
+                    <p className="text-xs text-purple-600">
+                      {formatCurrency(profitData?.metrics?.averageOrderValue || 0)} avg value
+                    </p>
+                  </div>
+                  <ShoppingCart className="h-8 w-8 text-purple-500" />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Product Analysis Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Revenue by Product Type */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <PieChart className="h-5 w-5" />
+                  Revenue by Product Type
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <RechartsPieChart>
+                    <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                    <Pie
+                      data={[
+                        { 
+                          name: 'Regular Products', 
+                          value: profitData?.regularProducts?.revenue || 0,
+                          percentage: profitData?.metrics?.regularProductRatio || 0
+                        },
+                        { 
+                          name: 'Custom Products', 
+                          value: profitData?.customProducts?.revenue || 0,
+                          percentage: profitData?.metrics?.customProductRatio || 0
+                        }
+                      ]}
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={80}
+                      dataKey="value"
+                      label={({ name, percentage }) => `${name}: ${percentage.toFixed(1)}%`}
+                    >
+                      <Cell fill="#3b82f6" />
+                      <Cell fill="#10b981" />
+                    </Pie>
+                    <Legend />
+                  </RechartsPieChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Product Performance Metrics */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5" />
+                  Product Performance Comparison
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={[
+                    {
+                      type: 'Regular',
+                      revenue: profitData?.regularProducts?.revenue || 0,
+                      avgOrderValue: profitData?.regularProducts?.avgOrderValue || 0,
+                      margin: profitData?.regularProducts?.grossMargin || 0
+                    },
+                    {
+                      type: 'Custom',
+                      revenue: profitData?.customProducts?.revenue || 0,
+                      avgOrderValue: profitData?.customProducts?.avgOrderValue || 0,
+                      margin: profitData?.customProducts?.grossMargin || 0
+                    }
+                  ]}>
+                    <XAxis dataKey="type" />
+                    <YAxis />
+                    <Tooltip formatter={(value, name) => {
+                      if (name === 'margin') return formatPercentage(Number(value));
+                      return formatCurrency(Number(value));
+                    }} />
+                    <Legend />
+                    <Bar dataKey="avgOrderValue" fill="#8b5cf6" name="Avg Order Value" />
+                    <Bar dataKey="margin" fill="#f59e0b" name="Profit Margin %" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Detailed Product Breakdown */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Regular Products Details */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Package className="h-5 w-5" />
+                  Regular Products Analysis
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-blue-50 rounded-lg">
+                      <p className="text-sm font-medium text-blue-600">Total Revenue</p>
+                      <p className="text-xl font-bold text-blue-800">
+                        {formatCurrency(profitData?.regularProducts?.revenue || 0)}
+                      </p>
+                    </div>
+                    <div className="p-4 bg-blue-50 rounded-lg">
+                      <p className="text-sm font-medium text-blue-600">Total Profit</p>
+                      <p className="text-xl font-bold text-blue-800">
+                        {formatCurrency(profitData?.regularProducts?.profit || 0)}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Items Sold:</span>
+                      <span className="font-medium">{profitData?.regularProducts?.count || 0}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Avg Order Value:</span>
+                      <span className="font-medium">{formatCurrency(profitData?.regularProducts?.avgOrderValue || 0)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Profit Margin:</span>
+                      <span className="font-medium text-green-600">{formatPercentage(profitData?.regularProducts?.grossMargin || 0)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Market Share:</span>
+                      <span className="font-medium">{formatPercentage(profitData?.metrics?.regularProductRatio || 0)}</span>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Custom Products Details */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Wrench className="h-5 w-5" />
+                  Custom Products Analysis
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-green-50 rounded-lg">
+                      <p className="text-sm font-medium text-green-600">Total Revenue</p>
+                      <p className="text-xl font-bold text-green-800">
+                        {formatCurrency(profitData?.customProducts?.revenue || 0)}
+                      </p>
+                    </div>
+                    <div className="p-4 bg-green-50 rounded-lg">
+                      <p className="text-sm font-medium text-green-600">Total Profit</p>
+                      <p className="text-xl font-bold text-green-800">
+                        {formatCurrency(profitData?.customProducts?.profit || 0)}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Items Sold:</span>
+                      <span className="font-medium">{profitData?.customProducts?.count || 0}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Avg Order Value:</span>
+                      <span className="font-medium">{formatCurrency(profitData?.customProducts?.avgOrderValue || 0)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Profit Margin:</span>
+                      <span className="font-medium text-green-600">{formatPercentage(profitData?.customProducts?.grossMargin || 0)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Market Share:</span>
+                      <span className="font-medium">{formatPercentage(profitData?.metrics?.customProductRatio || 0)}</span>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Top Products Performance */}
+          {profitData?.topProducts && profitData.topProducts.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Factory className="h-5 w-5" />
+                  Top Performing Products
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {profitData.topProducts.slice(0, 10).map((product, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                          <span className="text-sm font-bold text-blue-600">{index + 1}</span>
+                        </div>
+                        <div>
+                          <p className="font-medium">{product.name || 'Unknown Product'}</p>
+                          <p className="text-sm text-gray-600">{product.quantity || 0} units sold</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold">{formatCurrency(product.revenue || 0)}</p>
+                        <p className="text-sm text-green-600">{formatCurrency(product.profit || 0)} profit</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
     </div>

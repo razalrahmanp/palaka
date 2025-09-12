@@ -735,8 +735,12 @@ export function DetailedFinanceOverview() {
                 <ResponsiveContainer width="100%" height={300}>
                   <LineChart data={profitData?.dailyProfitData || []}>
                     <XAxis dataKey="date" />
-                    <YAxis />
-                    <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                    <YAxis yAxisId="left" />
+                    <YAxis yAxisId="right" orientation="right" />
+                    <Tooltip formatter={(value, name) => {
+                      if (name === 'Profit Margin %') return formatPercentage(Number(value));
+                      return formatCurrency(Number(value));
+                    }} />
                     <Legend />
                     <Line
                       type="monotone"
@@ -744,6 +748,7 @@ export function DetailedFinanceOverview() {
                       stroke="#10b981"
                       strokeWidth={3}
                       name="Daily Profit"
+                      yAxisId="left"
                     />
                     <Line
                       type="monotone"

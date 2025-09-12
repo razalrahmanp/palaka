@@ -20,11 +20,14 @@ import {
   Printer,
   ShoppingCart,
   Send,
-  Save
+  Save,
+  RotateCcw,
+  ArrowLeftRight
 } from "lucide-react";
 import { ProductWithInventory, BillingCustomer, BillingItem, CustomProduct, PaymentMethod, BillingData, Invoice } from "@/types";
 import { BajajFinanceCalculator, BajajFinanceData } from './BajajFinanceCalculator';
 import { PaymentTrackingDialog } from '../finance/PaymentTrackingDialog';
+import { ReturnExchangeDialog } from './ReturnExchangeDialog';
 
 interface Supplier {
   id: string;
@@ -153,6 +156,10 @@ export function InvoiceBillingDashboard({
   // UI States
   const [isProcessing, setIsProcessing] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  
+  // Return/Exchange Dialog States
+  const [showReturnExchangeDialog, setShowReturnExchangeDialog] = useState(false);
+  const [selectedItemForReturn, setSelectedItemForReturn] = useState<BillingItem | null>(null);
 
   // Calculate effective item data including global discount distribution
   const getItemsWithGlobalDiscount = useCallback(() => {
@@ -854,6 +861,20 @@ export function InvoiceBillingDashboard({
     setItems(items.filter(item => item.id !== itemId));
   };
 
+  // Handle Return/Exchange
+  const handleReturnExchange = (item: BillingItem) => {
+    setSelectedItemForReturn(item);
+    setShowReturnExchangeDialog(true);
+  };
+
+  const handleReturnExchangeSuccess = () => {
+    // Remove the item from the current list after successful return/exchange
+    if (selectedItemForReturn) {
+      removeItem(selectedItemForReturn.id);
+    }
+    setSelectedItemForReturn(null);
+  };
+
   // Create new customer
   const createNewCustomer = async () => {
     setIsProcessing(true);
@@ -1392,14 +1413,38 @@ export function InvoiceBillingDashboard({
                           {displayDescription}
                         </div>
                       )}
-                      <div className="print:hidden mt-2">
+                      <div className="print:hidden mt-2 flex gap-1">
+                        {/* Delete Button */}
                         <Button
                           onClick={() => removeItem(item.id)}
                           variant="outline"
                           size="sm"
                           className="h-6 w-6 p-0 border-red-200 hover:border-red-300 hover:bg-red-50"
+                          title="Delete Item"
                         >
                           <Trash2 className="h-3 w-3 text-red-500" />
+                        </Button>
+                        
+                        {/* Return Button */}
+                        <Button
+                          onClick={() => handleReturnExchange(item)}
+                          variant="outline"
+                          size="sm"
+                          className="h-6 w-6 p-0 border-blue-200 hover:border-blue-300 hover:bg-blue-50"
+                          title="Return/Exchange Item"
+                        >
+                          <RotateCcw className="h-3 w-3 text-blue-500" />
+                        </Button>
+                        
+                        {/* Exchange Button */}
+                        <Button
+                          onClick={() => handleReturnExchange(item)}
+                          variant="outline" 
+                          size="sm"
+                          className="h-6 w-6 p-0 border-green-200 hover:border-green-300 hover:bg-green-50"
+                          title="Exchange Item"
+                        >
+                          <ArrowLeftRight className="h-3 w-3 text-green-500" />
                         </Button>
                       </div>
                     </div>
@@ -2346,6 +2391,19 @@ export function InvoiceBillingDashboard({
           }}
         />
       )}
+
+      {/* Return/Exchange Dialog */}
+      <ReturnExchangeDialog
+        isOpen={showReturnExchangeDialog}
+        onClose={() => {
+          setShowReturnExchangeDialog(false);
+          setSelectedItemForReturn(null);
+        }}
+        item={selectedItemForReturn}
+        orderId={initialData?.existingId}
+        salesRepId={selectedSalesman?.user_id}
+        onSuccess={handleReturnExchangeSuccess}
+      />
     </div>
   );
 }

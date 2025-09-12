@@ -26,7 +26,8 @@ import {
   Printer,
   MessageCircle,
   Minus,
-  Search
+  Search,
+  Trash2
 } from 'lucide-react';
 import { SalesOrder, Invoice, subcategoryMap } from '@/types';
 import { PaymentTrackingDialog } from './PaymentTrackingDialog';
@@ -36,6 +37,32 @@ import { WaiveOffDialog } from './WaiveOffDialog';
 import { PaymentDeletionManager } from './PaymentDeletionManager';
 
 // Component interfaces and types
+
+interface Truck {
+  id: string;
+  plate_number: string;
+  model: string;
+  year?: number;
+  fuel_type: string;
+  status: string;
+}
+
+interface Employee {
+  id: string;
+  name: string;
+  employee_id: string;
+  position: string;
+  salary: number;
+  department: string;
+}
+
+interface Supplier {
+  id: string;
+  name: string;
+  contact: string;
+  email: string;
+  address: string;
+}
 
 interface SalesOrderWithInvoice extends Omit<SalesOrder, 'customer' | 'invoices'> {
   // New API structure fields from /api/finance/sales-orders
@@ -148,14 +175,26 @@ export function SalesOrderInvoiceManager() {
   const [paymentsSearchQuery, setPaymentsSearchQuery] = useState('');
   const [expensesSearchQuery, setExpensesSearchQuery] = useState('');
   
+  // Delete expense states
+  const [deleteExpenseOpen, setDeleteExpenseOpen] = useState(false);
+  const [selectedExpenseForDelete, setSelectedExpenseForDelete] = useState<Expense | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  
   const [expenseForm, setExpenseForm] = useState({
     date: new Date().toISOString().split('T')[0],
     description: '',
     amount: '',
     category: 'Office Supplies',
     payment_method: 'cash',
-    bank_account_id: ''
+    bank_account_id: '',
+    entity_id: '', // For truck, employee, or supplier selection
+    entity_type: '' // 'truck', 'employee', 'supplier'
   });
+
+  // Entity data states
+  const [trucks, setTrucks] = useState<Truck[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
   useEffect(() => {
     fetchData();
@@ -183,11 +222,14 @@ export function SalesOrderInvoiceManager() {
       console.log('📈 Summary:', ordersData.summary);
       
       // Fetch the rest separately for other components that might need them
-      const [invoicesRes, paymentsRes, expensesRes, bankAccountsRes] = await Promise.all([
+      const [invoicesRes, paymentsRes, expensesRes, bankAccountsRes, trucksRes, employeesRes, suppliersRes] = await Promise.all([
         fetch('/api/finance/invoices'),
         fetch('/api/finance/payments'),
         fetch('/api/finance/expenses'),
-        fetch('/api/finance/bank-accounts')
+        fetch('/api/finance/bank-accounts'),
+        fetch('/api/trucks'),
+        fetch('/api/employees?select=id,name,employee_id,position,salary,department'),
+        fetch('/api/vendors')
       ]);
       
       const invoicesData = await invoicesRes.json();
@@ -201,6 +243,29 @@ export function SalesOrderInvoiceManager() {
       } else {
         console.error('Failed to fetch bank accounts:', bankAccountsRes.statusText);
         // Continue without bank accounts - user will see "No bank accounts available"
+      }
+
+      // Handle entity data
+      let trucksData = [];
+      if (trucksRes.ok) {
+        trucksData = await trucksRes.json();
+      } else {
+        console.error('Failed to fetch trucks:', trucksRes.statusText);
+      }
+
+      let employeesData = [];
+      if (employeesRes.ok) {
+        employeesData = await employeesRes.json();
+      } else {
+        console.error('Failed to fetch employees:', employeesRes.statusText);
+      }
+
+      let suppliersData = [];
+      if (suppliersRes.ok) {
+        const suppliersResponse = await suppliersRes.json();
+        suppliersData = suppliersResponse.success ? (suppliersResponse.vendors || suppliersResponse.data || []) : [];
+      } else {
+        console.error('Failed to fetch suppliers:', suppliersRes.statusText);
       }
       
       console.log('Raw Invoices Data:', invoicesData); // Enhanced debugging
@@ -243,6 +308,9 @@ export function SalesOrderInvoiceManager() {
       setPayments(payments);
       setExpenses(expenses);
       setBankAccounts(bankAccounts);
+      setTrucks(trucksData);
+      setEmployees(employeesData);
+      setSuppliers(suppliersData);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -283,6 +351,84 @@ export function SalesOrderInvoiceManager() {
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-IN');
+  };
+
+  // Entity selection logic
+  const getEntityTypeForCategory = (category: string): string => {
+    if (category.toLowerCase().includes('vehicle fuel') || category.toLowerCase().includes('vehicle maintenance') || category.toLowerCase().includes('vehicle') && category.toLowerCase().includes('fleet')) {
+      return 'truck';
+    }
+    if (category.toLowerCase().includes('salary') || category.toLowerCase().includes('salaries') || 
+        category.toLowerCase().includes('wages') || category.toLowerCase().includes('incentive') || 
+        category.toLowerCase().includes('bonus') || category.toLowerCase().includes('overtime')) {
+      return 'employee';
+    }
+    if (category.toLowerCase().includes('vendor') || category.toLowerCase().includes('supplier')) {
+      return 'supplier';
+    }
+    return '';
+  };
+
+  const handleCategoryChange = (category: string) => {
+    const entityType = getEntityTypeForCategory(category);
+    setExpenseForm({ 
+      ...expenseForm, 
+      category, 
+      entity_type: entityType,
+      entity_id: '' // Reset entity selection when category changes
+    });
+  };
+
+  const getEntityOptions = () => {
+    switch (expenseForm.entity_type) {
+      case 'truck':
+        return trucks.map(truck => ({
+          value: truck.id,
+          label: `${truck.plate_number} - ${truck.model} (${truck.fuel_type})`
+        }));
+      case 'employee':
+        return employees.map(employee => ({
+          value: employee.id,
+          label: `${employee.name} - ${employee.position} (₹${employee.salary?.toLocaleString('en-IN')})`
+        }));
+      case 'supplier':
+        return suppliers.map(supplier => ({
+          value: supplier.id,
+          label: `${supplier.name} - ${supplier.contact}`
+        }));
+      default:
+        return [];
+    }
+  };
+
+  const getSelectedEntityDetails = () => {
+    if (!expenseForm.entity_id || !expenseForm.entity_type) return null;
+
+    switch (expenseForm.entity_type) {
+      case 'truck': {
+        const truck = trucks.find(t => t.id === expenseForm.entity_id);
+        return truck ? {
+          name: `${truck.plate_number} - ${truck.model}`,
+          details: `Year: ${truck.year || 'N/A'}, Fuel: ${truck.fuel_type}, Status: ${truck.status}`
+        } : null;
+      }
+      case 'employee': {
+        const employee = employees.find(e => e.id === expenseForm.entity_id);
+        return employee ? {
+          name: `${employee.name} (${employee.employee_id})`,
+          details: `Position: ${employee.position}, Department: ${employee.department || 'N/A'}, Salary: ₹${employee.salary?.toLocaleString('en-IN') || 'N/A'}`
+        } : null;
+      }
+      case 'supplier': {
+        const supplier = suppliers.find(s => s.id === expenseForm.entity_id);
+        return supplier ? {
+          name: supplier.name,
+          details: `Contact: ${supplier.contact}, Email: ${supplier.email || 'N/A'}`
+        } : null;
+      }
+      default:
+        return null;
+    }
   };
 
   // Waive-off handlers
@@ -604,11 +750,21 @@ export function SalesOrderInvoiceManager() {
         body: JSON.stringify({
           date: expenseForm.date,
           subcategory: expenseForm.category,
-          description: expenseForm.description,
+          description: expenseForm.description + (getSelectedEntityDetails() ? ` [${getSelectedEntityDetails()?.name}]` : ''),
           amount: parseFloat(expenseForm.amount),
           payment_method: expenseForm.payment_method,
           bank_account_id: expenseForm.bank_account_id || (bankAccounts.length > 0 ? bankAccounts[0].id : 1), // Use selected bank account or first available
-          created_by: 'system' // You may want to get this from auth context
+          entity_id: expenseForm.entity_id || null,
+          entity_type: expenseForm.entity_type || null,
+          created_by: 'system', // You may want to get this from auth context
+          // Additional fields for entity integrations
+          vendor_bill_id: null, // Could be added to form later
+          payroll_record_id: null, // Could be added to form later
+          odometer: null, // Could be added to form for vehicle expenses
+          quantity: null, // Could be added to form for fuel/parts
+          location: null, // Could be added to form for fuel stations, etc.
+          vendor_name: null, // Could be extracted from supplier name
+          receipt_number: null // Could be added to form
         }),
       });
 
@@ -620,7 +776,9 @@ export function SalesOrderInvoiceManager() {
           amount: '',
           category: 'Office Supplies',
           payment_method: 'cash',
-          bank_account_id: ''
+          bank_account_id: '',
+          entity_id: '',
+          entity_type: ''
         });
         fetchData(); // Refresh data
         alert('Expense created successfully!');
@@ -631,6 +789,42 @@ export function SalesOrderInvoiceManager() {
     } catch (error) {
       console.error('Error creating expense:', error);
       alert('Error creating expense. Please try again.');
+    }
+  };
+
+  const handleDeleteExpense = (expense: Expense) => {
+    setSelectedExpenseForDelete(expense);
+    setDeleteExpenseOpen(true);
+  };
+
+  const confirmDeleteExpense = async () => {
+    if (!selectedExpenseForDelete) return;
+
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`/api/finance/expenses/cleanup?expense_id=${selectedExpenseForDelete.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setDeleteExpenseOpen(false);
+        setSelectedExpenseForDelete(null);
+        fetchData(); // Refresh data
+        alert('Expense deleted successfully with comprehensive cleanup!');
+        console.log('Cleanup details:', result);
+      } else {
+        const error = await response.json();
+        alert(`Failed to delete expense: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error deleting expense:', error);
+      alert('Error deleting expense. Please try again.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -1718,6 +1912,15 @@ export function SalesOrderInvoiceManager() {
                               >
                                 <Eye className="h-3 w-3" />
                               </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-xs px-2 py-1 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                title="Delete Expense"
+                                onClick={() => handleDeleteExpense(expense)}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -1744,137 +1947,240 @@ export function SalesOrderInvoiceManager() {
 
       {/* Create Expense Dialog */}
       <Dialog open={createExpenseOpen} onOpenChange={setCreateExpenseOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Create New Expense</DialogTitle>
+        <DialogContent className="max-w-4xl w-[90vw] max-h-[85vh] overflow-y-auto">
+          <DialogHeader className="pb-6">
+            <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+              <Receipt className="h-5 w-5 text-red-600" />
+              Create New Expense
+            </DialogTitle>
+            <p className="text-sm text-gray-600 mt-1">
+              Add a new expense entry with automatic accounting integration
+            </p>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="date" className="text-right">
-                Date
-              </Label>
-              <Input
-                id="date"
-                type="date"
-                value={expenseForm.date}
-                onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="description" className="text-right">
-                Description
-              </Label>
-              <Textarea
-                id="description"
-                placeholder="Enter expense description..."
-                value={expenseForm.description}
-                onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="amount" className="text-right">
-                Amount
-              </Label>
-              <Input
-                id="amount"
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                value={expenseForm.amount}
-                onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="category" className="text-right">
-                Expense Category
-              </Label>
-              <Select value={expenseForm.category} onValueChange={(value) => setExpenseForm({ ...expenseForm, category: value })}>
-                <SelectTrigger className="col-span-3">
-                  <SelectValue placeholder="Select expense category" />
-                </SelectTrigger>
-                <SelectContent className="max-h-60">
-                  {/* Dynamic categories from subcategoryMap */}
-                  {Object.entries(subcategoryMap).map(([category, details]) => (
-                    <SelectItem key={category} value={category}>
-                      {category} ({details.accountCode})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="payment_method" className="text-right">
-                Payment Method
-              </Label>
-              <Select value={expenseForm.payment_method} onValueChange={(value) => setExpenseForm({ ...expenseForm, payment_method: value })}>
-                <SelectTrigger className="col-span-3">
-                  <SelectValue placeholder="Select payment method" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cash">Cash</SelectItem>
-                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                  <SelectItem value="card">Card</SelectItem>
-                  <SelectItem value="cheque">Cheque</SelectItem>
-                  <SelectItem value="online">Online Payment</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {(expenseForm.payment_method === 'bank_transfer' || expenseForm.payment_method === 'card' || expenseForm.payment_method === 'cheque' || expenseForm.payment_method === 'online') && (
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="bank_account" className="text-right">
-                  Bank Account
-                </Label>
-                <div className="col-span-3 flex gap-2">
-                  <Select value={expenseForm.bank_account_id} onValueChange={(value) => setExpenseForm({ ...expenseForm, bank_account_id: value })}>
-                    <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Select bank account" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {bankAccounts && bankAccounts.length > 0 ? (
-                        bankAccounts.map((account) => (
-                          <SelectItem key={account.id} value={account.id}>
-                            {account.account_name}{account.account_number ? ` - ${account.account_number}` : ''} {account.account_type ? `(${account.account_type})` : ''}
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 py-4">
+            {/* Left Column - Basic Information */}
+            <div className="space-y-6">
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="font-medium text-gray-900 mb-4 flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  Basic Information
+                </h3>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="date" className="text-sm font-medium">
+                      Expense Date *
+                    </Label>
+                    <Input
+                      id="date"
+                      type="date"
+                      value={expenseForm.date}
+                      onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })}
+                      className="w-full"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="amount" className="text-sm font-medium">
+                      Amount (₹) *
+                    </Label>
+                    <Input
+                      id="amount"
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={expenseForm.amount}
+                      onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
+                      className="w-full text-lg"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="category" className="text-sm font-medium">
+                      Expense Category *
+                    </Label>
+                    <Select value={expenseForm.category} onValueChange={handleCategoryChange}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select expense category" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        {/* Dynamic categories from subcategoryMap */}
+                        {Object.entries(subcategoryMap).map(([category, details]) => (
+                          <SelectItem key={category} value={category}>
+                            <div className="flex flex-col">
+                              <span>{category}</span>
+                              <span className="text-xs text-gray-500">Code: {details.accountCode} | Type: {details.type}</span>
+                            </div>
                           </SelectItem>
-                        ))
-                      ) : (
-                        <SelectItem value="" disabled>
-                          No bank accounts available
-                        </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {expenseForm.category && subcategoryMap[expenseForm.category as keyof typeof subcategoryMap] && (
+                      <div className="text-xs text-gray-600 bg-blue-50 p-2 rounded">
+                        <span className="font-medium">Category Info:</span> {subcategoryMap[expenseForm.category as keyof typeof subcategoryMap].category} expense | 
+                        Account: {subcategoryMap[expenseForm.category as keyof typeof subcategoryMap].accountCode} | 
+                        Type: {subcategoryMap[expenseForm.category as keyof typeof subcategoryMap].type}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Entity Selection - Show when category requires it */}
+                  {expenseForm.entity_type && (
+                    <div className="space-y-2">
+                      <Label htmlFor="entity" className="text-sm font-medium">
+                        Select {expenseForm.entity_type === 'truck' ? 'Truck' : 
+                               expenseForm.entity_type === 'employee' ? 'Employee' : 'Supplier'} *
+                      </Label>
+                      <Select value={expenseForm.entity_id} onValueChange={(value) => setExpenseForm({ ...expenseForm, entity_id: value })}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder={`Select ${expenseForm.entity_type === 'truck' ? 'truck' : 
+                                                            expenseForm.entity_type === 'employee' ? 'employee' : 'supplier'}`} />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          {getEntityOptions().map(option => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {expenseForm.entity_id && getSelectedEntityDetails() && (
+                        <div className="text-xs text-gray-600 bg-green-50 p-2 rounded">
+                          <div className="font-medium">{getSelectedEntityDetails()?.name}</div>
+                          <div className="text-gray-500">{getSelectedEntityDetails()?.details}</div>
+                        </div>
                       )}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fetchData()}
-                    title="Refresh bank accounts"
-                  >
-                    🔄
-                  </Button>
+                    </div>
+                  )}
                 </div>
               </div>
-            )}
+            </div>
+
+            {/* Right Column - Payment & Description */}
+            <div className="space-y-6">
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="font-medium text-gray-900 mb-4 flex items-center gap-2">
+                  <CreditCard className="h-4 w-4" />
+                  Payment Details
+                </h3>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="payment_method" className="text-sm font-medium">
+                      Payment Method *
+                    </Label>
+                    <Select value={expenseForm.payment_method} onValueChange={(value) => setExpenseForm({ ...expenseForm, payment_method: value })}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select payment method" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cash">💵 Cash Payment</SelectItem>
+                        <SelectItem value="bank_transfer">🏦 Bank Transfer</SelectItem>
+                        <SelectItem value="card">💳 Card Payment</SelectItem>
+                        <SelectItem value="cheque">📝 Cheque</SelectItem>
+                        <SelectItem value="online">🌐 Online Payment</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {(expenseForm.payment_method === 'bank_transfer' || expenseForm.payment_method === 'card' || expenseForm.payment_method === 'cheque' || expenseForm.payment_method === 'online') && (
+                    <div className="space-y-2">
+                      <Label htmlFor="bank_account" className="text-sm font-medium">
+                        Bank Account *
+                      </Label>
+                      <div className="flex gap-2">
+                        <Select value={expenseForm.bank_account_id} onValueChange={(value) => setExpenseForm({ ...expenseForm, bank_account_id: value })}>
+                          <SelectTrigger className="flex-1">
+                            <SelectValue placeholder="Select bank account" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {bankAccounts && bankAccounts.length > 0 ? (
+                              bankAccounts.map((account) => (
+                                <SelectItem key={account.id} value={account.id}>
+                                  <div className="flex flex-col">
+                                    <span>{account.account_name}</span>
+                                    <span className="text-xs text-gray-500">
+                                      {account.account_number ? `${account.account_number}` : ''} 
+                                      {account.account_type ? ` (${account.account_type})` : ''}
+                                    </span>
+                                  </div>
+                                </SelectItem>
+                              ))
+                            ) : (
+                              <SelectItem value="" disabled>
+                                No bank accounts available
+                              </SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => fetchData()}
+                          title="Refresh bank accounts"
+                          className="px-3"
+                        >
+                          🔄
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="font-medium text-gray-900 mb-4 flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Description & Notes
+                </h3>
+                <div className="space-y-2">
+                  <Label htmlFor="description" className="text-sm font-medium">
+                    Expense Description *
+                  </Label>
+                  <Textarea
+                    id="description"
+                    placeholder="Enter detailed expense description, vendor name, purpose, etc..."
+                    value={expenseForm.description}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
+                    className="w-full min-h-[100px] resize-y"
+                  />
+                  <p className="text-xs text-gray-500">
+                    Provide clear details for better expense tracking and accounting
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setCreateExpenseOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button 
-              type="button" 
-              onClick={handleCreateExpense}
-              disabled={!expenseForm.description || !expenseForm.amount}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              Create Expense
-            </Button>
+
+          {/* Summary Section */}
+          <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mt-4">
+            <h4 className="font-medium text-blue-900 mb-2">Accounting Impact Preview</h4>
+            <div className="text-sm text-blue-800 space-y-1">
+              <p>• <strong>Debit:</strong> {expenseForm.category} (Account: {subcategoryMap[expenseForm.category as keyof typeof subcategoryMap]?.accountCode || 'TBD'}) - ₹{expenseForm.amount || '0.00'}</p>
+              <p>• <strong>Credit:</strong> {expenseForm.payment_method === 'cash' ? 'Cash Account (1010)' : 'Bank Account (1020)'} - ₹{expenseForm.amount || '0.00'}</p>
+              <p className="text-xs mt-2 text-blue-600">Journal entry will be automatically created upon expense submission</p>
+            </div>
+          </div>
+          <DialogFooter className="pt-6 border-t border-gray-200">
+            <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCreateExpenseOpen(false)}
+                className="w-full sm:w-auto order-2 sm:order-1"
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="button" 
+                onClick={handleCreateExpense}
+                disabled={!expenseForm.description || !expenseForm.amount}
+                className="bg-red-600 hover:bg-red-700 w-full sm:w-auto order-1 sm:order-2"
+              >
+                <Receipt className="h-4 w-4 mr-2" />
+                Create Expense
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1898,6 +2204,70 @@ export function SalesOrderInvoiceManager() {
         }
         type={waiveOffType}
       />
+
+      {/* Delete Expense Confirmation Dialog */}
+      <Dialog open={deleteExpenseOpen} onOpenChange={setDeleteExpenseOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-red-600">
+              <Trash2 className="h-5 w-5" />
+              Delete Expense
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <p className="text-gray-700 mb-4">
+              Are you sure you want to delete this expense?
+            </p>
+            
+            {selectedExpenseForDelete && (
+              <div className="bg-gray-50 p-3 rounded-lg space-y-2">
+                <div><strong>Description:</strong> {selectedExpenseForDelete.description}</div>
+                <div><strong>Amount:</strong> <span className="text-red-600 font-semibold">
+                  ₹{parseFloat(selectedExpenseForDelete.amount.toString()).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </span></div>
+                <div><strong>Date:</strong> {new Date(selectedExpenseForDelete.date).toLocaleDateString('en-IN')}</div>
+                <div><strong>Category:</strong> {selectedExpenseForDelete.category}</div>
+              </div>
+            )}
+            
+            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-sm text-yellow-800">
+                <strong>⚠️ Complete Cleanup:</strong> This will delete the expense record, reverse journal entries, 
+                update bank account balances, and remove all related financial records.
+              </p>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteExpenseOpen(false)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeleteExpense}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Expense
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

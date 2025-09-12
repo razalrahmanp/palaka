@@ -535,11 +535,9 @@ export const subcategoryMap = {
   "Vehicle Expenses": { category: "Travel & Entertainment", type: "Variable", accountCode: "6803" },
   
   // Vehicle Fleet Management (using existing chart of accounts)
-  "Vehicle Fuel - Truck 001": { category: "Vehicle Fleet", type: "Variable", accountCode: "6030" }, // Delivery Expenses
-  "Vehicle Fuel - Truck 002": { category: "Vehicle Fleet", type: "Variable", accountCode: "6030" }, // Delivery Expenses
+  "Vehicle Fuel - Fleet": { category: "Vehicle Fleet", type: "Variable", accountCode: "6030" }, // Delivery Expenses
+  "Vehicle Maintenance - Fleet": { category: "Vehicle Fleet", type: "Variable", accountCode: "6430" }, // Maintenance & Repairs
   "Vehicle Fuel - Delivery Van": { category: "Vehicle Fleet", type: "Variable", accountCode: "6030" }, // Delivery Expenses
-  "Vehicle Maintenance - Truck 001": { category: "Vehicle Fleet", type: "Variable", accountCode: "6430" }, // Maintenance & Repairs
-  "Vehicle Maintenance - Truck 002": { category: "Vehicle Fleet", type: "Variable", accountCode: "6430" }, // Maintenance & Repairs
   "Vehicle Maintenance - Delivery Van": { category: "Vehicle Fleet", type: "Variable", accountCode: "6430" }, // Maintenance & Repairs
   "Vehicle Insurance - Fleet": { category: "Vehicle Fleet", type: "Fixed", accountCode: "6520" }, // Insurance
   "Vehicle Registration & Tax": { category: "Vehicle Fleet", type: "Fixed", accountCode: "6250" }, // Payroll Taxes (govt fees)

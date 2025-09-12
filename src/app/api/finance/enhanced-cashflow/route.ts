@@ -162,7 +162,16 @@ export async function GET() {
     
     // Process journal entries for expense categorization
     journalEntries?.forEach(entry => {
-      entry.journal_entry_lines?.forEach((line: any) => {
+      entry.journal_entry_lines?.forEach((line: {
+        account_id: string;
+        debit_amount: number;
+        credit_amount: number;
+        chart_of_accounts: {
+          account_name: string;
+          account_type: string;
+          account_subtype: string;
+        };
+      }) => {
         if (line.chart_of_accounts?.account_type === 'EXPENSE' && line.debit_amount > 0) {
           const category = line.chart_of_accounts?.account_subtype || 
                           line.chart_of_accounts?.account_name || 

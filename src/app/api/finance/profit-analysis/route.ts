@@ -60,6 +60,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch sales data' }, { status: 500 });
     }
 
+    if (allSalesError) {
+      console.error('All sales data error:', allSalesError);
+      return NextResponse.json({ error: 'Failed to fetch all sales data' }, { status: 500 });
+    }
+
     // Get expense data
     const { data: expenseData, error: expenseError } = await supabase
       .from('expenses')

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { 
@@ -26,6 +26,7 @@ import JournalEntryManager from '@/components/finance/JournalEntryManager';
 import OptimizedLedgerManager from '@/components/finance/OptimizedLedgerManager';
 import GeneralLedger from '@/components/finance/GeneralLedger';
 import FinancialReportsManager from '@/components/finance/FinancialReportsManager';
+import { DetailedFinanceOverview } from '@/components/finance/DetailedFinanceOverview';
 
 interface FinancialSummary {
   totalAssets: number;
@@ -38,14 +39,6 @@ interface FinancialSummary {
   accountsReceivable: number;
   accountsPayable: number;
   currentRatio: number;
-}
-
-interface DashboardMetrics {
-  pendingInvoices: number;
-  overdueInvoices: number;
-  unpostedJournals: number;
-  cashFlowTrend: 'up' | 'down' | 'stable';
-  profitMargin: number;
 }
 
 interface SalesMetrics {
@@ -72,13 +65,6 @@ export default function FinancePage() {
     accountsReceivable: 0,
     accountsPayable: 0,
     currentRatio: 0,
-  });
-  const [dashboardMetrics, setDashboardMetrics] = useState<DashboardMetrics>({
-    pendingInvoices: 0,
-    overdueInvoices: 0,
-    unpostedJournals: 0,
-    cashFlowTrend: 'stable',
-    profitMargin: 0,
   });
   const [salesMetrics, setSalesMetrics] = useState<SalesMetrics>({
     totalSalesRevenue: 0,
@@ -113,7 +99,6 @@ export default function FinancePage() {
       const statsData = await statsResponse.json();
       
       setFinancialSummary(financialData.financialSummary);
-      setDashboardMetrics(financialData.metrics);
       setSalesMetrics({
         totalSalesRevenue: statsData.totalSalesRevenue || 0,
         totalPaymentsReceived: statsData.totalPaymentsReceived || 0,
@@ -356,83 +341,7 @@ export default function FinancePage() {
           <CardContent className="pt-6">
             {/* Overview Tab */}
             <TabsContent value="overview" className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Financial Position */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <TrendingUp className="h-5 w-5" />
-                      Financial Position
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-gray-600">Total Assets</span>
-                      <span className="font-semibold">{formatCurrency(financialSummary.totalAssets)}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-gray-600">Total Liabilities</span>
-                      <span className="font-semibold text-red-600">{formatCurrency(financialSummary.totalLiabilities)}</span>
-                    </div>
-                    <div className="flex justify-between items-center border-t pt-2">
-                      <span className="text-sm font-medium text-gray-600">Total Equity</span>
-                      <span className="font-bold text-green-600">{formatCurrency(financialSummary.totalEquity)}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Profitability */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <DollarSign className="h-5 w-5" />
-                      Profitability
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-gray-600">Total Revenue</span>
-                      <span className="font-semibold text-green-600">{formatCurrency(financialSummary.totalRevenue)}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-gray-600">Total Expenses</span>
-                      <span className="font-semibold text-red-600">{formatCurrency(financialSummary.totalExpenses)}</span>
-                    </div>
-                    <div className="flex justify-between items-center border-t pt-2">
-                      <span className="text-sm font-medium text-gray-600">Net Income</span>
-                      <span className="font-bold text-green-600">{formatCurrency(financialSummary.netIncome)}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Working Capital */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <CreditCard className="h-5 w-5" />
-                    Working Capital Management
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="text-center">
-                      <p className="text-sm font-medium text-gray-600">Accounts Receivable</p>
-                      <p className="text-2xl font-bold text-blue-600">{formatCurrency(financialSummary.accountsReceivable)}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm font-medium text-gray-600">Accounts Payable</p>
-                      <p className="text-2xl font-bold text-red-600">{formatCurrency(financialSummary.accountsPayable)}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm font-medium text-gray-600">Net Working Capital</p>
-                      <p className="text-2xl font-bold text-green-600">
-                        {formatCurrency(financialSummary.accountsReceivable - financialSummary.accountsPayable)}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <DetailedFinanceOverview />
             </TabsContent>
 
             {/* Bank Accounts Management Tab */}

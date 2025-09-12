@@ -15,7 +15,9 @@ import {
   Wallet,
   ShoppingCart,
   Factory,
-  Calendar
+  Calendar,
+  Package,
+  Wrench
 } from 'lucide-react';
 
 import {
@@ -261,56 +263,102 @@ export function DetailedFinanceOverview() {
       {/* Overview Tab */}
       {activeView === 'overview' && (
         <div className="space-y-6">
-          {/* Key Performance Indicator - Profit Margin Only */}
-          <div className="flex justify-center">
-            <Card className="bg-gradient-to-br from-purple-50 to-violet-50 border-purple-200 w-64">
+          {/* Key Performance Indicators - Multiple Profit Margin Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Overall Profit Margin */}
+            <Card className="bg-gradient-to-br from-purple-50 to-violet-50 border-purple-200">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-purple-600">Profit Margin</p>
+                    <p className="text-sm font-medium text-purple-600">Overall Profit Margin</p>
                     <p className="text-2xl font-bold text-purple-800">
                       {formatPercentage(profitData?.summary?.netProfitMargin || 0)}
+                    </p>
+                    <p className="text-xs text-purple-600 mt-1">
+                      ₹{formatCurrency(profitData?.summary?.netProfit || 0)} profit
                     </p>
                   </div>
                   <Target className="h-8 w-8 text-purple-500" />
                 </div>
               </CardContent>
             </Card>
+
+            {/* Regular Products Margin */}
+            <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-blue-200">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-blue-600">Regular Products</p>
+                    <p className="text-2xl font-bold text-blue-800">
+                      {formatPercentage(profitData?.regularProducts?.grossMargin || 0)}
+                    </p>
+                    <p className="text-xs text-blue-600 mt-1">
+                      ₹{formatCurrency(profitData?.regularProducts?.profit || 0)} profit
+                    </p>
+                  </div>
+                  <Package className="h-8 w-8 text-blue-500" />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Custom Products Margin */}
+            <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-green-600">Custom Products</p>
+                    <p className="text-2xl font-bold text-green-800">
+                      {formatPercentage(profitData?.customProducts?.grossMargin || 0)}
+                    </p>
+                    <p className="text-xs text-green-600 mt-1">
+                      ₹{formatCurrency(profitData?.customProducts?.profit || 0)} profit
+                    </p>
+                  </div>
+                  <Wrench className="h-8 w-8 text-green-500" />
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
-          {/* Revenue vs Expenses Chart */}
+          {/* Revenue vs Expenses vs Profit Chart */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <TrendingUp className="h-5 w-5" />
-                  Revenue vs Expenses Trend
+                  Revenue vs Cost vs Profit Trend
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
                   <AreaChart data={profitData?.monthlyTrends || []}>
-                    <XAxis dataKey="month" />
+                    <XAxis dataKey="date" />
                     <YAxis />
                     <Tooltip formatter={(value) => formatCurrency(Number(value))} />
                     <Legend />
                     <Area
                       type="monotone"
                       dataKey="revenue"
-                      stackId="1"
                       stroke="#10b981"
                       fill="#10b981"
-                      fillOpacity={0.6}
+                      fillOpacity={0.8}
                       name="Revenue"
                     />
                     <Area
                       type="monotone"
-                      dataKey="expenses"
-                      stackId="2"
+                      dataKey="cost"
                       stroke="#ef4444"
                       fill="#ef4444"
                       fillOpacity={0.6}
-                      name="Expenses"
+                      name="Cost"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="profit"
+                      stroke="#8b5cf6"
+                      fill="#8b5cf6"
+                      fillOpacity={0.4}
+                      name="Profit"
                     />
                   </AreaChart>
                 </ResponsiveContainer>

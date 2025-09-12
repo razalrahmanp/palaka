@@ -106,10 +106,11 @@ interface ProfitAnalysisData {
     margin: number;
   }>;
   revenueAnalysis?: {
-    confirmedOrdersRevenue: number;
+    processedOrdersRevenue: number;
     totalAllOrdersRevenue: number;
-    confirmedOrdersCount: number;
+    processedOrdersCount: number;
     totalAllOrdersCount: number;
+    includedStatuses?: string[];
     statusBreakdown: { [key: string]: { count: number; revenue: number } };
   };
   metrics: {
@@ -472,10 +473,13 @@ export function DetailedFinanceOverview() {
                     <h4 className="font-medium text-gray-700">Revenue Breakdown</h4>
                     <div className="space-y-2">
                       <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
-                        <span className="text-sm text-green-700">Confirmed Orders</span>
+                        <span className="text-sm text-green-700">Processed Orders</span>
                         <span className="font-bold text-green-800">
-                          {formatCurrency(profitData.revenueAnalysis.confirmedOrdersRevenue)}
+                          {formatCurrency(profitData.revenueAnalysis.processedOrdersRevenue)}
                         </span>
+                      </div>
+                      <div className="text-xs text-green-600 px-3 -mt-2">
+                        Includes: Confirmed, Delivered, Ready for Delivery
                       </div>
                       <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
                         <span className="text-sm text-blue-700">All Orders (Total)</span>
@@ -486,7 +490,7 @@ export function DetailedFinanceOverview() {
                       <div className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
                         <span className="text-sm text-orange-700">Difference</span>
                         <span className="font-bold text-orange-800">
-                          {formatCurrency(profitData.revenueAnalysis.totalAllOrdersRevenue - profitData.revenueAnalysis.confirmedOrdersRevenue)}
+                          {formatCurrency(profitData.revenueAnalysis.totalAllOrdersRevenue - profitData.revenueAnalysis.processedOrdersRevenue)}
                         </span>
                       </div>
                     </div>
@@ -510,22 +514,23 @@ export function DetailedFinanceOverview() {
 
                   {/* Collection Analysis */}
                   <div className="space-y-4">
-                    <h4 className="font-medium text-gray-700">Collection Analysis</h4>
+                    <h4 className="font-medium text-gray-700">Coverage Analysis</h4>
                     <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg">
                       <div className="text-center">
                         <p className="text-2xl font-bold text-blue-800">
-                          {((profitData.revenueAnalysis.confirmedOrdersRevenue / profitData.revenueAnalysis.totalAllOrdersRevenue) * 100).toFixed(1)}%
+                          {((profitData.revenueAnalysis.processedOrdersRevenue / profitData.revenueAnalysis.totalAllOrdersRevenue) * 100).toFixed(1)}%
                         </p>
-                        <p className="text-sm text-blue-600">Collection Rate</p>
+                        <p className="text-sm text-blue-600">Analysis Coverage</p>
                         <p className="text-xs text-blue-500 mt-2">
-                          {formatCurrency(profitData.revenueAnalysis.confirmedOrdersRevenue)} collected from 
+                          {formatCurrency(profitData.revenueAnalysis.processedOrdersRevenue)} analyzed from 
                           {formatCurrency(profitData.revenueAnalysis.totalAllOrdersRevenue)} total
                         </p>
                       </div>
                     </div>
-                    <div className="text-center p-3 bg-yellow-50 rounded-lg">
-                      <p className="text-sm text-yellow-700">
-                        <strong>Note:</strong> The revenue difference is due to orders in pending, draft, or cancelled status.
+                    <div className="text-center p-3 bg-green-50 rounded-lg">
+                      <p className="text-sm text-green-700">
+                        <strong>Product Analysis:</strong> Now includes {profitData.revenueAnalysis.processedOrdersCount} orders 
+                        ({profitData.revenueAnalysis.includedStatuses?.join(', ')})
                       </p>
                     </div>
                   </div>

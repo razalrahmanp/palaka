@@ -147,6 +147,29 @@ interface Expense {
   created_at: string;
 }
 
+interface VendorBill {
+  id: string;
+  bill_number: string;
+  bill_date: string;
+  due_date: string;
+  total_amount: number;
+  paid_amount: number;
+  remaining_amount: number;
+  status: string;
+  description?: string;
+}
+
+interface PayrollRecord {
+  id: string;
+  employee_id: string;
+  pay_period_start: string;
+  pay_period_end: string;
+  basic_salary: number;
+  gross_salary: number;
+  net_salary: number;
+  status: string;
+}
+
 export function SalesOrderInvoiceManager() {
   const [salesOrders, setSalesOrders] = useState<SalesOrderWithInvoice[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -188,13 +211,19 @@ export function SalesOrderInvoiceManager() {
     payment_method: 'cash',
     bank_account_id: '',
     entity_id: '', // For truck, employee, or supplier selection
-    entity_type: '' // 'truck', 'employee', 'supplier'
+    entity_type: '', // 'truck', 'employee', 'supplier'
+    vendor_bill_id: '', // New field for vendor bill selection
+    payroll_record_id: '', // New field for payroll record selection
   });
 
   // Entity data states
   const [trucks, setTrucks] = useState<Truck[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  
+  // Additional entity-specific data
+  const [vendorBills, setVendorBills] = useState<VendorBill[]>([]);
+  const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>([]);
 
   useEffect(() => {
     fetchData();
@@ -428,6 +457,55 @@ export function SalesOrderInvoiceManager() {
       }
       default:
         return null;
+    }
+  };
+
+  // Fetch entity-specific data when entity is selected
+  const fetchVendorBills = async (supplierId: string) => {
+    try {
+      const response = await fetch(`/api/vendors/${supplierId}/bills`);
+      if (response.ok) {
+        const data = await response.json();
+        setVendorBills(Array.isArray(data) ? data : []);
+      }
+    } catch (error) {
+      console.error('Error fetching vendor bills:', error);
+      setVendorBills([]);
+    }
+  };
+
+  const fetchPayrollRecords = async (employeeId: string) => {
+    try {
+      const response = await fetch(`/api/payroll/records?employee_id=${employeeId}&status=pending`);
+      if (response.ok) {
+        const data = await response.json();
+        setPayrollRecords(data.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching payroll records:', error);
+      setPayrollRecords([]);
+    }
+  };
+
+  // Handle entity selection change
+  const handleEntityChange = (entityId: string) => {
+    // Reset entity-specific selections when entity changes
+    setExpenseForm({ 
+      ...expenseForm, 
+      entity_id: entityId,
+      vendor_bill_id: '', // Reset vendor bill selection
+      payroll_record_id: '', // Reset payroll record selection
+    });
+    
+    // Reset entity-specific data arrays
+    setVendorBills([]);
+    setPayrollRecords([]);
+    
+    // Fetch entity-specific data
+    if (expenseForm.entity_type === 'supplier' && entityId) {
+      fetchVendorBills(entityId);
+    } else if (expenseForm.entity_type === 'employee' && entityId) {
+      fetchPayrollRecords(entityId);
     }
   };
 
@@ -758,8 +836,8 @@ export function SalesOrderInvoiceManager() {
           entity_type: expenseForm.entity_type || null,
           created_by: 'system', // You may want to get this from auth context
           // Additional fields for entity integrations
-          vendor_bill_id: null, // Could be added to form later
-          payroll_record_id: null, // Could be added to form later
+          vendor_bill_id: expenseForm.vendor_bill_id || null,
+          payroll_record_id: expenseForm.payroll_record_id || null,
           odometer: null, // Could be added to form for vehicle expenses
           quantity: null, // Could be added to form for fuel/parts
           location: null, // Could be added to form for fuel stations, etc.
@@ -778,7 +856,9 @@ export function SalesOrderInvoiceManager() {
           payment_method: 'cash',
           bank_account_id: '',
           entity_id: '',
-          entity_type: ''
+          entity_type: '',
+          vendor_bill_id: '',
+          payroll_record_id: '',
         });
         fetchData(); // Refresh data
         alert('Expense created successfully!');
@@ -2031,7 +2111,7 @@ export function SalesOrderInvoiceManager() {
                         Select {expenseForm.entity_type === 'truck' ? 'Truck' : 
                                expenseForm.entity_type === 'employee' ? 'Employee' : 'Supplier'} *
                       </Label>
-                      <Select value={expenseForm.entity_id} onValueChange={(value) => setExpenseForm({ ...expenseForm, entity_id: value })}>
+                      <Select value={expenseForm.entity_id} onValueChange={handleEntityChange}>
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder={`Select ${expenseForm.entity_type === 'truck' ? 'truck' : 
                                                             expenseForm.entity_type === 'employee' ? 'employee' : 'supplier'}`} />
@@ -2050,6 +2130,60 @@ export function SalesOrderInvoiceManager() {
                           <div className="text-gray-500">{getSelectedEntityDetails()?.details}</div>
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {/* Vendor Bill Selection - Show for supplier expenses */}
+                  {expenseForm.entity_type === 'supplier' && expenseForm.entity_id && vendorBills.length > 0 && (
+                    <div className="space-y-2">
+                      <Label htmlFor="vendor_bill" className="text-sm font-medium">
+                        Related Vendor Bill (Optional)
+                      </Label>
+                      <Select value={expenseForm.vendor_bill_id || ''} onValueChange={(value) => setExpenseForm({ ...expenseForm, vendor_bill_id: value })}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select vendor bill (optional)" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          <SelectItem value="">No specific bill</SelectItem>
+                          {vendorBills.map(bill => (
+                            <SelectItem key={bill.id} value={bill.id}>
+                              <div className="flex flex-col">
+                                <span className="font-medium">{bill.bill_number}</span>
+                                <span className="text-xs text-gray-500">
+                                  ₹{bill.total_amount.toLocaleString('en-IN')} | Due: {new Date(bill.due_date).toLocaleDateString('en-IN')} | Outstanding: ₹{bill.remaining_amount.toLocaleString('en-IN')}
+                                </span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {/* Payroll Record Selection - Show for employee salary expenses */}
+                  {expenseForm.entity_type === 'employee' && expenseForm.entity_id && expenseForm.category.includes('Salary') && payrollRecords.length > 0 && (
+                    <div className="space-y-2">
+                      <Label htmlFor="payroll_record" className="text-sm font-medium">
+                        Related Payroll Record (Optional)
+                      </Label>
+                      <Select value={expenseForm.payroll_record_id || ''} onValueChange={(value) => setExpenseForm({ ...expenseForm, payroll_record_id: value })}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select payroll record (optional)" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          <SelectItem value="">No specific payroll</SelectItem>
+                          {payrollRecords.map(record => (
+                            <SelectItem key={record.id} value={record.id}>
+                              <div className="flex flex-col">
+                                <span className="font-medium">Pay Period: {new Date(record.pay_period_start).toLocaleDateString('en-IN')} - {new Date(record.pay_period_end).toLocaleDateString('en-IN')}</span>
+                                <span className="text-xs text-gray-500">
+                                  Gross: ₹{record.gross_salary.toLocaleString('en-IN')} | Net: ₹{record.net_salary.toLocaleString('en-IN')} | Status: {record.status}
+                                </span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   )}
                 </div>

@@ -46,6 +46,20 @@ interface LedgerSummary {
   balance_due: number;
   last_transaction_date?: string;
   status?: string;
+  // Payment details for customers
+  paid_amount?: number;
+  payment_methods?: string;
+  bank_accounts?: string;
+  last_payment_date?: string;
+  // Additional supplier-specific fields
+  opening_balance?: number;
+  current_stock_value?: number;
+  total_bills?: number;
+  total_paid?: number;
+  total_outstanding?: number;
+  total_po_value?: number;
+  pending_po_value?: number;
+  paid_po_value?: number;
 }
 
 interface LedgerTransaction {
@@ -77,11 +91,12 @@ export default function OptimizedLedgerManager() {
   const [hideZeroBalances, setHideZeroBalances] = useState(false);
   const [pagination, setPagination] = useState<PaginationInfo>({
     page: 1,
-    limit: 50,
+    limit: 10,
     total: 0,
     totalPages: 0,
     hasMore: false
   });
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   // Transaction view state
   const [selectedLedger, setSelectedLedger] = useState<LedgerSummary | null>(null);
@@ -107,6 +122,22 @@ export default function OptimizedLedgerManager() {
     reference: ''
   });
 
+  // Supplier-specific state
+  const [showOpeningBalanceDialog, setShowOpeningBalanceDialog] = useState(false);
+  const [showCurrentDebtDialog, setShowCurrentDebtDialog] = useState(false);
+  const [openingBalanceForm, setOpeningBalanceForm] = useState({
+    debit_amount: '',
+    credit_amount: '',
+    description: '',
+    reference: ''
+  });
+  const [currentDebtForm, setCurrentDebtForm] = useState({
+    amount: '',
+    description: '',
+    reference: '',
+    due_date: ''
+  });
+
   // Debounced search function
   const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
 
@@ -121,7 +152,7 @@ export default function OptimizedLedgerManager() {
       
       const params = new URLSearchParams({
         page: page.toString(),
-        limit: pagination.limit.toString(),
+        limit: itemsPerPage.toString(),
         type: type === 'all' ? 'all' : type,
         search: search,
         hide_zero_balances: hideZeroBalances.toString(),
@@ -151,7 +182,7 @@ export default function OptimizedLedgerManager() {
     } finally {
       setLoading(false);
     }
-  }, [pagination.limit, hideZeroBalances]);
+  }, [itemsPerPage, hideZeroBalances]);
 
   const fetchTransactions = async (ledger: LedgerSummary, page: number = 1) => {
     try {
@@ -243,6 +274,67 @@ export default function OptimizedLedgerManager() {
     }
   };
 
+  const handleCreateOpeningBalance = async () => {
+    if (!selectedLedger) return;
+
+    try {
+      const openingBalanceData = {
+        entity_id: selectedLedger.id,
+        entity_type: selectedLedger.type,
+        debit_amount: parseFloat(openingBalanceForm.debit_amount) || 0,
+        credit_amount: parseFloat(openingBalanceForm.credit_amount) || 0,
+        description: openingBalanceForm.description,
+        reference_number: openingBalanceForm.reference
+      };
+
+      const response = await fetch('/api/finance/supplier-opening-balances', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(openingBalanceData)
+      });
+
+      if (response.ok) {
+        setShowOpeningBalanceDialog(false);
+        setOpeningBalanceForm({ debit_amount: '', credit_amount: '', description: '', reference: '' });
+        fetchTransactions(selectedLedger);
+        fetchLedgers(pagination.page, activeTab, searchTerm, false);
+      }
+    } catch (error) {
+      console.error('Error creating opening balance:', error);
+    }
+  };
+
+  const handleCreateCurrentDebt = async () => {
+    if (!selectedLedger || selectedLedger.type !== 'supplier') return;
+
+    try {
+      const vendorBillData = {
+        supplier_id: selectedLedger.id,
+        total_amount: parseFloat(currentDebtForm.amount),
+        description: currentDebtForm.description,
+        reference_number: currentDebtForm.reference,
+        due_date: currentDebtForm.due_date,
+        status: 'pending',
+        created_at: new Date().toISOString()
+      };
+
+      const response = await fetch('/api/finance/vendor-bills', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(vendorBillData)
+      });
+
+      if (response.ok) {
+        setShowCurrentDebtDialog(false);
+        setCurrentDebtForm({ amount: '', description: '', reference: '', due_date: '' });
+        fetchTransactions(selectedLedger);
+        fetchLedgers(pagination.page, activeTab, searchTerm, false);
+      }
+    } catch (error) {
+      console.error('Error creating vendor bill:', error);
+    }
+  };
+
   // Debounced search effect
   useEffect(() => {
     if (searchTimeout) {
@@ -316,15 +408,28 @@ export default function OptimizedLedgerManager() {
   };
 
   const getStatusBadge = (ledger: LedgerSummary) => {
-    const isSettled = Math.abs(ledger.balance_due) < 0.10;
-    return (
-      <Badge 
-        variant={isSettled ? 'outline' : 'destructive'}
-        className="text-xs"
-      >
-        {isSettled ? 'Settled' : 'Outstanding'}
-      </Badge>
-    );
+    const status = ledger.status?.toLowerCase() || 'unknown';
+    const balanceDue = ledger.balance_due || 0;
+    
+    if (status === 'paid' || balanceDue <= 0) {
+      return (
+        <Badge variant="secondary" className="text-xs bg-green-100 text-green-800 border-green-200">
+          Paid
+        </Badge>
+      );
+    } else if (status === 'partial' && (ledger.paid_amount || 0) > 0) {
+      return (
+        <Badge variant="outline" className="text-xs bg-yellow-100 text-yellow-800 border-yellow-200">
+          Partial
+        </Badge>
+      );
+    } else {
+      return (
+        <Badge variant="destructive" className="text-xs">
+          Pending
+        </Badge>
+      );
+    }
   };
 
   const getTransactionTypeBadge = (type: string) => {
@@ -364,6 +469,137 @@ export default function OptimizedLedgerManager() {
             <p className="text-gray-600 capitalize">{selectedLedger.type} Ledger Transactions</p>
           </div>
           <div className="ml-auto flex gap-2">
+            {/* Supplier-specific buttons */}
+            {selectedLedger.type === 'supplier' && (
+              <>
+                <Dialog open={showOpeningBalanceDialog} onOpenChange={setShowOpeningBalanceDialog}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm" className="flex items-center gap-2">
+                      <DollarSign className="h-4 w-4" />
+                      Opening Balance
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Set Opening Balance</DialogTitle>
+                      <DialogDescription>
+                        Set the opening balance for {selectedLedger.name}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="debitAmount">Debit Amount (What they owe us)</Label>
+                          <Input
+                            id="debitAmount"
+                            type="number"
+                            step="0.01"
+                            value={openingBalanceForm.debit_amount}
+                            onChange={(e) => setOpeningBalanceForm(prev => ({ ...prev, debit_amount: e.target.value }))}
+                            placeholder="0.00"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="creditAmount">Credit Amount (What we owe them)</Label>
+                          <Input
+                            id="creditAmount"
+                            type="number"
+                            step="0.01"
+                            value={openingBalanceForm.credit_amount}
+                            onChange={(e) => setOpeningBalanceForm(prev => ({ ...prev, credit_amount: e.target.value }))}
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <Label htmlFor="obDescription">Description</Label>
+                        <Textarea
+                          id="obDescription"
+                          value={openingBalanceForm.description}
+                          onChange={(e) => setOpeningBalanceForm(prev => ({ ...prev, description: e.target.value }))}
+                          placeholder="Opening balance as of..."
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="obReference">Reference</Label>
+                        <Input
+                          id="obReference"
+                          value={openingBalanceForm.reference}
+                          onChange={(e) => setOpeningBalanceForm(prev => ({ ...prev, reference: e.target.value }))}
+                          placeholder="Reference number (optional)"
+                        />
+                      </div>
+                      <Button onClick={handleCreateOpeningBalance} className="w-full">
+                        <Save className="h-4 w-4 mr-2" />
+                        Set Opening Balance
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog open={showCurrentDebtDialog} onOpenChange={setShowCurrentDebtDialog}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm" className="flex items-center gap-2">
+                      <Plus className="h-4 w-4" />
+                      Add What We Owe
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add Current Debt</DialogTitle>
+                      <DialogDescription>
+                        Record what we currently owe to {selectedLedger.name}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="debtAmount">Amount We Owe</Label>
+                        <Input
+                          id="debtAmount"
+                          type="number"
+                          step="0.01"
+                          value={currentDebtForm.amount}
+                          onChange={(e) => setCurrentDebtForm(prev => ({ ...prev, amount: e.target.value }))}
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="dueDate">Due Date</Label>
+                        <Input
+                          id="dueDate"
+                          type="date"
+                          value={currentDebtForm.due_date}
+                          onChange={(e) => setCurrentDebtForm(prev => ({ ...prev, due_date: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="debtDescription">Description</Label>
+                        <Textarea
+                          id="debtDescription"
+                          value={currentDebtForm.description}
+                          onChange={(e) => setCurrentDebtForm(prev => ({ ...prev, description: e.target.value }))}
+                          placeholder="Reason for debt, purchase details..."
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="debtReference">Reference/Invoice Number</Label>
+                        <Input
+                          id="debtReference"
+                          value={currentDebtForm.reference}
+                          onChange={(e) => setCurrentDebtForm(prev => ({ ...prev, reference: e.target.value }))}
+                          placeholder="Invoice or reference number"
+                        />
+                      </div>
+                      <Button onClick={handleCreateCurrentDebt} className="w-full">
+                        <Save className="h-4 w-4 mr-2" />
+                        Add Debt Record
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </>
+            )}
+
             <Dialog open={showAdjustmentDialog} onOpenChange={setShowAdjustmentDialog}>
               <DialogTrigger asChild>
                 <Button size="sm" className="flex items-center gap-2">
@@ -432,32 +668,179 @@ export default function OptimizedLedgerManager() {
         </div>
 
         {/* Ledger summary */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-2xl font-bold">{formatCurrency(selectedLedger.total_amount)}</div>
-              <p className="text-xs text-muted-foreground">Total Amount</p>
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 mb-3">
+          <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-all duration-200 bg-gradient-to-r from-blue-50 to-white h-16">
+            <CardContent className="p-2 h-full">
+              <div className="flex items-center justify-between h-full">
+                <div>
+                  <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Total Amount</p>
+                  <div className="text-sm font-bold text-blue-700">{formatCurrency(selectedLedger.total_amount)}</div>
+                </div>
+                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center shadow-sm">
+                  <span className="text-blue-600 text-sm">💰</span>
+                </div>
+              </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-2xl font-bold text-red-600">{formatCurrency(selectedLedger.balance_due)}</div>
-              <p className="text-xs text-muted-foreground">Balance Due</p>
+          
+          <Card className="border-l-4 border-l-red-500 shadow-sm hover:shadow-md transition-all duration-200 bg-gradient-to-r from-red-50 to-white h-16">
+            <CardContent className="p-2 h-full">
+              <div className="flex items-center justify-between h-full">
+                <div>
+                  <p className="text-xs font-semibold text-red-600 uppercase tracking-wide">Balance Due</p>
+                  <div className="text-sm font-bold text-red-700">{formatCurrency(selectedLedger.balance_due)}</div>
+                </div>
+                <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center shadow-sm">
+                  <span className="text-red-600 text-sm">⚠️</span>
+                </div>
+              </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-2xl font-bold">{selectedLedger.total_transactions}</div>
-              <p className="text-xs text-muted-foreground">Total Transactions</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-2xl font-bold">{getStatusBadge(selectedLedger)}</div>
-              <p className="text-xs text-muted-foreground">Status</p>
+          
+          {selectedLedger.type === 'supplier' && (
+            <>
+              <Card className="border-l-4 border-l-indigo-500 shadow-sm hover:shadow-md transition-all duration-200 bg-gradient-to-r from-indigo-50 to-white h-16">
+                <CardContent className="p-2 h-full">
+                  <div className="flex items-center justify-between h-full">
+                    <div>
+                      <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">Opening</p>
+                      <div className="text-sm font-bold text-indigo-700">
+                        {formatCurrency(selectedLedger.opening_balance || 0)}
+                      </div>
+                    </div>
+                    <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center shadow-sm">
+                      <span className="text-indigo-600 text-sm">🏦</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-all duration-200 bg-gradient-to-r from-green-50 to-white h-16">
+                <CardContent className="p-2 h-full">
+                  <div className="flex items-center justify-between h-full">
+                    <div>
+                      <p className="text-xs font-semibold text-green-600 uppercase tracking-wide">Stock Value</p>
+                      <div className="text-sm font-bold text-green-700">
+                        {formatCurrency(selectedLedger.current_stock_value || 0)}
+                      </div>
+                    </div>
+                    <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center shadow-sm">
+                      <span className="text-green-600 text-sm">📦</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          )}
+          
+          <Card className="border-l-4 border-l-gray-500 shadow-sm hover:shadow-md transition-all duration-200 bg-gradient-to-r from-gray-50 to-white h-16">
+            <CardContent className="p-2 h-full">
+              <div className="flex items-center justify-between h-full">
+                <div>
+                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Transactions</p>
+                  <div className="text-sm font-bold text-gray-700">{selectedLedger.total_transactions}</div>
+                </div>
+                <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center shadow-sm">
+                  <span className="text-gray-600 text-sm">📊</span>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>
+
+        {/* Additional supplier information */}
+        {selectedLedger.type === 'supplier' && (
+          <>
+            <div className="flex items-center gap-2 mt-3 mb-2">
+              <div className="h-px bg-gradient-to-r from-gray-300 to-transparent flex-1"></div>
+              <span className="text-xs font-semibold text-gray-600 px-2 bg-gray-50 rounded-full py-1">
+                📊 Supplier Financial Breakdown
+              </span>
+              <div className="h-px bg-gradient-to-l from-gray-300 to-transparent flex-1"></div>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+              <Card className="border-l-4 border-l-orange-500 shadow-sm hover:shadow-md transition-all duration-200 bg-gradient-to-r from-orange-50 to-white h-16">
+                <CardContent className="p-2 h-full">
+                  <div className="flex items-center justify-between h-full">
+                    <div>
+                      <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide">Outstanding</p>
+                      <div className="text-sm font-bold text-orange-700">
+                        {formatCurrency(selectedLedger.total_outstanding || 0)}
+                      </div>
+                    </div>
+                    <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center shadow-sm">
+                      <span className="text-orange-600 text-sm">📄</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <Card className="border-l-4 border-l-purple-500 shadow-sm hover:shadow-md transition-all duration-200 bg-gradient-to-r from-purple-50 to-white h-16">
+                <CardContent className="p-2 h-full">
+                  <div className="flex items-center justify-between h-full">
+                    <div>
+                      <p className="text-xs font-semibold text-purple-600 uppercase tracking-wide">Total PO</p>
+                      <div className="text-sm font-bold text-purple-700">
+                        {formatCurrency(selectedLedger.total_po_value || 0)}
+                      </div>
+                    </div>
+                    <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center shadow-sm">
+                      <span className="text-purple-600 text-sm">🛒</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <Card className="border-l-4 border-l-amber-500 shadow-sm hover:shadow-md transition-all duration-200 bg-gradient-to-r from-amber-50 to-white h-16">
+                <CardContent className="p-2 h-full">
+                  <div className="flex items-center justify-between h-full">
+                    <div>
+                      <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide">Pending PO</p>
+                      <div className="text-sm font-bold text-amber-700">
+                        {formatCurrency(selectedLedger.pending_po_value || 0)}
+                      </div>
+                    </div>
+                    <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center shadow-sm">
+                      <span className="text-amber-600 text-sm">⏳</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <Card className="border-l-4 border-l-emerald-500 shadow-sm hover:shadow-md transition-all duration-200 bg-gradient-to-r from-emerald-50 to-white h-16">
+                <CardContent className="p-2 h-full">
+                  <div className="flex items-center justify-between h-full">
+                    <div>
+                      <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Total Paid</p>
+                      <div className="text-sm font-bold text-emerald-700">
+                        {formatCurrency(selectedLedger.total_paid || 0)}
+                      </div>
+                    </div>
+                    <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center shadow-sm">
+                      <span className="text-emerald-600 text-sm">✅</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <Card className="border-l-4 border-l-slate-500 shadow-sm hover:shadow-md transition-all duration-200 bg-gradient-to-r from-slate-50 to-white h-16">
+                <CardContent className="p-2 h-full">
+                  <div className="flex items-center justify-between h-full">
+                    <div>
+                      <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Paid PO</p>
+                      <div className="text-sm font-bold text-slate-700">
+                        {formatCurrency(selectedLedger.paid_po_value || 0)}
+                      </div>
+                    </div>
+                    <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center shadow-sm">
+                      <span className="text-slate-600 text-sm">💳</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </>
+        )}
 
         {/* Transactions table */}
         <Card>
@@ -515,15 +898,16 @@ export default function OptimizedLedgerManager() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 max-h-screen overflow-hidden flex flex-col">
       {/* Header and Controls */}
-      <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Ledger Management</h2>
-          <p className="text-gray-600">Fast overview of all ledger accounts</p>
-        </div>
+      <div className="flex-none">
+        <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Ledger Management</h2>
+            <p className="text-gray-600">Fast overview of all ledger accounts</p>
+          </div>
         
-        <div className="flex gap-3 items-center">
+          <div className="flex gap-3 items-center">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
             <Input
@@ -604,34 +988,37 @@ export default function OptimizedLedgerManager() {
             </DialogContent>
           </Dialog>
         </div>
+        </div>
       </div>
 
       {/* Performance Stats */}
-      <Card className="bg-blue-50 border-blue-200">
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+      <Card className="bg-blue-50 border-blue-200 h-20">
+        <CardContent className="p-3 h-full">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center h-full items-center">
             <div>
-              <p className="text-2xl font-bold text-blue-900">{pagination.total}</p>
-              <p className="text-sm text-blue-700">Total Ledgers</p>
+              <p className="text-lg font-bold text-blue-900">{pagination.total}</p>
+              <p className="text-xs text-blue-700">Total Ledgers</p>
             </div>
             <div>
-              <p className="text-2xl font-bold text-blue-900">{ledgers.length}</p>
-              <p className="text-sm text-blue-700">Loaded</p>
+              <p className="text-lg font-bold text-blue-900">{ledgers.length}</p>
+              <p className="text-xs text-blue-700">Loaded</p>
             </div>
             <div>
-              <p className="text-2xl font-bold text-blue-900">{pagination.page}</p>
-              <p className="text-sm text-blue-700">Current Page</p>
+              <p className="text-lg font-bold text-blue-900">{pagination.page}</p>
+              <p className="text-xs text-blue-700">Current Page</p>
             </div>
             <div>
-              <p className="text-2xl font-bold text-blue-900">{pagination.totalPages}</p>
-              <p className="text-sm text-blue-700">Total Pages</p>
+              <p className="text-lg font-bold text-blue-900">{pagination.totalPages}</p>
+              <p className="text-xs text-blue-700">Total Pages</p>
             </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Tabs for different ledger types */}
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+      <div className="flex-1 overflow-auto">
+        <div className="space-y-4">
+          <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="customer" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
@@ -675,9 +1062,33 @@ export default function OptimizedLedgerManager() {
                       <TableHead>Type</TableHead>
                       <TableHead>Name</TableHead>
                       <TableHead>Contact</TableHead>
-                      <TableHead className="text-right">Transactions</TableHead>
-                      <TableHead className="text-right">Total Amount</TableHead>
-                      <TableHead className="text-right">Balance Due</TableHead>
+                      {(activeTab === 'customer' || activeTab === 'employee' || activeTab === 'all') && (
+                        <>
+                          <TableHead className="text-right">Transactions</TableHead>
+                          <TableHead className="text-right">Total Amount</TableHead>
+                          <TableHead className="text-right">Paid Amount</TableHead>
+                          <TableHead className="text-right">Balance Due</TableHead>
+                          {activeTab === 'customer' && (
+                            <>
+                              <TableHead>Payment Methods</TableHead>
+                              <TableHead>Bank Accounts</TableHead>
+                              <TableHead>Last Payment</TableHead>
+                            </>
+                          )}
+                        </>
+                      )}
+                      {activeTab === 'supplier' && (
+                        <>
+                          <TableHead className="text-right">Transactions</TableHead>
+                          <TableHead className="text-right">Total Amount</TableHead>
+                          <TableHead className="text-right">Balance Due</TableHead>
+                          <TableHead className="text-right">Opening Balance</TableHead>
+                          <TableHead className="text-right">Stock Value</TableHead>
+                          <TableHead className="text-right">Outstanding</TableHead>
+                          <TableHead className="text-right">Total POs</TableHead>
+                          <TableHead className="text-right">Pending POs</TableHead>
+                        </>
+                      )}
                       <TableHead>Last Transaction</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
@@ -703,17 +1114,83 @@ export default function OptimizedLedgerManager() {
                             {ledger.phone && <p>{ledger.phone}</p>}
                           </div>
                         </TableCell>
-                        <TableCell className="text-right font-mono">
-                          {ledger.total_transactions}
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
-                          {formatCurrency(ledger.total_amount)}
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
-                          <span className={ledger.balance_due > 0 ? 'text-red-600' : 'text-green-600'}>
-                            {formatCurrency(ledger.balance_due)}
-                          </span>
-                        </TableCell>
+                        {(activeTab === 'customer' || activeTab === 'employee' || activeTab === 'all') && (
+                          <>
+                            <TableCell className="text-right font-mono">
+                              {ledger.total_transactions || 0}
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              {formatCurrency(ledger.total_amount || 0)}
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              <span className="text-green-600">
+                                {formatCurrency(ledger.paid_amount || 0)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              <span className={(ledger.balance_due || 0) > 0 ? 'text-red-600' : 'text-green-600'}>
+                                {formatCurrency(ledger.balance_due || 0)}
+                              </span>
+                            </TableCell>
+                            {activeTab === 'customer' && (
+                              <>
+                                <TableCell className="text-sm max-w-32">
+                                  <span className="truncate block" title={ledger.payment_methods}>
+                                    {ledger.payment_methods || 'No payments'}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="text-sm max-w-40">
+                                  <span className="truncate block" title={ledger.bank_accounts}>
+                                    {ledger.bank_accounts || 'No bank records'}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="text-sm">
+                                  {ledger.last_payment_date ? formatDate(ledger.last_payment_date) : 'No payments'}
+                                </TableCell>
+                              </>
+                            )}
+                          </>
+                        )}
+                        {activeTab === 'supplier' && (
+                          <>
+                            <TableCell className="text-right font-mono">
+                              {ledger.total_transactions || 0}
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              {formatCurrency(ledger.total_amount || 0)}
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              <span className={(ledger.balance_due || 0) > 0 ? 'text-red-600' : 'text-green-600'}>
+                                {formatCurrency(ledger.balance_due || 0)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              <span className="text-blue-600">
+                                {formatCurrency(ledger.opening_balance || 0)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              <span className="text-green-600">
+                                {formatCurrency(ledger.current_stock_value || 0)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              <span className="text-orange-600">
+                                {formatCurrency(ledger.total_outstanding || 0)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              <span className="text-purple-600">
+                                {formatCurrency(ledger.total_po_value || 0)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              <span className="text-amber-600">
+                                {formatCurrency(ledger.pending_po_value || 0)}
+                              </span>
+                            </TableCell>
+                          </>
+                        )}
                         <TableCell className="text-sm">
                           {formatDate(ledger.last_transaction_date)}
                         </TableCell>
@@ -749,9 +1226,28 @@ export default function OptimizedLedgerManager() {
 
           {/* Pagination Controls */}
           <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-600">
-              Page {pagination.page} of {pagination.totalPages} 
-              ({pagination.total} total ledgers)
+            <div className="flex items-center gap-4 text-sm text-gray-600">
+              <div className="flex items-center gap-2">
+                <span>Items per page:</span>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => {
+                    const newLimit = parseInt(e.target.value);
+                    setItemsPerPage(newLimit);
+                    fetchLedgers(1, activeTab, searchTerm, true);
+                  }}
+                  className="border rounded px-2 py-1 text-sm"
+                  title="Items per page"
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                </select>
+              </div>
+              <div>
+                Page {pagination.page} of {pagination.totalPages} 
+                ({pagination.total} total ledgers)
+              </div>
             </div>
             
             <div className="flex items-center gap-2">
@@ -779,7 +1275,9 @@ export default function OptimizedLedgerManager() {
             </div>
           </div>
         </TabsContent>
-      </Tabs>
+        </Tabs>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,73 +1,116 @@
-// src/app/api/finance/vendor-bills/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { NextResponse, NextRequest } from 'next/server';
+import { supabase as supabaseAdmin } from '@/lib/supabaseAdmin';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+export async function POST(request: NextRequest) {
+  try {
+    const data = await request.json();
+    const {
+      supplier_id,
+      total_amount,
+      description,
+      reference_number,
+      due_date,
+      status = 'pending',
+      bill_date
+    } = data;
 
-interface VendorBill {
-  id?: string;
-  bill_number: string;
-  supplier_id: string;
-  purchase_order_id?: string;
-  bill_date: string;
-  due_date: string;
-  total_amount: number;
-  paid_amount?: number;
-  status: 'pending' | 'partially_paid' | 'paid' | 'overdue';
-  description?: string;
-  reference_number?: string;
-  notes?: string;
-  created_by?: string;
+    // Validate required fields
+    if (!supplier_id || !total_amount) {
+      return NextResponse.json(
+        { success: false, error: 'Supplier ID and amount are required' },
+        { status: 400 }
+      );
+    }
+
+    // Get a system user for created_by
+    const { data: systemUser } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .limit(1)
+      .single();
+
+    if (!systemUser) {
+      return NextResponse.json(
+        { success: false, error: 'No system user found' },
+        { status: 500 }
+      );
+    }
+
+    // Generate unique bill number
+    const billNumber = `VB-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Date.now().toString().slice(-6)}`;
+
+    // Create new vendor bill with all required fields
+    const { data: newBill, error } = await supabaseAdmin
+      .from('vendor_bills')
+      .insert({
+        supplier_id,
+        bill_number: billNumber,
+        bill_date: bill_date || new Date().toISOString().split('T')[0],
+        due_date: due_date || new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],
+        total_amount,
+        remaining_amount: total_amount, // Initially, full amount is remaining
+        paid_amount: 0,
+        description,
+        reference_number,
+        status,
+        created_by: systemUser.id,
+        created_at: new Date().toISOString()
+      })
+      .select(`
+        *,
+        suppliers(
+          id,
+          name,
+          email,
+          contact
+        )
+      `)
+      .single();
+
+    if (error) {
+      console.error('Error creating vendor bill:', error);
+      return NextResponse.json(
+        { success: false, error: 'Failed to create vendor bill' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: newBill,
+      message: 'Vendor bill created successfully'
+    });
+
+  } catch (error) {
+    console.error('Error in vendor bills API:', error);
+    return NextResponse.json(
+      { success: false, error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
 }
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const supplierId = searchParams.get('supplier_id');
+    const supplier_id = searchParams.get('supplier_id');
     const status = searchParams.get('status');
-    const includeSupplier = searchParams.get('include_supplier') === 'true';
 
-    console.log('📋 Fetching vendor bills...');
-
-    let query = supabase
+    let query = supabaseAdmin
       .from('vendor_bills')
       .select(`
-        id,
-        bill_number,
-        supplier_id,
-        purchase_order_id,
-        bill_date,
-        due_date,
-        total_amount,
-        paid_amount,
-        status,
-        description,
-        reference_number,
-        notes,
-        created_at,
-        ${includeSupplier ? `
-        suppliers:supplier_id (
+        *,
+        suppliers(
           id,
           name,
-          company_name,
           email,
-          phone,
-          address
-        ),
-        purchase_orders:purchase_order_id (
-          id,
-          order_number,
-          status
-        )` : ''}
+          contact
+        )
       `)
-      .order('bill_date', { ascending: false });
+      .order('created_at', { ascending: false });
 
-    // Apply filters
-    if (supplierId) {
-      query = query.eq('supplier_id', supplierId);
+    if (supplier_id) {
+      query = query.eq('supplier_id', supplier_id);
     }
 
     if (status) {
@@ -77,181 +120,106 @@ export async function GET(request: NextRequest) {
     const { data: vendorBills, error } = await query;
 
     if (error) {
-      console.error('❌ Error fetching vendor bills:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error('Error fetching vendor bills:', error);
+      return NextResponse.json(
+        { success: false, error: 'Failed to fetch vendor bills' },
+        { status: 500 }
+      );
     }
-
-    console.log(`✅ Found ${vendorBills?.length || 0} vendor bills`);
 
     return NextResponse.json({
       success: true,
-      data: vendorBills || [],
-      count: vendorBills?.length || 0
+      data: vendorBills
     });
 
   } catch (error) {
-    console.error('❌ Error in vendor bills API:', error);
-    return NextResponse.json({ 
-      error: 'Internal server error' 
-    }, { status: 500 });
+    console.error('Error in vendor bills GET API:', error);
+    return NextResponse.json(
+      { success: false, error: 'Internal server error' },
+      { status: 500 }
+    );
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function PUT(request: NextRequest) {
   try {
-    const billData: VendorBill = await request.json();
+    const data = await request.json();
+    const {
+      id,
+      paid_amount,
+      status,
+      payment_date,
+      payment_reference
+    } = data;
 
-    console.log('📝 Creating vendor bill:', billData);
-
-    // Get system user for created_by
-    const { data: systemUser } = await supabase
-      .from('users')
-      .select('id')
-      .limit(1)
-      .single();
-
-    // Generate bill number if not provided
-    let billNumber = billData.bill_number;
-    if (!billNumber) {
-      const timestamp = Date.now();
-      billNumber = `VB-${timestamp.toString().slice(-8)}`;
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: 'Bill ID is required' },
+        { status: 400 }
+      );
     }
 
-    // Calculate due date if not provided (30 days default)
-    let dueDate = billData.due_date;
-    if (!dueDate) {
-      const billDate = new Date(billData.bill_date);
-      billDate.setDate(billDate.getDate() + 30);
-      dueDate = billDate.toISOString().split('T')[0];
-    }
-
-    // Create vendor bill
-    const { data: vendorBill, error: billError } = await supabase
+    // Get the current bill
+    const { data: currentBill, error: fetchError } = await supabaseAdmin
       .from('vendor_bills')
-      .insert({
-        bill_number: billNumber,
-        supplier_id: billData.supplier_id,
-        purchase_order_id: billData.purchase_order_id || null,
-        bill_date: billData.bill_date,
-        due_date: dueDate,
-        total_amount: billData.total_amount,
-        paid_amount: billData.paid_amount || 0,
-        status: billData.status || 'pending',
-        description: billData.description,
-        reference_number: billData.reference_number,
-        notes: billData.notes,
-        created_by: systemUser?.id
-      })
-      .select()
+      .select('total_amount, paid_amount')
+      .eq('id', id)
       .single();
 
-    if (billError) {
-      console.error('❌ Error creating vendor bill:', billError);
-      return NextResponse.json({ error: billError.message }, { status: 500 });
+    if (fetchError || !currentBill) {
+      return NextResponse.json(
+        { success: false, error: 'Bill not found' },
+        { status: 404 }
+      );
     }
 
-    console.log('✅ Created vendor bill:', vendorBill.id);
+    // Calculate new paid amount and remaining amount
+    const newPaidAmount = paid_amount ?? currentBill.paid_amount;
+    const remainingAmount = currentBill.total_amount - newPaidAmount;
+    const newStatus = status ?? (remainingAmount <= 0 ? 'paid' : 'partial');
 
-    // Create accounting journal entry for the bill
-    try {
-      await createVendorBillJournalEntry(vendorBill);
-    } catch (journalError) {
-      console.warn('⚠️ Journal entry creation failed:', journalError);
-      // Don't fail the bill creation if journal entry fails
+    // Update the bill
+    const { data: updatedBill, error } = await supabaseAdmin
+      .from('vendor_bills')
+      .update({
+        paid_amount: newPaidAmount,
+        remaining_amount: remainingAmount,
+        status: newStatus,
+        payment_date,
+        payment_reference,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select(`
+        *,
+        suppliers(
+          id,
+          name,
+          email,
+          contact
+        )
+      `)
+      .single();
+
+    if (error) {
+      console.error('Error updating vendor bill:', error);
+      return NextResponse.json(
+        { success: false, error: 'Failed to update vendor bill' },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({
       success: true,
-      data: vendorBill,
-      message: 'Vendor bill created successfully'
+      data: updatedBill,
+      message: 'Vendor bill updated successfully'
     });
 
   } catch (error) {
-    console.error('❌ Error creating vendor bill:', error);
-    return NextResponse.json({ 
-      error: 'Internal server error' 
-    }, { status: 500 });
-  }
-}
-
-// Helper function to create journal entry for vendor bill
-async function createVendorBillJournalEntry(vendorBill: VendorBill & { id: string; created_by: string }) {
-  try {
-    const journalNumber = `JE-VB-${vendorBill.id.slice(0, 8)}-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`;
-
-    // Create journal entry
-    const { data: journalEntry, error: journalError } = await supabase
-      .from('journal_entries')
-      .insert({
-        journal_number: journalNumber,
-        date: vendorBill.bill_date,
-        description: `Vendor Bill ${vendorBill.bill_number} - ${vendorBill.description || 'Vendor Bill'}`,
-        reference_number: vendorBill.bill_number,
-        source_document_type: 'VENDOR_BILL',
-        source_document_id: vendorBill.id,
-        total_amount: vendorBill.total_amount,
-        created_by: vendorBill.created_by
-      })
-      .select()
-      .single();
-
-    if (journalError) throw journalError;
-
-    // Get chart of accounts
-    const { data: accounts } = await supabase
-      .from('chart_of_accounts')
-      .select('id, account_code, account_name')
-      .in('account_code', ['2100', '5100']); // Accounts Payable, Cost of Goods Sold
-
-    const accountsPayable = accounts?.find(acc => acc.account_code === '2100');
-    const costOfGoods = accounts?.find(acc => acc.account_code === '5100');
-
-    if (!accountsPayable || !costOfGoods) {
-      throw new Error('Required accounts not found');
-    }
-
-    // Create journal entry lines
-    const journalLines = [
-      {
-        journal_entry_id: journalEntry.id,
-        account_id: costOfGoods.id,
-        debit_amount: vendorBill.total_amount,
-        credit_amount: 0,
-        description: `Cost of Goods - ${vendorBill.description || 'Vendor Bill'}`
-      },
-      {
-        journal_entry_id: journalEntry.id,
-        account_id: accountsPayable.id,
-        debit_amount: 0,
-        credit_amount: vendorBill.total_amount,
-        description: `Accounts Payable - ${vendorBill.bill_number}`
-      }
-    ];
-
-    const { error: linesError } = await supabase
-      .from('journal_entry_lines')
-      .insert(journalLines);
-
-    if (linesError) throw linesError;
-
-    // Update chart of accounts balances
-    await Promise.all([
-      // Increase Cost of Goods Sold (Debit)
-      supabase.rpc('increment_account_balance', {
-        account_id: costOfGoods.id,
-        amount: vendorBill.total_amount
-      }),
-      // Increase Accounts Payable (Credit)
-      supabase.rpc('increment_account_balance', {
-        account_id: accountsPayable.id,
-        amount: vendorBill.total_amount
-      })
-    ]);
-
-    console.log('✅ Created vendor bill journal entry:', journalEntry.journal_number);
-
-  } catch (error) {
-    console.error('❌ Error creating vendor bill journal entry:', error);
-    throw error;
+    console.error('Error in vendor bills PUT API:', error);
+    return NextResponse.json(
+      { success: false, error: 'Internal server error' },
+      { status: 500 }
+    );
   }
 }

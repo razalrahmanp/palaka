@@ -66,6 +66,43 @@ export async function createEmployeePaymentIntegration(params: EmployeePaymentPa
       payrollUpdateId = updatedPayroll.id;
       console.log('✅ Updated payroll record status to paid:', payrollUpdateId);
 
+    } else if (paymentType === 'salary' && !payrollRecordId) {
+      // Create a new salary payroll record
+      const payPeriodStart = new Date(paymentDate);
+      const payPeriodEnd = new Date(paymentDate);
+      
+      const { data: salaryPayroll, error: salaryError } = await supabase
+        .from('payroll_records')
+        .insert({
+          employee_id: employeeId,
+          pay_period_start: payPeriodStart.toISOString().split('T')[0],
+          pay_period_end: payPeriodEnd.toISOString().split('T')[0],
+          basic_salary: amount,
+          total_allowances: 0,
+          total_deductions: 0,
+          gross_salary: amount,
+          net_salary: amount,
+          working_days: 30, // Default for monthly salary
+          present_days: 30,
+          leave_days: 0,
+          overtime_hours: 0,
+          overtime_amount: 0,
+          bonus: 0,
+          status: 'paid',
+          processed_by: createdBy,
+          processed_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (salaryError) {
+        console.error('Error creating salary payroll record:', salaryError);
+        return { success: false, error: 'Failed to create salary payroll record' };
+      }
+
+      payrollUpdateId = salaryPayroll.id;
+      console.log('✅ Created new salary payroll record:', payrollUpdateId);
+
     } else if (['bonus', 'allowance', 'overtime', 'reimbursement'].includes(paymentType)) {
       // Create a separate bonus/allowance payroll record
       const payPeriodStart = new Date(paymentDate);

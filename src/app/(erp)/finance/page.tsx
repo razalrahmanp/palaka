@@ -1,10 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { 
   // FileText, 
   DollarSign, 
@@ -74,7 +73,7 @@ export default function FinancePage() {
     accountsPayable: 0,
     currentRatio: 0,
   });
-  const [metrics, setMetrics] = useState<DashboardMetrics>({
+  const [dashboardMetrics, setDashboardMetrics] = useState<DashboardMetrics>({
     pendingInvoices: 0,
     overdueInvoices: 0,
     unpostedJournals: 0,
@@ -114,7 +113,7 @@ export default function FinancePage() {
       const statsData = await statsResponse.json();
       
       setFinancialSummary(financialData.financialSummary);
-      setMetrics(financialData.metrics);
+      setDashboardMetrics(financialData.metrics);
       setSalesMetrics({
         totalSalesRevenue: statsData.totalSalesRevenue || 0,
         totalPaymentsReceived: statsData.totalPaymentsReceived || 0,
@@ -150,10 +149,6 @@ export default function FinancePage() {
     }).format(amount);
   };
 
-  const formatPercentage = (value: number) => {
-    return `${value.toFixed(1)}%`;
-  };
-
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -184,212 +179,143 @@ export default function FinancePage() {
       </div>
 
       {/* Key Performance Indicators */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 h-16">
+          <CardContent className="p-2 h-full">
+            <div className="flex items-center justify-between h-full">
               <div>
-                <p className="text-sm font-medium text-blue-600">Total Assets</p>
-                <p className="text-2xl font-bold text-blue-900">{formatCurrency(financialSummary.totalAssets)}</p>
-                <p className="text-xs text-blue-700 mt-1">Current financial position</p>
+                <p className="text-xs font-medium text-blue-600">Total Assets</p>
+                <p className="text-sm font-bold text-blue-900">{formatCurrency(financialSummary.totalAssets)}</p>
               </div>
-              <div className="p-3 bg-blue-500 rounded-lg">
-                <TrendingUp className="h-6 w-6 text-white" />
+              <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
+                <TrendingUp className="h-4 w-4 text-white" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
+        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 h-16">
+          <CardContent className="p-2 h-full">
+            <div className="flex items-center justify-between h-full">
               <div>
-                <p className="text-sm font-medium text-green-600">Net Income</p>
-                <p className="text-2xl font-bold text-green-900">{formatCurrency(financialSummary.netIncome)}</p>
-                <div className="flex items-center mt-1">
-                  <Badge variant="outline" className="text-xs text-green-700 border-green-300">
-                    {formatPercentage(metrics.profitMargin)} margin
-                  </Badge>
-                </div>
+                <p className="text-xs font-medium text-green-600">Net Income</p>
+                <p className="text-sm font-bold text-green-900">{formatCurrency(financialSummary.netIncome)}</p>
               </div>
-              <div className="p-3 bg-green-500 rounded-lg">
-                <DollarSign className="h-6 w-6 text-white" />
+              <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
+                <DollarSign className="h-4 w-4 text-white" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
+        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200 h-16">
+          <CardContent className="p-2 h-full">
+            <div className="flex items-center justify-between h-full">
               <div>
-                <p className="text-sm font-medium text-purple-600">Cash Balance</p>
-                <p className="text-2xl font-bold text-purple-900">{formatCurrency(financialSummary.cashBalance)}</p>
-                <div className="flex items-center mt-1">
-                  <Badge variant="outline" className="text-xs text-purple-700 border-purple-300">
-                    {metrics.cashFlowTrend === 'up' ? '↗' : metrics.cashFlowTrend === 'down' ? '↘' : '→'} 
-                    {metrics.cashFlowTrend}
-                  </Badge>
-                </div>
+                <p className="text-xs font-medium text-purple-600">Cash Balance</p>
+                <p className="text-sm font-bold text-purple-900">{formatCurrency(financialSummary.cashBalance)}</p>
               </div>
-              <div className="p-3 bg-purple-500 rounded-lg">
-                <CreditCard className="h-6 w-6 text-white" />
+              <div className="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center">
+                <CreditCard className="h-4 w-4 text-white" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
+        <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 h-16">
+          <CardContent className="p-2 h-full">
+            <div className="flex items-center justify-between h-full">
               <div>
-                <p className="text-sm font-medium text-orange-600">Current Ratio</p>
-                <p className="text-2xl font-bold text-orange-900">{financialSummary.currentRatio.toFixed(2)}</p>
-                <p className="text-xs text-orange-700 mt-1">Liquidity indicator</p>
+                <p className="text-xs font-medium text-red-600">Total Expenses</p>
+                <p className="text-sm font-bold text-red-900">{formatCurrency(financialSummary.totalExpenses)}</p>
               </div>
-              <div className="p-3 bg-orange-500 rounded-lg">
-                <Calculator className="h-6 w-6 text-white" />
+              <div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center">
+                <Receipt className="h-4 w-4 text-white" />
               </div>
             </div>
           </CardContent>
-        </Card> */}
+        </Card>
       </div>
 
       {/* Sales Payment Analytics - Real Payment Data */}
-      <Card className="border-gray-200 bg-white shadow-sm">
-        <CardHeader className="border-b border-gray-100">
-          <CardTitle className="text-gray-900 flex items-center gap-2">
-            <BarChart3 className="h-5 w-5" />
-            Real-Time Sales Payment Analytics
-          </CardTitle>
-          <CardDescription className="text-gray-600">
-            Live payment metrics from sales orders and invoices
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            {/* Total Collected */}
-            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-              <CardContent className="p-4">
-                <div className="flex flex-col space-y-2">
-                  <div className="flex items-center justify-between">
-                    <DollarSign className="h-5 w-5 text-green-600" />
-                    <Badge variant="outline" className="text-xs border-green-600 text-green-600 bg-green-50">PAID</Badge>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-green-900">
-                      Rs. {(salesMetrics.totalPaymentsReceived || 0).toLocaleString()}
-                    </p>
-                    <p className="text-xs text-green-700">Payments Received</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Outstanding Amount */}
-            <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
-              <CardContent className="p-4">
-                <div className="flex flex-col space-y-2">
-                  <div className="flex items-center justify-between">
-                    <CreditCard className="h-5 w-5 text-red-600" />
-                    <Badge variant="outline" className="text-xs border-red-600 text-red-600 bg-red-50">DUE</Badge>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-red-900">
-                      Rs. {(salesMetrics.totalOutstanding || 0).toLocaleString()}
-                    </p>
-                    <p className="text-xs text-red-700">Outstanding Balance</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Collection Rate */}
-            <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-              <CardContent className="p-4">
-                <div className="flex flex-col space-y-2">
-                  <div className="flex items-center justify-between">
-                    <TrendingUp className="h-5 w-5 text-blue-600" />
-                    <Badge variant="outline" className="text-xs border-blue-600 text-blue-600 bg-blue-50">RATE</Badge>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-blue-900">
-                      {(salesMetrics.collectionRate || 0).toFixed(1)}%
-                    </p>
-                    <p className="text-xs text-blue-700">Collection Rate</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Fully Paid Orders */}
-            <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200">
-              <CardContent className="p-4">
-                <div className="flex flex-col space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Receipt className="h-5 w-5 text-emerald-600" />
-                    <Badge variant="outline" className="text-xs border-emerald-600 text-emerald-600 bg-emerald-50">FULL</Badge>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-emerald-900">
-                      {salesMetrics.fullyPaidOrders || 0}
-                    </p>
-                    <p className="text-xs text-emerald-700">Fully Paid Orders</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Pending Payments */}
-            <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
-              <CardContent className="p-4">
-                <div className="flex flex-col space-y-2">
-                  <div className="flex items-center justify-between">
-                    <RefreshCw className="h-5 w-5 text-orange-600" />
-                    <Badge variant="outline" className="text-xs border-orange-600 text-orange-600 bg-orange-50">PENDING</Badge>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-orange-900">
-                      {salesMetrics.pendingPaymentOrders || 0}
-                    </p>
-                    <p className="text-xs text-orange-700">Pending Payments</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Action Items Alert */}
-      {(metrics.pendingInvoices > 0 || metrics.overdueInvoices > 0 || metrics.unpostedJournals > 0) && (
-        <Card className="border-yellow-200 bg-yellow-50">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-4">
-              <div className="p-2 bg-yellow-500 rounded-lg">
-                <Receipt className="h-5 w-5 text-white" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        {/* Total Collected */}
+        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 h-16">
+          <CardContent className="p-2 h-full">
+            <div className="flex items-center justify-between h-full">
+              <div>
+                <p className="text-xs font-medium text-green-600">Payments Received</p>
+                <p className="text-sm font-bold text-green-900">Rs. {(salesMetrics.totalPaymentsReceived || 0).toLocaleString()}</p>
               </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-yellow-900">Action Required</h3>
-                <div className="flex gap-6 mt-2 text-sm text-yellow-800">
-                  {metrics.pendingInvoices > 0 && (
-                    <span>{metrics.pendingInvoices} pending invoices</span>
-                  )}
-                  {metrics.overdueInvoices > 0 && (
-                    <span>{metrics.overdueInvoices} overdue invoices</span>
-                  )}
-                  {metrics.unpostedJournals > 0 && (
-                    <span>{metrics.unpostedJournals} unposted journal entries</span>
-                  )}
-                </div>
+              <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
+                <DollarSign className="h-4 w-4 text-white" />
               </div>
-              <Button size="sm" onClick={() => window.location.href = '/invoices'}>
-                Review
-              </Button>
             </div>
           </CardContent>
         </Card>
-      )}
+
+        {/* Outstanding Amount */}
+        <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 h-16">
+          <CardContent className="p-2 h-full">
+            <div className="flex items-center justify-between h-full">
+              <div>
+                <p className="text-xs font-medium text-red-600">Outstanding Balance</p>
+                <p className="text-sm font-bold text-red-900">Rs. {(salesMetrics.totalOutstanding || 0).toLocaleString()}</p>
+              </div>
+              <div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center">
+                <CreditCard className="h-4 w-4 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Collection Rate */}
+        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 h-16">
+          <CardContent className="p-2 h-full">
+            <div className="flex items-center justify-between h-full">
+              <div>
+                <p className="text-xs font-medium text-blue-600">Collection Rate</p>
+                <p className="text-sm font-bold text-blue-900">{(salesMetrics.collectionRate || 0).toFixed(1)}%</p>
+              </div>
+              <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
+                <TrendingUp className="h-4 w-4 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Fully Paid Orders */}
+        <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200 h-16">
+          <CardContent className="p-2 h-full">
+            <div className="flex items-center justify-between h-full">
+              <div>
+                <p className="text-xs font-medium text-emerald-600">Fully Paid Orders</p>
+                <p className="text-sm font-bold text-emerald-900">{salesMetrics.fullyPaidOrders || 0}</p>
+              </div>
+              <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center">
+                <Receipt className="h-4 w-4 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Pending Payments */}
+        <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 h-16">
+          <CardContent className="p-2 h-full">
+            <div className="flex items-center justify-between h-full">
+              <div>
+                <p className="text-xs font-medium text-orange-600">Pending Payments</p>
+                <p className="text-sm font-bold text-orange-900">{salesMetrics.pendingPaymentOrders || 0}</p>
+              </div>
+              <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
+                <RefreshCw className="h-4 w-4 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+
 
       {/* Main Navigation Tabs */}
       <Card>

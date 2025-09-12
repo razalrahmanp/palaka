@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Inventory Products Join</title>
+</head>
+<body>
+    <h1>Debug Inventory Products Join</h1>
+    <button onclick="testQuery()">Test Query</button>
+    <div id="results"></div>
+
+    <script>
+        async function testQuery() {
+            try {
+                const response = await fetch('/api/debug/inventory-products');
+                const data = await response.json();
+                document.getElementById('results').innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+            } catch (error) {
+                document.getElementById('results').innerHTML = 'Error: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>

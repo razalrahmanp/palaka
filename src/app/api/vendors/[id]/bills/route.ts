@@ -35,7 +35,13 @@ export async function GET(
       return NextResponse.json([])
     }
 
-    return NextResponse.json(bills || [])
+    // Add calculated remaining_amount to each bill
+    const billsWithRemaining = (bills || []).map(bill => ({
+      ...bill,
+      remaining_amount: (bill.total_amount || 0) - (bill.paid_amount || 0)
+    }));
+
+    return NextResponse.json(billsWithRemaining)
   } catch (error) {
     console.error('Error fetching vendor bills:', error)
     return NextResponse.json({ error: 'Failed to fetch bills' }, { status: 500 })

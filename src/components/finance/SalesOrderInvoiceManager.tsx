@@ -208,6 +208,12 @@ export function SalesOrderInvoiceManager() {
   const [paymentsSearchQuery, setPaymentsSearchQuery] = useState('');
   const [expensesSearchQuery, setExpensesSearchQuery] = useState('');
   
+  // Payment status filter for sales orders
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<'all' | 'paid' | 'unpaid' | 'partial'>('all');
+  
+  // Invoice status filter for invoices tab
+  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<'all' | 'paid' | 'unpaid' | 'partial'>('all');
+  
   // Delete expense states
   const [deleteExpenseOpen, setDeleteExpenseOpen] = useState(false);
   const [selectedExpenseForDelete, setSelectedExpenseForDelete] = useState<Expense | null>(null);
@@ -437,8 +443,20 @@ export function SalesOrderInvoiceManager() {
     }
   };
 
-  const getPaymentStatusBadge = (status: string) => {
-    switch (status) {
+  const getPaymentStatusBadge = (status: string, totalPaid: number = 0, orderTotal: number = 0, waivedAmount: number = 0) => {
+    // Determine actual status based on payment amounts and waived amounts
+    const effectivePaid = totalPaid + waivedAmount; // Consider waived as paid
+    let actualStatus = status;
+    
+    if (effectivePaid >= orderTotal && orderTotal > 0) {
+      actualStatus = 'paid';
+    } else if (totalPaid > 0 || waivedAmount > 0) {
+      actualStatus = 'partial';
+    } else {
+      actualStatus = 'unpaid';
+    }
+
+    switch (actualStatus) {
       case 'paid':
       case 'PAID':
       case 'Paid':
@@ -451,13 +469,11 @@ export function SalesOrderInvoiceManager() {
       case 'partial':
       case 'PARTIAL':
       case 'Partially Paid':
-      case 'pending':
-      case 'Pending':
         return <Badge className="bg-yellow-100 text-yellow-800">Partially Paid</Badge>;
       case 'overdue':
         return <Badge className="bg-red-100 text-red-800">Overdue</Badge>;
       default:
-        return <Badge variant="secondary">{status}</Badge>;
+        return <Badge variant="secondary">{actualStatus}</Badge>;
     }
   };
 
@@ -631,11 +647,33 @@ export function SalesOrderInvoiceManager() {
   };
 
   // Filter functions for search
-  const filterInvoices = (invoices: Invoice[], searchQuery: string): Invoice[] => {
-    if (!searchQuery.trim()) return invoices;
+  const filterInvoices = (invoices: Invoice[], searchQuery: string, statusFilter: 'all' | 'paid' | 'unpaid' | 'partial' = 'all'): Invoice[] => {
+    let filteredInvoices = invoices;
+
+    // Filter by payment status
+    if (statusFilter !== 'all') {
+      filteredInvoices = filteredInvoices.filter((invoice) => {
+        const totalPaid = invoice.paid_amount || 0;
+        const invoiceTotal = invoice.total || 0;
+        const waivedAmount = invoice.waived_amount || 0;
+        const effectivePaid = totalPaid + waivedAmount; // Consider waived as paid
+        
+        if (statusFilter === 'paid') {
+          return effectivePaid >= invoiceTotal && invoiceTotal > 0;
+        } else if (statusFilter === 'unpaid') {
+          return totalPaid === 0 && waivedAmount === 0;
+        } else if (statusFilter === 'partial') {
+          return (totalPaid > 0 || waivedAmount > 0) && effectivePaid < invoiceTotal;
+        }
+        return true;
+      });
+    }
+
+    // Filter by search query
+    if (!searchQuery.trim()) return filteredInvoices;
     
     const query = searchQuery.toLowerCase();
-    return invoices.filter((invoice) => {
+    return filteredInvoices.filter((invoice) => {
       return (
         invoice.id.toLowerCase().includes(query) ||
         invoice.customer_name?.toLowerCase().includes(query) ||
@@ -647,11 +685,33 @@ export function SalesOrderInvoiceManager() {
     });
   };
 
-  const filterSalesOrders = (orders: SalesOrderWithInvoice[], searchQuery: string): SalesOrderWithInvoice[] => {
-    if (!searchQuery.trim()) return orders;
+  const filterSalesOrders = (orders: SalesOrderWithInvoice[], searchQuery: string, statusFilter: 'all' | 'paid' | 'unpaid' | 'partial' = 'all'): SalesOrderWithInvoice[] => {
+    let filteredOrders = orders;
+
+    // Filter by payment status
+    if (statusFilter !== 'all') {
+      filteredOrders = filteredOrders.filter((order) => {
+        const totalPaid = order.total_paid || 0;
+        const orderTotal = order.final_price || order.total || 0;
+        const waivedAmount = order.waived_amount || 0;
+        const effectivePaid = totalPaid + waivedAmount; // Consider waived as paid
+        
+        if (statusFilter === 'paid') {
+          return effectivePaid >= orderTotal && orderTotal > 0;
+        } else if (statusFilter === 'unpaid') {
+          return totalPaid === 0 && waivedAmount === 0;
+        } else if (statusFilter === 'partial') {
+          return (totalPaid > 0 || waivedAmount > 0) && effectivePaid < orderTotal;
+        }
+        return true;
+      });
+    }
+
+    // Filter by search query
+    if (!searchQuery.trim()) return filteredOrders;
     
     const query = searchQuery.toLowerCase();
-    return orders.filter((order) => {
+    return filteredOrders.filter((order) => {
       return (
         order.id.toLowerCase().includes(query) ||
         order.customer?.name?.toLowerCase().includes(query) ||
@@ -705,9 +765,9 @@ export function SalesOrderInvoiceManager() {
   const getCurrentDataLength = () => {
     switch (activeTab) {
       case 'orders':
-        return filterSalesOrders(salesOrders, ordersSearchQuery).length;
+        return filterSalesOrders(salesOrders, ordersSearchQuery, paymentStatusFilter).length;
       case 'invoices':
-        return filterInvoices(invoices, invoicesSearchQuery).length;
+        return filterInvoices(invoices, invoicesSearchQuery, invoiceStatusFilter).length;
       case 'payments':
         return filterPayments(payments, paymentsSearchQuery).length;
       case 'expenses':
@@ -1559,25 +1619,9 @@ export function SalesOrderInvoiceManager() {
           <div className="bg-white">
             {/* Sales Orders Tab */}
             <TabsContent value="orders" className="space-y-4 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">Sales Orders Management</h3>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fetchData()}
-                  >
-                    <Clock className="h-4 w-4 mr-2" />
-                    Refresh
-                  </Button>
-                </div>
-              </div>
               
               {/* Nested tab for Sales Orders and Payments */}
               <Tabs defaultValue="invoice-orders">
-                <TabsList className="w-full">
-                  <TabsTrigger value="invoice-orders" className="w-full">All Sales Orders</TabsTrigger>
-                </TabsList>
                 
                 <TabsContent value="invoice-orders" className="pt-4">
                   <div className="flex items-center justify-between mb-4">
@@ -1600,33 +1644,86 @@ export function SalesOrderInvoiceManager() {
                     </div>
                   </div>
 
-                  {/* Search Bar for Sales Orders */}
-                  <div className="flex items-center gap-4 mb-4">
-                    <div className="relative flex-1 max-w-md">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                      <Input
-                        type="text"
-                        placeholder="Search orders by ID, customer, status, amount..."
-                        value={ordersSearchQuery}
-                        onChange={(e) => {
-                          setOrdersSearchQuery(e.target.value);
-                          setCurrentPage(1); // Reset to first page when searching
-                        }}
-                        className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
+                  {/* Search Bar and Filters for Sales Orders */}
+                  <div className="flex flex-col gap-4 mb-4">
+                    <div className="flex items-center gap-4">
+                      <div className="relative flex-1 max-w-md">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                        <Input
+                          type="text"
+                          placeholder="Search orders by ID, customer, status, amount..."
+                          value={ordersSearchQuery}
+                          onChange={(e) => {
+                            setOrdersSearchQuery(e.target.value);
+                            setCurrentPage(1); // Reset to first page when searching
+                          }}
+                          className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                      </div>
+                      {ordersSearchQuery && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setOrdersSearchQuery('');
+                            setCurrentPage(1);
+                          }}
+                        >
+                          Clear
+                        </Button>
+                      )}
                     </div>
-                    {ordersSearchQuery && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setOrdersSearchQuery('');
-                          setCurrentPage(1);
-                        }}
-                      >
-                        Clear
-                      </Button>
-                    )}
+                    
+                    {/* Payment Status Filters */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-700">Payment Status:</span>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant={paymentStatusFilter === 'all' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => {
+                            setPaymentStatusFilter('all');
+                            setCurrentPage(1);
+                          }}
+                          className="text-xs"
+                        >
+                          All
+                        </Button>
+                        <Button
+                          variant={paymentStatusFilter === 'paid' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => {
+                            setPaymentStatusFilter('paid');
+                            setCurrentPage(1);
+                          }}
+                          className="text-xs bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+                        >
+                          Paid
+                        </Button>
+                        <Button
+                          variant={paymentStatusFilter === 'unpaid' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => {
+                            setPaymentStatusFilter('unpaid');
+                            setCurrentPage(1);
+                          }}
+                          className="text-xs bg-red-50 hover:bg-red-100 text-red-700 border-red-200"
+                        >
+                          Unpaid
+                        </Button>
+                        <Button
+                          variant={paymentStatusFilter === 'partial' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => {
+                            setPaymentStatusFilter('partial');
+                            setCurrentPage(1);
+                          }}
+                          className="text-xs bg-yellow-50 hover:bg-yellow-100 text-yellow-700 border-yellow-200"
+                        >
+                          Partially Paid
+                        </Button>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="rounded-lg border border-gray-200 overflow-hidden bg-white shadow-sm">
@@ -1647,7 +1744,7 @@ export function SalesOrderInvoiceManager() {
                       </TableHeader>
                       <TableBody>
                         {(() => {
-                          const filteredOrders = filterSalesOrders(salesOrders, ordersSearchQuery);
+                          const filteredOrders = filterSalesOrders(salesOrders, ordersSearchQuery, paymentStatusFilter);
                           const paginatedOrders = getPaginatedData(filteredOrders, currentPage, itemsPerPage);
                           
                           if (paginatedOrders.length === 0) {
@@ -1724,16 +1821,24 @@ export function SalesOrderInvoiceManager() {
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-col gap-1">
-                                {/* Use the new invoice_status field from our API */}
-                                {order.invoice_status === 'fully_paid' && (
-                                  <Badge className="bg-green-100 text-green-800">Fully Paid</Badge>
-                                )}
-                                {order.invoice_status === 'partially_paid' && (
-                                  <Badge className="bg-yellow-100 text-yellow-800">Partially Paid</Badge>
-                                )}
-                                {order.invoice_status === 'not_invoiced' && (
-                                  <Badge className="bg-gray-100 text-gray-800">Not Invoiced</Badge>
-                                )}
+                                {/* Calculate invoice status based on actual payment amounts and waived amounts */}
+                                {(() => {
+                                  const totalPaid = order.total_paid || 0;
+                                  const orderTotal = order.final_price || order.total || 0;
+                                  const waivedAmount = order.waived_amount || 0;
+                                  const balanceDue = order.balance_due || 0;
+                                  const effectivePaid = totalPaid + waivedAmount; // Consider waived as paid
+                                  
+                                  if (!order.is_invoiced) {
+                                    return <Badge className="bg-gray-100 text-gray-800">Not Invoiced</Badge>;
+                                  } else if (balanceDue <= 0 || effectivePaid >= orderTotal && orderTotal > 0) {
+                                    return <Badge className="bg-green-100 text-green-800">Fully Paid</Badge>;
+                                  } else if (totalPaid > 0 || waivedAmount > 0) {
+                                    return <Badge className="bg-yellow-100 text-yellow-800">Partially Paid</Badge>;
+                                  } else {
+                                    return <Badge className="bg-red-100 text-red-800">Invoiced - Unpaid</Badge>;
+                                  }
+                                })()}
                                 <span className="text-xs text-gray-500">
                                   {order.invoice_count || 0} invoice(s)
                                 </span>
@@ -1769,7 +1874,7 @@ export function SalesOrderInvoiceManager() {
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-col gap-1">
-                                {getPaymentStatusBadge(order.payment_status || 'pending')}
+                                {getPaymentStatusBadge(order.payment_status || 'pending', order.total_paid || 0, order.final_price || order.total || 0, order.waived_amount || 0)}
                                 <span className="text-xs text-gray-500">
                                   {formatCurrency(order.total_paid || 0)} received
                                 </span>
@@ -1852,33 +1957,85 @@ export function SalesOrderInvoiceManager() {
                 </div>
               </div>
 
-              {/* Search Bar */}
-              <div className="flex items-center gap-4 mb-4">
-                <div className="relative flex-1 max-w-md">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <Input
-                    type="text"
-                    placeholder="Search invoices by ID, customer, status, amount..."
-                    value={invoicesSearchQuery}
-                    onChange={(e) => {
-                      setInvoicesSearchQuery(e.target.value);
-                      setCurrentPage(1); // Reset to first page when searching
-                    }}
-                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
+              {/* Search Bar and Filters */}
+              <div className="flex flex-col gap-4 mb-4">
+                <div className="flex items-center gap-4">
+                  <div className="relative flex-1 max-w-md">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Input
+                      type="text"
+                      placeholder="Search invoices by ID, customer, status, amount..."
+                      value={invoicesSearchQuery}
+                      onChange={(e) => {
+                        setInvoicesSearchQuery(e.target.value);
+                        setCurrentPage(1); // Reset to first page when searching
+                      }}
+                      className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  {invoicesSearchQuery && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setInvoicesSearchQuery('');
+                        setCurrentPage(1);
+                      }}
+                    >
+                      Clear
+                    </Button>
+                  )}
                 </div>
-                {invoicesSearchQuery && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setInvoicesSearchQuery('');
-                      setCurrentPage(1);
-                    }}
-                  >
-                    Clear
-                  </Button>
-                )}
+
+                {/* Payment Status Filters */}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-700">Filter by status:</span>
+                  <div className="flex gap-2">
+                    <Button
+                      variant={invoiceStatusFilter === 'all' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => {
+                        setInvoiceStatusFilter('all');
+                        setCurrentPage(1);
+                      }}
+                    >
+                      All
+                    </Button>
+                    <Button
+                      variant={invoiceStatusFilter === 'paid' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => {
+                        setInvoiceStatusFilter('paid');
+                        setCurrentPage(1);
+                      }}
+                      className={invoiceStatusFilter === 'paid' ? 'bg-green-600 hover:bg-green-700' : 'border-green-600 text-green-600 hover:bg-green-50'}
+                    >
+                      Paid
+                    </Button>
+                    <Button
+                      variant={invoiceStatusFilter === 'unpaid' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => {
+                        setInvoiceStatusFilter('unpaid');
+                        setCurrentPage(1);
+                      }}
+                      className={invoiceStatusFilter === 'unpaid' ? 'bg-red-600 hover:bg-red-700' : 'border-red-600 text-red-600 hover:bg-red-50'}
+                    >
+                      Unpaid
+                    </Button>
+                    <Button
+                      variant={invoiceStatusFilter === 'partial' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => {
+                        setInvoiceStatusFilter('partial');
+                        setCurrentPage(1);
+                      }}
+                      className={invoiceStatusFilter === 'partial' ? 'bg-yellow-600 hover:bg-yellow-700' : 'border-yellow-600 text-yellow-600 hover:bg-yellow-50'}
+                    >
+                      Partially Paid
+                    </Button>
+                  </div>
+                </div>
               </div>
               
               <div className="rounded-lg border border-gray-200 overflow-hidden">
@@ -1899,7 +2056,7 @@ export function SalesOrderInvoiceManager() {
                   </TableHeader>
                   <TableBody>
                     {(() => {
-                      const filteredInvoices = filterInvoices(invoices, invoicesSearchQuery);
+                      const filteredInvoices = filterInvoices(invoices, invoicesSearchQuery, invoiceStatusFilter);
                       const paginatedInvoices = getPaginatedData(filteredInvoices, currentPage, itemsPerPage);
                       
                       if (paginatedInvoices.length === 0) {
@@ -1941,7 +2098,20 @@ export function SalesOrderInvoiceManager() {
                           {formatCurrency(invoice.balance_due || 0)}
                         </TableCell>
                         <TableCell>
-                          {getPaymentStatusBadge(invoice.status)}
+                          {(() => {
+                            const totalPaid = invoice.paid_amount || 0;
+                            const invoiceTotal = invoice.total || 0;
+                            const waivedAmount = invoice.waived_amount || 0;
+                            const effectivePaid = totalPaid + waivedAmount;
+                            
+                            if (effectivePaid >= invoiceTotal && invoiceTotal > 0) {
+                              return <Badge className="bg-green-100 text-green-800">Paid</Badge>;
+                            } else if (totalPaid > 0 || waivedAmount > 0) {
+                              return <Badge className="bg-yellow-100 text-yellow-800">Partially Paid</Badge>;
+                            } else {
+                              return <Badge className="bg-red-100 text-red-800">Unpaid</Badge>;
+                            }
+                          })()}
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-2 justify-center">

@@ -47,13 +47,61 @@ export async function GET() {
       return NextResponse.json({ error: ordersError.message }, { status: 500 })
     }
 
+    // Get invoice and payment data to calculate collections
+    const { data: invoices, error: invoicesError } = await supabase
+      .from('invoices')
+      .select(`
+        id,
+        sales_order_id,
+        total,
+        status,
+        payments(
+          amount
+        )
+      `)
+
+    console.log('Invoices with payments:', invoices?.length)
+
+    // Create collection lookup by sales_order_id
+    const collectionsByOrder = new Map()
+    if (invoices && !invoicesError) {
+      invoices.forEach(invoice => {
+        console.log(`Invoice ${invoice.id} for order ${invoice.sales_order_id}:`, invoice.payments)
+        
+        if (invoice.sales_order_id) {
+          let invoicePaid = 0
+          if (invoice.payments && Array.isArray(invoice.payments)) {
+            invoicePaid = invoice.payments
+              .reduce((sum: number, payment: { amount: number }) => {
+                console.log(`  Payment: ₹${payment.amount}`)
+                return sum + (payment.amount || 0)
+              }, 0)
+          }
+          
+          if (!collectionsByOrder.has(invoice.sales_order_id)) {
+            collectionsByOrder.set(invoice.sales_order_id, 0)
+          }
+          const currentAmount = collectionsByOrder.get(invoice.sales_order_id) + invoicePaid
+          collectionsByOrder.set(invoice.sales_order_id, currentAmount)
+          
+          if (invoicePaid > 0) {
+            console.log(`Order ${invoice.sales_order_id} total collected: ₹${currentAmount}`)
+          }
+        }
+      })
+    }
+
+    console.log('Collection lookup sample:', Array.from(collectionsByOrder.entries()).slice(0, 3))
+
     if (!orders || orders.length === 0) {
       return NextResponse.json({
         rankings: {
           most_profitable: [],
           profit_efficiency: [],
           most_sales: [],
-          highest_revenue: []
+          highest_revenue: [],
+          discount_control: [],
+          best_collection: []
         }
       })
     }
@@ -79,7 +127,9 @@ export async function GET() {
           total_cost: 0,
           completed_orders: 0,
           unique_customers: new Set(),
-          order_values: []
+          order_values: [],
+          total_collected: 0,
+          total_pending: 0
         })
       }
 
@@ -89,6 +139,14 @@ export async function GET() {
       metrics.total_discount_given += (order.discount_amount || 0)
       metrics.unique_customers.add(order.customer_id)
       metrics.order_values.push(order.final_price || 0)
+      
+      // Calculate collection metrics using actual payment data
+      const orderTotal = order.final_price || 0
+      const paidAmount = collectionsByOrder.get(order.id) || 0
+      const pendingAmount = Math.max(0, orderTotal - paidAmount)
+      
+      metrics.total_collected += paidAmount
+      metrics.total_pending += pendingAmount
       
       if (order.status === 'delivered' || order.status === 'completed') {
         metrics.completed_orders += 1
@@ -132,6 +190,9 @@ export async function GET() {
       unique_customers_count: rep.unique_customers.size,
       average_order_value: rep.total_orders > 0 ? rep.total_revenue / rep.total_orders : 0,
       average_profit_per_order: rep.total_orders > 0 ? rep.total_profit / rep.total_orders : 0,
+      average_discount_per_order: rep.total_orders > 0 ? rep.total_discount_given / rep.total_orders : 0,
+      discount_percentage: rep.total_revenue > 0 ? (rep.total_discount_given / (rep.total_revenue + rep.total_discount_given)) * 100 : 0,
+      collection_rate: rep.total_revenue > 0 ? (rep.total_collected / rep.total_revenue) * 100 : 0,
       completion_rate: rep.total_orders > 0 ? (rep.completed_orders / rep.total_orders) * 100 : 0,
       revenue_per_customer: rep.unique_customers.size > 0 ? rep.total_revenue / rep.unique_customers.size : 0,
       efficiency_score: rep.total_orders > 0 ? (rep.completed_orders * rep.total_revenue) / rep.total_orders : 0,
@@ -195,6 +256,51 @@ export async function GET() {
           metric_value: rep.total_revenue,
           metric_label: 'Revenue',
           additional_info: `${rep.total_orders} orders`
+        })),
+
+      // Best Discount Control (who gives less discount per order)
+      discount_control: [...salesRepArray]
+        .filter(rep => rep.total_orders >= 2) // Minimum 2 orders for fair comparison
+        .sort((a, b) => {
+          // Sort by lowest average discount per order (better discount control)
+          // Secondary sort by number of orders (more orders with low discount is better)
+          if (Math.abs(a.average_discount_per_order - b.average_discount_per_order) < 1) {
+            return b.total_orders - a.total_orders;
+          }
+          return a.average_discount_per_order - b.average_discount_per_order;
+        })
+        .slice(0, 10)
+        .map((rep, index) => ({
+          rank: index + 1,
+          id: rep.id,
+          name: rep.name,
+          email: rep.email,
+          metric_value: rep.average_discount_per_order,
+          metric_label: 'Avg Discount/Order',
+          additional_info: `${rep.total_orders} orders • ${rep.discount_percentage.toFixed(1)}% total discount`
+        })),
+
+      // Best Collection (highest collection rate)
+      best_collection: [...salesRepArray]
+        .filter(rep => rep.total_orders >= 2) // Minimum 2 orders for fair comparison
+        .sort((a, b) => {
+          // Sort by highest collection rate
+          // Secondary sort by total revenue (higher revenue with good collection is better)
+          if (Math.abs(a.collection_rate - b.collection_rate) < 1) {
+            return b.total_revenue - a.total_revenue;
+          }
+          return b.collection_rate - a.collection_rate;
+        })
+        .slice(0, 10)
+        .map((rep, index) => ({
+          rank: index + 1,
+          id: rep.id,
+          name: rep.name,
+          email: rep.email,
+          metric_value: rep.collection_rate,
+          metric_label: 'Collection Rate',
+          additional_info: `₹${new Intl.NumberFormat('en-IN').format(rep.total_collected)} collected • ${rep.collection_rate.toFixed(1)}% rate • ₹${new Intl.NumberFormat('en-IN').format(rep.total_revenue)} revenue`,
+          total_revenue: rep.total_revenue
         }))
     }
 

@@ -8,7 +8,9 @@ import {
   Target,
   Crown,
   Medal,
-  Award
+  Award,
+  Percent,
+  CreditCard
 } from 'lucide-react'
 
 interface SalesRepRanking {
@@ -19,6 +21,7 @@ interface SalesRepRanking {
   metric_value: number
   metric_label: string
   additional_info: string
+  total_revenue?: number // Optional field for collection ranking
 }
 
 interface Rankings {
@@ -26,6 +29,8 @@ interface Rankings {
   profit_efficiency: SalesRepRanking[]
   most_sales: SalesRepRanking[]
   highest_revenue: SalesRepRanking[]
+  discount_control: SalesRepRanking[]
+  best_collection: SalesRepRanking[]
 }
 
 const EmployeeRankings: React.FC = () => {
@@ -57,7 +62,7 @@ const EmployeeRankings: React.FC = () => {
   }
 
   const formatMetricValue = (value: number, label: string) => {
-    if (label === 'Revenue' || label === 'Avg Order Value' || label === 'Total Profit' || label === 'Avg Profit/Order') {
+    if (label === 'Revenue' || label === 'Avg Order Value' || label === 'Total Profit' || label === 'Avg Profit/Order' || label === 'Avg Discount/Order' || label === 'Pending Amount') {
       return `₹${new Intl.NumberFormat('en-IN').format(Math.round(value))}`
     }
     return value.toString()
@@ -91,6 +96,20 @@ const EmployeeRankings: React.FC = () => {
       icon: <DollarSign className="w-5 h-5" />,
       description: 'Ranked by total revenue generated',
       gradient: 'from-green-500 to-green-600'
+    },
+    {
+      key: 'discount_control',
+      title: 'Best Discount Control',
+      icon: <Percent className="w-5 h-5" />,
+      description: 'Gives lowest discount per order',
+      gradient: 'from-purple-500 to-purple-600'
+    },
+    {
+      key: 'best_collection',
+      title: 'Best Collection',
+      icon: <CreditCard className="w-5 h-5" />,
+      description: 'Minimum pending amount to collect',
+      gradient: 'from-indigo-500 to-indigo-600'
     }
   ]
 
@@ -139,14 +158,14 @@ const EmployeeRankings: React.FC = () => {
         </CardTitle>
         
         {/* Category Tabs */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-4">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2 mt-4">
           {rankingCategories.map((category) => {
             const isActive = activeTab === category.key
             return (
               <button
                 key={category.key}
                 onClick={() => setActiveTab(category.key as keyof Rankings)}
-                className={`p-3 rounded-lg border-2 transition-all ${
+                className={`flex-1 min-w-[160px] p-3 rounded-lg border-2 transition-all ${
                   isActive
                     ? `bg-gradient-to-r ${category.gradient} text-white border-transparent`
                     : 'bg-white hover:bg-gray-50 border-gray-200'
@@ -195,6 +214,16 @@ const EmployeeRankings: React.FC = () => {
                     </Badge>
                   </div>
                   <p className="text-xs text-gray-500 mt-1">{rep.metric_label}</p>
+                  
+                  {/* Show total revenue for collection ranking */}
+                  {activeTab === 'best_collection' && rep.total_revenue && (
+                    <div className="mt-2 p-2 bg-blue-50 rounded-md border border-blue-200">
+                      <p className="text-xs font-medium text-blue-800">Total Revenue</p>
+                      <p className="text-sm font-bold text-blue-900">
+                        ₹{new Intl.NumberFormat('en-IN').format(rep.total_revenue)}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

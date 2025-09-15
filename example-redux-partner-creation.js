@@ -4,64 +4,64 @@
 import { useSelector } from 'react-redux';
 
 const CreatePartnerExample = () => {
-  // Get current user from Redux state
-  const currentUser = useSelector((state) => state.auth.user);
-  
-  const createPartner = async (partnerData) => {
-    try {
-      // Include current user ID from Redux in the request
-      const requestBody = {
-        ...partnerData,
-        created_by: currentUser.id // This is the key change!
-      };
+    // Get current user from Redux state
+    const currentUser = useSelector((state) => state.auth.user);
 
-      const response = await fetch('/api/equity/investors', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody)
-      });
+    const createPartner = async(partnerData) => {
+        try {
+            // Include current user ID from Redux in the request
+            const requestBody = {
+                ...partnerData,
+                created_by: currentUser.id // This is the key change!
+            };
 
-      const result = await response.json();
-      
-      if (result.success) {
-        console.log('Partner created successfully:', result.investor);
-        // The accounting entries are automatically created:
-        // 1. Partner equity account (3015-{partnerId})
-        // 2. Journal entry with proper debit/credit
-        // 3. Account balance updates
-      } else {
-        console.error('Error creating partner:', result.error);
-      }
-      
-      return result;
-    } catch (error) {
-      console.error('API call failed:', error);
-    }
-  };
+            const response = await fetch('/api/equity/investors', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(requestBody)
+            });
 
-  // Example usage
-  const handleCreatePartner = () => {
-    const partnerData = {
-      name: "John Doe Partner",
-      email: "john@example.com",
-      phone: "+1234567890",
-      partner_type: "partner",
-      initial_investment: 100000,
-      equity_percentage: 20,
-      notes: "New investor with significant capital"
-      // created_by will be added automatically from Redux
+            const result = await response.json();
+
+            if (result.success) {
+                console.log('Partner created successfully:', result.investor);
+                // The accounting entries are automatically created:
+                // 1. Partner equity account (3015-{partnerId})
+                // 2. Journal entry with proper debit/credit
+                // 3. Account balance updates
+            } else {
+                console.error('Error creating partner:', result.error);
+            }
+
+            return result;
+        } catch (error) {
+            console.error('API call failed:', error);
+        }
     };
 
-    createPartner(partnerData);
-  };
+    // Example usage
+    const handleCreatePartner = () => {
+        const partnerData = {
+            name: "John Doe Partner",
+            email: "john@example.com",
+            phone: "+1234567890",
+            partner_type: "partner",
+            initial_investment: 100000,
+            equity_percentage: 20,
+            notes: "New investor with significant capital"
+                // created_by will be added automatically from Redux
+        };
 
-  return (
-    <button onClick={handleCreatePartner}>
-      Create Partner
-    </button>
-  );
+        createPartner(partnerData);
+    };
+
+    return ( <
+        button onClick = { handleCreatePartner } >
+        Create Partner <
+        /button>
+    );
 };
 
 export default CreatePartnerExample;

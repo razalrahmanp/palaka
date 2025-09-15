@@ -92,13 +92,7 @@ export async function GET() {
       ) || [];
       const dayInflows = dayPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
 
-      // Calculate outflows for this date
-      const dayExpenses = expenses?.filter(e => 
-        e.date?.split('T')[0] === dateString
-      ) || [];
-      const dayOutflows = dayExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-
-      // Add bank transaction outflows
+      // Calculate outflows for this date (use bank withdrawals as actual cash outflows)
       const dayBankOutflows = bankTransactions?.filter(t => 
         t.date?.split('T')[0] === dateString && t.type === 'withdrawal'
       )?.reduce((sum, t) => sum + (t.amount || 0), 0) || 0;
@@ -107,8 +101,8 @@ export async function GET() {
         date: dateString,
         displayDate: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
         inflows: dayInflows,
-        outflows: dayOutflows + dayBankOutflows,
-        netFlow: dayInflows - (dayOutflows + dayBankOutflows),
+        outflows: dayBankOutflows,
+        netFlow: dayInflows - dayBankOutflows,
         runningBalance: 0 // Will calculate below
       });
     }
@@ -136,13 +130,7 @@ export async function GET() {
       ) || [];
       const monthInflows = monthPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
 
-      // Monthly outflows
-      const monthExpenses = expenses?.filter(e => 
-        e.date?.substring(0, 7) === monthKey
-      ) || [];
-      const monthOutflows = monthExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-
-      // Bank transaction outflows
+      // Monthly outflows (use bank withdrawals as actual cash outflows)
       const monthBankOutflows = bankTransactions?.filter(t => 
         t.date?.substring(0, 7) === monthKey && t.type === 'withdrawal'
       )?.reduce((sum, t) => sum + (t.amount || 0), 0) || 0;
@@ -150,10 +138,12 @@ export async function GET() {
       monthlyCashFlow.push({
         month: monthDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
         inflows: monthInflows,
-        outflows: monthOutflows + monthBankOutflows,
-        netFlow: monthInflows - (monthOutflows + monthBankOutflows),
+        outflows: monthBankOutflows,
+        netFlow: monthInflows - monthBankOutflows,
         inflowsCount: monthPayments.length,
-        outflowsCount: monthExpenses.length
+        outflowsCount: bankTransactions?.filter(t => 
+          t.date?.substring(0, 7) === monthKey && t.type === 'withdrawal'
+        )?.length || 0
       });
     }
 
@@ -202,6 +192,9 @@ export async function GET() {
         expenseCategories[category] = (expenseCategories[category] || 0) + (expense.amount || 0);
       });
     }
+    
+    // Note: We don't add bank withdrawals separately as they represent the payment method
+    // for the expenses already categorized above
 
     // Create expense breakdown with better categorization
     const expenseBreakdown = Object.entries(expenseCategories)
@@ -235,18 +228,18 @@ export async function GET() {
       .map(([method, data]) => ({ method, ...data }))
       .sort((a, b) => b.amount - a.amount);
 
-    // Summary calculations
+    // Summary calculations - Use bank withdrawals as the primary outflow source
     const totalInflows = payments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
-    const totalOutflows = expenses?.reduce((sum, e) => sum + (e.amount || 0), 0) || 0;
+    
+    // Use bank withdrawals as actual cash outflows (this includes all expense payments)
+    const bankWithdrawalsTotal = bankTransactions?.filter(t => t.type === 'withdrawal')
+      ?.reduce((sum, t) => sum + (t.amount || 0), 0) || 0;
+    const totalOutflows = bankWithdrawalsTotal;
+    
     const netCashFlow = totalInflows - totalOutflows;
     
-    // Operating cash flow (exclude non-operational items)
-    const operationalExpenses = expenses?.filter(e => 
-      !e.subcategory?.toLowerCase().includes('capital') && 
-      !e.subcategory?.toLowerCase().includes('investment')
-    )?.reduce((sum, e) => sum + (e.amount || 0), 0) || 0;
-    
-    const operatingCashFlow = totalInflows - operationalExpenses;
+    // Operating cash flow (use same calculation)
+    const operatingCashFlow = totalInflows - totalOutflows;
 
     // Cash flow velocity (average daily cash movement)
     const avgDailyInflow = dailyCashFlow.length > 0 

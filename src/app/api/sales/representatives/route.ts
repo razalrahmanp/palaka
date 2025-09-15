@@ -13,7 +13,7 @@ export async function GET() {
           name
         )
       `)
-      .eq('position', 'Sales Representative')
+      .order('position', { ascending: true })
       .order('created_at', { ascending: false })
 
     if (error) {
@@ -22,15 +22,16 @@ export async function GET() {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const salesReps = data.map((employee: any) => ({
+    const employees = data.map((employee: any) => ({
       id: employee.user_id,
       email: employee.user?.email || employee.email,
       name: employee.user?.name || employee.name,
+      position: employee.position,
       role: employee.position,
       created_at: employee.created_at,
     }))
 
-    return NextResponse.json(salesReps)
+    return NextResponse.json(employees)
   } catch (error) {
     console.error('Error fetching sales representatives:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

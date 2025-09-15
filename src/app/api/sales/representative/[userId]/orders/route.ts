@@ -8,6 +8,9 @@ type OrderRow = {
   status: string;
   created_at: string;
   updated_at?: string;
+  original_price?: number | null;
+  discount_amount?: number | null;
+  final_price?: number | null;
   customer: { name: string; email?: string } | null;
 };
 
@@ -57,6 +60,9 @@ export async function GET(
         status,
         created_at,
         updated_at,
+        original_price,
+        discount_amount,
+        final_price,
         customers(name, email)
       `, { count: 'exact' })
       .eq('created_by', userId)
@@ -114,6 +120,9 @@ export async function GET(
       status: o.status,
       created_at: o.created_at,
       updated_at: o.updated_at,
+      original_price: o.original_price,
+      discount_amount: o.discount_amount,
+      final_price: o.final_price,
       customer: o.customers ? { 
         name: o.customers.name,
         email: o.customers.email 
@@ -179,7 +188,8 @@ export async function GET(
         items: orderItems,
         items_count: orderItems.length,
         calculated_total: calculatedTotal,
-        display_total: calculatedTotal
+        display_total: order.final_price || calculatedTotal, // Use final_price if available
+        discount_amount: order.discount_amount || 0
       }
     })
 

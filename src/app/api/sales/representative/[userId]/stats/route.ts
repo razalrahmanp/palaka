@@ -11,36 +11,42 @@ export async function GET(
     // Get basic statistics for the sales representative dashboard
     const [
       ordersResult,
-      customersResult,
       returnsResult,
       complaintsResult,
       performanceResult
     ] = await Promise.all([
-      // Orders statistics - Use sales_representative_id instead of created_by
+      // Orders statistics - Include order items for proper profit calculation
       supabase
         .from('sales_orders')
         .select(`
           id, 
           status, 
           created_at,
+          customer_id,
           final_price,
+          original_price,
+          discount_amount,
+          customers!inner(id, name, created_at),
           sales_order_items(
+            id,
             quantity,
-            unit_price
+            final_price,
+            product_id,
+            custom_product_id,
+            cost,
+            products(
+              id,
+              name,
+              cost
+            ),
+            custom_products(
+              id,
+              name,
+              cost_price
+            )
           )
         `)
         .eq('sales_representative_id', userId),
-
-      // Customer statistics - Use customer_assignments table for better tracking
-      supabase
-        .from('customer_assignments')
-        .select(`
-          customer_id,
-          assigned_date,
-          customers(id, created_at)
-        `)
-        .eq('sales_rep_id', userId)
-        .eq('is_active', true),
 
       // Returns/exchanges statistics
       supabase
@@ -77,7 +83,6 @@ export async function GET(
     }
 
     const orders = ordersResult.data || []
-    const customerAssignments = customersResult.data || []
     const returns = returnsResult.data || []
     const complaints = complaintsResult.data || []
     const performance = performanceResult.data
@@ -95,16 +100,65 @@ export async function GET(
       return sum + (order.final_price || 0)
     }, 0)
     
-    // Extract customers from assignments
-    const customers = customerAssignments.map(assignment => {
-      const customer = Array.isArray(assignment.customers) ? assignment.customers[0] : assignment.customers
-      return customer
-    }).filter(Boolean)
+    // Calculate total discount given
+    const totalDiscountGiven = orders.reduce((sum, order) => {
+      return sum + (order.discount_amount || 0)
+    }, 0)
     
-    const totalCustomers = customers.length
-    const newCustomersThisMonth = customerAssignments.filter(assignment => {
-      const assignedDate = new Date(assignment.assigned_date)
-      return assignedDate.getMonth() === currentMonth && assignedDate.getFullYear() === currentYear
+    // Calculate actual profit (selling price - cost) for each item
+    let totalProfit = 0
+    let totalCost = 0
+    
+    orders.forEach(order => {
+      if (order.sales_order_items && Array.isArray(order.sales_order_items)) {
+        order.sales_order_items.forEach(item => {
+          const itemRevenue = (item.final_price || 0) * item.quantity
+          let itemCost = 0
+
+          // Calculate cost based on product type (same logic as finance overview)
+          if (item.product_id && item.products) {
+            // Regular product
+            const product = Array.isArray(item.products) ? item.products[0] : item.products
+            itemCost = (product?.cost || 0) * item.quantity
+          } else if (item.custom_product_id && item.custom_products) {
+            // Custom product
+            const customProduct = Array.isArray(item.custom_products) ? item.custom_products[0] : item.custom_products
+            itemCost = (customProduct?.cost_price || 0) * item.quantity
+          } else {
+            // Fallback to item cost
+            itemCost = (item.cost || 0) * item.quantity
+          }
+
+          totalCost += itemCost
+          totalProfit += (itemRevenue - itemCost)
+        })
+      }
+    })
+    
+    // Calculate profit margin percentage
+    const profitMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0
+    
+    // Count unique customers from orders (filter out null/undefined customer_ids)
+    const validCustomerIds = orders
+      .map(order => order.customer_id)
+      .filter(id => id !== null && id !== undefined)
+    const uniqueCustomerIds = new Set(validCustomerIds)
+    const totalCustomers = uniqueCustomerIds.size
+    
+    // Count new customers this month (customers with first order this month)
+    const customerFirstOrders = new Map()
+    orders.forEach(order => {
+      const customerId = order.customer_id
+      if (!customerId) return // Skip orders without customer_id
+      
+      const orderDate = new Date(order.created_at)
+      if (!customerFirstOrders.has(customerId) || orderDate < customerFirstOrders.get(customerId)) {
+        customerFirstOrders.set(customerId, orderDate)
+      }
+    })
+    
+    const newCustomersThisMonth = Array.from(customerFirstOrders.values()).filter(firstOrderDate => {
+      return firstOrderDate.getMonth() === currentMonth && firstOrderDate.getFullYear() === currentYear
     }).length
 
     const pendingReturns = returns.filter(ret => ret.status === 'pending').length
@@ -123,6 +177,10 @@ export async function GET(
     const stats = {
       total_orders: totalOrders,
       total_revenue: totalRevenue,
+      total_discount_given: totalDiscountGiven,
+      total_profit: totalProfit,
+      total_cost: totalCost,
+      profit_margin: profitMargin,
       pending_orders: pendingOrders,
       completed_orders: completedOrders,
       total_customers: totalCustomers,

@@ -21,6 +21,9 @@ interface ApiOrder {
   has_returns?: boolean
   has_complaints?: boolean
   quote_id?: string
+  original_price?: number
+  discount_amount?: number
+  final_price?: number
   customer?: {
     name: string
     email?: string
@@ -34,6 +37,7 @@ interface MyOrder {
   customer_name: string
   customer_id: string
   total_amount: number
+  discount_amount?: number
   status: 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled'
   created_at: string
   delivery_date?: string
@@ -100,7 +104,8 @@ export function MyOrdersSection({ userId, onRefresh }: MyOrdersSectionProps) {
         const transformedOrders = (data.orders || []).map((order: ApiOrder) => ({
           ...order,
           customer_name: order.customer?.name || 'Unknown Customer',
-          total_amount: order.display_total || order.calculated_total || 0
+          total_amount: order.final_price || order.display_total || order.calculated_total || 0,
+          discount_amount: order.discount_amount || 0
         }))
         setOrders(transformedOrders)
         setTotalPages(data.pagination?.totalPages || data.totalPages || 1)
@@ -238,7 +243,8 @@ export function MyOrdersSection({ userId, onRefresh }: MyOrdersSectionProps) {
               <TableRow>
                 <TableHead>Order ID</TableHead>
                 <TableHead>Customer</TableHead>
-                <TableHead>Amount</TableHead>
+                <TableHead>Selling Price</TableHead>
+                <TableHead>Discount</TableHead>
                 <TableHead>Items</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Date</TableHead>
@@ -249,13 +255,13 @@ export function MyOrdersSection({ userId, onRefresh }: MyOrdersSectionProps) {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8">
+                  <TableCell colSpan={9} className="text-center py-8">
                     Loading orders...
                   </TableCell>
                 </TableRow>
               ) : filteredOrders.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                  <TableCell colSpan={9} className="text-center py-8 text-gray-500">
                     No orders found
                   </TableCell>
                 </TableRow>
@@ -268,8 +274,11 @@ export function MyOrdersSection({ userId, onRefresh }: MyOrdersSectionProps) {
                     <TableCell className="font-medium">
                       {order.customer_name || 'Unknown Customer'}
                     </TableCell>
-                    <TableCell className="font-semibold">
+                    <TableCell className="font-semibold text-green-600">
                       {formatCurrency(order.total_amount)}
+                    </TableCell>
+                    <TableCell className="text-orange-600 font-medium">
+                      {order.discount_amount ? formatCurrency(order.discount_amount) : '-'}
                     </TableCell>
                     <TableCell>
                       {order.items_count} items
@@ -389,7 +398,8 @@ export function MyOrdersSection({ userId, onRefresh }: MyOrdersSectionProps) {
                         <TableHead>Product</TableHead>
                         <TableHead>Supplier</TableHead>
                         <TableHead>Quantity</TableHead>
-                        <TableHead>Unit Price</TableHead>
+                        <TableHead>MRP</TableHead>
+                        <TableHead>Sold Price</TableHead>
                         <TableHead>Total</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -399,8 +409,15 @@ export function MyOrdersSection({ userId, onRefresh }: MyOrdersSectionProps) {
                           <TableCell>{item.product_name}</TableCell>
                           <TableCell>{item.supplier_name || 'N/A'}</TableCell>
                           <TableCell>{item.quantity}</TableCell>
-                          <TableCell>{formatCurrency(item.unit_price)}</TableCell>
-                          <TableCell>{formatCurrency(item.total_price)}</TableCell>
+                          <TableCell className="text-gray-500">
+                            {formatCurrency(item.unit_price)}
+                          </TableCell>
+                          <TableCell className="font-semibold text-green-600">
+                            {formatCurrency(item.total_price / item.quantity)}
+                          </TableCell>
+                          <TableCell className="font-bold">
+                            {formatCurrency(item.total_price)}
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

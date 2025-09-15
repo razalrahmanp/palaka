@@ -8,25 +8,34 @@ import { Button } from '@/components/ui/button'
 import { 
   BarChart3, 
   ShoppingCart, 
-  Users, 
   RotateCcw, 
   MessageSquare, 
   TrendingUp,
   Target,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  Percent
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { getCurrentUser, User } from '@/lib/auth'
+
+interface Employee extends User {
+  name?: string
+  position?: string
+}
 import { MyOrdersSection } from '@/components/sales/representative/MyOrdersSection'
 import { ReturnsExchangesSection } from '@/components/sales/representative/ReturnsExchangesSection'
 import { ComplaintsSection } from '@/components/sales/representative/ComplaintsSection'
-import { MyCustomersSection } from '@/components/sales/representative/MyCustomersSection'
 import { SalesPerformanceSection } from '@/components/sales/representative/SalesPerformanceSection'
+import EmployeeRankings from '@/components/sales/representative/EmployeeRankings'
 
 interface SalesRepStats {
   total_orders: number
   total_revenue: number
+  total_discount_given: number
+  total_profit: number
+  total_cost: number
+  profit_margin: number
   pending_orders: number
   completed_orders: number
   total_customers: number
@@ -47,8 +56,8 @@ export default function SalesRepresentativePage() {
   const [loading, setLoading] = useState(true)
   const [hasAccess, setHasAccess] = useState(false)
   const [activeTab, setActiveTab] = useState('orders')
-  const [selectedSalesRep, setSelectedSalesRep] = useState<string | null>(null)
-  const [salesReps, setSalesReps] = useState<User[]>([])
+  const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null)
+  const [employees, setEmployees] = useState<Employee[]>([])
   const [isAdmin, setIsAdmin] = useState(false)
 
   const fetchStats = useCallback(async (userId: string) => {
@@ -93,26 +102,26 @@ export default function SalesRepresentativePage() {
       setIsAdmin(isAdminUser)
 
       if (isAdminUser) {
-        // Fetch all sales representatives for admin users
+        // Fetch all employees for admin users
         try {
           const response = await fetch('/api/sales/representatives')
           if (response.ok) {
-            const salesRepData = await response.json()
-            setSalesReps(salesRepData)
+            const employeeData = await response.json()
+            setEmployees(employeeData)
             
-            // If there are sales reps, select the first one by default and fetch their stats
-            if (salesRepData.length > 0) {
-              setSelectedSalesRep(salesRepData[0].id)
-              await fetchStats(salesRepData[0].id)
+            // If there are employees, select the first one by default and fetch their stats
+            if (employeeData.length > 0) {
+              setSelectedEmployee(employeeData[0].id)
+              await fetchStats(employeeData[0].id)
             }
           }
         } catch (error) {
-          console.error('Error fetching sales representatives:', error)
-          toast.error('Error loading sales representatives')
+          console.error('Error fetching employees:', error)
+          toast.error('Error loading employees')
         }
       } else {
         // For sales reps, set their own ID as selected and fetch their stats
-        setSelectedSalesRep(currentUser.id)
+        setSelectedEmployee(currentUser.id)
         await fetchStats(currentUser.id)
       }
     } catch (error) {
@@ -164,7 +173,7 @@ export default function SalesRepresentativePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+      <div className="w-full space-y-6">
         {/* Header */}
         <div className="bg-white rounded-lg shadow-sm p-6">
           <div className="flex items-center justify-between">
@@ -172,14 +181,14 @@ export default function SalesRepresentativePage() {
               <h1 className="text-3xl font-bold text-gray-900">Sales Representative Dashboard</h1>
               <p className="text-gray-600 mt-1">
                 {isAdmin 
-                  ? `Viewing sales data for ${salesReps.find(rep => rep.id === selectedSalesRep)?.email || 'selected representative'}`
+                  ? `Viewing sales data for ${employees.find((emp: Employee) => emp.id === selectedEmployee)?.email || 'selected employee'}`
                   : `Welcome back, ${user?.email}! Track your orders, customers, and performance.`
                 }
               </p>
             </div>
             <Button 
               variant="outline" 
-              onClick={() => selectedSalesRep && fetchStats(selectedSalesRep)}
+              onClick={() => selectedEmployee && fetchStats(selectedEmployee)}
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh Data
@@ -187,28 +196,28 @@ export default function SalesRepresentativePage() {
           </div>
         </div>
 
-        {/* Sales Rep Selector for Admin Users */}
-        {isAdmin && salesReps.length > 0 && (
+        {/* Employee Selector for Admin Users */}
+        {isAdmin && employees.length > 0 && (
           <div className="bg-white rounded-lg shadow-sm p-6">
             <div className="flex items-center space-x-4">
-              <label htmlFor="sales-rep-select" className="text-sm font-medium text-gray-900">
-                Select Sales Representative:
+              <label htmlFor="employee-select" className="text-sm font-medium text-gray-900">
+                Select Employee:
               </label>
               <select
-                id="sales-rep-select"
-                value={selectedSalesRep || ''}
+                id="employee-select"
+                value={selectedEmployee || ''}
                 onChange={async (e) => {
-                  const newRepId = e.target.value
-                  setSelectedSalesRep(newRepId)
-                  if (newRepId) {
-                    await fetchStats(newRepId)
+                  const newEmployeeId = e.target.value
+                  setSelectedEmployee(newEmployeeId)
+                  if (newEmployeeId) {
+                    await fetchStats(newEmployeeId)
                   }
                 }}
                 className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                {salesReps.map((rep) => (
-                  <option key={rep.id} value={rep.id}>
-                    {rep.email}
+                {employees.map((employee) => (
+                  <option key={employee.id} value={employee.id}>
+                    {employee.name || employee.email} - {employee.position || employee.role}
                   </option>
                 ))}
               </select>
@@ -218,54 +227,71 @@ export default function SalesRepresentativePage() {
 
         {/* Statistics Cards */}
         {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
             {/* Orders Statistics */}
-            <Card>
+            <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0 shadow-lg">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
-                <ShoppingCart className="h-4 w-4 text-blue-600" />
+                <CardTitle className="text-sm font-medium text-blue-100">Total Orders</CardTitle>
+                <ShoppingCart className="h-4 w-4 text-blue-200" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-blue-600">{stats.total_orders}</div>
-                <div className="flex items-center text-xs text-gray-600 mt-1">
-                  <span className="text-orange-600 mr-1">{stats.pending_orders} pending</span>
+                <div className="text-2xl font-bold text-white">{stats.total_orders}</div>
+                <div className="flex items-center text-xs text-blue-100 mt-1">
+                  <span className="text-orange-200 mr-1">{stats.pending_orders} pending</span>
                   <span>• {stats.completed_orders} completed</span>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-blue-200 mt-1">
                   Revenue: {formatCurrency(stats.total_revenue)}
                 </p>
               </CardContent>
             </Card>
 
-            {/* Customers Statistics */}
-            <Card>
+            {/* Total Profit */}
+            <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-0 shadow-lg">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">My Customers</CardTitle>
-                <Users className="h-4 w-4 text-green-600" />
+                <CardTitle className="text-sm font-medium text-green-100">Total Profit</CardTitle>
+                <TrendingUp className="h-4 w-4 text-green-200" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-green-600">{stats.total_customers}</div>
-                <div className="flex items-center text-xs text-green-700 mt-1">
-                  <span>+{stats.new_customers_this_month} this month</span>
+                <div className="text-2xl font-bold text-white">{formatCurrency(stats.total_profit)}</div>
+                <div className="flex items-center text-xs text-green-100 mt-1">
+                  <span>{formatPercentage(stats.profit_margin)} margin</span>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Avg Order: {formatCurrency(stats.average_order_value)}
+                <p className="text-xs text-green-200 mt-1">
+                  Revenue - Discounts = Profit
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Total Discount Given */}
+            <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-0 shadow-lg">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-purple-100">Total Discount</CardTitle>
+                <Percent className="h-4 w-4 text-purple-200" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-white">{formatCurrency(stats.total_discount_given)}</div>
+                <div className="flex items-center text-xs text-purple-100 mt-1">
+                  <span>Total savings given</span>
+                </div>
+                <p className="text-xs text-purple-200 mt-1">
+                  To customers
                 </p>
               </CardContent>
             </Card>
 
             {/* Returns & Issues */}
-            <Card>
+            <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-0 shadow-lg">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Returns & Issues</CardTitle>
-                <RotateCcw className="h-4 w-4 text-orange-600" />
+                <CardTitle className="text-sm font-medium text-orange-100">Returns & Issues</CardTitle>
+                <RotateCcw className="h-4 w-4 text-orange-200" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-orange-600">{stats.pending_returns}</div>
-                <div className="flex items-center text-xs text-gray-600 mt-1">
+                <div className="text-2xl font-bold text-white">{stats.pending_returns}</div>
+                <div className="flex items-center text-xs text-orange-100 mt-1">
                   <span>{stats.total_returns} total returns</span>
                 </div>
-                <div className="flex items-center text-xs text-red-600 mt-1">
+                <div className="flex items-center text-xs text-orange-200 mt-1">
                   <MessageSquare className="h-3 w-3 mr-1" />
                   <span>{stats.open_complaints} open complaints</span>
                 </div>
@@ -273,19 +299,19 @@ export default function SalesRepresentativePage() {
             </Card>
 
             {/* Performance */}
-            <Card>
+            <Card className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white border-0 shadow-lg">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Monthly Performance</CardTitle>
-                <Target className="h-4 w-4 text-purple-600" />
+                <CardTitle className="text-sm font-medium text-indigo-100">Monthly Performance</CardTitle>
+                <Target className="h-4 w-4 text-indigo-200" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-purple-600">
+                <div className="text-2xl font-bold text-white">
                   {formatPercentage(stats.monthly_achievement)}
                 </div>
-                <div className="flex items-center text-xs text-gray-600 mt-1">
+                <div className="flex items-center text-xs text-indigo-100 mt-1">
                   <span>Target: {formatCurrency(stats.monthly_target)}</span>
                 </div>
-                <div className="flex items-center text-xs text-green-600 mt-1">
+                <div className="flex items-center text-xs text-indigo-200 mt-1">
                   <TrendingUp className="h-3 w-3 mr-1" />
                   <span>{formatPercentage(stats.conversion_rate)} conversion</span>
                 </div>
@@ -294,12 +320,15 @@ export default function SalesRepresentativePage() {
           </div>
         )}
 
+        {/* Employee Rankings Section */}
+        <EmployeeRankings />
+
         {/* Main Content Tabs */}
         <Card>
           <CardContent className="p-0">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <div className="border-b px-6 pt-6">
-                <TabsList className="grid w-full grid-cols-5">
+                <TabsList className="grid w-full grid-cols-4">
                   <TabsTrigger value="orders" className="flex items-center gap-2">
                     <ShoppingCart className="h-4 w-4" />
                     My Orders
@@ -308,10 +337,6 @@ export default function SalesRepresentativePage() {
                         {stats.pending_orders}
                       </Badge>
                     )}
-                  </TabsTrigger>
-                  <TabsTrigger value="customers" className="flex items-center gap-2">
-                    <Users className="h-4 w-4" />
-                    Customers
                   </TabsTrigger>
                   <TabsTrigger value="returns" className="flex items-center gap-2">
                     <RotateCcw className="h-4 w-4" />
@@ -340,45 +365,37 @@ export default function SalesRepresentativePage() {
 
               <div className="p-6">
                 <TabsContent value="orders" className="mt-0">
-                  {selectedSalesRep && (
+                  {selectedEmployee && (
                     <MyOrdersSection 
-                      userId={selectedSalesRep} 
-                      onRefresh={() => selectedSalesRep && fetchStats(selectedSalesRep)}
-                    />
-                  )}
-                </TabsContent>
-
-                <TabsContent value="customers" className="mt-0">
-                  {selectedSalesRep && (
-                    <MyCustomersSection
-                      userId={selectedSalesRep}
+                      userId={selectedEmployee} 
+                      onRefresh={() => selectedEmployee && fetchStats(selectedEmployee)}
                     />
                   )}
                 </TabsContent>
 
                 <TabsContent value="returns" className="mt-0">
-                  {selectedSalesRep && (
+                  {selectedEmployee && (
                     <ReturnsExchangesSection 
-                      userId={selectedSalesRep}
-                      onRefresh={() => selectedSalesRep && fetchStats(selectedSalesRep)}
+                      userId={selectedEmployee}
+                      onRefresh={() => selectedEmployee && fetchStats(selectedEmployee)}
                     />
                   )}
                 </TabsContent>
 
                 <TabsContent value="complaints" className="mt-0">
-                  {selectedSalesRep && (
+                  {selectedEmployee && (
                     <ComplaintsSection 
-                      userId={selectedSalesRep}
-                      onRefresh={() => selectedSalesRep && fetchStats(selectedSalesRep)}
+                      userId={selectedEmployee}
+                      onRefresh={() => selectedEmployee && fetchStats(selectedEmployee)}
                     />
                   )}
                 </TabsContent>
 
                 <TabsContent value="performance" className="mt-0">
-                  {selectedSalesRep && (
+                  {selectedEmployee && (
                     <SalesPerformanceSection 
-                      userId={selectedSalesRep}
-                      onRefresh={() => selectedSalesRep && fetchStats(selectedSalesRep)}
+                      userId={selectedEmployee}
+                      onRefresh={() => selectedEmployee && fetchStats(selectedEmployee)}
                     />
                   )}
                 </TabsContent>

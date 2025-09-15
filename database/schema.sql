@@ -49,10 +49,10 @@ CREATE TABLE public.attendance_corrections (
   comments text,
   created_at timestamp without time zone DEFAULT now(),
   CONSTRAINT attendance_corrections_pkey PRIMARY KEY (id),
-  CONSTRAINT attendance_corrections_original_record_id_fkey FOREIGN KEY (original_record_id) REFERENCES public.attendance_records(id),
   CONSTRAINT attendance_corrections_approved_by_fkey FOREIGN KEY (approved_by) REFERENCES public.users(id),
-  CONSTRAINT attendance_corrections_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id),
-  CONSTRAINT attendance_corrections_requested_by_fkey FOREIGN KEY (requested_by) REFERENCES public.users(id)
+  CONSTRAINT attendance_corrections_requested_by_fkey FOREIGN KEY (requested_by) REFERENCES public.users(id),
+  CONSTRAINT attendance_corrections_original_record_id_fkey FOREIGN KEY (original_record_id) REFERENCES public.attendance_records(id),
+  CONSTRAINT attendance_corrections_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id)
 );
 CREATE TABLE public.attendance_policies (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -104,8 +104,8 @@ CREATE TABLE public.attendance_records (
   sync_status character varying DEFAULT 'synced'::character varying CHECK (sync_status::text = ANY (ARRAY['pending'::character varying, 'synced'::character varying, 'failed'::character varying]::text[])),
   location_coordinates point,
   CONSTRAINT attendance_records_pkey PRIMARY KEY (id),
-  CONSTRAINT attendance_records_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id),
-  CONSTRAINT attendance_records_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.essl_devices(id)
+  CONSTRAINT attendance_records_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.essl_devices(id),
+  CONSTRAINT attendance_records_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id)
 );
 CREATE TABLE public.audit_trail (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -208,8 +208,8 @@ CREATE TABLE public.chart_of_accounts (
   updated_at timestamp without time zone DEFAULT now(),
   updated_by uuid,
   CONSTRAINT chart_of_accounts_pkey PRIMARY KEY (id),
-  CONSTRAINT chart_of_accounts_parent_account_id_fkey FOREIGN KEY (parent_account_id) REFERENCES public.chart_of_accounts(id),
-  CONSTRAINT chart_of_accounts_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
+  CONSTRAINT chart_of_accounts_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
+  CONSTRAINT chart_of_accounts_parent_account_id_fkey FOREIGN KEY (parent_account_id) REFERENCES public.chart_of_accounts(id)
 );
 CREATE TABLE public.chat_attachments (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -222,8 +222,8 @@ CREATE TABLE public.chat_attachments (
   uploaded_at timestamp with time zone DEFAULT now(),
   metadata jsonb DEFAULT '{}'::jsonb,
   CONSTRAINT chat_attachments_pkey PRIMARY KEY (id),
-  CONSTRAINT chat_attachments_uploaded_by_fkey FOREIGN KEY (uploaded_by) REFERENCES public.users(id),
-  CONSTRAINT chat_attachments_message_id_fkey FOREIGN KEY (message_id) REFERENCES public.chat_messages(id)
+  CONSTRAINT chat_attachments_message_id_fkey FOREIGN KEY (message_id) REFERENCES public.chat_messages(id),
+  CONSTRAINT chat_attachments_uploaded_by_fkey FOREIGN KEY (uploaded_by) REFERENCES public.users(id)
 );
 CREATE TABLE public.chat_messages (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -244,8 +244,8 @@ CREATE TABLE public.chat_messages (
   priority character varying DEFAULT 'normal'::character varying CHECK (priority::text = ANY (ARRAY['low'::character varying, 'normal'::character varying, 'high'::character varying, 'urgent'::character varying]::text[])),
   CONSTRAINT chat_messages_pkey PRIMARY KEY (id),
   CONSTRAINT chat_messages_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.chat_rooms(id),
-  CONSTRAINT chat_messages_sender_id_fkey FOREIGN KEY (sender_id) REFERENCES public.users(id),
-  CONSTRAINT chat_messages_reply_to_id_fkey FOREIGN KEY (reply_to_id) REFERENCES public.chat_messages(id)
+  CONSTRAINT chat_messages_reply_to_id_fkey FOREIGN KEY (reply_to_id) REFERENCES public.chat_messages(id),
+  CONSTRAINT chat_messages_sender_id_fkey FOREIGN KEY (sender_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.chat_notifications (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -258,8 +258,8 @@ CREATE TABLE public.chat_notifications (
   metadata jsonb DEFAULT '{}'::jsonb,
   CONSTRAINT chat_notifications_pkey PRIMARY KEY (id),
   CONSTRAINT chat_notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
-  CONSTRAINT chat_notifications_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.chat_rooms(id),
-  CONSTRAINT chat_notifications_message_id_fkey FOREIGN KEY (message_id) REFERENCES public.chat_messages(id)
+  CONSTRAINT chat_notifications_message_id_fkey FOREIGN KEY (message_id) REFERENCES public.chat_messages(id),
+  CONSTRAINT chat_notifications_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.chat_rooms(id)
 );
 CREATE TABLE public.chat_participants (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -275,8 +275,8 @@ CREATE TABLE public.chat_participants (
   custom_name text,
   muted_until timestamp with time zone,
   CONSTRAINT chat_participants_pkey PRIMARY KEY (id),
-  CONSTRAINT chat_participants_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.chat_rooms(id),
-  CONSTRAINT chat_participants_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+  CONSTRAINT chat_participants_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
+  CONSTRAINT chat_participants_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.chat_rooms(id)
 );
 CREATE TABLE public.chat_rooms (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -295,10 +295,10 @@ CREATE TABLE public.chat_rooms (
   archived_at timestamp with time zone,
   archived_by uuid,
   CONSTRAINT chat_rooms_pkey PRIMARY KEY (id),
-  CONSTRAINT chat_rooms_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
-  CONSTRAINT chat_rooms_archived_by_fkey FOREIGN KEY (archived_by) REFERENCES public.users(id),
   CONSTRAINT chat_rooms_purchase_order_id_fkey FOREIGN KEY (purchase_order_id) REFERENCES public.purchase_orders(id),
-  CONSTRAINT chat_rooms_sales_order_id_fkey FOREIGN KEY (sales_order_id) REFERENCES public.sales_orders(id)
+  CONSTRAINT chat_rooms_sales_order_id_fkey FOREIGN KEY (sales_order_id) REFERENCES public.sales_orders(id),
+  CONSTRAINT chat_rooms_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
+  CONSTRAINT chat_rooms_archived_by_fkey FOREIGN KEY (archived_by) REFERENCES public.users(id)
 );
 CREATE TABLE public.custom_products (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -324,9 +324,9 @@ CREATE TABLE public.customer_assignments (
   notes text,
   created_at timestamp without time zone DEFAULT now(),
   CONSTRAINT customer_assignments_pkey PRIMARY KEY (id),
+  CONSTRAINT customer_assignments_assigned_by_fkey FOREIGN KEY (assigned_by) REFERENCES public.users(id),
   CONSTRAINT customer_assignments_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id),
-  CONSTRAINT customer_assignments_sales_rep_id_fkey FOREIGN KEY (sales_rep_id) REFERENCES public.users(id),
-  CONSTRAINT customer_assignments_assigned_by_fkey FOREIGN KEY (assigned_by) REFERENCES public.users(id)
+  CONSTRAINT customer_assignments_sales_rep_id_fkey FOREIGN KEY (sales_rep_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.customer_complaints (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -346,11 +346,11 @@ CREATE TABLE public.customer_complaints (
   created_at timestamp without time zone DEFAULT now(),
   updated_at timestamp without time zone DEFAULT now(),
   CONSTRAINT customer_complaints_pkey PRIMARY KEY (id),
-  CONSTRAINT customer_complaints_sales_rep_id_fkey FOREIGN KEY (sales_rep_id) REFERENCES public.users(id),
+  CONSTRAINT customer_complaints_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
   CONSTRAINT customer_complaints_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id),
+  CONSTRAINT customer_complaints_sales_rep_id_fkey FOREIGN KEY (sales_rep_id) REFERENCES public.users(id),
   CONSTRAINT customer_complaints_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.sales_orders(id),
-  CONSTRAINT customer_complaints_resolved_by_fkey FOREIGN KEY (resolved_by) REFERENCES public.users(id),
-  CONSTRAINT customer_complaints_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
+  CONSTRAINT customer_complaints_resolved_by_fkey FOREIGN KEY (resolved_by) REFERENCES public.users(id)
 );
 CREATE TABLE public.customer_interactions (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -368,9 +368,9 @@ CREATE TABLE public.customer_interactions (
   review_requested_at timestamp with time zone,
   review_given_at timestamp with time zone,
   CONSTRAINT customer_interactions_pkey PRIMARY KEY (id),
-  CONSTRAINT customer_interactions_review_requested_by_fkey FOREIGN KEY (review_requested_by) REFERENCES public.users(id),
+  CONSTRAINT customer_interactions_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id),
   CONSTRAINT customer_interactions_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
-  CONSTRAINT customer_interactions_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id)
+  CONSTRAINT customer_interactions_review_requested_by_fkey FOREIGN KEY (review_requested_by) REFERENCES public.users(id)
 );
 CREATE TABLE public.customers (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -397,10 +397,10 @@ CREATE TABLE public.customers (
   floor text,
   assigned_sales_rep_id uuid,
   CONSTRAINT customers_pkey PRIMARY KEY (id),
-  CONSTRAINT fk_customers_updated_by FOREIGN KEY (updated_by) REFERENCES public.users(id),
-  CONSTRAINT customers_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
   CONSTRAINT customers_assigned_sales_rep_id_fkey FOREIGN KEY (assigned_sales_rep_id) REFERENCES public.users(id),
-  CONSTRAINT fk_customers_created_by FOREIGN KEY (created_by) REFERENCES public.users(id)
+  CONSTRAINT fk_customers_updated_by FOREIGN KEY (updated_by) REFERENCES public.users(id),
+  CONSTRAINT fk_customers_created_by FOREIGN KEY (created_by) REFERENCES public.users(id),
+  CONSTRAINT customers_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
 );
 CREATE TABLE public.daysheets (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -452,8 +452,8 @@ CREATE TABLE public.deliveries (
   estimated_value numeric DEFAULT 0,
   driver_name text,
   CONSTRAINT deliveries_pkey PRIMARY KEY (id),
-  CONSTRAINT deliveries_driver_id_fkey FOREIGN KEY (driver_id) REFERENCES public.users(id),
   CONSTRAINT deliveries_sales_order_id_fkey FOREIGN KEY (sales_order_id) REFERENCES public.sales_orders(id),
+  CONSTRAINT deliveries_driver_id_fkey FOREIGN KEY (driver_id) REFERENCES public.users(id),
   CONSTRAINT deliveries_route_id_fkey FOREIGN KEY (route_id) REFERENCES public.delivery_routes(id)
 );
 CREATE TABLE public.delivery_cluster_assignments (
@@ -522,13 +522,13 @@ CREATE TABLE public.delivery_items (
   created_by uuid,
   updated_by uuid,
   CONSTRAINT delivery_items_pkey PRIMARY KEY (id),
+  CONSTRAINT delivery_items_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id),
   CONSTRAINT delivery_items_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
-  CONSTRAINT delivery_items_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.users(id),
-  CONSTRAINT delivery_items_delivery_id_fkey FOREIGN KEY (delivery_id) REFERENCES public.deliveries(id),
-  CONSTRAINT delivery_items_sales_order_item_id_fkey FOREIGN KEY (sales_order_item_id) REFERENCES public.sales_order_items(id),
   CONSTRAINT delivery_items_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
   CONSTRAINT delivery_items_custom_product_id_fkey FOREIGN KEY (custom_product_id) REFERENCES public.custom_products(id),
-  CONSTRAINT delivery_items_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id)
+  CONSTRAINT delivery_items_sales_order_item_id_fkey FOREIGN KEY (sales_order_item_id) REFERENCES public.sales_order_items(id),
+  CONSTRAINT delivery_items_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.users(id),
+  CONSTRAINT delivery_items_delivery_id_fkey FOREIGN KEY (delivery_id) REFERENCES public.deliveries(id)
 );
 CREATE TABLE public.delivery_items_backup (
   id uuid,
@@ -603,8 +603,8 @@ CREATE TABLE public.delivery_route_waypoints (
   items_to_deliver_count integer DEFAULT 0,
   total_weight_kg numeric DEFAULT 0.0,
   CONSTRAINT delivery_route_waypoints_pkey PRIMARY KEY (id),
-  CONSTRAINT delivery_route_waypoints_delivery_id_fkey FOREIGN KEY (delivery_id) REFERENCES public.deliveries(id),
-  CONSTRAINT delivery_route_waypoints_route_id_fkey FOREIGN KEY (route_id) REFERENCES public.delivery_routes(id)
+  CONSTRAINT delivery_route_waypoints_route_id_fkey FOREIGN KEY (route_id) REFERENCES public.delivery_routes(id),
+  CONSTRAINT delivery_route_waypoints_delivery_id_fkey FOREIGN KEY (delivery_id) REFERENCES public.deliveries(id)
 );
 CREATE TABLE public.delivery_routes (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -635,8 +635,8 @@ CREATE TABLE public.delivery_routes (
   fuel_estimated numeric DEFAULT 0.0,
   time_estimated integer DEFAULT 0,
   CONSTRAINT delivery_routes_pkey PRIMARY KEY (id),
-  CONSTRAINT delivery_routes_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
   CONSTRAINT delivery_routes_driver_id_fkey FOREIGN KEY (driver_id) REFERENCES public.users(id),
+  CONSTRAINT delivery_routes_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
   CONSTRAINT delivery_routes_truck_id_fkey FOREIGN KEY (truck_id) REFERENCES public.trucks(id)
 );
 CREATE TABLE public.delivery_status_updates (
@@ -704,8 +704,8 @@ CREATE TABLE public.driver_locations (
   timestamp timestamp without time zone DEFAULT now(),
   location_type text DEFAULT 'tracking'::text CHECK (location_type = ANY (ARRAY['tracking'::text, 'delivery_start'::text, 'delivery_complete'::text, 'break_start'::text, 'break_end'::text])),
   CONSTRAINT driver_locations_pkey PRIMARY KEY (id),
-  CONSTRAINT driver_locations_driver_id_fkey FOREIGN KEY (driver_id) REFERENCES public.users(id),
-  CONSTRAINT driver_locations_route_id_fkey FOREIGN KEY (route_id) REFERENCES public.delivery_routes(id)
+  CONSTRAINT driver_locations_route_id_fkey FOREIGN KEY (route_id) REFERENCES public.delivery_routes(id),
+  CONSTRAINT driver_locations_driver_id_fkey FOREIGN KEY (driver_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.driver_performance (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -740,9 +740,9 @@ CREATE TABLE public.employee_documents (
   uploaded_by uuid,
   created_at timestamp without time zone DEFAULT now(),
   CONSTRAINT employee_documents_pkey PRIMARY KEY (id),
-  CONSTRAINT employee_documents_verified_by_fkey FOREIGN KEY (verified_by) REFERENCES public.users(id),
   CONSTRAINT employee_documents_uploaded_by_fkey FOREIGN KEY (uploaded_by) REFERENCES public.users(id),
-  CONSTRAINT employee_documents_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id)
+  CONSTRAINT employee_documents_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id),
+  CONSTRAINT employee_documents_verified_by_fkey FOREIGN KEY (verified_by) REFERENCES public.users(id)
 );
 CREATE TABLE public.employee_leave_balances (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -766,8 +766,8 @@ CREATE TABLE public.employee_shifts (
   is_active boolean DEFAULT true,
   created_at timestamp without time zone DEFAULT now(),
   CONSTRAINT employee_shifts_pkey PRIMARY KEY (id),
-  CONSTRAINT employee_shifts_shift_id_fkey FOREIGN KEY (shift_id) REFERENCES public.work_shifts(id),
-  CONSTRAINT employee_shifts_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id)
+  CONSTRAINT employee_shifts_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id),
+  CONSTRAINT employee_shifts_shift_id_fkey FOREIGN KEY (shift_id) REFERENCES public.work_shifts(id)
 );
 CREATE TABLE public.employee_trainings (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -872,8 +872,8 @@ CREATE TABLE public.general_ledger (
   source_document_id uuid,
   created_at timestamp without time zone DEFAULT now(),
   CONSTRAINT general_ledger_pkey PRIMARY KEY (id),
-  CONSTRAINT general_ledger_journal_line_id_fkey FOREIGN KEY (journal_line_id) REFERENCES public.journal_entry_lines(id),
   CONSTRAINT general_ledger_journal_entry_id_fkey FOREIGN KEY (journal_entry_id) REFERENCES public.journal_entries(id),
+  CONSTRAINT general_ledger_journal_line_id_fkey FOREIGN KEY (journal_line_id) REFERENCES public.journal_entry_lines(id),
   CONSTRAINT general_ledger_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.chart_of_accounts(id)
 );
 CREATE TABLE public.holidays (
@@ -913,8 +913,8 @@ CREATE TABLE public.inventory_count_entries (
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT inventory_count_entries_pkey PRIMARY KEY (id),
-  CONSTRAINT inventory_count_entries_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
-  CONSTRAINT inventory_count_entries_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.inventory_count_jobs(id)
+  CONSTRAINT inventory_count_entries_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.inventory_count_jobs(id),
+  CONSTRAINT inventory_count_entries_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id)
 );
 CREATE TABLE public.inventory_count_jobs (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -945,6 +945,35 @@ CREATE TABLE public.inventory_items (
   CONSTRAINT inventory_items_pkey PRIMARY KEY (id),
   CONSTRAINT inventory_items_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id),
   CONSTRAINT inventory_items_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id)
+);
+CREATE TABLE public.investment_categories (
+  id integer NOT NULL DEFAULT nextval('investment_categories_id_seq'::regclass),
+  category_name character varying NOT NULL UNIQUE,
+  description text,
+  chart_account_code character varying DEFAULT '3100'::character varying,
+  is_active boolean DEFAULT true,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT investment_categories_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.investments (
+  id integer NOT NULL DEFAULT nextval('investments_id_seq'::regclass),
+  partner_id integer,
+  category_id integer,
+  amount numeric NOT NULL CHECK (amount > 0::numeric),
+  investment_date date NOT NULL DEFAULT CURRENT_DATE,
+  description text,
+  payment_method character varying NOT NULL DEFAULT 'cash'::character varying,
+  bank_account_id uuid,
+  reference_number character varying,
+  upi_reference character varying,
+  notes text,
+  journal_entry_id uuid,
+  created_by character varying,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT investments_pkey PRIMARY KEY (id),
+  CONSTRAINT investments_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.investment_categories(id),
+  CONSTRAINT investments_partner_id_fkey FOREIGN KEY (partner_id) REFERENCES public.partners(id)
 );
 CREATE TABLE public.invoices (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -996,8 +1025,8 @@ CREATE TABLE public.journal_entry_lines (
   created_by uuid,
   updated_by uuid,
   CONSTRAINT journal_entry_lines_pkey PRIMARY KEY (id),
-  CONSTRAINT journal_entry_lines_journal_entry_id_fkey FOREIGN KEY (journal_entry_id) REFERENCES public.journal_entries(id),
-  CONSTRAINT journal_entry_lines_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.chart_of_accounts(id)
+  CONSTRAINT journal_entry_lines_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.chart_of_accounts(id),
+  CONSTRAINT journal_entry_lines_journal_entry_id_fkey FOREIGN KEY (journal_entry_id) REFERENCES public.journal_entries(id)
 );
 CREATE TABLE public.journal_entry_templates (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -1027,9 +1056,9 @@ CREATE TABLE public.leave_requests (
   created_at timestamp without time zone DEFAULT now(),
   updated_at timestamp without time zone DEFAULT now(),
   CONSTRAINT leave_requests_pkey PRIMARY KEY (id),
+  CONSTRAINT leave_requests_leave_type_id_fkey FOREIGN KEY (leave_type_id) REFERENCES public.leave_types(id),
   CONSTRAINT leave_requests_approved_by_fkey FOREIGN KEY (approved_by) REFERENCES public.users(id),
-  CONSTRAINT leave_requests_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id),
-  CONSTRAINT leave_requests_leave_type_id_fkey FOREIGN KEY (leave_type_id) REFERENCES public.leave_types(id)
+  CONSTRAINT leave_requests_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id)
 );
 CREATE TABLE public.leave_types (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -1091,6 +1120,20 @@ END,
   CONSTRAINT partial_delivery_tracking_pkey PRIMARY KEY (id),
   CONSTRAINT partial_delivery_tracking_sales_order_id_fkey FOREIGN KEY (sales_order_id) REFERENCES public.sales_orders(id)
 );
+CREATE TABLE public.partners (
+  id integer NOT NULL DEFAULT nextval('partners_id_seq'::regclass),
+  name character varying NOT NULL,
+  email character varying UNIQUE,
+  phone character varying,
+  partner_type character varying NOT NULL DEFAULT 'partner'::character varying,
+  initial_investment numeric DEFAULT 0,
+  equity_percentage numeric DEFAULT 0 CHECK (equity_percentage >= 0::numeric AND equity_percentage <= 100::numeric),
+  is_active boolean DEFAULT true,
+  notes text,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT partners_pkey PRIMARY KEY (id)
+);
 CREATE TABLE public.payments (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   invoice_id uuid,
@@ -1128,9 +1171,9 @@ CREATE TABLE public.payroll_records (
   processed_at timestamp without time zone,
   created_at timestamp without time zone DEFAULT now(),
   CONSTRAINT payroll_records_pkey PRIMARY KEY (id),
+  CONSTRAINT payroll_records_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id),
   CONSTRAINT payroll_records_processed_by_fkey FOREIGN KEY (processed_by) REFERENCES public.users(id),
-  CONSTRAINT payroll_records_salary_structure_id_fkey FOREIGN KEY (salary_structure_id) REFERENCES public.salary_structures(id),
-  CONSTRAINT payroll_records_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id)
+  CONSTRAINT payroll_records_salary_structure_id_fkey FOREIGN KEY (salary_structure_id) REFERENCES public.salary_structures(id)
 );
 CREATE TABLE public.performance_goals (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -1202,8 +1245,8 @@ CREATE TABLE public.production_logs (
   created_at timestamp without time zone DEFAULT now(),
   created_by uuid,
   CONSTRAINT production_logs_pkey PRIMARY KEY (id),
-  CONSTRAINT production_logs_work_order_id_fkey FOREIGN KEY (work_order_id) REFERENCES public.work_orders(id),
-  CONSTRAINT production_logs_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
+  CONSTRAINT production_logs_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
+  CONSTRAINT production_logs_work_order_id_fkey FOREIGN KEY (work_order_id) REFERENCES public.work_orders(id)
 );
 CREATE TABLE public.products (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -1222,8 +1265,8 @@ CREATE TABLE public.products (
   config_schema jsonb NOT NULL DEFAULT '{}'::jsonb,
   cost numeric,
   CONSTRAINT products_pkey PRIMARY KEY (id),
-  CONSTRAINT fk_products_created_by FOREIGN KEY (created_by) REFERENCES public.users(id),
   CONSTRAINT fk_products_updated_by FOREIGN KEY (updated_by) REFERENCES public.users(id),
+  CONSTRAINT fk_products_created_by FOREIGN KEY (created_by) REFERENCES public.users(id),
   CONSTRAINT products_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id)
 );
 CREATE TABLE public.profit_margins (
@@ -1267,8 +1310,8 @@ CREATE TABLE public.purchase_order_items (
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT purchase_order_items_pkey PRIMARY KEY (id),
-  CONSTRAINT purchase_order_items_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id),
   CONSTRAINT purchase_order_items_quote_custom_item_id_fkey FOREIGN KEY (quote_custom_item_id) REFERENCES public.quote_custom_items(id),
+  CONSTRAINT purchase_order_items_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id),
   CONSTRAINT purchase_order_items_sales_order_item_id_fkey FOREIGN KEY (sales_order_item_id) REFERENCES public.sales_order_items(id),
   CONSTRAINT purchase_order_items_purchase_order_id_fkey FOREIGN KEY (purchase_order_id) REFERENCES public.purchase_orders(id)
 );
@@ -1292,9 +1335,9 @@ CREATE TABLE public.purchase_order_payments (
   status text DEFAULT 'completed'::text CHECK (status = ANY (ARRAY['pending'::text, 'completed'::text, 'failed'::text, 'cancelled'::text])),
   bank_account_id uuid,
   CONSTRAINT purchase_order_payments_pkey PRIMARY KEY (id),
-  CONSTRAINT purchase_order_payments_bank_account_id_fkey FOREIGN KEY (bank_account_id) REFERENCES public.bank_accounts(id),
+  CONSTRAINT purchase_order_payments_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
   CONSTRAINT purchase_order_payments_purchase_order_id_fkey FOREIGN KEY (purchase_order_id) REFERENCES public.purchase_orders(id),
-  CONSTRAINT purchase_order_payments_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
+  CONSTRAINT purchase_order_payments_bank_account_id_fkey FOREIGN KEY (bank_account_id) REFERENCES public.bank_accounts(id)
 );
 CREATE TABLE public.purchase_orders (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -1314,9 +1357,9 @@ CREATE TABLE public.purchase_orders (
   product_name text,
   sales_order_id uuid,
   CONSTRAINT purchase_orders_pkey PRIMARY KEY (id),
-  CONSTRAINT purchase_orders_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id),
+  CONSTRAINT purchase_orders_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
   CONSTRAINT purchase_orders_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
-  CONSTRAINT purchase_orders_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
+  CONSTRAINT purchase_orders_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id)
 );
 CREATE TABLE public.quote_custom_items (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -1345,8 +1388,8 @@ CREATE TABLE public.quote_custom_items (
   notes text,
   updated_at timestamp without time zone DEFAULT now(),
   CONSTRAINT quote_custom_items_pkey PRIMARY KEY (id),
-  CONSTRAINT quote_custom_items_quote_id_fkey FOREIGN KEY (quote_id) REFERENCES public.quotes(id),
-  CONSTRAINT quote_custom_items_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id)
+  CONSTRAINT quote_custom_items_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id),
+  CONSTRAINT quote_custom_items_quote_id_fkey FOREIGN KEY (quote_id) REFERENCES public.quotes(id)
 );
 CREATE TABLE public.quotes (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -1377,8 +1420,8 @@ CREATE TABLE public.quotes (
   taxable_amount numeric DEFAULT 0,
   grand_total numeric DEFAULT 0,
   CONSTRAINT quotes_pkey PRIMARY KEY (id),
-  CONSTRAINT quotes_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id),
-  CONSTRAINT quotes_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
+  CONSTRAINT quotes_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
+  CONSTRAINT quotes_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id)
 );
 CREATE TABLE public.receipt_images (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -1413,8 +1456,8 @@ CREATE TABLE public.return_items (
   resolution character varying CHECK (resolution::text = ANY (ARRAY['refund'::character varying, 'replace'::character varying, 'repair'::character varying]::text[])),
   status character varying DEFAULT 'pending'::character varying,
   CONSTRAINT return_items_pkey PRIMARY KEY (id),
-  CONSTRAINT return_items_return_id_fkey FOREIGN KEY (return_id) REFERENCES public.returns(id),
-  CONSTRAINT return_items_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id)
+  CONSTRAINT return_items_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
+  CONSTRAINT return_items_return_id_fkey FOREIGN KEY (return_id) REFERENCES public.returns(id)
 );
 CREATE TABLE public.returns (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -1455,8 +1498,8 @@ CREATE TABLE public.rma_requests (
   notes text,
   processed_by uuid,
   CONSTRAINT rma_requests_pkey PRIMARY KEY (id),
-  CONSTRAINT rma_requests_processed_by_fkey FOREIGN KEY (processed_by) REFERENCES public.users(id),
-  CONSTRAINT rma_requests_return_id_fkey FOREIGN KEY (return_id) REFERENCES public.returns(id)
+  CONSTRAINT rma_requests_return_id_fkey FOREIGN KEY (return_id) REFERENCES public.returns(id),
+  CONSTRAINT rma_requests_processed_by_fkey FOREIGN KEY (processed_by) REFERENCES public.users(id)
 );
 CREATE TABLE public.role_permissions (
   role_id uuid NOT NULL,
@@ -1539,9 +1582,9 @@ CREATE TABLE public.sales_order_items (
   tax_amount numeric DEFAULT 0,
   taxable_amount numeric DEFAULT 0,
   CONSTRAINT sales_order_items_pkey PRIMARY KEY (id),
-  CONSTRAINT sales_order_items_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.sales_orders(id),
   CONSTRAINT sales_order_items_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
-  CONSTRAINT sales_order_items_custom_product_id_fkey FOREIGN KEY (custom_product_id) REFERENCES public.custom_products(id)
+  CONSTRAINT sales_order_items_custom_product_id_fkey FOREIGN KEY (custom_product_id) REFERENCES public.custom_products(id),
+  CONSTRAINT sales_order_items_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.sales_orders(id)
 );
 CREATE TABLE public.sales_orders (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -1578,12 +1621,12 @@ CREATE TABLE public.sales_orders (
   taxable_amount numeric DEFAULT 0,
   grand_total numeric DEFAULT 0,
   CONSTRAINT sales_orders_pkey PRIMARY KEY (id),
-  CONSTRAINT sales_orders_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
-  CONSTRAINT fk_sales_orders_updated_by FOREIGN KEY (updated_by) REFERENCES public.users(id),
-  CONSTRAINT fk_sales_orders_created_by FOREIGN KEY (created_by) REFERENCES public.users(id),
   CONSTRAINT sales_orders_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id),
   CONSTRAINT sales_orders_sales_representative_id_fkey FOREIGN KEY (sales_representative_id) REFERENCES public.users(id),
-  CONSTRAINT sales_orders_quote_id_fkey FOREIGN KEY (quote_id) REFERENCES public.quotes(id)
+  CONSTRAINT sales_orders_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
+  CONSTRAINT sales_orders_quote_id_fkey FOREIGN KEY (quote_id) REFERENCES public.quotes(id),
+  CONSTRAINT fk_sales_orders_updated_by FOREIGN KEY (updated_by) REFERENCES public.users(id),
+  CONSTRAINT fk_sales_orders_created_by FOREIGN KEY (created_by) REFERENCES public.users(id)
 );
 CREATE TABLE public.sales_performance_cache (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -1623,8 +1666,8 @@ CREATE TABLE public.sales_targets (
   created_at timestamp without time zone DEFAULT now(),
   updated_at timestamp without time zone DEFAULT now(),
   CONSTRAINT sales_targets_pkey PRIMARY KEY (id),
-  CONSTRAINT sales_targets_sales_rep_id_fkey FOREIGN KEY (sales_rep_id) REFERENCES public.users(id),
-  CONSTRAINT sales_targets_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
+  CONSTRAINT sales_targets_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
+  CONSTRAINT sales_targets_sales_rep_id_fkey FOREIGN KEY (sales_rep_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.settings (
   key text NOT NULL,
@@ -1647,8 +1690,8 @@ CREATE TABLE public.stock_adjustments (
   created_at timestamp without time zone DEFAULT now(),
   updated_at timestamp without time zone DEFAULT now(),
   CONSTRAINT stock_adjustments_pkey PRIMARY KEY (id),
-  CONSTRAINT stock_adjustments_adjusted_by_fkey FOREIGN KEY (adjusted_by) REFERENCES public.users(id),
-  CONSTRAINT stock_adjustments_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id)
+  CONSTRAINT stock_adjustments_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id),
+  CONSTRAINT stock_adjustments_adjusted_by_fkey FOREIGN KEY (adjusted_by) REFERENCES public.users(id)
 );
 CREATE TABLE public.suppliers (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -1662,8 +1705,8 @@ CREATE TABLE public.suppliers (
   address text,
   email text,
   CONSTRAINT suppliers_pkey PRIMARY KEY (id),
-  CONSTRAINT fk_suppliers_created_by FOREIGN KEY (created_by) REFERENCES public.users(id),
-  CONSTRAINT fk_suppliers_updated_by FOREIGN KEY (updated_by) REFERENCES public.users(id)
+  CONSTRAINT fk_suppliers_updated_by FOREIGN KEY (updated_by) REFERENCES public.users(id),
+  CONSTRAINT fk_suppliers_created_by FOREIGN KEY (created_by) REFERENCES public.users(id)
 );
 CREATE TABLE public.support_tickets (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -1679,8 +1722,8 @@ CREATE TABLE public.support_tickets (
   updated_at timestamp with time zone DEFAULT now(),
   resolved_at timestamp with time zone,
   CONSTRAINT support_tickets_pkey PRIMARY KEY (id),
-  CONSTRAINT support_tickets_assigned_to_fkey FOREIGN KEY (assigned_to) REFERENCES public.users(id),
-  CONSTRAINT support_tickets_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+  CONSTRAINT support_tickets_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
+  CONSTRAINT support_tickets_assigned_to_fkey FOREIGN KEY (assigned_to) REFERENCES public.users(id)
 );
 CREATE TABLE public.tasks (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -1788,8 +1831,8 @@ CREATE TABLE public.vehicle_expense_logs (
   created_at timestamp without time zone DEFAULT now(),
   updated_at timestamp without time zone DEFAULT now(),
   CONSTRAINT vehicle_expense_logs_pkey PRIMARY KEY (id),
-  CONSTRAINT vehicle_expense_logs_truck_id_fkey FOREIGN KEY (truck_id) REFERENCES public.trucks(id),
   CONSTRAINT vehicle_expense_logs_expense_id_fkey FOREIGN KEY (expense_id) REFERENCES public.expenses(id),
+  CONSTRAINT vehicle_expense_logs_truck_id_fkey FOREIGN KEY (truck_id) REFERENCES public.trucks(id),
   CONSTRAINT vehicle_expense_logs_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
 );
 CREATE TABLE public.vehicle_maintenance_logs (
@@ -1810,9 +1853,19 @@ CREATE TABLE public.vehicle_maintenance_logs (
   created_at timestamp without time zone DEFAULT now(),
   updated_at timestamp without time zone DEFAULT now(),
   CONSTRAINT vehicle_maintenance_logs_pkey PRIMARY KEY (id),
-  CONSTRAINT vehicle_maintenance_logs_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
   CONSTRAINT vehicle_maintenance_logs_expense_id_fkey FOREIGN KEY (expense_id) REFERENCES public.expenses(id),
-  CONSTRAINT vehicle_maintenance_logs_truck_id_fkey FOREIGN KEY (truck_id) REFERENCES public.trucks(id)
+  CONSTRAINT vehicle_maintenance_logs_truck_id_fkey FOREIGN KEY (truck_id) REFERENCES public.trucks(id),
+  CONSTRAINT vehicle_maintenance_logs_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
+);
+CREATE TABLE public.vendor_bill_po_links (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  vendor_bill_id uuid,
+  purchase_order_id uuid,
+  amount numeric NOT NULL,
+  created_at timestamp without time zone DEFAULT now(),
+  CONSTRAINT vendor_bill_po_links_pkey PRIMARY KEY (id),
+  CONSTRAINT vendor_bill_po_links_vendor_bill_id_fkey FOREIGN KEY (vendor_bill_id) REFERENCES public.vendor_bills(id),
+  CONSTRAINT vendor_bill_po_links_purchase_order_id_fkey FOREIGN KEY (purchase_order_id) REFERENCES public.purchase_orders(id)
 );
 CREATE TABLE public.vendor_bills (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -1835,8 +1888,8 @@ CREATE TABLE public.vendor_bills (
   reference_number text,
   updated_by uuid,
   CONSTRAINT vendor_bills_pkey PRIMARY KEY (id),
-  CONSTRAINT vendor_bills_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id),
   CONSTRAINT vendor_bills_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
+  CONSTRAINT vendor_bills_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id),
   CONSTRAINT vendor_bills_purchase_order_id_fkey FOREIGN KEY (purchase_order_id) REFERENCES public.purchase_orders(id)
 );
 CREATE TABLE public.vendor_payment_history (
@@ -1854,11 +1907,11 @@ CREATE TABLE public.vendor_payment_history (
   created_by uuid,
   created_at timestamp without time zone DEFAULT now(),
   CONSTRAINT vendor_payment_history_pkey PRIMARY KEY (id),
-  CONSTRAINT vendor_payment_history_bank_account_id_fkey FOREIGN KEY (bank_account_id) REFERENCES public.bank_accounts(id),
-  CONSTRAINT vendor_payment_history_vendor_bill_id_fkey FOREIGN KEY (vendor_bill_id) REFERENCES public.vendor_bills(id),
-  CONSTRAINT vendor_payment_history_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
   CONSTRAINT vendor_payment_history_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id),
-  CONSTRAINT vendor_payment_history_purchase_order_id_fkey FOREIGN KEY (purchase_order_id) REFERENCES public.purchase_orders(id)
+  CONSTRAINT vendor_payment_history_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
+  CONSTRAINT vendor_payment_history_bank_account_id_fkey FOREIGN KEY (bank_account_id) REFERENCES public.bank_accounts(id),
+  CONSTRAINT vendor_payment_history_purchase_order_id_fkey FOREIGN KEY (purchase_order_id) REFERENCES public.purchase_orders(id),
+  CONSTRAINT vendor_payment_history_vendor_bill_id_fkey FOREIGN KEY (vendor_bill_id) REFERENCES public.vendor_bills(id)
 );
 CREATE TABLE public.vendor_payment_terms (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -1887,8 +1940,49 @@ CREATE TABLE public.warranty_claims (
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   resolved_at timestamp without time zone,
   CONSTRAINT warranty_claims_pkey PRIMARY KEY (id),
-  CONSTRAINT warranty_claims_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
-  CONSTRAINT warranty_claims_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.sales_orders(id)
+  CONSTRAINT warranty_claims_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.sales_orders(id),
+  CONSTRAINT warranty_claims_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id)
+);
+CREATE TABLE public.withdrawal_categories (
+  id integer NOT NULL DEFAULT nextval('withdrawal_categories_id_seq'::regclass),
+  category_name character varying NOT NULL UNIQUE,
+  description text,
+  chart_account_code character varying DEFAULT '3200'::character varying,
+  is_active boolean DEFAULT true,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT withdrawal_categories_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.withdrawal_subcategories (
+  id integer NOT NULL DEFAULT nextval('withdrawal_subcategories_id_seq'::regclass),
+  category_id integer,
+  subcategory_name character varying NOT NULL,
+  description text,
+  is_active boolean DEFAULT true,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT withdrawal_subcategories_pkey PRIMARY KEY (id),
+  CONSTRAINT withdrawal_subcategories_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.withdrawal_categories(id)
+);
+CREATE TABLE public.withdrawals (
+  id integer NOT NULL DEFAULT nextval('withdrawals_id_seq'::regclass),
+  partner_id integer,
+  category_id integer,
+  subcategory_id integer,
+  amount numeric NOT NULL CHECK (amount > 0::numeric),
+  withdrawal_date date NOT NULL DEFAULT CURRENT_DATE,
+  description text,
+  payment_method character varying NOT NULL DEFAULT 'cash'::character varying,
+  bank_account_id uuid,
+  reference_number character varying,
+  upi_reference character varying,
+  notes text,
+  journal_entry_id uuid,
+  created_by character varying,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT withdrawals_pkey PRIMARY KEY (id),
+  CONSTRAINT withdrawals_partner_id_fkey FOREIGN KEY (partner_id) REFERENCES public.partners(id),
+  CONSTRAINT withdrawals_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.withdrawal_categories(id),
+  CONSTRAINT withdrawals_subcategory_id_fkey FOREIGN KEY (subcategory_id) REFERENCES public.withdrawal_subcategories(id)
 );
 CREATE TABLE public.work_orders (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -1910,12 +2004,12 @@ CREATE TABLE public.work_orders (
   is_deleted boolean NOT NULL DEFAULT false,
   updated_by uuid,
   CONSTRAINT work_orders_pkey PRIMARY KEY (id),
-  CONSTRAINT work_orders_assigned_to_fkey FOREIGN KEY (assigned_to) REFERENCES public.users(id),
   CONSTRAINT work_orders_bom_id_fkey FOREIGN KEY (bom_id) REFERENCES public.boms(id),
   CONSTRAINT work_orders_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
+  CONSTRAINT work_orders_assigned_to_fkey FOREIGN KEY (assigned_to) REFERENCES public.users(id),
   CONSTRAINT work_orders_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
-  CONSTRAINT fk_work_orders_created_by FOREIGN KEY (created_by) REFERENCES public.users(id),
-  CONSTRAINT fk_work_orders_updated_by FOREIGN KEY (updated_by) REFERENCES public.users(id)
+  CONSTRAINT fk_work_orders_updated_by FOREIGN KEY (updated_by) REFERENCES public.users(id),
+  CONSTRAINT fk_work_orders_created_by FOREIGN KEY (created_by) REFERENCES public.users(id)
 );
 CREATE TABLE public.work_schedules (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

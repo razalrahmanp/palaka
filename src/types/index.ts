@@ -450,6 +450,16 @@ export interface CartItem {
 
 
 export const subcategoryMap = {
+  // ============= OWNER'S DRAWINGS (Equity) =============
+  "Home Expenses": { category: "Owner's Drawings", type: "Equity", accountCode: "3200" },
+  "Personal Withdrawals": { category: "Owner's Drawings", type: "Equity", accountCode: "3200" },
+  "Gold Load": { category: "Owner's Drawings", type: "Equity", accountCode: "3200" },
+  "Servant Salary": { category: "Owner's Drawings", type: "Equity", accountCode: "3200" },
+  "Asharaf Withdrawal": { category: "Owner's Drawings", type: "Equity", accountCode: "3200" },
+  "Shahid Withdrawal": { category: "Owner's Drawings", type: "Equity", accountCode: "3200" },
+  "Main Loan": { category: "Owner's Drawings", type: "Equity", accountCode: "3200" },
+  "Small Loan": { category: "Owner's Drawings", type: "Equity", accountCode: "3200" },
+
   // ============= DIRECT EXPENSES (Cost of Goods Sold) =============
   // Raw Materials
   "Raw Materials - Wood": { category: "Raw Materials", type: "Direct", accountCode: "5100" },

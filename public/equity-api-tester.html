@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Equity API Tester</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .endpoint { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .endpoint h3 { margin-top: 0; color: #333; }
+        .result { background: #f5f5f5; padding: 10px; margin-top: 10px; border-radius: 3px; }
+        .error { background: #ffe6e6; color: #cc0000; }
+        .success { background: #e6ffe6; color: #008000; }
+        button { padding: 10px 15px; background: #007cba; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #005a87; }
+    </style>
+</head>
+<body>
+    <h1>Equity Management API Tester</h1>
+    
+    <div class="endpoint">
+        <h3>GET /api/equity/investors</h3>
+        <button onclick="testEndpoint('/api/equity/investors', 'investors-result')">Test Investors API</button>
+        <div id="investors-result" class="result"></div>
+    </div>
+    
+    <div class="endpoint">
+        <h3>GET /api/equity/investment-categories</h3>
+        <button onclick="testEndpoint('/api/equity/investment-categories', 'investment-categories-result')">Test Investment Categories API</button>
+        <div id="investment-categories-result" class="result"></div>
+    </div>
+    
+    <div class="endpoint">
+        <h3>GET /api/equity/withdrawal-categories</h3>
+        <button onclick="testEndpoint('/api/equity/withdrawal-categories', 'withdrawal-categories-result')">Test Withdrawal Categories API</button>
+        <div id="withdrawal-categories-result" class="result"></div>
+    </div>
+    
+    <div class="endpoint">
+        <h3>GET /api/equity/withdrawal-subcategories</h3>
+        <button onclick="testEndpoint('/api/equity/withdrawal-subcategories', 'withdrawal-subcategories-result')">Test Withdrawal Subcategories API</button>
+        <div id="withdrawal-subcategories-result" class="result"></div>
+    </div>
+
+    <script>
+        async function testEndpoint(url, resultId) {
+            const resultDiv = document.getElementById(resultId);
+            resultDiv.innerHTML = 'Loading...';
+            
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.className = 'result success';
+                    resultDiv.innerHTML = `
+                        <strong>Status:</strong> ${response.status} ${response.statusText}<br>
+                        <strong>Data:</strong><br>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                } else {
+                    resultDiv.className = 'result error';
+                    resultDiv.innerHTML = `
+                        <strong>Error:</strong> ${response.status} ${response.statusText}<br>
+                        <strong>Response:</strong><br>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `<strong>Network Error:</strong> ${error.message}`;
+            }
+        }
+        
+        // Auto-test all endpoints on page load
+        window.onload = function() {
+            testEndpoint('/api/equity/investors', 'investors-result');
+            testEndpoint('/api/equity/investment-categories', 'investment-categories-result');
+            testEndpoint('/api/equity/withdrawal-categories', 'withdrawal-categories-result');
+            testEndpoint('/api/equity/withdrawal-subcategories', 'withdrawal-subcategories-result');
+        };
+    </script>
+</body>
+</html>

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -27,7 +27,9 @@ import {
   MessageCircle,
   Minus,
   Search,
-  Trash2
+  Trash2,
+  TrendingUp,
+  TrendingDown
 } from 'lucide-react';
 import { SalesOrder, Invoice, subcategoryMap } from '@/types';
 import { PaymentTrackingDialog } from './PaymentTrackingDialog';
@@ -35,6 +37,7 @@ import { SalesOrderPaymentTracker } from './SalesOrderPaymentTracker';
 import { WhatsAppService, WhatsAppBillData } from '@/lib/whatsappService';
 import { WaiveOffDialog } from './WaiveOffDialog';
 import { PaymentDeletionManager } from './PaymentDeletionManager';
+import { getCurrentUser } from '@/lib/auth';
 
 // Component interfaces and types
 
@@ -176,10 +179,17 @@ export function SalesOrderInvoiceManager() {
   const [payments, setPayments] = useState<PaymentDetails[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [bankAccounts, setBankAccounts] = useState<{id: string; account_name: string; account_number: string; account_type?: string}[]>([]);
+  const [investors, setInvestors] = useState<{id: string; name: string; email?: string; phone?: string; notes?: string}[]>([]);
+  const [investmentCategories, setInvestmentCategories] = useState<{id: string; category_name: string; description?: string; chart_account_code?: string}[]>([]);
+  const [withdrawalCategories, setWithdrawalCategories] = useState<{id: string; category_name: string; description?: string; chart_account_code?: string}[]>([]);
+  const [withdrawalSubcategories, setWithdrawalSubcategories] = useState<{id: string; category_id: string; subcategory_name: string; description?: string}[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [paymentTrackingOpen, setPaymentTrackingOpen] = useState(false);
   const [createExpenseOpen, setCreateExpenseOpen] = useState(false);
+  const [createInvestmentOpen, setCreateInvestmentOpen] = useState(false);
+  const [createWithdrawalOpen, setCreateWithdrawalOpen] = useState(false);
+  const [showAddInvestorModal, setShowAddInvestorModal] = useState(false);
   
   // Waive-off states
   const [waiveOffOpen, setWaiveOffOpen] = useState(false);
@@ -214,6 +224,31 @@ export function SalesOrderInvoiceManager() {
     entity_type: '', // 'truck', 'employee', 'supplier'
     vendor_bill_id: '', // New field for vendor bill selection
     payroll_record_id: '', // New field for payroll record selection
+  });
+
+  const [investmentForm, setInvestmentForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    investor_id: '',
+    amount: '',
+    category: '', // Will be set to first available category ID after fetch
+    description: '',
+    payment_method: 'cash',
+    bank_account_id: '',
+    upi_reference: '',
+    reference_number: '',
+  });
+
+  const [withdrawalForm, setWithdrawalForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    partner_id: '',
+    amount: '',
+    category_id: '',
+    subcategory_id: '',
+    description: '',
+    payment_method: 'cash',
+    bank_account_id: '',
+    upi_reference: '',
+    reference_number: '',
   });
 
   // Entity data states
@@ -251,14 +286,25 @@ export function SalesOrderInvoiceManager() {
       console.log('📈 Summary:', ordersData.summary);
       
       // Fetch the rest separately for other components that might need them
-      const [invoicesRes, paymentsRes, expensesRes, bankAccountsRes, trucksRes, employeesRes, suppliersRes] = await Promise.all([
+      console.log('🔍 Making API calls including withdrawal endpoints...');
+      const [invoicesRes, paymentsRes, expensesRes, bankAccountsRes, trucksRes, employeesRes, suppliersRes, investorsRes, investmentCategoriesRes, withdrawalCategoriesRes, withdrawalSubcategoriesRes] = await Promise.all([
         fetch('/api/finance/invoices'),
         fetch('/api/finance/payments'),
         fetch('/api/finance/expenses'),
         fetch('/api/finance/bank-accounts'),
         fetch('/api/trucks'),
         fetch('/api/employees?select=id,name,employee_id,position,salary,department'),
-        fetch('/api/vendors')
+        fetch('/api/vendors'),
+        fetch('/api/equity/investors'),
+        fetch('/api/equity/investment-categories'),
+        fetch('/api/equity/withdrawal-categories').then(res => {
+          console.log('📞 Withdrawal Categories Response Status:', res.status);
+          return res;
+        }),
+        fetch('/api/equity/withdrawal-subcategories').then(res => {
+          console.log('📞 Withdrawal Subcategories Response Status:', res.status);
+          return res;
+        })
       ]);
       
       const invoicesData = await invoicesRes.json();
@@ -295,6 +341,40 @@ export function SalesOrderInvoiceManager() {
         suppliersData = suppliersResponse.success ? (suppliersResponse.vendors || suppliersResponse.data || []) : [];
       } else {
         console.error('Failed to fetch suppliers:', suppliersRes.statusText);
+      }
+
+      let investorsData = [];
+      if (investorsRes.ok) {
+        const investorsResponse = await investorsRes.json();
+        investorsData = investorsResponse.success ? (investorsResponse.investors || investorsResponse.data || []) : [];
+      } else {
+        console.error('Failed to fetch investors:', investorsRes.statusText);
+      }
+
+      let investmentCategoriesData = [];
+      if (investmentCategoriesRes.ok) {
+        const categoriesResponse = await investmentCategoriesRes.json();
+        investmentCategoriesData = categoriesResponse.success ? (categoriesResponse.data || []) : [];
+      } else {
+        console.error('Failed to fetch investment categories:', investmentCategoriesRes.statusText);
+      }
+
+      let withdrawalCategoriesData = [];
+      if (withdrawalCategoriesRes.ok) {
+        const categoriesResponse = await withdrawalCategoriesRes.json();
+        withdrawalCategoriesData = categoriesResponse.success ? (categoriesResponse.data || []) : [];
+        console.log('✅ Withdrawal Categories Data:', withdrawalCategoriesData);
+      } else {
+        console.error('❌ Failed to fetch withdrawal categories:', withdrawalCategoriesRes.statusText);
+      }
+
+      let withdrawalSubcategoriesData = [];
+      if (withdrawalSubcategoriesRes.ok) {
+        const subcategoriesResponse = await withdrawalSubcategoriesRes.json();
+        withdrawalSubcategoriesData = subcategoriesResponse.success ? (subcategoriesResponse.data || []) : [];
+        console.log('✅ Withdrawal Subcategories Data:', withdrawalSubcategoriesData);
+      } else {
+        console.error('❌ Failed to fetch withdrawal subcategories:', withdrawalSubcategoriesRes.statusText);
       }
       
       console.log('Raw Invoices Data:', invoicesData); // Enhanced debugging
@@ -337,6 +417,16 @@ export function SalesOrderInvoiceManager() {
       setPayments(payments);
       setExpenses(expenses);
       setBankAccounts(bankAccounts);
+      setInvestors(investorsData);
+      setInvestmentCategories(investmentCategoriesData);
+      setWithdrawalCategories(withdrawalCategoriesData);
+      setWithdrawalSubcategories(withdrawalSubcategoriesData);
+      
+      console.log('🎯 Final State Data:');
+      console.log('- Investors:', investorsData.length);
+      console.log('- Investment Categories:', investmentCategoriesData.length);
+      console.log('- Withdrawal Categories:', withdrawalCategoriesData.length);
+      console.log('- Withdrawal Subcategories:', withdrawalSubcategoriesData.length);
       setTrucks(trucksData);
       setEmployees(employeesData);
       setSuppliers(suppliersData);
@@ -834,7 +924,7 @@ export function SalesOrderInvoiceManager() {
           bank_account_id: expenseForm.bank_account_id || (bankAccounts.length > 0 ? bankAccounts[0].id : 1), // Use selected bank account or first available
           entity_id: expenseForm.entity_id || null,
           entity_type: expenseForm.entity_type || null,
-          created_by: 'system', // You may want to get this from auth context
+          created_by: getCurrentUser()?.id, // Get current user from auth context
           // Additional fields for entity integrations
           vendor_bill_id: expenseForm.vendor_bill_id || null,
           payroll_record_id: expenseForm.payroll_record_id || null,
@@ -905,6 +995,233 @@ export function SalesOrderInvoiceManager() {
       alert('Error deleting expense. Please try again.');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleAddNewInvestor = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const formData = new FormData(form);
+    
+    const investorData = {
+      name: formData.get('name') as string,
+      email: formData.get('email') as string || null,
+      phone: formData.get('phone') as string || null,
+      partner_type: formData.get('partner_type') as string || 'partner',
+      initial_investment: parseFloat(formData.get('initial_investment') as string) || 0,
+      equity_percentage: parseFloat(formData.get('equity_percentage') as string) || 0,
+      is_active: formData.get('is_active') === 'on',
+      notes: formData.get('notes') as string || null,
+    };
+
+    if (!investorData.name.trim()) {
+      alert('Please enter a valid investor name');
+      return;
+    }
+
+    // Validate equity percentage
+    if (investorData.equity_percentage < 0 || investorData.equity_percentage > 100) {
+      alert('Equity percentage must be between 0 and 100');
+      return;
+    }
+
+    try {
+      // Get current user for created_by field
+      const currentUser = getCurrentUser();
+      
+      const response = await fetch('/api/equity/investors', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...investorData,
+          created_by: currentUser?.id // Add current user ID from auth
+        }),
+      });
+
+      if (response.ok) {
+        const newInvestor = await response.json();
+        setInvestors(prev => [...prev, newInvestor]);
+        
+        // Reset form safely
+        if (form && typeof form.reset === 'function') {
+          form.reset();
+        }
+        setShowAddInvestorModal(false);
+        alert('New partner/investor added successfully!');
+      } else {
+        const error = await response.json();
+        alert(`Failed to add partner/investor: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error adding partner/investor:', error);
+      alert('Error adding partner/investor. Please try again.');
+    }
+  };
+
+  const handleCreateInvestment = async () => {
+    // Validation
+    if (!investmentForm.investor_id) {
+      alert('Please select an investor');
+      return;
+    }
+
+    if (!investmentForm.amount || parseFloat(investmentForm.amount) <= 0) {
+      alert('Please enter a valid amount greater than 0');
+      return;
+    }
+
+    if (!investmentForm.description.trim()) {
+      alert('Please enter a description for the investment');
+      return;
+    }
+
+    if (!investmentForm.category) {
+      alert('Please select an investment category');
+      return;
+    }
+
+    // Validate bank account selection for non-cash payments
+    const requiresBankAccount = ['bank_transfer', 'card', 'cheque', 'online'].includes(investmentForm.payment_method);
+    if (requiresBankAccount && !investmentForm.bank_account_id) {
+      alert('Please select a bank account for this payment method');
+      return;
+    }
+
+    try {
+      // Get current user for created_by field
+      const currentUser = getCurrentUser();
+      
+      const response = await fetch('/api/equity/investments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          partner_id: investmentForm.investor_id,
+          category_id: investmentForm.category,
+          amount: parseFloat(investmentForm.amount),
+          description: investmentForm.description,
+          payment_method: investmentForm.payment_method,
+          bank_account_id: investmentForm.bank_account_id || null,
+          upi_reference: investmentForm.upi_reference || null,
+          reference_number: investmentForm.reference_number || null,
+          investment_date: investmentForm.date,
+          notes: null,
+          created_by: currentUser?.id // Add current user ID from auth
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setCreateInvestmentOpen(false);
+        
+        // Reset form
+        setInvestmentForm({
+          date: new Date().toISOString().split('T')[0],
+          investor_id: '',
+          amount: '',
+          category: '',
+          description: '',
+          payment_method: 'cash',
+          bank_account_id: '',
+          upi_reference: '',
+          reference_number: '',
+        });
+        
+        fetchData(); // Refresh data
+        alert('Investment recorded successfully!');
+        console.log('Investment result:', result);
+      } else {
+        const error = await response.json();
+        alert(`Failed to record investment: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error recording investment:', error);
+      alert('Error recording investment. Please try again.');
+    }
+  };
+
+  const handleCreateWithdrawal = async () => {
+    // Validation
+    if (!withdrawalForm.partner_id) {
+      alert('Please select a partner');
+      return;
+    }
+
+    if (!withdrawalForm.amount || parseFloat(withdrawalForm.amount) <= 0) {
+      alert('Please enter a valid amount greater than 0');
+      return;
+    }
+
+    if (!withdrawalForm.description.trim()) {
+      alert('Please enter a description for the withdrawal');
+      return;
+    }
+
+    if (!withdrawalForm.category_id) {
+      alert('Please select a withdrawal category');
+      return;
+    }
+
+    // Validate bank account selection for non-cash payments
+    const requiresBankAccount = ['bank_transfer', 'card', 'cheque', 'online'].includes(withdrawalForm.payment_method);
+    if (requiresBankAccount && !withdrawalForm.bank_account_id) {
+      alert('Please select a bank account for this payment method');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/equity/withdrawals', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          partner_id: withdrawalForm.partner_id,
+          category_id: withdrawalForm.category_id,
+          subcategory_id: withdrawalForm.subcategory_id || null,
+          amount: parseFloat(withdrawalForm.amount),
+          description: withdrawalForm.description,
+          payment_method: withdrawalForm.payment_method,
+          bank_account_id: withdrawalForm.bank_account_id || null,
+          upi_reference: withdrawalForm.upi_reference || null,
+          reference_number: withdrawalForm.reference_number || null,
+          withdrawal_date: withdrawalForm.date,
+          notes: null,
+          created_by: getCurrentUser()?.id
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setCreateWithdrawalOpen(false);
+        
+        // Reset form
+        setWithdrawalForm({
+          date: new Date().toISOString().split('T')[0],
+          partner_id: '',
+          amount: '',
+          category_id: '',
+          subcategory_id: '',
+          description: '',
+          payment_method: 'cash',
+          bank_account_id: '',
+          upi_reference: '',
+          reference_number: '',
+        });
+        
+        fetchData(); // Refresh data
+        alert('Withdrawal recorded successfully!');
+        console.log('Withdrawal result:', result);
+      } else {
+        const error = await response.json();
+        alert(`Failed to record withdrawal: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error recording withdrawal:', error);
+      alert('Error recording withdrawal. Please try again.');
     }
   };
 
@@ -1818,6 +2135,22 @@ export function SalesOrderInvoiceManager() {
                     <Plus className="h-4 w-4 mr-2" />
                     Add Expense
                   </Button>
+                  <Button
+                    size="sm"
+                    className="bg-green-600 hover:bg-green-700"
+                    onClick={() => setCreateInvestmentOpen(true)}
+                  >
+                    <TrendingUp className="h-4 w-4 mr-2" />
+                    Investment
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-purple-600 hover:bg-purple-700"
+                    onClick={() => setCreateWithdrawalOpen(true)}
+                  >
+                    <TrendingDown className="h-4 w-4 mr-2" />
+                    Withdrawal
+                  </Button>
                 </div>
               </div>
 
@@ -2084,22 +2417,54 @@ export function SalesOrderInvoiceManager() {
                         <SelectValue placeholder="Select expense category" />
                       </SelectTrigger>
                       <SelectContent className="max-h-60">
-                        {/* Dynamic categories from subcategoryMap */}
-                        {Object.entries(subcategoryMap).map(([category, details]) => (
-                          <SelectItem key={category} value={category}>
-                            <div className="flex flex-col">
-                              <span>{category}</span>
-                              <span className="text-xs text-gray-500">Code: {details.accountCode} | Type: {details.type}</span>
-                            </div>
-                          </SelectItem>
-                        ))}
+                        {/* Owner's Drawings categories first */}
+                        <div className="border-b pb-2 mb-2">
+                          <div className="px-2 py-1 text-xs font-semibold text-purple-600 bg-purple-50">
+                            OWNER&apos;S DRAWINGS
+                          </div>
+                          {Object.entries(subcategoryMap)
+                            .filter(([, details]) => details.category === "Owner's Drawings")
+                            .map(([category, details]) => (
+                              <SelectItem key={category} value={category}>
+                                <div className="flex flex-col">
+                                  <span className="text-purple-700 font-medium">{category}</span>
+                                  <span className="text-xs text-purple-500">Equity Account: {details.accountCode}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                        </div>
+                        
+                        {/* Business expense categories */}
+                        <div className="px-2 py-1 text-xs font-semibold text-blue-600 bg-blue-50 mb-2">
+                          BUSINESS EXPENSES
+                        </div>
+                        {Object.entries(subcategoryMap)
+                          .filter(([, details]) => details.category !== "Owner's Drawings")
+                          .map(([category, details]) => (
+                            <SelectItem key={category} value={category}>
+                              <div className="flex flex-col">
+                                <span>{category}</span>
+                                <span className="text-xs text-gray-500">Code: {details.accountCode} | Type: {details.type}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                     {expenseForm.category && subcategoryMap[expenseForm.category as keyof typeof subcategoryMap] && (
-                      <div className="text-xs text-gray-600 bg-blue-50 p-2 rounded">
-                        <span className="font-medium">Category Info:</span> {subcategoryMap[expenseForm.category as keyof typeof subcategoryMap].category} expense | 
+                      <div className={`text-xs p-2 rounded ${
+                        subcategoryMap[expenseForm.category as keyof typeof subcategoryMap].category === "Owner's Drawings" 
+                          ? "text-purple-700 bg-purple-50 border border-purple-200" 
+                          : "text-gray-600 bg-blue-50"
+                      }`}>
+                        <span className="font-medium">Category Info:</span> {subcategoryMap[expenseForm.category as keyof typeof subcategoryMap].category} 
+                        {subcategoryMap[expenseForm.category as keyof typeof subcategoryMap].category === "Owner's Drawings" ? " (Personal/Equity)" : " expense"} | 
                         Account: {subcategoryMap[expenseForm.category as keyof typeof subcategoryMap].accountCode} | 
                         Type: {subcategoryMap[expenseForm.category as keyof typeof subcategoryMap].type}
+                        {subcategoryMap[expenseForm.category as keyof typeof subcategoryMap].category === "Owner's Drawings" && (
+                          <div className="mt-1 text-xs text-purple-600">
+                            💡 This will be recorded as Owner&apos;s Drawing (reduces equity, not business expense)
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -2319,6 +2684,461 @@ export function SalesOrderInvoiceManager() {
         </DialogContent>
       </Dialog>
 
+      {/* Investment Dialog */}
+      <Dialog open={createInvestmentOpen} onOpenChange={setCreateInvestmentOpen}>
+        <DialogContent className="max-w-md mx-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold text-green-700 flex items-center gap-2">
+              <TrendingUp className="h-5 w-5" />
+              Record Partner Investment
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {/* Partner Selection */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="partner" className="text-sm font-medium">
+                  Partner/Investor *
+                </Label>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setShowAddInvestorModal(true)}
+                  className="text-xs h-7 px-2"
+                >
+                  + Add New
+                </Button>
+              </div>
+              <Select 
+                value={investmentForm.investor_id} 
+                onValueChange={(value) => {
+                  if (value === "add_new") {
+                    setShowAddInvestorModal(true);
+                  } else {
+                    setInvestmentForm(prev => ({ ...prev, investor_id: value }));
+                  }
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select partner/investor" />
+                </SelectTrigger>
+                <SelectContent>
+                  {investors.map((investor) => (
+                    <SelectItem key={investor.id} value={investor.id}>
+                      {investor.name}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="add_new" className="text-blue-600 font-medium">
+                    + Add New Investor
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Investment Category */}
+            <div className="space-y-2">
+              <Label htmlFor="category" className="text-sm font-medium">
+                Investment Category *
+              </Label>
+              <Select 
+                value={investmentForm.category} 
+                onValueChange={(value) => setInvestmentForm(prev => ({ ...prev, category: value }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select investment category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {investmentCategories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.category_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Amount */}
+            <div className="space-y-2">
+              <Label htmlFor="amount" className="text-sm font-medium">
+                Investment Amount (₹) *
+              </Label>
+              <Input
+                id="amount"
+                type="number"
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+                value={investmentForm.amount}
+                onChange={(e) => setInvestmentForm(prev => ({ ...prev, amount: e.target.value }))}
+                className="w-full"
+              />
+            </div>
+
+            {/* Payment Method */}
+            <div className="space-y-2">
+              <Label htmlFor="payment_method" className="text-sm font-medium">
+                Payment Method *
+              </Label>
+              <Select 
+                value={investmentForm.payment_method} 
+                onValueChange={(value) => setInvestmentForm(prev => ({ ...prev, payment_method: value }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select payment method" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                  <SelectItem value="card">Card Payment</SelectItem>
+                  <SelectItem value="cheque">Cheque</SelectItem>
+                  <SelectItem value="online">Online Transfer</SelectItem>
+                  <SelectItem value="upi">UPI</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Bank Account Selection (show when payment method requires it) */}
+            {['bank_transfer', 'card', 'cheque', 'online'].includes(investmentForm.payment_method) && (
+              <div className="space-y-2">
+                <Label htmlFor="bank_account" className="text-sm font-medium">
+                  Bank Account *
+                </Label>
+                <Select 
+                  value={investmentForm.bank_account_id} 
+                  onValueChange={(value) => setInvestmentForm(prev => ({ ...prev, bank_account_id: value }))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select bank account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {bankAccounts.map((account) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {account.account_name} ({account.account_number})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* UPI Reference (show when payment method is UPI) */}
+            {investmentForm.payment_method === 'upi' && (
+              <div className="space-y-2">
+                <Label htmlFor="upi_reference" className="text-sm font-medium">
+                  UPI Reference/Transaction ID
+                </Label>
+                <Input
+                  id="upi_reference"
+                  type="text"
+                  placeholder="Enter UPI transaction ID"
+                  value={investmentForm.upi_reference}
+                  onChange={(e) => setInvestmentForm(prev => ({ ...prev, upi_reference: e.target.value }))}
+                  className="w-full"
+                />
+              </div>
+            )}
+
+            {/* Reference Number */}
+            <div className="space-y-2">
+              <Label htmlFor="reference" className="text-sm font-medium">
+                Reference Number
+              </Label>
+              <Input
+                id="reference"
+                type="text"
+                placeholder="Transaction ID, Cheque Number, etc."
+                value={investmentForm.reference_number}
+                onChange={(e) => setInvestmentForm(prev => ({ ...prev, reference_number: e.target.value }))}
+                className="w-full"
+              />
+            </div>
+
+            {/* Description */}
+            <div className="space-y-2">
+              <Label htmlFor="description" className="text-sm font-medium">
+                Description *
+              </Label>
+              <Textarea
+                id="description"
+                placeholder="Describe the investment purpose..."
+                value={investmentForm.description}
+                onChange={(e) => setInvestmentForm(prev => ({ ...prev, description: e.target.value }))}
+                className="w-full resize-none"
+                rows={3}
+              />
+            </div>
+
+            {/* Investment Date */}
+            <div className="space-y-2">
+              <Label htmlFor="investment_date" className="text-sm font-medium">
+                Investment Date *
+              </Label>
+              <Input
+                id="investment_date"
+                type="date"
+                value={investmentForm.date}
+                onChange={(e) => setInvestmentForm(prev => ({ ...prev, date: e.target.value }))}
+                className="w-full"
+              />
+            </div>
+
+            {/* Info Box */}
+            <div className="text-xs p-3 rounded bg-green-50 border border-green-200 text-green-700">
+              <span className="font-medium">💡 Investment Info:</span> This will increase the partner&apos;s equity stake and be recorded in Capital Account (3100). It represents money invested into the business.
+            </div>
+          </div>
+
+          <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-4">
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto order-2 sm:order-1">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setCreateInvestmentOpen(false)}
+                className="w-full sm:w-auto order-2 sm:order-1"
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="button" 
+                onClick={handleCreateInvestment}
+                disabled={false}
+                className="bg-green-600 hover:bg-green-700 w-full sm:w-auto order-1 sm:order-2"
+              >
+                <TrendingUp className="h-4 w-4 mr-2" />
+                Record Investment
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Withdrawal Dialog */}
+      <Dialog open={createWithdrawalOpen} onOpenChange={setCreateWithdrawalOpen}>
+        <DialogContent className="max-w-md mx-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold text-purple-700 flex items-center gap-2">
+              <TrendingDown className="h-5 w-5" />
+              Record Partner Withdrawal
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {/* Partner Selection */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="partner" className="text-sm font-medium">
+                  Partner/Owner *
+                </Label>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setShowAddInvestorModal(true)}
+                  className="text-xs h-7 px-2"
+                >
+                  + Add New
+                </Button>
+              </div>
+              <Select 
+                value={withdrawalForm.partner_id} 
+                onValueChange={(value) => {
+                  if (value === "add_new") {
+                    setShowAddInvestorModal(true);
+                  } else {
+                    setWithdrawalForm(prev => ({ ...prev, partner_id: value }));
+                  }
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select partner/owner" />
+                </SelectTrigger>
+                <SelectContent>
+                  {investors.map((investor) => (
+                    <SelectItem key={investor.id} value={investor.id}>
+                      {investor.name}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="add_new" className="text-blue-600 font-medium">
+                    + Add New Partner
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Withdrawal Category */}
+            <div className="space-y-2">
+              <Label htmlFor="category" className="text-sm font-medium">
+                Withdrawal Category *
+              </Label>
+              <Select 
+                value={withdrawalForm.category_id} 
+                onValueChange={(value) => setWithdrawalForm(prev => ({ ...prev, category_id: value, subcategory_id: '' }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select withdrawal category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {withdrawalCategories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.category_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {/* Show info message when category is selected but has no subcategories */}
+              {withdrawalForm.category_id && 
+               withdrawalSubcategories.filter(subcat => subcat.category_id === withdrawalForm.category_id).length === 0 && (
+                <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded border border-blue-200">
+                  ℹ️ This category doesn&apos;t have subcategories - you can proceed directly.
+                </div>
+              )}
+            </div>
+
+            {/* Withdrawal Subcategory - Only show if category has subcategories */}
+            {(() => {
+              const availableSubcategories = withdrawalSubcategories.filter(subcat => subcat.category_id === withdrawalForm.category_id);
+              if (!withdrawalForm.category_id || availableSubcategories.length === 0) {
+                return null; // Don't show subcategory field if no category selected or no subcategories available
+              }
+              
+              return (
+                <div className="space-y-2">
+                  <Label htmlFor="subcategory" className="text-sm font-medium">
+                    Subcategory (Optional)
+                  </Label>
+                  <Select 
+                    value={withdrawalForm.subcategory_id} 
+                    onValueChange={(value) => setWithdrawalForm(prev => ({ ...prev, subcategory_id: value }))}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select subcategory (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">No specific subcategory</SelectItem>
+                      {availableSubcategories.map((subcategory) => (
+                        <SelectItem key={subcategory.id} value={subcategory.id}>
+                          {subcategory.subcategory_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              );
+            })()}
+
+            {/* Amount */}
+            <div className="space-y-2">
+              <Label htmlFor="amount" className="text-sm font-medium">
+                Withdrawal Amount (₹) *
+              </Label>
+              <Input
+                id="amount"
+                type="number"
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+                className="w-full"
+                value={withdrawalForm.amount}
+                onChange={(e) => setWithdrawalForm(prev => ({ ...prev, amount: e.target.value }))}
+              />
+            </div>
+
+            {/* Payment Method */}
+            <div className="space-y-2">
+              <Label htmlFor="payment_method" className="text-sm font-medium">
+                Payment Method *
+              </Label>
+              <Select 
+                value={withdrawalForm.payment_method} 
+                onValueChange={(value) => setWithdrawalForm(prev => ({ ...prev, payment_method: value }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select payment method" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                  <SelectItem value="cheque">Cheque</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Reference Number */}
+            <div className="space-y-2">
+              <Label htmlFor="reference" className="text-sm font-medium">
+                Reference Number
+              </Label>
+              <Input
+                id="reference"
+                type="text"
+                placeholder="Transaction ID, Cheque Number, etc."
+                className="w-full"
+                value={withdrawalForm.reference_number}
+                onChange={(e) => setWithdrawalForm(prev => ({ ...prev, reference_number: e.target.value }))}
+              />
+            </div>
+
+            {/* Description */}
+            <div className="space-y-2">
+              <Label htmlFor="description" className="text-sm font-medium">
+                Description *
+              </Label>
+              <Textarea
+                id="description"
+                placeholder="Describe the withdrawal purpose..."
+                className="w-full resize-none"
+                rows={3}
+                value={withdrawalForm.description}
+                onChange={(e) => setWithdrawalForm(prev => ({ ...prev, description: e.target.value }))}
+              />
+            </div>
+
+            {/* Withdrawal Date */}
+            <div className="space-y-2">
+              <Label htmlFor="withdrawal_date" className="text-sm font-medium">
+                Withdrawal Date *
+              </Label>
+              <Input
+                id="withdrawal_date"
+                type="date"
+                value={withdrawalForm.date}
+                onChange={(e) => setWithdrawalForm(prev => ({ ...prev, date: e.target.value }))}
+                className="w-full"
+              />
+            </div>
+
+            {/* Info Box */}
+            <div className="text-xs p-3 rounded bg-purple-50 border border-purple-200 text-purple-700">
+              <span className="font-medium">💡 Withdrawal Info:</span> This will reduce the partner&apos;s equity and be recorded in Drawings Account (3200). This is NOT a business expense but personal equity withdrawal.
+            </div>
+          </div>
+
+          <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-4">
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto order-2 sm:order-1">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setCreateWithdrawalOpen(false)}
+                className="w-full sm:w-auto order-2 sm:order-1"
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="button" 
+                onClick={handleCreateWithdrawal}
+                disabled={!withdrawalForm.partner_id || !withdrawalForm.category_id || !withdrawalForm.amount || !withdrawalForm.description}
+                className="bg-purple-600 hover:bg-purple-700 w-full sm:w-auto order-1 sm:order-2"
+              >
+                <TrendingDown className="h-4 w-4 mr-2" />
+                Record Withdrawal
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Waive Off Dialog */}
       <WaiveOffDialog
         isOpen={waiveOffOpen}
@@ -2400,6 +3220,146 @@ export function SalesOrderInvoiceManager() {
               )}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add New Investor Modal */}
+      <Dialog open={showAddInvestorModal} onOpenChange={setShowAddInvestorModal}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Add New Partner/Investor</DialogTitle>
+            <DialogDescription>
+              Add a new partner or investor to the system. They will be available for investments and withdrawals.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAddNewInvestor} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              {/* Name - Required */}
+              <div className="col-span-2">
+                <label className="block text-sm font-medium mb-2">
+                  Partner/Investor Name *
+                </label>
+                <input
+                  type="text"
+                  name="name"
+                  required
+                  className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter full name"
+                />
+              </div>
+
+              {/* Email */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Email Address</label>
+                <input
+                  type="email"
+                  name="email"
+                  className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500"
+                  placeholder="email@example.com"
+                />
+              </div>
+
+              {/* Phone */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Phone Number</label>
+                <input
+                  type="tel"
+                  name="phone"
+                  className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500"
+                  placeholder="+91 9876543210"
+                />
+              </div>
+
+              {/* Partner Type */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Partner Type</label>
+                <select
+                  name="partner_type"
+                  aria-label="Partner Type"
+                  className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500"
+                  defaultValue="partner"
+                >
+                  <option value="partner">Business Partner</option>
+                  <option value="investor">Investor</option>
+                  <option value="owner">Owner</option>
+                  <option value="stakeholder">Stakeholder</option>
+                </select>
+              </div>
+
+              {/* Initial Investment */}
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Initial Investment (₹)
+                </label>
+                <input
+                  type="number"
+                  name="initial_investment"
+                  min="0"
+                  step="0.01"
+                  className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500"
+                  placeholder="0.00"
+                  defaultValue="0"
+                />
+              </div>
+
+              {/* Equity Percentage */}
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Equity Percentage (%)
+                </label>
+                <input
+                  type="number"
+                  name="equity_percentage"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500"
+                  placeholder="0.00"
+                  defaultValue="0"
+                />
+                <small className="text-gray-500">Enter percentage between 0-100</small>
+              </div>
+
+              {/* Status Toggle */}
+              <div className="col-span-2">
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    name="is_active"
+                    defaultChecked
+                    className="rounded focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-medium">Active Partner</span>
+                </label>
+                <small className="text-gray-500">Uncheck to mark as inactive</small>
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="block text-sm font-medium mb-2">Notes & Comments</label>
+              <textarea
+                name="notes"
+                rows={3}
+                className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500"
+                placeholder="Additional notes about the partner/investor, agreements, special conditions, etc."
+              />
+            </div>
+
+            {/* Form Actions */}
+            <div className="flex justify-end space-x-2 pt-4 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowAddInvestorModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
+                Add Partner/Investor
+              </Button>
+            </div>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

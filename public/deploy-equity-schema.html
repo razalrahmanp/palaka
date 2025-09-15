@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deploy Equity Management Schema</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        button { padding: 10px 20px; background: #007cba; color: white; border: none; border-radius: 5px; cursor: pointer; margin: 10px 0; }
+        button:hover { background: #005a87; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .result { background: #f5f5f5; padding: 15px; margin: 10px 0; border-radius: 5px; border-left: 4px solid #007cba; }
+        .error { border-left-color: #dc3545; background: #ffe6e6; }
+        .success { border-left-color: #28a745; background: #e6ffe6; }
+        .warning { border-left-color: #ffc107; background: #fff3cd; }
+        pre { white-space: pre-wrap; word-wrap: break-word; }
+        .step { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .step h3 { margin-top: 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Deploy Equity Management Schema</h1>
+        <p>This tool will deploy the equity management database schema to your Supabase database.</p>
+        
+        <div class="step">
+            <h3>Step 1: Check Database Connection</h3>
+            <button onclick="testConnection()">Test Database Connection</button>
+            <div id="connection-result"></div>
+        </div>
+        
+        <div class="step">
+            <h3>Step 2: Check if Tables Exist</h3>
+            <button onclick="checkTables()">Check Existing Tables</button>
+            <div id="tables-result"></div>
+        </div>
+        
+        <div class="step">
+            <h3>Step 3: Deploy Schema</h3>
+            <button onclick="deploySchema()" id="deploy-btn">Deploy Equity Management Schema</button>
+            <div id="deploy-result"></div>
+        </div>
+        
+        <div class="step">
+            <h3>Step 4: Verify Deployment</h3>
+            <button onclick="verifyDeployment()">Verify Tables and Data</button>
+            <div id="verify-result"></div>
+        </div>
+    </div>
+
+    <script>
+        async function testConnection() {
+            const resultDiv = document.getElementById('connection-result');
+            resultDiv.innerHTML = 'Testing connection...';
+            
+            try {
+                const response = await fetch('/api/equity/investors');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.className = 'result success';
+                    resultDiv.innerHTML = '✅ Database connection successful!';
+                } else {
+                    resultDiv.className = 'result error';
+                    resultDiv.innerHTML = `❌ Connection test failed: ${data.error || 'Unknown error'}`;
+                }
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `❌ Connection error: ${error.message}`;
+            }
+        }
+        
+        async function checkTables() {
+            const resultDiv = document.getElementById('tables-result');
+            resultDiv.innerHTML = 'Checking tables...';
+            
+            try {
+                const endpoints = [
+                    { name: 'Partners', url: '/api/equity/investors' },
+                    { name: 'Investment Categories', url: '/api/equity/investment-categories' },
+                    { name: 'Withdrawal Categories', url: '/api/equity/withdrawal-categories' },
+                    { name: 'Withdrawal Subcategories', url: '/api/equity/withdrawal-subcategories' }
+                ];
+                
+                let results = '<h4>Table Status:</h4>';
+                let allTablesExist = true;
+                
+                for (const endpoint of endpoints) {
+                    try {
+                        const response = await fetch(endpoint.url);
+                        const data = await response.json();
+                        
+                        if (response.ok && data.success) {
+                            results += `<div style="color: green;">✅ ${endpoint.name}: ${data.data?.length || 0} records</div>`;
+                        } else {
+                            results += `<div style="color: red;">❌ ${endpoint.name}: ${data.error || 'Failed'}</div>`;
+                            allTablesExist = false;
+                        }
+                    } catch (error) {
+                        results += `<div style="color: red;">❌ ${endpoint.name}: Error - ${error.message}</div>`;
+                        allTablesExist = false;
+                    }
+                }
+                
+                resultDiv.className = allTablesExist ? 'result success' : 'result warning';
+                resultDiv.innerHTML = results;
+                
+                const deployBtn = document.getElementById('deploy-btn');
+                if (allTablesExist) {
+                    deployBtn.innerHTML = 'Tables Already Exist - Redeploy?';
+                } else {
+                    deployBtn.innerHTML = 'Deploy Equity Management Schema';
+                }
+                
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `❌ Error checking tables: ${error.message}`;
+            }
+        }
+        
+        async function deploySchema() {
+            const resultDiv = document.getElementById('deploy-result');
+            const deployBtn = document.getElementById('deploy-btn');
+            
+            deployBtn.disabled = true;
+            resultDiv.innerHTML = 'Deploying schema... This may take a moment.';
+            
+            try {
+                // Note: In a real application, you would have a dedicated API endpoint
+                // that executes the SQL schema. For now, we'll show what needs to be done.
+                
+                resultDiv.className = 'result warning';
+                resultDiv.innerHTML = \`
+                    <h4>⚠️ Manual Deployment Required</h4>
+                    <p>To deploy the equity management schema, you need to:</p>
+                    <ol>
+                        <li>Go to your Supabase dashboard</li>
+                        <li>Navigate to the SQL Editor</li>
+                        <li>Copy and paste the contents of <code>database/equity_management_schema.sql</code></li>
+                        <li>Execute the SQL script</li>
+                    </ol>
+                    <p><strong>Database:</strong> jsbvognrzsjrrrushzvt.supabase.co</p>
+                    <p>After running the SQL script, click "Verify Deployment" below.</p>
+                \`;
+                
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = \`❌ Deployment error: \${error.message}\`;
+            } finally {
+                deployBtn.disabled = false;
+            }
+        }
+        
+        async function verifyDeployment() {
+            const resultDiv = document.getElementById('verify-result');
+            resultDiv.innerHTML = 'Verifying deployment...';
+            
+            try {
+                const endpoints = [
+                    { name: 'Partners', url: '/api/equity/investors' },
+                    { name: 'Investment Categories', url: '/api/equity/investment-categories' },
+                    { name: 'Withdrawal Categories', url: '/api/equity/withdrawal-categories' },
+                    { name: 'Withdrawal Subcategories', url: '/api/equity/withdrawal-subcategories' }
+                ];
+                
+                let results = '<h4>🔍 Verification Results:</h4>';
+                let allSuccess = true;
+                
+                for (const endpoint of endpoints) {
+                    try {
+                        const response = await fetch(endpoint.url);
+                        const data = await response.json();
+                        
+                        if (response.ok && data.success) {
+                            const count = data.data?.length || 0;
+                            results += \`<div style="color: green; margin: 5px 0;">
+                                ✅ <strong>\${endpoint.name}</strong>: \${count} records available
+                                \${count > 0 ? \`<br>&nbsp;&nbsp;&nbsp;&nbsp;Sample: \${data.data[0]?.name || data.data[0]?.category_name || data.data[0]?.subcategory_name || 'N/A'}\` : ''}
+                            </div>\`;
+                        } else {
+                            results += \`<div style="color: red; margin: 5px 0;">❌ <strong>\${endpoint.name}</strong>: \${data.error || 'Failed'}</div>\`;
+                            allSuccess = false;
+                        }
+                    } catch (error) {
+                        results += \`<div style="color: red; margin: 5px 0;">❌ <strong>\${endpoint.name}</strong>: Error - \${error.message}</div>\`;
+                        allSuccess = false;
+                    }
+                }
+                
+                if (allSuccess) {
+                    results += \`
+                        <div style="color: green; margin-top: 15px; padding: 10px; border: 2px solid green; border-radius: 5px;">
+                            <strong>🎉 SUCCESS!</strong> All equity management tables are deployed and contain data.<br>
+                            The withdrawal modal dropdowns should now work properly.
+                        </div>
+                    \`;
+                } else {
+                    results += \`
+                        <div style="color: red; margin-top: 15px; padding: 10px; border: 2px solid red; border-radius: 5px;">
+                            <strong>❌ INCOMPLETE</strong> Some tables are missing or have issues.<br>
+                            Please check the database deployment.
+                        </div>
+                    \`;
+                }
+                
+                resultDiv.className = allSuccess ? 'result success' : 'result error';
+                resultDiv.innerHTML = results;
+                
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = \`❌ Verification error: \${error.message}\`;
+            }
+        }
+        
+        // Auto-run connection test on page load
+        window.onload = function() {
+            testConnection();
+        };
+    </script>
+</body>
+</html>

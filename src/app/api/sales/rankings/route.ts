@@ -212,7 +212,9 @@ export async function GET() {
           email: rep.email,
           metric_value: rep.total_profit,
           metric_label: 'Total Profit',
-          additional_info: `${rep.profit_margin.toFixed(1)}% margin • ${rep.total_orders} orders`
+          additional_info: `${rep.profit_margin.toFixed(1)}% margin • ${rep.total_orders} orders`,
+          total_revenue: rep.total_revenue,
+          total_pending: rep.total_pending
         })),
 
       // Profit Efficiency (Less orders, more profit per order)
@@ -227,7 +229,9 @@ export async function GET() {
           email: rep.email,
           metric_value: rep.average_profit_per_order,
           metric_label: 'Avg Profit/Order',
-          additional_info: `${rep.total_orders} orders • ₹${new Intl.NumberFormat('en-IN').format(rep.total_profit)} total profit`
+          additional_info: `${rep.total_orders} orders • ₹${new Intl.NumberFormat('en-IN').format(rep.total_profit)} total profit`,
+          total_revenue: rep.total_revenue,
+          total_pending: rep.total_pending
         })),
 
       // Most Sales (by number of orders)
@@ -241,7 +245,9 @@ export async function GET() {
           email: rep.email,
           metric_value: rep.total_orders,
           metric_label: 'Orders',
-          additional_info: `₹${new Intl.NumberFormat('en-IN').format(rep.total_revenue)} revenue`
+          additional_info: `₹${new Intl.NumberFormat('en-IN').format(rep.total_revenue)} revenue`,
+          total_revenue: rep.total_revenue,
+          total_pending: rep.total_pending
         })),
 
       // Highest Revenue
@@ -255,7 +261,9 @@ export async function GET() {
           email: rep.email,
           metric_value: rep.total_revenue,
           metric_label: 'Revenue',
-          additional_info: `${rep.total_orders} orders`
+          additional_info: `${rep.total_orders} orders`,
+          total_revenue: rep.total_revenue,
+          total_pending: rep.total_pending
         })),
 
       // Best Discount Control (who gives less discount per order)
@@ -277,7 +285,9 @@ export async function GET() {
           email: rep.email,
           metric_value: rep.average_discount_per_order,
           metric_label: 'Avg Discount/Order',
-          additional_info: `${rep.total_orders} orders • ${rep.discount_percentage.toFixed(1)}% total discount`
+          additional_info: `${rep.total_orders} orders • ${rep.discount_percentage.toFixed(1)}% total discount`,
+          total_revenue: rep.total_revenue,
+          total_pending: rep.total_pending
         })),
 
       // Best Collection (highest collection rate)
@@ -300,7 +310,8 @@ export async function GET() {
           metric_value: rep.collection_rate,
           metric_label: 'Collection Rate',
           additional_info: `₹${new Intl.NumberFormat('en-IN').format(rep.total_collected)} collected • ${rep.collection_rate.toFixed(1)}% rate • ₹${new Intl.NumberFormat('en-IN').format(rep.total_revenue)} revenue`,
-          total_revenue: rep.total_revenue
+          total_revenue: rep.total_revenue,
+          total_pending: rep.total_pending
         }))
     }
 

@@ -14,7 +14,8 @@ import {
   Target,
   RefreshCw,
   AlertTriangle,
-  Percent
+  Percent,
+  DollarSign
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { getCurrentUser, User } from '@/lib/auth'
@@ -227,7 +228,7 @@ export default function SalesRepresentativePage() {
 
         {/* Statistics Cards */}
         {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
             {/* Orders Statistics */}
             <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0 shadow-lg">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -242,6 +243,23 @@ export default function SalesRepresentativePage() {
                 </div>
                 <p className="text-xs text-blue-200 mt-1">
                   Revenue: {formatCurrency(stats.total_revenue)}
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Total Revenue */}
+            <Card className="bg-gradient-to-br from-teal-500 to-teal-600 text-white border-0 shadow-lg">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-teal-100">Total Revenue</CardTitle>
+                <DollarSign className="h-4 w-4 text-teal-200" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-white">{formatCurrency(stats.total_revenue)}</div>
+                <div className="flex items-center text-xs text-teal-100 mt-1">
+                  <span>From {stats.total_orders} orders</span>
+                </div>
+                <p className="text-xs text-teal-200 mt-1">
+                  Average: {formatCurrency(stats.average_order_value)}
                 </p>
               </CardContent>
             </Card>
@@ -272,10 +290,10 @@ export default function SalesRepresentativePage() {
               <CardContent>
                 <div className="text-2xl font-bold text-white">{formatCurrency(stats.total_discount_given)}</div>
                 <div className="flex items-center text-xs text-purple-100 mt-1">
-                  <span>Total savings given</span>
+                  <span>{formatPercentage(stats.total_revenue > 0 ? (stats.total_discount_given / stats.total_revenue) * 100 : 0)} of revenue</span>
                 </div>
                 <p className="text-xs text-purple-200 mt-1">
-                  To customers
+                  Total savings given to customers
                 </p>
               </CardContent>
             </Card>

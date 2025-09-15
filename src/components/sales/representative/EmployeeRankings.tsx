@@ -21,7 +21,8 @@ interface SalesRepRanking {
   metric_value: number
   metric_label: string
   additional_info: string
-  total_revenue?: number // Optional field for collection ranking
+  total_revenue?: number // Optional field for total revenue
+  total_pending?: number // Optional field for pending amount
 }
 
 interface Rankings {
@@ -64,6 +65,9 @@ const EmployeeRankings: React.FC = () => {
   const formatMetricValue = (value: number, label: string) => {
     if (label === 'Revenue' || label === 'Avg Order Value' || label === 'Total Profit' || label === 'Avg Profit/Order' || label === 'Avg Discount/Order' || label === 'Pending Amount') {
       return `₹${new Intl.NumberFormat('en-IN').format(Math.round(value))}`
+    }
+    if (label === 'Collection Rate') {
+      return `${Math.round(value)}%`
     }
     return value.toString()
   }
@@ -215,12 +219,12 @@ const EmployeeRankings: React.FC = () => {
                   </div>
                   <p className="text-xs text-gray-500 mt-1">{rep.metric_label}</p>
                   
-                  {/* Show total revenue for collection ranking */}
-                  {activeTab === 'best_collection' && rep.total_revenue && (
-                    <div className="mt-2 p-2 bg-blue-50 rounded-md border border-blue-200">
-                      <p className="text-xs font-medium text-blue-800">Total Revenue</p>
-                      <p className="text-sm font-bold text-blue-900">
-                        ₹{new Intl.NumberFormat('en-IN').format(rep.total_revenue)}
+                  {/* Show pending amount stat card for all rankings */}
+                  {rep.total_pending !== undefined && (
+                    <div className="mt-2 p-2 bg-orange-50 rounded-md border border-orange-200">
+                      <p className="text-xs font-medium text-orange-800">Pending Amount</p>
+                      <p className="text-sm font-bold text-orange-900">
+                        ₹{new Intl.NumberFormat('en-IN').format(rep.total_pending)}
                       </p>
                     </div>
                   )}

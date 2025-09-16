@@ -51,7 +51,9 @@ export async function POST(request: NextRequest) {
       reference_number = '',
       upi_reference = '',
       notes = '',
-      created_by
+      created_by,
+      category_id = null,
+      subcategory_id = null
     } = body;
 
     // Validation
@@ -76,13 +78,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Partner not found' }, { status: 404 });
     }
 
-    // Check if partner has sufficient equity balance
+    // Allow negative equity balances - calculate current investment for accounting
     const currentInvestment = parseFloat(partner.initial_investment) || 0;
-    if (currentInvestment < withdrawalAmount) {
-      return NextResponse.json({ 
-        error: `Insufficient equity balance. Available: ₹${currentInvestment}, Requested: ₹${withdrawalAmount}` 
-      }, { status: 400 });
-    }
 
     // 1. Validate and get a valid user ID following partner creation pattern
     let validUserId = created_by;
@@ -140,6 +137,8 @@ export async function POST(request: NextRequest) {
       .from('withdrawals')
       .insert({
         partner_id: partner_id,
+        category_id: category_id,
+        subcategory_id: subcategory_id,
         amount: withdrawalAmount,
         withdrawal_date: withdrawal_date,
         description: description?.trim() || '',
@@ -163,7 +162,7 @@ export async function POST(request: NextRequest) {
     // Create accounting entries following the exact partner creation pattern
     // For withdrawal: Debit Partner Equity (decrease), Credit Cash (decrease)
     try {
-      // 1. Get partner equity account (should exist from previous investments)
+      // 1. Get or create partner equity account (create if doesn't exist, like investments API)
       const partnerAccountCode = `3015-${partner_id.toString()}`;
       const { data: existingAccount } = await supabase
         .from('chart_of_accounts')
@@ -174,9 +173,33 @@ export async function POST(request: NextRequest) {
       let partnerAccountId;
       
       if (!existingAccount) {
-        return NextResponse.json({ 
-          error: 'Partner equity account not found. Partner must make an investment first.' 
-        }, { status: 400 });
+        // Create new equity account for this partner (same as investment creation)
+        const { data: newAccount, error: accountError } = await supabase
+          .from('chart_of_accounts')
+          .insert({
+            account_code: partnerAccountCode,
+            account_name: `${partner.name} - Partner Equity`,
+            account_type: 'EQUITY',
+            account_subtype: 'CAPITAL',
+            description: `Equity account for partner ${partner.name}`,
+            is_active: true,
+            normal_balance: 'CREDIT',
+            current_balance: -withdrawalAmount, // Start with negative balance for withdrawal
+            opening_balance: 0,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .select('id')
+          .single();
+
+        if (accountError) {
+          console.error('Error creating partner equity account:', accountError);
+          return NextResponse.json({ 
+            error: 'Failed to create partner equity account. Please try again.' 
+          }, { status: 500 });
+        } else {
+          partnerAccountId = newAccount?.id;
+        }
       } else {
         partnerAccountId = existingAccount.id;
         
@@ -199,8 +222,12 @@ export async function POST(request: NextRequest) {
         .eq('account_code', '1010')
         .single();
 
+      console.log('💰 Cash account lookup result:', { cashAccount, found: !!cashAccount });
+
       // 3. Create journal entry for withdrawal (opposite of investment)
       if (partnerAccountId && cashAccount?.id) {
+        console.log('📝 Creating journal entry with:', { partnerAccountId, cashAccountId: cashAccount.id });
+        
         const journalNumber = `JE-WDL-${Date.now()}`;
         
         const { data: journalEntry, error: journalError } = await supabase
@@ -224,8 +251,10 @@ export async function POST(request: NextRequest) {
           .single();
 
         if (journalError) {
-          console.error('Error creating journal entry:', journalError);
+          console.error('❌ Error creating journal entry:', journalError);
         } else if (journalEntry?.id) {
+          console.log('✅ Journal entry created successfully:', { id: journalEntry.id, journalNumber });
+          
           // 4. Create journal entry lines (Debit Partner Equity, Credit Cash) - opposite of investment
           const journalLines = [
             {
@@ -248,17 +277,27 @@ export async function POST(request: NextRequest) {
             }
           ];
 
+          console.log('📊 Creating journal entry lines:', journalLines);
+
           const { error: linesError } = await supabase
             .from('journal_entry_lines')
             .insert(journalLines);
 
           if (linesError) {
-            console.error('Error creating journal entry lines:', linesError);
+            console.error('❌ Error creating journal entry lines:', linesError);
+          } else {
+            console.log('✅ Journal entry lines created successfully');
           }
 
           // 5. Update Cash account balance (decrease cash)
           const currentCashBalance = parseFloat(cashAccount.current_balance) || 0;
           const newCashBalance = currentCashBalance - withdrawalAmount;
+          
+          console.log('💰 Updating cash account balance:', { 
+            current: currentCashBalance, 
+            withdrawal: withdrawalAmount, 
+            new: newCashBalance 
+          });
           
           await supabase
             .from('chart_of_accounts')
@@ -277,24 +316,35 @@ export async function POST(request: NextRequest) {
             })
             .eq('id', withdrawal.id);
 
-          // 7. Update partner's total investment amount in partners table (decrease)
-          try {
-            const newTotal = currentInvestment - withdrawalAmount;
-            
-            await supabase
-              .from('partners')
-              .update({
-                initial_investment: newTotal,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', partner_id);
-
-            console.log(`✅ Updated partner ${partner.name} total investment: ₹${currentInvestment} → ₹${newTotal}`);
-          } catch (partnerUpdateError) {
-            console.error('Error updating partner investment total:', partnerUpdateError);
-            // Don't fail the withdrawal creation
-          }
+          console.log('✅ Withdrawal accounting completed successfully');
+        } else {
+          console.error('❌ Journal entry creation returned no data');
         }
+      } else {
+        console.error('❌ Cannot create journal entry - missing accounts:', { 
+          partnerAccountId, 
+          cashAccountId: cashAccount?.id,
+          partnerAccountExists: !!partnerAccountId,
+          cashAccountExists: !!cashAccount?.id
+        });
+      }
+
+      // 7. Update partner's total investment amount in partners table (decrease)
+      try {
+        const newTotal = currentInvestment - withdrawalAmount;
+        
+        await supabase
+          .from('partners')
+          .update({
+            initial_investment: newTotal,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', partner_id);
+
+        console.log(`✅ Updated partner ${partner.name} total investment: ₹${currentInvestment} → ₹${newTotal}`);
+      } catch (partnerUpdateError) {
+        console.error('Error updating partner investment total:', partnerUpdateError);
+        // Don't fail the withdrawal creation
       }
     } catch (accountingError) {
       console.error('Error creating accounting entries:', accountingError);

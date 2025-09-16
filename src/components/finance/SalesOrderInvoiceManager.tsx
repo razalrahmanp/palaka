@@ -190,6 +190,7 @@ export function SalesOrderInvoiceManager() {
   const [createExpenseOpen, setCreateExpenseOpen] = useState(false);
   const [createInvestmentOpen, setCreateInvestmentOpen] = useState(false);
   const [createWithdrawalOpen, setCreateWithdrawalOpen] = useState(false);
+  const [withdrawalLoading, setWithdrawalLoading] = useState(false);
   const [createLiabilityOpen, setCreateLiabilityOpen] = useState(false);
   const [loanSetupOpen, setLoanSetupOpen] = useState(false);
   const [showAddInvestorModal, setShowAddInvestorModal] = useState(false);
@@ -1243,6 +1244,11 @@ export function SalesOrderInvoiceManager() {
   };
 
   const handleCreateWithdrawal = async () => {
+    // Prevent double-clicks by checking if already loading
+    if (withdrawalLoading) {
+      return;
+    }
+
     // Validation
     if (!withdrawalForm.partner_id) {
       alert('Please select a partner');
@@ -1270,6 +1276,8 @@ export function SalesOrderInvoiceManager() {
       alert('Please select a bank account for this payment method');
       return;
     }
+
+    setWithdrawalLoading(true);
 
     try {
       const response = await fetch('/api/equity/withdrawals', {
@@ -1321,6 +1329,8 @@ export function SalesOrderInvoiceManager() {
     } catch (error) {
       console.error('Error recording withdrawal:', error);
       alert('Error recording withdrawal. Please try again.');
+    } finally {
+      setWithdrawalLoading(false);
     }
   };
 
@@ -3442,27 +3452,150 @@ export function SalesOrderInvoiceManager() {
                   <SelectValue placeholder="Select payment method" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="cash">Cash</SelectItem>
-                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                  <SelectItem value="cheque">Cheque</SelectItem>
+                  <SelectItem value="cash">💵 Cash</SelectItem>
+                  <SelectItem value="bank_transfer">🏦 Bank Transfer</SelectItem>
+                  <SelectItem value="upi">📱 UPI</SelectItem>
+                  <SelectItem value="online">💻 Online Payment</SelectItem>
+                  <SelectItem value="cheque">📄 Cheque</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Reference Number */}
-            <div className="space-y-2">
-              <Label htmlFor="reference" className="text-sm font-medium">
-                Reference Number
-              </Label>
-              <Input
-                id="reference"
-                type="text"
-                placeholder="Transaction ID, Cheque Number, etc."
-                className="w-full"
-                value={withdrawalForm.reference_number}
-                onChange={(e) => setWithdrawalForm(prev => ({ ...prev, reference_number: e.target.value }))}
-              />
-            </div>
+            {/* Bank Account Selection - Show different accounts based on payment method */}
+            {withdrawalForm.payment_method && withdrawalForm.payment_method !== 'cash' && (
+              <div className="space-y-2">
+                <Label htmlFor="bank_account" className="text-sm font-medium">
+                  {withdrawalForm.payment_method === 'bank_transfer' && 'Bank Account *'}
+                  {withdrawalForm.payment_method === 'upi' && 'UPI Account *'}
+                  {withdrawalForm.payment_method === 'online' && 'Online Payment Account *'}
+                  {withdrawalForm.payment_method === 'cheque' && 'Bank Account (for Cheque) *'}
+                </Label>
+                <Select 
+                  value={withdrawalForm.bank_account_id} 
+                  onValueChange={(value) => setWithdrawalForm(prev => ({ ...prev, bank_account_id: value }))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue 
+                      placeholder={
+                        withdrawalForm.payment_method === 'bank_transfer' ? 'Select bank account' :
+                        withdrawalForm.payment_method === 'upi' ? 'Select UPI account' :
+                        withdrawalForm.payment_method === 'online' ? 'Select online payment account' :
+                        withdrawalForm.payment_method === 'cheque' ? 'Select bank account for cheque' :
+                        'Select account'
+                      } 
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(() => {
+                      // Filter bank accounts based on payment method
+                      const filteredAccounts = bankAccounts.filter(account => {
+                        if (withdrawalForm.payment_method === 'bank_transfer') {
+                          return account.account_type === 'BANK';
+                        } else if (withdrawalForm.payment_method === 'upi') {
+                          return account.account_type === 'UPI';
+                        } else if (withdrawalForm.payment_method === 'online') {
+                          return account.account_type === 'UPI' || account.account_type === 'BANK';
+                        } else if (withdrawalForm.payment_method === 'cheque') {
+                          return account.account_type === 'BANK';
+                        }
+                        return true;
+                      });
+
+                      if (filteredAccounts.length === 0) {
+                        return (
+                          <SelectItem value="" disabled>
+                            No {withdrawalForm.payment_method === 'upi' ? 'UPI' : 'bank'} accounts found
+                          </SelectItem>
+                        );
+                      }
+
+                      return filteredAccounts.map((account) => (
+                        <SelectItem key={account.id} value={account.id}>
+                          <div className="flex items-center gap-2">
+                            {account.account_type === 'UPI' && <span>📱</span>}
+                            {account.account_type === 'BANK' && <span>🏦</span>}
+                            <div className="flex flex-col">
+                              <span className="font-medium">{account.account_name}</span>
+                              <span className="text-xs text-gray-500">
+                                {account.account_type === 'UPI' 
+                                  ? 'UPI Account' 
+                                  : (account.account_number ? `****${account.account_number.slice(-4)}` : 'No A/C')
+                                }
+                              </span>
+                            </div>
+                          </div>
+                        </SelectItem>
+                      ));
+                    })()}
+                  </SelectContent>
+                </Select>
+                {bankAccounts.filter(account => {
+                  if (withdrawalForm.payment_method === 'bank_transfer') {
+                    return account.account_type === 'BANK';
+                  } else if (withdrawalForm.payment_method === 'upi') {
+                    return account.account_type === 'UPI';
+                  } else if (withdrawalForm.payment_method === 'online') {
+                    return account.account_type === 'UPI' || account.account_type === 'BANK';
+                  } else if (withdrawalForm.payment_method === 'cheque') {
+                    return account.account_type === 'BANK';
+                  }
+                  return true;
+                }).length === 0 && (
+                  <p className="text-xs text-orange-600 mt-1">
+                    No {withdrawalForm.payment_method === 'upi' ? 'UPI' : 'bank'} accounts found. 
+                    Please add a {withdrawalForm.payment_method === 'upi' ? 'UPI' : 'bank'} account first.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* UPI Reference for UPI payments */}
+            {withdrawalForm.payment_method === 'upi' && (
+              <div className="space-y-2">
+                <Label htmlFor="upi_reference" className="text-sm font-medium">
+                  UPI Transaction ID
+                </Label>
+                <Input
+                  id="upi_reference"
+                  type="text"
+                  placeholder="UPI Reference Number"
+                  className="w-full"
+                  value={withdrawalForm.upi_reference}
+                  onChange={(e) => setWithdrawalForm(prev => ({ ...prev, upi_reference: e.target.value }))}
+                />
+              </div>
+            )}
+
+            {/* Reference Number - Show different labels based on payment method */}
+            {withdrawalForm.payment_method && withdrawalForm.payment_method !== 'cash' && (
+              <div className="space-y-2">
+                <Label htmlFor="reference" className="text-sm font-medium">
+                  {withdrawalForm.payment_method === 'bank_transfer' && 'Bank Transaction ID'}
+                  {withdrawalForm.payment_method === 'cheque' && 'Cheque Number'}
+                  {withdrawalForm.payment_method === 'online' && 'Transaction Reference'}
+                  {withdrawalForm.payment_method === 'upi' && 'Additional Reference (Optional)'}
+                </Label>
+                <Input
+                  id="reference"
+                  type="text"
+                  placeholder={
+                    withdrawalForm.payment_method === 'bank_transfer' ? 'Bank Transfer Reference' :
+                    withdrawalForm.payment_method === 'cheque' ? 'Cheque Number' :
+                    withdrawalForm.payment_method === 'online' ? 'Online Transaction ID' :
+                    withdrawalForm.payment_method === 'upi' ? 'Additional Reference (optional)' :
+                    'Transaction ID, Cheque Number, etc.'
+                  }
+                  className="w-full"
+                  value={withdrawalForm.reference_number}
+                  onChange={(e) => setWithdrawalForm(prev => ({ ...prev, reference_number: e.target.value }))}
+                />
+                {withdrawalForm.payment_method === 'upi' && (
+                  <p className="text-xs text-gray-500">
+                    UPI transaction ID is captured above. This is for any additional reference.
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Description */}
             <div className="space-y-2">
@@ -3512,11 +3645,20 @@ export function SalesOrderInvoiceManager() {
               <Button 
                 type="button" 
                 onClick={handleCreateWithdrawal}
-                disabled={!withdrawalForm.partner_id || !withdrawalForm.category_id || !withdrawalForm.amount || !withdrawalForm.description}
-                className="bg-purple-600 hover:bg-purple-700 w-full sm:w-auto order-1 sm:order-2"
+                disabled={withdrawalLoading || !withdrawalForm.partner_id || !withdrawalForm.category_id || !withdrawalForm.amount || !withdrawalForm.description}
+                className="bg-purple-600 hover:bg-purple-700 w-full sm:w-auto order-1 sm:order-2 cursor-pointer disabled:cursor-not-allowed"
               >
-                <TrendingDown className="h-4 w-4 mr-2" />
-                Record Withdrawal
+                {withdrawalLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <TrendingDown className="h-4 w-4 mr-2" />
+                    Record Withdrawal
+                  </>
+                )}
               </Button>
             </div>
           </DialogFooter>

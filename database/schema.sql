@@ -1070,6 +1070,47 @@ CREATE TABLE public.leave_types (
   created_at timestamp without time zone DEFAULT now(),
   CONSTRAINT leave_types_pkey PRIMARY KEY (id)
 );
+CREATE TABLE public.liability_payments (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  date date NOT NULL,
+  liability_type character varying NOT NULL CHECK (liability_type::text = ANY (ARRAY['bank_loan'::character varying, 'bank_loan_current'::character varying, 'equipment_loan'::character varying, 'other_liability'::character varying]::text[])),
+  principal_amount numeric DEFAULT 0.00,
+  interest_amount numeric DEFAULT 0.00,
+  total_amount numeric NOT NULL,
+  description text NOT NULL,
+  payment_method character varying NOT NULL DEFAULT 'cash'::character varying CHECK (payment_method::text = ANY (ARRAY['cash'::character varying, 'bank_transfer'::character varying, 'card'::character varying, 'cheque'::character varying, 'online'::character varying, 'upi'::character varying]::text[])),
+  bank_account_id uuid,
+  upi_reference character varying,
+  reference_number character varying,
+  created_by uuid,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT liability_payments_pkey PRIMARY KEY (id),
+  CONSTRAINT liability_payments_bank_account_id_fkey FOREIGN KEY (bank_account_id) REFERENCES public.bank_accounts(id)
+);
+CREATE TABLE public.loan_opening_balances (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  loan_account_code character varying NOT NULL CHECK (loan_account_code::text = ANY (ARRAY['2210'::character varying, '2510'::character varying, '2530'::character varying]::text[])),
+  loan_name character varying NOT NULL,
+  bank_name character varying,
+  loan_type character varying NOT NULL CHECK (loan_type::text = ANY (ARRAY['bank_loan'::character varying, 'equipment_loan'::character varying, 'vehicle_loan'::character varying, 'business_loan'::character varying, 'term_loan'::character varying]::text[])),
+  loan_number character varying,
+  original_loan_amount numeric NOT NULL,
+  opening_balance numeric NOT NULL,
+  current_balance numeric NOT NULL DEFAULT 0,
+  interest_rate numeric,
+  loan_tenure_months integer,
+  emi_amount numeric,
+  loan_start_date date,
+  loan_end_date date,
+  status character varying NOT NULL DEFAULT 'active'::character varying CHECK (status::text = ANY (ARRAY['active'::character varying, 'closed'::character varying, 'suspended'::character varying]::text[])),
+  description text,
+  created_by uuid,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  opening_balance_set_date date DEFAULT CURRENT_DATE,
+  CONSTRAINT loan_opening_balances_pkey PRIMARY KEY (id)
+);
 CREATE TABLE public.opening_balances (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   account_id uuid,
@@ -1516,7 +1557,7 @@ CREATE TABLE public.rma_requests (
 CREATE TABLE public.role_permissions (
   role_id uuid NOT NULL,
   permission_id uuid NOT NULL,
-  CONSTRAINT role_permissions_pkey PRIMARY KEY (permission_id, role_id),
+  CONSTRAINT role_permissions_pkey PRIMARY KEY (role_id, permission_id),
   CONSTRAINT role_permissions_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(id),
   CONSTRAINT role_permissions_permission_id_fkey FOREIGN KEY (permission_id) REFERENCES public.permissions(id)
 );

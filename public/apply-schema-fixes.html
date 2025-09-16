@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apply Database Schema Fixes</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .warning { background: #fff3cd; color: #856404; padding: 15px; border-radius: 5px; margin: 15px 0; }
+        .info { background: #d4edda; color: #155724; padding: 15px; border-radius: 5px; margin: 15px 0; }
+        .code { background: #f1f1f1; padding: 15px; border-radius: 5px; font-family: monospace; white-space: pre-wrap; }
+        .step { background: #f8f9fa; border-left: 4px solid #007bff; padding: 15px; margin: 15px 0; }
+        button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Sales Returns Schema Fix Guide</h1>
+        
+        <div class="warning">
+            <h3>⚠️ Important Notice</h3>
+            <p>This guide helps you apply the database schema fixes to resolve the sales returns errors. Please backup your database before proceeding.</p>
+        </div>
+
+        <div class="step">
+            <h3>Step 1: Backup Your Database</h3>
+            <p>Before applying any schema changes, create a backup of your database.</p>
+        </div>
+
+        <div class="step">
+            <h3>Step 2: Apply Schema Fixes</h3>
+            <p>Run the following SQL script in your database management tool (pgAdmin, DBeaver, etc.):</p>
+            <div class="code">-- Location: database/fix_sales_returns_schema.sql
+
+-- 1. Add missing columns to returns table
+ALTER TABLE public.returns 
+ADD COLUMN IF NOT EXISTS sales_representative_id uuid REFERENCES public.users(id),
+ADD COLUMN IF NOT EXISTS return_value numeric DEFAULT 0,
+ADD COLUMN IF NOT EXISTS cost_value numeric DEFAULT 0,
+ADD COLUMN IF NOT EXISTS created_by uuid REFERENCES public.users(id);
+
+-- 2. Add missing columns to return_items table  
+ALTER TABLE public.return_items 
+ADD COLUMN IF NOT EXISTS sales_order_item_id uuid REFERENCES public.sales_order_items(id),
+ADD COLUMN IF NOT EXISTS unit_price numeric DEFAULT 0,
+ADD COLUMN IF NOT EXISTS is_custom_product boolean DEFAULT false,
+ADD COLUMN IF NOT EXISTS custom_product_id uuid REFERENCES public.custom_products(id);
+
+-- 3. Update return_type constraint to include 'exchange'
+ALTER TABLE public.returns DROP CONSTRAINT IF EXISTS returns_return_type_check;
+ALTER TABLE public.returns ADD CONSTRAINT returns_return_type_check 
+CHECK (return_type::text = ANY (ARRAY['return'::character varying, 'warranty'::character varying, 'complaint'::character varying, 'exchange'::character varying]::text[]));
+
+-- 4. Add performance indexes
+CREATE INDEX IF NOT EXISTS idx_returns_sales_representative_id ON public.returns(sales_representative_id);
+CREATE INDEX IF NOT EXISTS idx_returns_created_by ON public.returns(created_by);
+CREATE INDEX IF NOT EXISTS idx_returns_order_id ON public.returns(order_id);
+CREATE INDEX IF NOT EXISTS idx_return_items_sales_order_item_id ON public.return_items(sales_order_item_id);
+CREATE INDEX IF NOT EXISTS idx_return_items_custom_product_id ON public.return_items(custom_product_id);
+CREATE INDEX IF NOT EXISTS idx_return_items_return_id ON public.return_items(return_id);</div>
+        </div>
+
+        <div class="step">
+            <h3>Step 3: Verify Schema Changes</h3>
+            <p>After running the SQL, verify the changes:</p>
+            <div class="code">-- Check returns table structure
+\d+ public.returns;
+
+-- Check return_items table structure  
+\d+ public.return_items;
+
+-- Verify columns exist
+SELECT column_name, data_type, is_nullable 
+FROM information_schema.columns 
+WHERE table_name = 'returns' 
+AND table_schema = 'public'
+AND column_name IN ('sales_representative_id', 'return_value', 'cost_value', 'created_by');</div>
+        </div>
+
+        <div class="step">
+            <h3>Step 4: Test the API</h3>
+            <p>The sales returns API has been updated with proper validation. Test it using:</p>
+            <button onclick="window.open('http://localhost:3001/test-sales-returns-fix.html', '_blank')">Open Test Tool</button>
+        </div>
+
+        <div class="info">
+            <h3>✅ What These Fixes Resolve</h3>
+            <ul>
+                <li><strong>PGRST204 Error</strong>: Missing 'cost_value' column</li>
+                <li><strong>Foreign Key Error</strong>: Order validation before return creation</li>
+                <li><strong>Missing Columns</strong>: All required columns for returns functionality</li>
+                <li><strong>Data Integrity</strong>: Proper constraints and indexes</li>
+            </ul>
+        </div>
+
+        <div class="step">
+            <h3>Step 5: Expected Results</h3>
+            <p>After applying these fixes, you should be able to:</p>
+            <ul>
+                <li>✅ Create returns without schema errors</li>
+                <li>✅ Get proper error messages for invalid orders</li>
+                <li>✅ Track return values and costs accurately</li>
+                <li>✅ Associate returns with sales representatives</li>
+            </ul>
+        </div>
+
+        <div class="warning">
+            <h3>🔄 If Issues Persist</h3>
+            <p>If you still encounter issues after applying the fixes:</p>
+            <ol>
+                <li>Check the server logs for detailed error messages</li>
+                <li>Verify all SQL statements executed successfully</li>
+                <li>Use the test tool to identify specific failing components</li>
+                <li>Ensure your Supabase client has the latest schema cached</li>
+            </ol>
+        </div>
+    </div>
+</body>
+</html>

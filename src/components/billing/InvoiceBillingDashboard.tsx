@@ -1891,8 +1891,21 @@ export function InvoiceBillingDashboard({
               setValidationErrors([]);
               onCreateQuoteAndSalesOrder?.(getCurrentBillingData());
             }}
-            disabled={!customer || items.length === 0 || isProcessing || externalIsProcessing || !selectedSalesman || !deliveryDate}
+            disabled={
+              !customer || 
+              isProcessing || 
+              externalIsProcessing || 
+              !selectedSalesman || 
+              !deliveryDate ||
+              (items.length === 0 && 
+                !(initialData?.isEditing === true && initialData?.type === 'order')
+              )
+            }
             variant="outline"
+            title={initialData?.isEditing && initialData?.type === 'order' && items.length === 0 
+              ? "Update Sales Order - Allowed with 0 items for returns processing" 
+              : undefined
+            }
           >
             <ShoppingCart className="h-4 w-4 mr-2" />
             {initialData?.isEditing 

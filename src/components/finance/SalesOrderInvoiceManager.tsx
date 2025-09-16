@@ -29,7 +29,8 @@ import {
   Search,
   Trash2,
   TrendingUp,
-  TrendingDown
+  TrendingDown,
+  Building2
 } from 'lucide-react';
 import { SalesOrder, Invoice, subcategoryMap } from '@/types';
 import { PaymentTrackingDialog } from './PaymentTrackingDialog';
@@ -189,6 +190,8 @@ export function SalesOrderInvoiceManager() {
   const [createExpenseOpen, setCreateExpenseOpen] = useState(false);
   const [createInvestmentOpen, setCreateInvestmentOpen] = useState(false);
   const [createWithdrawalOpen, setCreateWithdrawalOpen] = useState(false);
+  const [createLiabilityOpen, setCreateLiabilityOpen] = useState(false);
+  const [loanSetupOpen, setLoanSetupOpen] = useState(false);
   const [showAddInvestorModal, setShowAddInvestorModal] = useState(false);
   
   // Waive-off states
@@ -230,6 +233,36 @@ export function SalesOrderInvoiceManager() {
     entity_type: '', // 'truck', 'employee', 'supplier'
     vendor_bill_id: '', // New field for vendor bill selection
     payroll_record_id: '', // New field for payroll record selection
+  });
+
+  const [liabilityForm, setLiabilityForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    liability_type: 'bank_loan', // 'bank_loan', 'equipment_loan', 'accrued_expense'
+    description: '',
+    principal_amount: '',
+    interest_amount: '',
+    total_amount: '',
+    payment_method: 'bank_transfer',
+    bank_account_id: '',
+    loan_account: '', // Which loan account to debit (2210, 2510, 2530)
+    upi_reference: '',
+    reference_number: '',
+  });
+
+  const [loanSetupForm, setLoanSetupForm] = useState({
+    loan_account_code: '2510',
+    loan_name: '',
+    bank_name: '',
+    loan_type: 'business_loan',
+    loan_number: '',
+    original_loan_amount: '',
+    opening_balance: '',
+    interest_rate: '',
+    loan_tenure_months: '',
+    emi_amount: '',
+    loan_start_date: '',
+    loan_end_date: '',
+    description: '',
   });
 
   const [investmentForm, setInvestmentForm] = useState({
@@ -1285,6 +1318,165 @@ export function SalesOrderInvoiceManager() {
     }
   };
 
+  const handleCreateLiabilityPayment = async () => {
+    // Validation
+    if (!liabilityForm.date) {
+      alert('Please select a payment date');
+      return;
+    }
+
+    if (!liabilityForm.liability_type) {
+      alert('Please select a liability type');
+      return;
+    }
+
+    const principalAmount = parseFloat(liabilityForm.principal_amount) || 0;
+    const interestAmount = parseFloat(liabilityForm.interest_amount) || 0;
+    const totalAmount = principalAmount + interestAmount;
+
+    if (totalAmount <= 0) {
+      alert('Please enter valid amounts for principal and/or interest');
+      return;
+    }
+
+    if (!liabilityForm.description.trim()) {
+      alert('Please enter a description for the liability payment');
+      return;
+    }
+
+    // Validate bank account selection for non-cash payments
+    const requiresBankAccount = ['bank_transfer', 'card', 'cheque', 'online'].includes(liabilityForm.payment_method);
+    if (requiresBankAccount && !liabilityForm.bank_account_id) {
+      alert('Please select a bank account for this payment method');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/finance/liability-payments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          date: liabilityForm.date,
+          liability_type: liabilityForm.liability_type,
+          principal_amount: principalAmount,
+          interest_amount: interestAmount,
+          total_amount: totalAmount,
+          description: liabilityForm.description,
+          payment_method: liabilityForm.payment_method,
+          bank_account_id: liabilityForm.bank_account_id || null,
+          upi_reference: liabilityForm.upi_reference || null,
+          reference_number: liabilityForm.reference_number || null,
+          created_by: getCurrentUser()?.id
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setCreateLiabilityOpen(false);
+        
+        // Reset form
+        setLiabilityForm({
+          date: new Date().toISOString().split('T')[0],
+          liability_type: 'bank_loan',
+          description: '',
+          principal_amount: '',
+          interest_amount: '',
+          total_amount: '',
+          payment_method: 'bank_transfer',
+          bank_account_id: '',
+          loan_account: '',
+          upi_reference: '',
+          reference_number: '',
+        });
+        
+        fetchData(); // Refresh data
+        alert('Liability payment recorded successfully!');
+        console.log('Liability payment result:', result);
+      } else {
+        const error = await response.json();
+        alert(`Failed to record liability payment: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error recording liability payment:', error);
+      alert('Error recording liability payment. Please try again.');
+    }
+  };
+
+  const handleCreateLoanSetup = async () => {
+    // Validation
+    if (!loanSetupForm.loan_name.trim()) {
+      alert('Please enter a loan name');
+      return;
+    }
+
+    if (!loanSetupForm.original_loan_amount || parseFloat(loanSetupForm.original_loan_amount) <= 0) {
+      alert('Please enter a valid original loan amount');
+      return;
+    }
+
+    if (!loanSetupForm.opening_balance || parseFloat(loanSetupForm.opening_balance) <= 0) {
+      alert('Please enter a valid opening balance');
+      return;
+    }
+
+    if (parseFloat(loanSetupForm.opening_balance) > parseFloat(loanSetupForm.original_loan_amount)) {
+      alert('Opening balance cannot be greater than original loan amount');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/finance/loan-opening-balances', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...loanSetupForm,
+          original_loan_amount: parseFloat(loanSetupForm.original_loan_amount),
+          opening_balance: parseFloat(loanSetupForm.opening_balance),
+          interest_rate: loanSetupForm.interest_rate ? parseFloat(loanSetupForm.interest_rate) : null,
+          loan_tenure_months: loanSetupForm.loan_tenure_months ? parseInt(loanSetupForm.loan_tenure_months) : null,
+          emi_amount: loanSetupForm.emi_amount ? parseFloat(loanSetupForm.emi_amount) : null,
+          created_by: getCurrentUser()?.id
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setLoanSetupOpen(false);
+        
+        // Reset form
+        setLoanSetupForm({
+          loan_account_code: '2510',
+          loan_name: '',
+          bank_name: '',
+          loan_type: 'business_loan',
+          loan_number: '',
+          original_loan_amount: '',
+          opening_balance: '',
+          interest_rate: '',
+          loan_tenure_months: '',
+          emi_amount: '',
+          loan_start_date: '',
+          loan_end_date: '',
+          description: '',
+        });
+        
+        fetchData(); // Refresh data
+        alert('Loan opening balance setup successfully!');
+        console.log('Loan setup result:', result);
+      } else {
+        const error = await response.json();
+        alert(`Failed to setup loan: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error setting up loan:', error);
+      alert('Error setting up loan. Please try again.');
+    }
+  };
+
   // Summary calculations using new API structure
   const totalOrderValue = salesOrders.reduce((sum, order) => sum + (order.final_price || order.total || 0), 0);
   
@@ -2321,6 +2513,22 @@ export function SalesOrderInvoiceManager() {
                     <TrendingDown className="h-4 w-4 mr-2" />
                     Withdrawal
                   </Button>
+                  <Button
+                    size="sm"
+                    className="bg-blue-600 hover:bg-blue-700"
+                    onClick={() => setCreateLiabilityOpen(true)}
+                  >
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    Liabilities
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-orange-600 hover:bg-orange-700"
+                    onClick={() => setLoanSetupOpen(true)}
+                  >
+                    <Building2 className="h-4 w-4 mr-2" />
+                    Loan Setup
+                  </Button>
                 </div>
               </div>
 
@@ -3305,6 +3513,507 @@ export function SalesOrderInvoiceManager() {
                 Record Withdrawal
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Liability Payment Dialog */}
+      <Dialog open={createLiabilityOpen} onOpenChange={setCreateLiabilityOpen}>
+        <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-y-auto mx-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold text-blue-700 flex items-center gap-2">
+              <CreditCard className="h-5 w-5" />
+              Record Liability Payment
+            </DialogTitle>
+            <p className="text-sm text-gray-600 mt-1">
+              Record payments for bank loans, equipment loans, or other liabilities
+            </p>
+          </DialogHeader>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 py-4 overflow-y-auto">
+            {/* Left Column - Payment Details */}
+            <div className="space-y-3 md:space-y-4">
+              <div className="bg-blue-50 p-3 md:p-4 rounded-lg">
+                <h3 className="font-medium text-blue-900 mb-2 md:mb-3 flex items-center gap-2">
+                  <CreditCard className="h-4 w-4" />
+                  Payment Information
+                </h3>
+                
+                {/* Liability Type */}
+                <div className="space-y-2 mb-3 md:mb-4">
+                  <Label htmlFor="liability_type" className="text-sm font-medium">
+                    Liability Type *
+                  </Label>
+                  <Select 
+                    value={liabilityForm.liability_type} 
+                    onValueChange={(value) => setLiabilityForm(prev => ({ ...prev, liability_type: value }))}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select liability type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="bank_loan">Bank Loan Payment</SelectItem>
+                      <SelectItem value="equipment_loan">Equipment Loan Payment</SelectItem>
+                      <SelectItem value="accrued_expense">Accrued Expense Payment</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Loan Account Selection */}
+                <div className="space-y-2 mb-3 md:mb-4">
+                  <Label htmlFor="loan_account" className="text-sm font-medium">
+                    Loan Account *
+                  </Label>
+                  <Select 
+                    value={liabilityForm.loan_account} 
+                    onValueChange={(value) => setLiabilityForm(prev => ({ ...prev, loan_account: value }))}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select loan account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="2210">2210 - Bank Loan (Current Portion)</SelectItem>
+                      <SelectItem value="2510">2510 - Bank Loans (Long-term)</SelectItem>
+                      <SelectItem value="2530">2530 - Equipment Loans</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Payment Date */}
+                <div className="space-y-2">
+                  <Label htmlFor="liability_date" className="text-sm font-medium">
+                    Payment Date *
+                  </Label>
+                  <Input
+                    id="liability_date"
+                    type="date"
+                    value={liabilityForm.date}
+                    onChange={(e) => setLiabilityForm(prev => ({ ...prev, date: e.target.value }))}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column - Amount Details */}
+            <div className="space-y-3 md:space-y-4">
+              <div className="bg-gray-50 p-3 md:p-4 rounded-lg">
+                <h3 className="font-medium text-gray-900 mb-2 md:mb-3 flex items-center gap-2">
+                  <DollarSign className="h-4 w-4" />
+                  Amount Breakdown
+                </h3>
+                
+                {/* Principal Amount */}
+                <div className="space-y-2 mb-3 md:mb-4">
+                  <Label htmlFor="principal_amount" className="text-sm font-medium">
+                    Principal Amount (₹) *
+                  </Label>
+                  <Input
+                    id="principal_amount"
+                    type="number"
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                    value={liabilityForm.principal_amount}
+                    onChange={(e) => {
+                      const principal = parseFloat(e.target.value) || 0;
+                      const interest = parseFloat(liabilityForm.interest_amount) || 0;
+                      setLiabilityForm(prev => ({ 
+                        ...prev, 
+                        principal_amount: e.target.value,
+                        total_amount: (principal + interest).toString()
+                      }));
+                    }}
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Interest Amount */}
+                <div className="space-y-2 mb-3 md:mb-4">
+                  <Label htmlFor="interest_amount" className="text-sm font-medium">
+                    Interest Amount (₹) *
+                  </Label>
+                  <Input
+                    id="interest_amount"
+                    type="number"
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                    value={liabilityForm.interest_amount}
+                    onChange={(e) => {
+                      const interest = parseFloat(e.target.value) || 0;
+                      const principal = parseFloat(liabilityForm.principal_amount) || 0;
+                      setLiabilityForm(prev => ({ 
+                        ...prev, 
+                        interest_amount: e.target.value,
+                        total_amount: (principal + interest).toString()
+                      }));
+                    }}
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Total Amount (calculated) */}
+                <div className="space-y-2 mb-3 md:mb-4">
+                  <Label htmlFor="total_amount" className="text-sm font-medium">
+                    Total Payment Amount (₹)
+                  </Label>
+                  <div className="p-2 bg-gray-100 rounded border text-base md:text-lg font-semibold text-gray-700">
+                    ₹{(parseFloat(liabilityForm.principal_amount) || 0) + (parseFloat(liabilityForm.interest_amount) || 0)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment Method Section */}
+              <div className="bg-green-50 p-3 md:p-4 rounded-lg">
+                <h3 className="font-medium text-green-900 mb-2 md:mb-3 flex items-center gap-2">
+                  <Receipt className="h-4 w-4" />
+                  Payment Method
+                </h3>
+                
+                {/* Payment Method */}
+                <div className="space-y-2 mb-3 md:mb-4">
+                  <Label htmlFor="payment_method" className="text-sm font-medium">
+                    Payment Method *
+                  </Label>
+                  <Select 
+                    value={liabilityForm.payment_method} 
+                    onValueChange={(value) => setLiabilityForm(prev => ({ ...prev, payment_method: value }))}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select payment method" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                      <SelectItem value="cheque">Cheque</SelectItem>
+                      <SelectItem value="online">Online Payment</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Bank Account Selection */}
+                {['bank_transfer', 'cheque', 'online'].includes(liabilityForm.payment_method) && (
+                  <div className="space-y-2 mb-3 md:mb-4">
+                    <Label htmlFor="bank_account" className="text-sm font-medium">
+                      Bank Account *
+                    </Label>
+                    <Select 
+                      value={liabilityForm.bank_account_id} 
+                      onValueChange={(value) => setLiabilityForm(prev => ({ ...prev, bank_account_id: value }))}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select bank account" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {bankAccounts.map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            {account.account_name} ({account.account_number})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Full Width Description */}
+            <div className="col-span-full space-y-2">
+              <Label htmlFor="description" className="text-sm font-medium">
+                Description *
+              </Label>
+              <Textarea
+                id="description"
+                placeholder="Describe the liability payment (e.g., Monthly loan payment for Bank XYZ loan)"
+                value={liabilityForm.description}
+                onChange={(e) => setLiabilityForm(prev => ({ ...prev, description: e.target.value }))}
+                className="w-full resize-none"
+                rows={2}
+              />
+            </div>
+
+            {/* Info Box */}
+            <div className="col-span-full text-xs p-2 md:p-3 rounded bg-blue-50 border border-blue-200 text-blue-700">
+              <span className="font-medium">💡 Accounting Info:</span> This will create proper journal entries:
+              <br />• Debit: Selected Loan Account (reduces liability)
+              <br />• Debit: Interest Expense (7010)
+              <br />• Credit: Selected Payment Account (reduces cash/bank)
+            </div>
+          </div>
+
+          <DialogFooter className="flex flex-col sm:flex-row gap-2 md:gap-3 pt-4 md:pt-6 border-t border-gray-200">
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => setCreateLiabilityOpen(false)}
+              className="w-full sm:w-auto order-2 sm:order-1"
+            >
+              Cancel
+            </Button>
+            <Button 
+              type="button" 
+              onClick={handleCreateLiabilityPayment}
+              disabled={!liabilityForm.description || !liabilityForm.principal_amount || !liabilityForm.loan_account}
+              className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto order-1 sm:order-2"
+            >
+              <CreditCard className="h-4 w-4 mr-2" />
+              Record Payment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Loan Setup Dialog */}
+      <Dialog open={loanSetupOpen} onOpenChange={setLoanSetupOpen}>
+        <DialogContent className="w-[95vw] max-w-3xl max-h-[90vh] overflow-y-auto mx-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold text-orange-700 flex items-center gap-2">
+              <Building2 className="h-5 w-5" />
+              Setup Loan Opening Balance
+            </DialogTitle>
+            <p className="text-sm text-gray-600 mt-1">
+              Set up initial loan balances for proper accounting and tracking
+            </p>
+          </DialogHeader>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 py-4">
+            {/* Left Column - Loan Details */}
+            <div className="space-y-3 md:space-y-4">
+              <div className="bg-orange-50 p-3 md:p-4 rounded-lg">
+                <h3 className="font-medium text-orange-900 mb-2 md:mb-3 flex items-center gap-2">
+                  <Building2 className="h-4 w-4" />
+                  Loan Information
+                </h3>
+                
+                {/* Loan Account Code */}
+                <div className="space-y-2 mb-3 md:mb-4">
+                  <Label htmlFor="loan_account_code" className="text-sm font-medium">
+                    Loan Account *
+                  </Label>
+                  <Select 
+                    value={loanSetupForm.loan_account_code} 
+                    onValueChange={(value) => setLoanSetupForm(prev => ({ ...prev, loan_account_code: value }))}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select loan account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="2210">2210 - Bank Loan (Current Portion)</SelectItem>
+                      <SelectItem value="2510">2510 - Bank Loans (Long-term)</SelectItem>
+                      <SelectItem value="2530">2530 - Equipment Loans</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Loan Name */}
+                <div className="space-y-2 mb-3 md:mb-4">
+                  <Label htmlFor="loan_name" className="text-sm font-medium">
+                    Loan Name *
+                  </Label>
+                  <Input
+                    id="loan_name"
+                    type="text"
+                    placeholder="e.g., HDFC Business Loan"
+                    value={loanSetupForm.loan_name}
+                    onChange={(e) => setLoanSetupForm(prev => ({ ...prev, loan_name: e.target.value }))}
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Bank Name */}
+                <div className="space-y-2 mb-3 md:mb-4">
+                  <Label htmlFor="bank_name" className="text-sm font-medium">
+                    Bank/Institution Name
+                  </Label>
+                  <Input
+                    id="bank_name"
+                    type="text"
+                    placeholder="e.g., HDFC Bank"
+                    value={loanSetupForm.bank_name}
+                    onChange={(e) => setLoanSetupForm(prev => ({ ...prev, bank_name: e.target.value }))}
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Loan Type */}
+                <div className="space-y-2">
+                  <Label htmlFor="loan_type" className="text-sm font-medium">
+                    Loan Type
+                  </Label>
+                  <Select 
+                    value={loanSetupForm.loan_type} 
+                    onValueChange={(value) => setLoanSetupForm(prev => ({ ...prev, loan_type: value }))}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select loan type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="business_loan">Business Loan</SelectItem>
+                      <SelectItem value="equipment_loan">Equipment Loan</SelectItem>
+                      <SelectItem value="vehicle_loan">Vehicle Loan</SelectItem>
+                      <SelectItem value="term_loan">Term Loan</SelectItem>
+                      <SelectItem value="bank_loan">Bank Loan</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column - Amount & Terms */}
+            <div className="space-y-3 md:space-y-4">
+              <div className="bg-green-50 p-3 md:p-4 rounded-lg">
+                <h3 className="font-medium text-green-900 mb-2 md:mb-3 flex items-center gap-2">
+                  <DollarSign className="h-4 w-4" />
+                  Loan Amounts
+                </h3>
+                
+                {/* Original Loan Amount */}
+                <div className="space-y-2 mb-3 md:mb-4">
+                  <Label htmlFor="original_loan_amount" className="text-sm font-medium">
+                    Original Loan Amount (₹) *
+                  </Label>
+                  <Input
+                    id="original_loan_amount"
+                    type="number"
+                    placeholder="500000"
+                    min="0"
+                    step="0.01"
+                    value={loanSetupForm.original_loan_amount}
+                    onChange={(e) => setLoanSetupForm(prev => ({ ...prev, original_loan_amount: e.target.value }))}
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Opening Balance */}
+                <div className="space-y-2 mb-3 md:mb-4">
+                  <Label htmlFor="opening_balance" className="text-sm font-medium">
+                    Current Outstanding Balance (₹) *
+                  </Label>
+                  <Input
+                    id="opening_balance"
+                    type="number"
+                    placeholder="350000"
+                    min="0"
+                    step="0.01"
+                    value={loanSetupForm.opening_balance}
+                    onChange={(e) => setLoanSetupForm(prev => ({ ...prev, opening_balance: e.target.value }))}
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Interest Rate */}
+                <div className="space-y-2 mb-3 md:mb-4">
+                  <Label htmlFor="interest_rate" className="text-sm font-medium">
+                    Interest Rate (% per annum)
+                  </Label>
+                  <Input
+                    id="interest_rate"
+                    type="number"
+                    placeholder="12.5"
+                    min="0"
+                    max="50"
+                    step="0.1"
+                    value={loanSetupForm.interest_rate}
+                    onChange={(e) => setLoanSetupForm(prev => ({ ...prev, interest_rate: e.target.value }))}
+                    className="w-full"
+                  />
+                </div>
+
+                {/* EMI Amount */}
+                <div className="space-y-2">
+                  <Label htmlFor="emi_amount" className="text-sm font-medium">
+                    Monthly EMI Amount (₹)
+                  </Label>
+                  <Input
+                    id="emi_amount"
+                    type="number"
+                    placeholder="11236"
+                    min="0"
+                    step="0.01"
+                    value={loanSetupForm.emi_amount}
+                    onChange={(e) => setLoanSetupForm(prev => ({ ...prev, emi_amount: e.target.value }))}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+
+              {/* Additional Details */}
+              <div className="bg-gray-50 p-3 md:p-4 rounded-lg">
+                <h3 className="font-medium text-gray-900 mb-2 md:mb-3">Additional Details</h3>
+                
+                {/* Loan Number */}
+                <div className="space-y-2 mb-3 md:mb-4">
+                  <Label htmlFor="loan_number" className="text-sm font-medium">
+                    Loan Number
+                  </Label>
+                  <Input
+                    id="loan_number"
+                    type="text"
+                    placeholder="BL2024001"
+                    value={loanSetupForm.loan_number}
+                    onChange={(e) => setLoanSetupForm(prev => ({ ...prev, loan_number: e.target.value }))}
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Loan Start Date */}
+                <div className="space-y-2">
+                  <Label htmlFor="loan_start_date" className="text-sm font-medium">
+                    Loan Start Date
+                  </Label>
+                  <Input
+                    id="loan_start_date"
+                    type="date"
+                    value={loanSetupForm.loan_start_date}
+                    onChange={(e) => setLoanSetupForm(prev => ({ ...prev, loan_start_date: e.target.value }))}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Full Width Description */}
+            <div className="col-span-full space-y-2">
+              <Label htmlFor="description" className="text-sm font-medium">
+                Description
+              </Label>
+              <Textarea
+                id="description"
+                placeholder="Additional details about the loan (e.g., purpose, terms, etc.)"
+                value={loanSetupForm.description}
+                onChange={(e) => setLoanSetupForm(prev => ({ ...prev, description: e.target.value }))}
+                className="w-full resize-none"
+                rows={2}
+              />
+            </div>
+
+            {/* Info Box */}
+            <div className="col-span-full text-xs p-2 md:p-3 rounded bg-orange-50 border border-orange-200 text-orange-700">
+              <span className="font-medium">💡 Accounting Info:</span> This will create opening balance journal entries:
+              <br />• Debit: Cash Account (1110) - Cash received when loan was taken
+              <br />• Credit: Selected Loan Account - Liability recorded
+            </div>
+          </div>
+
+          <DialogFooter className="flex flex-col sm:flex-row gap-2 md:gap-3 pt-4 md:pt-6 border-t border-gray-200">
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => setLoanSetupOpen(false)}
+              className="w-full sm:w-auto order-2 sm:order-1"
+            >
+              Cancel
+            </Button>
+            <Button 
+              type="button" 
+              onClick={handleCreateLoanSetup}
+              disabled={!loanSetupForm.loan_name || !loanSetupForm.original_loan_amount || !loanSetupForm.opening_balance}
+              className="bg-orange-600 hover:bg-orange-700 w-full sm:w-auto order-1 sm:order-2"
+            >
+              <Building2 className="h-4 w-4 mr-2" />
+              Setup Loan
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deploy Liability Payments Migration</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2563eb;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .info-box {
+            background: #e0f2fe;
+            border: 1px solid #0288d1;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .warning-box {
+            background: #fff3e0;
+            border: 1px solid #ff9800;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .success-box {
+            background: #e8f5e8;
+            border: 1px solid #4caf50;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+            display: none;
+        }
+        .error-box {
+            background: #ffebee;
+            border: 1px solid #f44336;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+            display: none;
+        }
+        button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #1d4ed8;
+        }
+        button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏦 Deploy Liability Payments Migration</h1>
+        
+        <div class="info-box">
+            <h3>📋 Migration Overview</h3>
+            <p>This migration will create the <strong>liability_payments</strong> table to track payments made towards:</p>
+            <ul>
+                <li><strong>Bank Loans</strong> - Regular bank loan payments</li>
+                <li><strong>Bank Loan Current Portion</strong> - Current year portion of long-term loans</li>
+                <li><strong>Equipment Loans</strong> - Equipment financing payments</li>
+                <li><strong>Other Liabilities</strong> - Other liability payments</li>
+            </ul>
+            <p><strong>Features:</strong></p>
+            <ul>
+                <li>Separate tracking of principal and interest amounts</li>
+                <li>Multiple payment methods (cash, bank transfer, card, UPI, etc.)</li>
+                <li>Bank account integration for non-cash payments</li>
+                <li>Automatic journal entry creation for proper accounting</li>
+            </ul>
+        </div>
+
+        <div class="warning-box">
+            <h3>⚠️ Pre-Migration Checklist</h3>
+            <p><strong>Please verify before proceeding:</strong></p>
+            <ul>
+                <li>✅ Bank accounts table exists and is properly configured</li>
+                <li>✅ Journal entries table exists for accounting integration</li>
+                <li>✅ Chart of accounts contains liability accounts (2210, 2510, 2530)</li>
+                <li>✅ Chart of accounts contains interest expense account (7010)</li>
+                <li>✅ Database backup is recent and accessible</li>
+            </ul>
+        </div>
+
+        <div class="info-box">
+            <h3>📊 Database Schema Details</h3>
+            <p><strong>Table Structure:</strong></p>
+            <ul>
+                <li><code>id</code> - Primary key (UUID)</li>
+                <li><code>date</code> - Payment date</li>
+                <li><code>liability_type</code> - Type of liability (bank_loan, bank_loan_current, equipment_loan, other_liability)</li>
+                <li><code>principal_amount</code> - Amount paid towards principal</li>
+                <li><code>interest_amount</code> - Amount paid towards interest</li>
+                <li><code>total_amount</code> - Total payment amount</li>
+                <li><code>description</code> - Payment description</li>
+                <li><code>payment_method</code> - Payment method</li>
+                <li><code>bank_account_id</code> - Bank account reference (optional)</li>
+                <li><code>upi_reference</code> - UPI transaction reference</li>
+                <li><code>reference_number</code> - Check/transaction reference</li>
+                <li><code>created_by</code> - User who created the record</li>
+                <li><code>created_at</code> - Creation timestamp</li>
+                <li><code>updated_at</code> - Last update timestamp</li>
+            </ul>
+        </div>
+
+        <div style="text-align: center; margin: 30px 0;">
+            <button onclick="deployMigration()" id="deployBtn">
+                🚀 Deploy Liability Payments Migration
+            </button>
+            <button onclick="testConnection()" id="testBtn">
+                🔗 Test Database Connection
+            </button>
+        </div>
+
+        <div id="status"></div>
+        <div id="results"></div>
+
+        <div class="success-box" id="successBox">
+            <h3>✅ Migration Deployed Successfully!</h3>
+            <p>The liability_payments table has been created with all necessary:</p>
+            <ul>
+                <li>✅ Table structure with proper constraints</li>
+                <li>✅ Indexes for performance optimization</li>
+                <li>✅ Triggers for automatic timestamp updates</li>
+                <li>✅ Comments for documentation</li>
+            </ul>
+            <p><strong>Next Steps:</strong></p>
+            <ol>
+                <li>Verify the table structure in your database</li>
+                <li>Test the liability payment functionality in the app</li>
+                <li>Create some test liability payments</li>
+                <li>Verify journal entries are created correctly</li>
+            </ol>
+        </div>
+
+        <div class="error-box" id="errorBox">
+            <h3>❌ Migration Failed</h3>
+            <p>There was an error deploying the migration. Please check the error details below and try again.</p>
+        </div>
+    </div>
+
+    <script>
+        async function testConnection() {
+            const statusDiv = document.getElementById('status');
+            const testBtn = document.getElementById('testBtn');
+            
+            testBtn.disabled = true;
+            statusDiv.innerHTML = '<div class="status"><div class="loading"></div> Testing database connection...</div>';
+            
+            try {
+                const response = await fetch('/api/test-db-connection');
+                const result = await response.json();
+                
+                if (response.ok) {
+                    statusDiv.innerHTML = '<div class="status" style="background: #e8f5e8; border: 1px solid #4caf50;">✅ Database connection successful!</div>';
+                } else {
+                    statusDiv.innerHTML = `<div class="status" style="background: #ffebee; border: 1px solid #f44336;">❌ Database connection failed: ${result.error}</div>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="status" style="background: #ffebee; border: 1px solid #f44336;">❌ Connection test failed: ${error.message}</div>`;
+            }
+            
+            testBtn.disabled = false;
+        }
+        
+        async function deployMigration() {
+            const statusDiv = document.getElementById('status');
+            const resultsDiv = document.getElementById('results');
+            const deployBtn = document.getElementById('deployBtn');
+            const successBox = document.getElementById('successBox');
+            const errorBox = document.getElementById('errorBox');
+            
+            deployBtn.disabled = true;
+            successBox.style.display = 'none';
+            errorBox.style.display = 'none';
+            
+            statusDiv.innerHTML = '<div class="status"><div class="loading"></div> Deploying liability payments migration...</div>';
+            
+            try {
+                // Read the migration SQL file
+                const migrationResponse = await fetch('/database/liability_payments_migration.sql');
+                if (!migrationResponse.ok) {
+                    throw new Error('Failed to load migration file');
+                }
+                const migrationSQL = await migrationResponse.text();
+                
+                statusDiv.innerHTML = '<div class="status"><div class="loading"></div> Executing migration SQL...</div>';
+                
+                // Execute the migration
+                const response = await fetch('/api/execute-sql', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        sql: migrationSQL,
+                        description: 'Deploy liability payments migration'
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    statusDiv.innerHTML = '<div class="status" style="background: #e8f5e8; border: 1px solid #4caf50;">✅ Migration deployed successfully!</div>';
+                    resultsDiv.innerHTML = `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+                    successBox.style.display = 'block';
+                    
+                    // Scroll to success box
+                    successBox.scrollIntoView({ behavior: 'smooth' });
+                } else {
+                    throw new Error(result.error || 'Migration failed');
+                }
+                
+            } catch (error) {
+                console.error('Migration error:', error);
+                statusDiv.innerHTML = `<div class="status" style="background: #ffebee; border: 1px solid #f44336;">❌ Migration failed: ${error.message}</div>`;
+                resultsDiv.innerHTML = `<pre>Error: ${error.message}</pre>`;
+                errorBox.style.display = 'block';
+                
+                // Scroll to error box
+                errorBox.scrollIntoView({ behavior: 'smooth' });
+            }
+            
+            deployBtn.disabled = false;
+        }
+        
+        // Auto-test connection on page load
+        window.onload = function() {
+            testConnection();
+        };
+    </script>
+</body>
+</html>

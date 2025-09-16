@@ -550,20 +550,26 @@ export function SalesOrderInvoiceManager() {
   const getEntityOptions = () => {
     switch (expenseForm.entity_type) {
       case 'truck':
-        return trucks.map(truck => ({
-          value: truck.id,
-          label: `${truck.plate_number} - ${truck.model} (${truck.fuel_type})`
-        }));
+        return trucks
+          .filter(truck => truck.id && truck.id.trim() !== '')
+          .map(truck => ({
+            value: truck.id,
+            label: `${truck.plate_number} - ${truck.model} (${truck.fuel_type})`
+          }));
       case 'employee':
-        return employees.map(employee => ({
-          value: employee.id,
-          label: `${employee.name} - ${employee.position} (₹${employee.salary?.toLocaleString('en-IN')})`
-        }));
+        return employees
+          .filter(employee => employee.id && employee.id.trim() !== '')
+          .map(employee => ({
+            value: employee.id,
+            label: `${employee.name} - ${employee.position} (₹${employee.salary?.toLocaleString('en-IN')})`
+          }));
       case 'supplier':
-        return suppliers.map(supplier => ({
-          value: supplier.id,
-          label: `${supplier.name} - ${supplier.contact}`
-        }));
+        return suppliers
+          .filter(supplier => supplier.id && supplier.id.trim() !== '')
+          .map(supplier => ({
+            value: supplier.id,
+            label: `${supplier.name} - ${supplier.contact}`
+          }));
       default:
         return [];
     }
@@ -2801,7 +2807,7 @@ export function SalesOrderInvoiceManager() {
                             OWNER&apos;S DRAWINGS
                           </div>
                           {Object.entries(subcategoryMap)
-                            .filter(([, details]) => details.category === "Owner's Drawings")
+                            .filter(([category, details]) => category && details.category === "Owner's Drawings")
                             .map(([category, details]) => (
                               <SelectItem key={category} value={category}>
                                 <div className="flex flex-col">
@@ -2817,7 +2823,7 @@ export function SalesOrderInvoiceManager() {
                           BUSINESS EXPENSES
                         </div>
                         {Object.entries(subcategoryMap)
-                          .filter(([, details]) => details.category !== "Owner's Drawings")
+                          .filter(([category, details]) => category && details.category !== "Owner's Drawings")
                           .map(([category, details]) => (
                             <SelectItem key={category} value={category}>
                               <div className="flex flex-col">
@@ -2882,12 +2888,12 @@ export function SalesOrderInvoiceManager() {
                       <Label htmlFor="vendor_bill" className="text-sm font-medium">
                         Related Vendor Bill (Optional)
                       </Label>
-                      <Select value={expenseForm.vendor_bill_id || ''} onValueChange={(value) => setExpenseForm({ ...expenseForm, vendor_bill_id: value })}>
+                      <Select value={expenseForm.vendor_bill_id || 'none'} onValueChange={(value) => setExpenseForm({ ...expenseForm, vendor_bill_id: value === 'none' ? '' : value })}>
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="Select vendor bill (optional)" />
                         </SelectTrigger>
                         <SelectContent className="max-h-60">
-                          <SelectItem value="">No specific bill</SelectItem>
+                          <SelectItem value="none">No specific bill</SelectItem>
                           {vendorBills.map(bill => (
                             <SelectItem key={bill.id} value={bill.id}>
                               <div className="flex flex-col">
@@ -2909,12 +2915,12 @@ export function SalesOrderInvoiceManager() {
                       <Label htmlFor="payroll_record" className="text-sm font-medium">
                         Related Payroll Record (Optional)
                       </Label>
-                      <Select value={expenseForm.payroll_record_id || ''} onValueChange={(value) => setExpenseForm({ ...expenseForm, payroll_record_id: value })}>
+                      <Select value={expenseForm.payroll_record_id || 'none'} onValueChange={(value) => setExpenseForm({ ...expenseForm, payroll_record_id: value === 'none' ? '' : value })}>
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="Select payroll record (optional)" />
                         </SelectTrigger>
                         <SelectContent className="max-h-60">
-                          <SelectItem value="">No specific payroll</SelectItem>
+                          <SelectItem value="none">No specific payroll</SelectItem>
                           {payrollRecords.map(record => (
                             <SelectItem key={record.id} value={record.id}>
                               <div className="flex flex-col">
@@ -2983,7 +2989,7 @@ export function SalesOrderInvoiceManager() {
                                 </SelectItem>
                               ))
                             ) : (
-                              <SelectItem value="" disabled>
+                              <SelectItem value="none" disabled>
                                 No bank accounts available
                               </SelectItem>
                             )}
@@ -3387,14 +3393,14 @@ export function SalesOrderInvoiceManager() {
                     Subcategory (Optional)
                   </Label>
                   <Select 
-                    value={withdrawalForm.subcategory_id} 
-                    onValueChange={(value) => setWithdrawalForm(prev => ({ ...prev, subcategory_id: value }))}
+                    value={withdrawalForm.subcategory_id || 'none'} 
+                    onValueChange={(value) => setWithdrawalForm(prev => ({ ...prev, subcategory_id: value === 'none' ? '' : value }))}
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Select subcategory (optional)" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">No specific subcategory</SelectItem>
+                      <SelectItem value="none">No specific subcategory</SelectItem>
                       {availableSubcategories.map((subcategory) => (
                         <SelectItem key={subcategory.id} value={subcategory.id}>
                           {subcategory.subcategory_name}

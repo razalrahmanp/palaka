@@ -174,6 +174,23 @@ interface PayrollRecord {
   status: string;
 }
 
+interface CashflowTransaction {
+  id: string;
+  date: string;
+  description: string;
+  type: 'income' | 'expense';
+  category: 'payment' | 'investment' | 'withdrawal' | 'expense' | 'vendor_payment' | 'liability_payment' | 'loan_setup';
+  subcategory?: string;
+  amount: number;
+  payment_method: string;
+  reference?: string;
+  customer_name?: string;
+  partner_name?: string;
+  related_id?: string; // ID of the original record (payment, expense, etc.)
+  bank_account?: string;
+  created_at: string;
+}
+
 export function SalesOrderInvoiceManager() {
   const [salesOrders, setSalesOrders] = useState<SalesOrderWithInvoice[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -211,6 +228,16 @@ export function SalesOrderInvoiceManager() {
   const [invoicesSearchQuery, setInvoicesSearchQuery] = useState('');
   const [paymentsSearchQuery, setPaymentsSearchQuery] = useState('');
   const [expensesSearchQuery, setExpensesSearchQuery] = useState('');
+  const [cashflowSearchQuery, setCashflowSearchQuery] = useState('');
+  
+  // Cashflow states
+  const [cashflowTransactions, setCashflowTransactions] = useState<CashflowTransaction[]>([]);
+  const [cashflowTypeFilter, setCashflowTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
+  const [cashflowCategoryFilter, setCashflowCategoryFilter] = useState<'all' | 'payment' | 'investment' | 'withdrawal' | 'expense' | 'vendor_payment' | 'liability_payment'>('all');
+  const [cashflowDateRange, setCashflowDateRange] = useState<{from: string; to: string}>({
+    from: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0], // Start of current month
+    to: new Date().toISOString().split('T')[0] // Today
+  });
   
   // Payment status filter for sales orders
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<'all' | 'paid' | 'unpaid' | 'partial'>('all');
@@ -303,6 +330,13 @@ export function SalesOrderInvoiceManager() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    // Fetch cashflow data when date range changes or when we have base data
+    if (payments.length > 0 || expenses.length > 0) {
+      fetchCashflowData();
+    }
+  }, [cashflowDateRange.from, cashflowDateRange.to, payments, expenses]);
 
   const fetchData = async () => {
     try {
@@ -475,6 +509,86 @@ export function SalesOrderInvoiceManager() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchCashflowData = async () => {
+    try {
+      console.log('🔄 Fetching cashflow data...');
+      
+      // Fetch cashflow data from dedicated API endpoint
+      const response = await fetch(`/api/finance/cashflow?from=${cashflowDateRange.from}&to=${cashflowDateRange.to}`);
+      
+      if (!response.ok) {
+        console.error('Failed to fetch cashflow data:', response.statusText);
+        // If dedicated API doesn't exist, build cashflow from existing data
+        buildCashflowFromExistingData();
+        return;
+      }
+      
+      const cashflowData = await response.json();
+      console.log('💰 Cashflow API Response:', cashflowData);
+      
+      setCashflowTransactions(cashflowData.transactions || []);
+      
+    } catch (error) {
+      console.error('Error fetching cashflow data:', error);
+      // Fallback to building from existing data
+      buildCashflowFromExistingData();
+    }
+  };
+
+  const buildCashflowFromExistingData = () => {
+    console.log('🔧 Building cashflow from existing data...');
+    
+    const transactions: CashflowTransaction[] = [];
+    
+    // Add payments as income
+    payments.forEach(payment => {
+      transactions.push({
+        id: `payment-${payment.id}`,
+        date: payment.date,
+        description: `Payment from ${payment.customer_name || 'Customer'}`,
+        type: 'income',
+        category: 'payment',
+        subcategory: payment.payment_method || payment.method,
+        amount: payment.amount,
+        payment_method: payment.payment_method || payment.method || 'cash',
+        reference: payment.reference,
+        customer_name: payment.customer_name,
+        related_id: payment.id,
+        created_at: payment.date
+      });
+    });
+    
+    // Add expenses as outflow
+    expenses.forEach(expense => {
+      transactions.push({
+        id: `expense-${expense.id}`,
+        date: expense.date,
+        description: expense.description,
+        type: 'expense',
+        category: 'expense',
+        subcategory: expense.category,
+        amount: expense.amount,
+        payment_method: expense.payment_method,
+        related_id: expense.id,
+        created_at: expense.created_at
+      });
+    });
+    
+    // Sort by date (newest first)
+    transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    
+    // Filter by date range
+    const filteredTransactions = transactions.filter(transaction => {
+      const transactionDate = new Date(transaction.date);
+      const fromDate = new Date(cashflowDateRange.from);
+      const toDate = new Date(cashflowDateRange.to);
+      return transactionDate >= fromDate && transactionDate <= toDate;
+    });
+    
+    setCashflowTransactions(filteredTransactions);
+    console.log('✅ Built cashflow transactions:', filteredTransactions.length);
   };
 
   const getPaymentStatusBadge = (status: string, totalPaid: number = 0, orderTotal: number = 0, waivedAmount: number = 0) => {
@@ -797,6 +911,44 @@ export function SalesOrderInvoiceManager() {
     });
   };
 
+  const filterCashflowTransactions = (
+    transactions: CashflowTransaction[], 
+    searchQuery: string, 
+    typeFilter: 'all' | 'income' | 'expense' = 'all',
+    categoryFilter: 'all' | 'payment' | 'investment' | 'withdrawal' | 'expense' | 'vendor_payment' | 'liability_payment' = 'all'
+  ): CashflowTransaction[] => {
+    let filteredTransactions = transactions;
+
+    // Filter by type
+    if (typeFilter !== 'all') {
+      filteredTransactions = filteredTransactions.filter(transaction => transaction.type === typeFilter);
+    }
+
+    // Filter by category
+    if (categoryFilter !== 'all') {
+      filteredTransactions = filteredTransactions.filter(transaction => transaction.category === categoryFilter);
+    }
+
+    // Filter by search query
+    if (!searchQuery.trim()) return filteredTransactions;
+    
+    const query = searchQuery.toLowerCase();
+    return filteredTransactions.filter((transaction) => {
+      return (
+        transaction.id.toLowerCase().includes(query) ||
+        transaction.description?.toLowerCase().includes(query) ||
+        transaction.category?.toLowerCase().includes(query) ||
+        transaction.subcategory?.toLowerCase().includes(query) ||
+        transaction.payment_method?.toLowerCase().includes(query) ||
+        transaction.customer_name?.toLowerCase().includes(query) ||
+        transaction.partner_name?.toLowerCase().includes(query) ||
+        transaction.reference?.toLowerCase().includes(query) ||
+        transaction.amount?.toString().includes(query) ||
+        formatDate(transaction.date).toLowerCase().includes(query)
+      );
+    });
+  };
+
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
     setCurrentPage(1); // Reset to first page when changing tabs
@@ -812,6 +964,8 @@ export function SalesOrderInvoiceManager() {
         return filterPayments(payments, paymentsSearchQuery).length;
       case 'expenses':
         return filterExpenses(expenses, expensesSearchQuery).length;
+      case 'cashflow':
+        return filterCashflowTransactions(cashflowTransactions, cashflowSearchQuery, cashflowTypeFilter, cashflowCategoryFilter).length;
       default:
         return 0;
     }
@@ -1558,7 +1712,7 @@ export function SalesOrderInvoiceManager() {
         
         {/* Main Navigation Tabs */}
         <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-          <TabsList className="grid w-full grid-cols-5 h-12 bg-gray-50 rounded-none border-b">
+          <TabsList className="grid w-full grid-cols-6 h-12 bg-gray-50 rounded-none border-b">
             <TabsTrigger 
               value="orders" 
               className="text-sm font-medium h-full data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-blue-500"
@@ -1579,6 +1733,13 @@ export function SalesOrderInvoiceManager() {
             >
               <CreditCard className="h-4 w-4 mr-2" />
               Payments ({payments.length})
+            </TabsTrigger>
+            <TabsTrigger 
+              value="cashflow"
+              className="text-sm font-medium h-full data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-green-500"
+            >
+              <TrendingUp className="h-4 w-4 mr-2" />
+              Cashflow
             </TabsTrigger>
             <TabsTrigger 
               value="payment-manager"

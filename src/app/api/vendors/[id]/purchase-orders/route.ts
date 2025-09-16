@@ -17,6 +17,11 @@ export async function GET(
         status,
         total,
         created_at,
+        description,
+        is_custom,
+        custom_type,
+        product_name,
+        sales_order_id,
         product:products(id, name)
       `)
       .eq('supplier_id', vendorId)

@@ -62,6 +62,35 @@ export async function POST(request: Request) {
 
     console.log('✅ Liability payment created:', liabilityPayment.id);
 
+    // Create bank transaction and update bank balance if bank account is used
+    if (bank_account_id && payment_method !== 'cash') {
+      // Create bank transaction
+      await supabase
+        .from("bank_transactions")
+        .insert([{
+          bank_account_id,
+          date,
+          type: "withdrawal",
+          amount: total_amount,
+          description: `Liability Payment: ${description}`,
+        }]);
+
+      // Update bank account balance
+      const { data: bankAccount, error: bankError } = await supabase
+        .from("bank_accounts")
+        .select("current_balance")
+        .eq("id", bank_account_id)
+        .single();
+      
+      if (!bankError && bankAccount) {
+        const newBalance = (bankAccount.current_balance || 0) - total_amount;
+        await supabase
+          .from("bank_accounts")
+          .update({ current_balance: newBalance })
+          .eq("id", bank_account_id);
+      }
+    }
+
     // Create journal entries for the liability payment
     await createLiabilityPaymentJournalEntry({
       liabilityPaymentId: liabilityPayment.id,

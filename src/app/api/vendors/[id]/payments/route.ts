@@ -76,6 +76,7 @@ export async function POST(
       reference_number,
       notes,
       purchase_order_id,
+      vendor_bill_id,
       created_by,
       bank_account_id,
       upi_account_id
@@ -86,6 +87,7 @@ export async function POST(
       .from('vendor_payment_history')
       .insert({
         supplier_id: vendorId,
+        vendor_bill_id,
         amount,
         payment_date,
         payment_method,
@@ -136,6 +138,41 @@ export async function POST(
         // Don't fail the payment, just log the error
       }
 
+      // Update vendor bill paid amount if bill is provided
+      if (vendor_bill_id) {
+        const { data: currentBill } = await supabase
+          .from('vendor_bills')
+          .select('paid_amount, total_amount')
+          .eq('id', vendor_bill_id)
+          .single();
+
+        const newPaidAmount = (currentBill?.paid_amount || 0) + amount;
+        const remainingAmount = (currentBill?.total_amount || 0) - newPaidAmount;
+        
+        // Determine new status
+        let newStatus = 'pending';
+        if (newPaidAmount >= (currentBill?.total_amount || 0)) {
+          newStatus = 'paid';
+        } else if (newPaidAmount > 0) {
+          newStatus = 'partial';
+        }
+
+        const { error: updateError } = await supabase
+          .from('vendor_bills')
+          .update({ 
+            paid_amount: newPaidAmount,
+            status: newStatus,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', vendor_bill_id);
+
+        if (updateError) {
+          console.error('Error updating vendor bill amounts:', updateError);
+        } else {
+          console.log(`✅ Updated vendor bill ${vendor_bill_id}: paid ${newPaidAmount}, remaining ${remainingAmount}, status ${newStatus}`);
+        }
+      }
+
       // Update purchase order paid amount
       const { error: updateError } = await supabase
         .from('purchase_orders')
@@ -171,6 +208,41 @@ export async function POST(
     } else {
       console.error('❌ Failed to create vendor payment journal entry:', journalResult.error);
       // Don't fail the payment, just log the error
+    }
+
+    // Update vendor bill paid amount if bill is provided
+    if (vendor_bill_id) {
+      const { data: currentBill } = await supabase
+        .from('vendor_bills')
+        .select('paid_amount, total_amount')
+        .eq('id', vendor_bill_id)
+        .single();
+
+      const newPaidAmount = (currentBill?.paid_amount || 0) + amount;
+      const remainingAmount = (currentBill?.total_amount || 0) - newPaidAmount;
+      
+      // Determine new status
+      let newStatus = 'pending';
+      if (newPaidAmount >= (currentBill?.total_amount || 0)) {
+        newStatus = 'paid';
+      } else if (newPaidAmount > 0) {
+        newStatus = 'partial';
+      }
+
+      const { error: updateError } = await supabase
+        .from('vendor_bills')
+        .update({ 
+          paid_amount: newPaidAmount,
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', vendor_bill_id);
+
+      if (updateError) {
+        console.error('Error updating vendor bill amounts:', updateError);
+      } else {
+        console.log(`✅ Updated vendor bill ${vendor_bill_id}: paid ${newPaidAmount}, remaining ${remainingAmount}, status ${newStatus}`);
+      }
     }
 
     // Update purchase order paid amount if PO is provided

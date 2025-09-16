@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vendor Bill Creation Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #2563eb;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        h2 {
+            color: #1f2937;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #374151;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        button {
+            background-color: #2563eb;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #1d4ed8;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9fafb;
+            border-left: 4px solid #10b981;
+            border-radius: 4px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        .status-pending { color: #d97706; }
+        .status-paid { color: #059669; }
+        .status-partial { color: #2563eb; }
+        .status-overdue { color: #dc2626; }
+    </style>
+</head>
+<body>
+    <h1>🧾 Vendor Bill Management Test</h1>
+
+    <div class="container">
+        <h2>📋 Create Vendor Bill</h2>
+        <div class="grid">
+            <div class="form-group">
+                <label>Vendor ID:</label>
+                <input type="text" id="vendor_id" placeholder="Use existing vendor ID from your database" />
+            </div>
+            <div class="form-group">
+                <label>Bill Number:</label>
+                <input type="text" id="bill_number" placeholder="BILL-2024-001" />
+            </div>
+            <div class="form-group">
+                <label>Bill Date:</label>
+                <input type="date" id="bill_date" />
+            </div>
+            <div class="form-group">
+                <label>Due Date:</label>
+                <input type="date" id="due_date" />
+            </div>
+            <div class="form-group">
+                <label>Total Amount:</label>
+                <input type="number" step="0.01" id="total_amount" placeholder="5000.00" />
+            </div>
+            <div class="form-group">
+                <label>Tax Amount:</label>
+                <input type="number" step="0.01" id="tax_amount" placeholder="900.00" />
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Description:</label>
+            <textarea id="description" rows="3" placeholder="Raw materials purchase for Q4 production"></textarea>
+        </div>
+        <div class="form-group">
+            <label>Reference Number:</label>
+            <input type="text" id="reference_number" placeholder="INV-2024-001" />
+        </div>
+        <button onclick="createVendorBill()">Create Vendor Bill</button>
+        <div id="createBillResult" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>📊 Get Vendor Bills</h2>
+        <div class="form-group">
+            <label>Vendor ID:</label>
+            <input type="text" id="get_vendor_id" placeholder="Same vendor ID as above" />
+        </div>
+        <button onclick="getVendorBills()">Get Vendor Bills</button>
+        <div id="getBillsResult" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>✏️ Update Vendor Bill</h2>
+        <div class="grid">
+            <div class="form-group">
+                <label>Vendor ID:</label>
+                <input type="text" id="update_vendor_id" placeholder="Vendor ID" />
+            </div>
+            <div class="form-group">
+                <label>Bill ID:</label>
+                <input type="text" id="update_bill_id" placeholder="Bill ID from get results" />
+            </div>
+            <div class="form-group">
+                <label>Paid Amount:</label>
+                <input type="number" step="0.01" id="paid_amount" placeholder="2000.00" />
+            </div>
+            <div class="form-group">
+                <label>Status:</label>
+                <select id="status">
+                    <option value="pending">Pending</option>
+                    <option value="partial">Partial</option>
+                    <option value="paid">Paid</option>
+                    <option value="overdue">Overdue</option>
+                </select>
+            </div>
+        </div>
+        <button onclick="updateVendorBill()">Update Bill</button>
+        <div id="updateBillResult" class="result" style="display: none;"></div>
+    </div>
+
+    <script>
+        // Set default dates
+        document.getElementById('bill_date').value = new Date().toISOString().split('T')[0];
+        const dueDate = new Date();
+        dueDate.setDate(dueDate.getDate() + 30);
+        document.getElementById('due_date').value = dueDate.toISOString().split('T')[0];
+
+        // Generate unique bill number
+        document.getElementById('bill_number').value = `BILL-${Date.now()}-TEST`;
+
+        async function createVendorBill() {
+            const vendorId = document.getElementById('vendor_id').value;
+            
+            if (!vendorId) {
+                alert('Please enter a vendor ID');
+                return;
+            }
+
+            const data = {
+                bill_number: document.getElementById('bill_number').value,
+                bill_date: document.getElementById('bill_date').value,
+                due_date: document.getElementById('due_date').value,
+                total_amount: parseFloat(document.getElementById('total_amount').value),
+                description: document.getElementById('description').value,
+                tax_amount: parseFloat(document.getElementById('tax_amount').value) || 0,
+                discount_amount: 0,
+                reference_number: document.getElementById('reference_number').value,
+                created_by: null
+            };
+
+            try {
+                const response = await fetch(`/api/vendors/${vendorId}/bills`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                const resultDiv = document.getElementById('createBillResult');
+                resultDiv.style.display = 'block';
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `✅ SUCCESS: Vendor bill created successfully!
+
+📋 Bill Details:
+- ID: ${result.id}
+- Bill Number: ${result.bill_number}
+- Date: ${result.bill_date}
+- Due Date: ${result.due_date}
+- Amount: ₹${result.total_amount}
+- Status: ${result.status}
+- Created: ${result.created_at}
+
+🔗 API Response:
+${JSON.stringify(result, null, 2)}`;
+                } else {
+                    resultDiv.innerHTML = `❌ ERROR: ${result.error || 'Failed to create bill'}
+
+📝 Request Data:
+${JSON.stringify(data, null, 2)}
+
+📨 Response:
+${JSON.stringify(result, null, 2)}`;
+                }
+            } catch (error) {
+                const resultDiv = document.getElementById('createBillResult');
+                resultDiv.style.display = 'block';
+                resultDiv.innerHTML = `💥 Network Error: ${error.message}`;
+            }
+        }
+
+        async function getVendorBills() {
+            const vendorId = document.getElementById('get_vendor_id').value;
+            
+            if (!vendorId) {
+                alert('Please enter a vendor ID');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/vendors/${vendorId}/bills`);
+                const result = await response.json();
+                const resultDiv = document.getElementById('getBillsResult');
+                resultDiv.style.display = 'block';
+                
+                if (response.ok) {
+                    if (Array.isArray(result) && result.length > 0) {
+                        let billsList = result.map(bill => `
+📋 Bill: ${bill.bill_number}
+   ID: ${bill.id}
+   Date: ${bill.bill_date} → Due: ${bill.due_date}
+   Amount: ₹${bill.total_amount} | Paid: ₹${bill.paid_amount} | Outstanding: ₹${bill.remaining_amount}
+   Status: ${bill.status}
+   Description: ${bill.description}
+   Created: ${bill.created_at}
+`).join('\n');
+
+                        resultDiv.innerHTML = `✅ Found ${result.length} vendor bills:
+
+${billsList}
+
+🔗 Full API Response:
+${JSON.stringify(result, null, 2)}`;
+                    } else {
+                        resultDiv.innerHTML = `📭 No bills found for vendor ID: ${vendorId}
+
+This could mean:
+- The vendor doesn't exist
+- The vendor has no bills yet
+- The vendor_bills table is empty
+
+🔗 API Response:
+${JSON.stringify(result, null, 2)}`;
+                    }
+                } else {
+                    resultDiv.innerHTML = `❌ ERROR: ${result.error || 'Failed to fetch bills'}
+
+📨 Response:
+${JSON.stringify(result, null, 2)}`;
+                }
+            } catch (error) {
+                const resultDiv = document.getElementById('getBillsResult');
+                resultDiv.style.display = 'block';
+                resultDiv.innerHTML = `💥 Network Error: ${error.message}`;
+            }
+        }
+
+        async function updateVendorBill() {
+            const vendorId = document.getElementById('update_vendor_id').value;
+            const billId = document.getElementById('update_bill_id').value;
+            
+            if (!vendorId || !billId) {
+                alert('Please enter both vendor ID and bill ID');
+                return;
+            }
+
+            const data = {
+                bill_id: billId,
+                paid_amount: parseFloat(document.getElementById('paid_amount').value) || 0,
+                status: document.getElementById('status').value
+            };
+
+            try {
+                const response = await fetch(`/api/vendors/${vendorId}/bills`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                const resultDiv = document.getElementById('updateBillResult');
+                resultDiv.style.display = 'block';
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `✅ SUCCESS: Vendor bill updated successfully!
+
+📋 Updated Bill Details:
+- ID: ${result.id}
+- Bill Number: ${result.bill_number}
+- Paid Amount: ₹${result.paid_amount}
+- Remaining: ₹${result.remaining_amount}
+- Status: ${result.status}
+- Updated: ${result.updated_at}
+
+🔗 API Response:
+${JSON.stringify(result, null, 2)}`;
+                } else {
+                    resultDiv.innerHTML = `❌ ERROR: ${result.error || 'Failed to update bill'}
+
+📝 Request Data:
+${JSON.stringify(data, null, 2)}
+
+📨 Response:
+${JSON.stringify(result, null, 2)}`;
+                }
+            } catch (error) {
+                const resultDiv = document.getElementById('updateBillResult');
+                resultDiv.style.display = 'block';
+                resultDiv.innerHTML = `💥 Network Error: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>

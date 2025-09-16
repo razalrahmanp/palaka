@@ -468,9 +468,9 @@ export default function VendorPaymentManager({ vendorId, vendorName }: Props) {
                 <p className="text-2xl font-bold text-red-600">{formatCurrency(totalVendorOutstanding)}</p>
                 <p className="text-xs text-gray-500 mt-1">
                   {inventoryBalance > 0 ? (
-                    <>Ledger Balance: {formatCurrency(inventoryBalance)} (incl. inventory)</>
+                    <>Ledger Balance (includes inventory)</>
                   ) : (
-                    <>Bills: {formatCurrency(totalOutstanding)} + POs: {formatCurrency(purchaseOrdersOutstanding)}</>
+                    <>Total amount pending payment</>
                   )}
                 </p>
               </div>
@@ -507,8 +507,7 @@ export default function VendorPaymentManager({ vendorId, vendorName }: Props) {
                   {inventoryBalance > 0 ? (
                     <>Inventory/Stock Obligation</>
                   ) : (
-                    <>Bills: {bills.filter(b => b.status === 'pending' || b.status === 'partial').length} + 
-                     POs: {purchaseOrders.filter(po => (po.total - (po.paid_amount || 0)) > 0).length}</>
+                    <>Total pending payments required</>
                   )}
                 </p>
               </div>
@@ -519,14 +518,13 @@ export default function VendorPaymentManager({ vendorId, vendorName }: Props) {
       </div>
 
       {/* Main Content */}
-      <Tabs defaultValue="bills" className="space-y-4">
+      <Tabs defaultValue="payments" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="bills">Vendor Bills</TabsTrigger>
-          <TabsTrigger value="purchase-orders">Purchase Orders</TabsTrigger>
           <TabsTrigger value="payments">Payment History</TabsTrigger>
+          <TabsTrigger value="make-payment">Make New Payment</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="bills">
+        <TabsContent value="payments">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>

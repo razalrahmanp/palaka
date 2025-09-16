@@ -12,7 +12,6 @@ import {
   Edit, 
   Package, 
   DollarSign, 
-  ShoppingCart, 
   Phone,
   Mail,
   MapPin,
@@ -21,7 +20,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { VendorPerformanceMetrics } from '@/components/vendors/VendorPerformanceMetrics';
-import VendorPaymentManager from '@/components/vendors/VendorPaymentManager';
+import { VendorBillsTab } from '@/components/vendors/VendorBillsTab';
 
 interface VendorDetails {
   id: string;
@@ -69,6 +68,37 @@ interface SalesRecord {
   last_sale_date?: string;
 }
 
+interface VendorBill {
+  id: string;
+  supplier_id: string;
+  bill_number: string;
+  bill_date: string;
+  due_date: string;
+  total_amount: number;
+  paid_amount: number;
+  remaining_amount: number;
+  status: 'pending' | 'partial' | 'paid' | 'overdue' | 'cancelled';
+  description?: string;
+  tax_amount: number;
+  discount_amount: number;
+  purchase_order_id?: string;
+  attachment_url?: string;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+  reference_number?: string;
+  updated_by?: string;
+}
+
+interface VendorFinancialSummary {
+  totalBillAmount: number;
+  totalPaidAmount: number;
+  totalOutstanding: number;
+  pendingBillsCount: number;
+  totalPOAmount: number;
+  pendingPOsCount: number;
+}
+
 export default function VendorDetailsPage() {
   const params = useParams();
   const router = useRouter();
@@ -78,31 +108,66 @@ export default function VendorDetailsPage() {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrderItem[]>([]);
   const [stockItems, setStockItems] = useState<StockItem[]>([]);
   const [salesRecords, setSalesRecords] = useState<SalesRecord[]>([]);
+  const [vendorBills, setVendorBills] = useState<VendorBill[]>([]);
+  const [financialSummary, setFinancialSummary] = useState<VendorFinancialSummary>({
+    totalBillAmount: 0,
+    totalPaidAmount: 0,
+    totalOutstanding: 0,
+    pendingBillsCount: 0,
+    totalPOAmount: 0,
+    pendingPOsCount: 0
+  });
   const [loading, setLoading] = useState(true);
+
+  // Calculate financial summary from vendor bills
+  const calculateFinancialSummary = (bills: VendorBill[]): VendorFinancialSummary => {
+    const totalBillAmount = bills.reduce((sum, bill) => sum + (bill.total_amount || 0), 0);
+    const totalPaidAmount = bills.reduce((sum, bill) => sum + (bill.paid_amount || 0), 0);
+    const totalOutstanding = bills.reduce((sum, bill) => sum + (bill.remaining_amount || 0), 0);
+    const pendingBillsCount = bills.filter(bill => bill.status === 'pending' || bill.status === 'partial').length;
+    
+    return {
+      totalBillAmount,
+      totalPaidAmount,
+      totalOutstanding,
+      pendingBillsCount,
+      totalPOAmount: 0, // Will be calculated from PO data
+      pendingPOsCount: 0 // Will be calculated from PO data
+    };
+  };
 
   const fetchVendorData = useCallback(async () => {
     try {
       setLoading(true);
-      const [vendorRes, ordersRes, stockRes, salesRes] = await Promise.all([
+      const [vendorRes, ordersRes, stockRes, salesRes, billsRes] = await Promise.all([
         fetch(`/api/vendors/${vendorId}`),
         fetch(`/api/vendors/${vendorId}/purchase-orders`),
         fetch(`/api/vendors/${vendorId}/stock`),
-        fetch(`/api/vendors/${vendorId}/sales`)
+        fetch(`/api/vendors/${vendorId}/sales`),
+        fetch(`/api/vendors/${vendorId}/bills`)
       ]);
 
       if (!vendorRes.ok) throw new Error('Vendor not found');
 
-      const [vendorData, ordersData, stockData, salesData] = await Promise.all([
+      const [vendorData, ordersData, stockData, salesData, billsData] = await Promise.all([
         vendorRes.json(),
         ordersRes.json(),
         stockRes.json(),
-        salesRes.json()
+        salesRes.json(),
+        billsRes.json()
       ]);
 
       setVendor(vendorData);
       setPurchaseOrders(Array.isArray(ordersData) ? ordersData : []);
       setStockItems(Array.isArray(stockData) ? stockData : []);
       setSalesRecords(Array.isArray(salesData) ? salesData : []);
+      
+      const bills = Array.isArray(billsData) ? billsData : [];
+      setVendorBills(bills);
+      
+      // Calculate financial summary from actual vendor bills
+      const summary = calculateFinancialSummary(bills);
+      setFinancialSummary(summary);
     } catch (error) {
       console.error('Error fetching vendor data:', error);
     } finally {
@@ -247,10 +312,11 @@ export default function VendorDetailsPage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Orders</p>
-                <p className="text-2xl font-bold text-gray-900">{vendor.total_purchase_orders}</p>
+                <p className="text-sm font-medium text-gray-600">Total Bills Amount</p>
+                <p className="text-2xl font-bold text-gray-900">{formatCurrency(financialSummary.totalBillAmount)}</p>
+                <p className="text-xs text-gray-500 mt-1">From vendor bills</p>
               </div>
-              <ShoppingCart className="h-8 w-8 text-blue-600" />
+              <DollarSign className="h-8 w-8 text-blue-600" />
             </div>
           </CardContent>
         </Card>
@@ -259,8 +325,9 @@ export default function VendorDetailsPage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Spent</p>
-                <p className="text-2xl font-bold text-gray-900">{formatCurrency(vendor.total_spent)}</p>
+                <p className="text-sm font-medium text-gray-600">Amount Paid</p>
+                <p className="text-2xl font-bold text-gray-900">{formatCurrency(financialSummary.totalPaidAmount)}</p>
+                <p className="text-xs text-gray-500 mt-1">Total payments made</p>
               </div>
               <DollarSign className="h-8 w-8 text-green-600" />
             </div>
@@ -271,8 +338,9 @@ export default function VendorDetailsPage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Pending Orders</p>
-                <p className="text-2xl font-bold text-gray-900">{vendor.pending_orders}</p>
+                <p className="text-sm font-medium text-gray-600">Outstanding Amount</p>
+                <p className="text-2xl font-bold text-gray-900">{formatCurrency(financialSummary.totalOutstanding)}</p>
+                <p className="text-xs text-gray-500 mt-1">Pending to pay</p>
               </div>
               <AlertTriangle className="h-8 w-8 text-orange-600" />
             </div>
@@ -283,8 +351,9 @@ export default function VendorDetailsPage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Current Stock Value</p>
-                <p className="text-2xl font-bold text-gray-900">{formatCurrency(vendor.current_stock_value)}</p>
+                <p className="text-sm font-medium text-gray-600">Pending Bills</p>
+                <p className="text-2xl font-bold text-gray-900">{financialSummary.pendingBillsCount}</p>
+                <p className="text-xs text-gray-500 mt-1">Awaiting payment</p>
               </div>
               <Package className="h-8 w-8 text-purple-600" />
             </div>
@@ -297,9 +366,9 @@ export default function VendorDetailsPage() {
         <TabsList>
           <TabsTrigger value="performance">Performance</TabsTrigger>
           <TabsTrigger value="orders">Purchase Orders</TabsTrigger>
+          <TabsTrigger value="bills">Vendor Bills</TabsTrigger>
           <TabsTrigger value="stock">Current Stock</TabsTrigger>
           <TabsTrigger value="sales">Sales Records</TabsTrigger>
-          <TabsTrigger value="payments">Payment History</TabsTrigger>
         </TabsList>
 
         <TabsContent value="performance">
@@ -353,6 +422,16 @@ export default function VendorDetailsPage() {
               </Table>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="bills">
+          <VendorBillsTab 
+            vendorId={vendorId} 
+            vendorName={vendor.name} 
+            bills={vendorBills}
+            financialSummary={financialSummary}
+            onBillUpdate={fetchVendorData}
+          />
         </TabsContent>
 
         <TabsContent value="stock">
@@ -453,10 +532,6 @@ export default function VendorDetailsPage() {
               </Table>
             </CardContent>
           </Card>
-        </TabsContent>
-
-        <TabsContent value="payments">
-          <VendorPaymentManager vendorId={vendorId} vendorName={vendor.name} />
         </TabsContent>
       </Tabs>
     </div>

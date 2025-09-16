@@ -24,6 +24,11 @@ export async function GET(
         tax_amount,
         discount_amount,
         purchase_orders(id, total),
+        vendor_bill_po_links(
+          purchase_order_id,
+          amount,
+          purchase_orders(id, total, quantity, product:products(id, name))
+        ),
         created_at
       `)
       .eq('supplier_id', vendorId)
@@ -64,7 +69,7 @@ export async function POST(
       description,
       tax_amount = 0,
       discount_amount = 0,
-      purchase_order_id,
+      purchase_order_ids,
       created_by
     } = body
 
@@ -80,7 +85,7 @@ export async function POST(
         description,
         tax_amount,
         discount_amount,
-        purchase_order_id,
+        purchase_order_id: null, // We'll use the junction table for multiple POs
         created_by,
         status: 'pending'
       })
@@ -88,6 +93,30 @@ export async function POST(
       .single()
 
     if (error) throw error
+
+    // If purchase orders are selected, create the links
+    if (purchase_order_ids && purchase_order_ids.length > 0) {
+      // Get the purchase order amounts for proper linking
+      const { data: purchaseOrders, error: poError } = await supabase
+        .from('purchase_orders')
+        .select('id, total')
+        .in('id', purchase_order_ids)
+
+      if (poError) throw poError
+
+      // Create vendor_bill_po_links entries
+      const linkData = purchaseOrders.map(po => ({
+        vendor_bill_id: bill.id,
+        purchase_order_id: po.id,
+        amount: po.total
+      }))
+
+      const { error: linkError } = await supabase
+        .from('vendor_bill_po_links')
+        .insert(linkData)
+
+      if (linkError) throw linkError
+    }
 
     return NextResponse.json(bill, { status: 201 })
   } catch (error) {

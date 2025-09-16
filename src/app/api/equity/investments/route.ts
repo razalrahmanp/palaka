@@ -152,6 +152,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: investmentError.message }, { status: 500 });
     }
 
+    // Create bank transaction and update bank balance if bank account is used
+    if (bank_account_id && payment_method !== 'cash') {
+      // Create bank transaction (investment increases bank balance)
+      await supabase
+        .from("bank_transactions")
+        .insert([{
+          bank_account_id,
+          date: investment_date,
+          type: "deposit",
+          amount: investmentAmount,
+          description: `Investment from ${partner.name}: ${description}`,
+        }]);
+
+      // Update bank account balance (increase for investment)
+      const { data: bankAccount, error: bankError } = await supabase
+        .from("bank_accounts")
+        .select("current_balance")
+        .eq("id", bank_account_id)
+        .single();
+      
+      if (!bankError && bankAccount) {
+        const newBalance = (bankAccount.current_balance || 0) + investmentAmount;
+        await supabase
+          .from("bank_accounts")
+          .update({ current_balance: newBalance })
+          .eq("id", bank_account_id);
+      }
+    }
+
     // Create accounting entries following the exact partner creation pattern
     try {
       // 1. Create or get individual partner equity account in chart of accounts

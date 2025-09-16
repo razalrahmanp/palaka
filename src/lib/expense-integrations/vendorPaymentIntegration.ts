@@ -1,4 +1,4 @@
-// lib/expense-integrations/vendorPaymentIntegration.ts
+﻿// lib/expense-integrations/vendorPaymentIntegration.ts
 import { supabase } from "@/lib/supabaseAdmin";
 
 export interface VendorPaymentParams {
@@ -82,7 +82,6 @@ export async function createVendorPaymentIntegration(params: VendorPaymentParams
 
       if (!billError && currentBill) {
         const newPaidAmount = (currentBill.paid_amount || 0) + amount;
-        const newRemainingAmount = currentBill.total_amount - newPaidAmount;
         
         let newStatus = 'pending';
         if (newPaidAmount >= currentBill.total_amount) {
@@ -95,7 +94,6 @@ export async function createVendorPaymentIntegration(params: VendorPaymentParams
           .from('vendor_bills')
           .update({
             paid_amount: newPaidAmount,
-            remaining_amount: newRemainingAmount,
             status: newStatus,
             updated_at: new Date().toISOString()
           })

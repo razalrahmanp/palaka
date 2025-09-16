@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -331,12 +331,289 @@ export function SalesOrderInvoiceManager() {
     fetchData();
   }, []);
 
+  const buildCashflowFromExistingData = useCallback(async () => {
+    console.log('🔧 Building comprehensive cashflow from all data sources...');
+    console.log('📊 Available base data:', { 
+      paymentsCount: payments.length, 
+      expensesCount: expenses.length,
+      dateRange: cashflowDateRange 
+    });
+    
+    const transactions: CashflowTransaction[] = [];
+    
+    try {
+      // Fetch all financial transaction data
+      console.log('� Fetching additional financial data...');
+      const [
+        investmentsRes,
+        withdrawalsRes,
+        liabilityPaymentsRes,
+        vendorPaymentsRes
+      ] = await Promise.all([
+        fetch('/api/equity/investments'),
+        fetch('/api/equity/withdrawals'),
+        fetch('/api/finance/liability-payments'),
+        fetch('/api/reports/vendor-payments')
+      ]);
+      
+      // Process investments (income)
+      if (investmentsRes.ok) {
+        const investmentsData = await investmentsRes.json();
+        const investments = investmentsData.success ? (investmentsData.data || []) : [];
+        console.log('💰 Found investments:', investments.length);
+        
+        investments.forEach((investment: {id: string, investment_date?: string, date?: string, description?: string, category_name?: string, amount: number, payment_method?: string, reference_number?: string, upi_reference?: string, partner_name?: string, created_at?: string}) => {
+          transactions.push({
+            id: `investment-${investment.id}`,
+            date: investment.investment_date || investment.date || new Date().toISOString().split('T')[0],
+            description: `Investment: ${investment.description || 'Partner investment'}`,
+            type: 'income',
+            category: 'investment',
+            subcategory: investment.category_name || 'Investment',
+            amount: investment.amount,
+            payment_method: investment.payment_method || 'cash',
+            reference: investment.reference_number || investment.upi_reference,
+            partner_name: investment.partner_name,
+            related_id: investment.id,
+            created_at: investment.created_at || new Date().toISOString()
+          });
+        });
+      }
+      
+      // Process withdrawals (expense)
+      if (withdrawalsRes.ok) {
+        const withdrawalsData = await withdrawalsRes.json();
+        const withdrawals = withdrawalsData.success ? (withdrawalsData.data || []) : [];
+        console.log('� Found withdrawals:', withdrawals.length);
+        
+        withdrawals.forEach((withdrawal: {id: string, withdrawal_date?: string, date?: string, description?: string, category_name?: string, amount: number, payment_method?: string, reference_number?: string, upi_reference?: string, partner_name?: string, created_at?: string}) => {
+          console.log('🔍 Processing withdrawal:', { 
+            id: withdrawal.id, 
+            description: withdrawal.description, 
+            amount: withdrawal.amount,
+            date: withdrawal.withdrawal_date || withdrawal.date 
+          });
+          transactions.push({
+            id: `withdrawal-${withdrawal.id}`,
+            date: withdrawal.withdrawal_date || withdrawal.date || new Date().toISOString().split('T')[0],
+            description: `Withdrawal: ${withdrawal.description || 'Partner withdrawal'}`,
+            type: 'expense',
+            category: 'withdrawal',
+            subcategory: withdrawal.category_name || 'Withdrawal',
+            amount: withdrawal.amount,
+            payment_method: withdrawal.payment_method || 'cash',
+            reference: withdrawal.reference_number || withdrawal.upi_reference,
+            partner_name: withdrawal.partner_name,
+            related_id: withdrawal.id,
+            created_at: withdrawal.created_at || new Date().toISOString()
+          });
+        });
+      }
+      
+      // Process liability payments (expense)
+      if (liabilityPaymentsRes.ok) {
+        const liabilityData = await liabilityPaymentsRes.json();
+        const liabilityPayments = Array.isArray(liabilityData) ? liabilityData : (liabilityData.data || []);
+        console.log('🏦 Found liability payments:', liabilityPayments.length);
+        
+        liabilityPayments.forEach((payment: {id: string, payment_date?: string, date?: string, description?: string, liability_type?: string, total_amount?: number, amount?: number, payment_method?: string, reference_number?: string, upi_reference?: string, account_name?: string, created_at?: string}) => {
+          transactions.push({
+            id: `liability-${payment.id}`,
+            date: payment.payment_date || payment.date || new Date().toISOString().split('T')[0],
+            description: `Loan Payment: ${payment.description || payment.liability_type || 'Liability payment'}`,
+            type: 'expense',
+            category: 'liability_payment',
+            subcategory: payment.liability_type || 'Loan Payment',
+            amount: payment.total_amount || payment.amount || 0,
+            payment_method: payment.payment_method || 'cash',
+            reference: payment.reference_number || payment.upi_reference,
+            related_id: payment.id,
+            created_at: payment.created_at || new Date().toISOString()
+          });
+        });
+      }
+      
+      // Process vendor payments (expense)
+      if (vendorPaymentsRes.ok) {
+        const vendorData = await vendorPaymentsRes.json();
+        const vendorPayments = Array.isArray(vendorData) ? vendorData : (vendorData.data || []);
+        console.log('🏪 Found vendor payments:', vendorPayments.length);
+        
+        vendorPayments.forEach((payment: {id: string, payment_date?: string, date?: string, description?: string, supplier_name?: string, vendor_name?: string, total_amount?: number, amount?: number, payment_method?: string, reference_number?: string, upi_reference?: string, created_at?: string}) => {
+          transactions.push({
+            id: `vendor-${payment.id}`,
+            date: payment.payment_date || payment.date || new Date().toISOString().split('T')[0],
+            description: `Vendor Payment: ${payment.supplier_name || payment.vendor_name || 'Vendor payment'}`,
+            type: 'expense',
+            category: 'vendor_payment',
+            subcategory: 'Vendor Payment',
+            amount: payment.total_amount || payment.amount || 0,
+            payment_method: payment.payment_method || 'cash',
+            reference: payment.reference_number,
+            customer_name: payment.supplier_name || payment.vendor_name,
+            related_id: payment.id,
+            created_at: payment.created_at || new Date().toISOString()
+          });
+        });
+      }
+      
+    } catch (error) {
+      console.error('❌ Error fetching additional financial data:', error);
+    }
+    
+    // Add payments as income
+    payments.forEach(payment => {
+      transactions.push({
+        id: `payment-${payment.id}`,
+        date: payment.date,
+        description: `Payment from ${payment.customer_name || 'Customer'}`,
+        type: 'income',
+        category: 'payment',
+        subcategory: payment.payment_method || payment.method,
+        amount: payment.amount,
+        payment_method: payment.payment_method || payment.method || 'cash',
+        reference: payment.reference,
+        customer_name: payment.customer_name,
+        related_id: payment.id,
+        created_at: payment.date
+      });
+    });
+    
+    console.log('➕ Added payments to transactions:', transactions.filter(t => t.type === 'income').length);
+    
+    // Add expenses as outflow
+    expenses.forEach(expense => {
+      transactions.push({
+        id: `expense-${expense.id}`,
+        date: expense.date,
+        description: expense.description,
+        type: 'expense',
+        category: 'expense',
+        subcategory: expense.category,
+        amount: expense.amount,
+        payment_method: expense.payment_method,
+        related_id: expense.id,
+        created_at: expense.created_at
+      });
+    });
+    
+    console.log('➕ Added expenses to transactions:', transactions.filter(t => t.type === 'expense').length);
+    console.log('📋 Total transactions before filtering:', transactions.length);
+    
+    // Remove duplicates based on multiple criteria to handle potential database duplicates
+    const uniqueTransactions = transactions.filter((transaction, index, self) => {
+      return index === self.findIndex(t => 
+        t.date === transaction.date &&
+        t.description === transaction.description &&
+        t.amount === transaction.amount &&
+        t.type === transaction.type &&
+        t.category === transaction.category
+      );
+    });
+    
+    console.log('🔄 Removed duplicates:', transactions.length - uniqueTransactions.length);
+    
+    // Sort by date (newest first)
+    uniqueTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    
+    // Filter by date range
+    let filteredTransactions = uniqueTransactions;
+    
+    // Only apply date filtering if we have valid dates and not showing all
+    if (cashflowDateRange.from && cashflowDateRange.to && cashflowDateRange.from !== 'all' && cashflowDateRange.to !== 'all') {
+      filteredTransactions = transactions.filter(transaction => {
+        if (!transaction.date) {
+          console.log('⚠️ Transaction missing date:', transaction);
+          return false;
+        }
+        
+        const transactionDate = new Date(transaction.date);
+        const fromDate = new Date(cashflowDateRange.from);
+        const toDate = new Date(cashflowDateRange.to);
+        
+        // Check if dates are valid
+        if (isNaN(transactionDate.getTime()) || isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+          console.log('⚠️ Invalid date found:', {
+            transactionDate: transaction.date,
+            fromDate: cashflowDateRange.from,
+            toDate: cashflowDateRange.to
+          });
+          return false;
+        }
+        
+        // Set end of day for toDate to include transactions on the to date
+        toDate.setHours(23, 59, 59, 999);
+        
+        const isInRange = transactionDate >= fromDate && transactionDate <= toDate;
+        
+        console.log('🔍 Filtering transaction:', {
+          id: transaction.id,
+          transactionDate: transaction.date,
+          transactionDateObj: transactionDate.toISOString(),
+          fromDate: cashflowDateRange.from,
+          fromDateObj: fromDate.toISOString(),
+          toDate: cashflowDateRange.to,
+          toDateObj: toDate.toISOString(),
+          isInRange: isInRange,
+          description: transaction.description.substring(0, 30)
+        });
+        
+        return isInRange;
+      });
+    }
+    
+    setCashflowTransactions(filteredTransactions);
+    console.log('✅ Built cashflow transactions after date filtering:', filteredTransactions.length);
+    console.log('📊 Sample filtered transaction:', filteredTransactions[0]);
+  }, [payments, expenses, cashflowDateRange]);
+
+  const fetchCashflowData = useCallback(async () => {
+    try {
+      console.log('🔄 Fetching cashflow data...');
+      
+      // For debugging: Force fallback to see if the issue is with API or data processing
+      console.log('🔧 Temporarily bypassing API to debug - using fallback data processing...');
+      buildCashflowFromExistingData();
+      return;
+      
+      // Fetch cashflow data from dedicated API endpoint
+      const response = await fetch(`/api/finance/cashflow?from=${cashflowDateRange.from}&to=${cashflowDateRange.to}`);
+      
+      if (!response.ok) {
+        console.error('Failed to fetch cashflow data:', response.statusText);
+        // If dedicated API doesn't exist, build cashflow from existing data
+        buildCashflowFromExistingData();
+        return;
+      }
+      
+      const cashflowData = await response.json();
+      console.log('💰 Cashflow API Response:', cashflowData);
+      
+      setCashflowTransactions(cashflowData.transactions || []);
+      
+    } catch (error) {
+      console.error('Error fetching cashflow data:', error);
+      // Fallback to building from existing data
+      buildCashflowFromExistingData();
+    }
+  }, [cashflowDateRange, buildCashflowFromExistingData]);
+
   useEffect(() => {
     // Fetch cashflow data when date range changes or when we have base data
+    console.log('🎯 Cashflow useEffect triggered:', {
+      paymentsLength: payments.length,
+      expensesLength: expenses.length,
+      dateRange: cashflowDateRange,
+      shouldFetch: payments.length > 0 || expenses.length > 0
+    });
+    
     if (payments.length > 0 || expenses.length > 0) {
+      console.log('✅ Triggering fetchCashflowData...');
       fetchCashflowData();
+    } else {
+      console.log('⏳ Waiting for data to load...');
     }
-  }, [cashflowDateRange.from, cashflowDateRange.to, payments, expenses]);
+  }, [cashflowDateRange, payments, expenses, fetchCashflowData]);
 
   const fetchData = async () => {
     try {
@@ -509,86 +786,6 @@ export function SalesOrderInvoiceManager() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const fetchCashflowData = async () => {
-    try {
-      console.log('🔄 Fetching cashflow data...');
-      
-      // Fetch cashflow data from dedicated API endpoint
-      const response = await fetch(`/api/finance/cashflow?from=${cashflowDateRange.from}&to=${cashflowDateRange.to}`);
-      
-      if (!response.ok) {
-        console.error('Failed to fetch cashflow data:', response.statusText);
-        // If dedicated API doesn't exist, build cashflow from existing data
-        buildCashflowFromExistingData();
-        return;
-      }
-      
-      const cashflowData = await response.json();
-      console.log('💰 Cashflow API Response:', cashflowData);
-      
-      setCashflowTransactions(cashflowData.transactions || []);
-      
-    } catch (error) {
-      console.error('Error fetching cashflow data:', error);
-      // Fallback to building from existing data
-      buildCashflowFromExistingData();
-    }
-  };
-
-  const buildCashflowFromExistingData = () => {
-    console.log('🔧 Building cashflow from existing data...');
-    
-    const transactions: CashflowTransaction[] = [];
-    
-    // Add payments as income
-    payments.forEach(payment => {
-      transactions.push({
-        id: `payment-${payment.id}`,
-        date: payment.date,
-        description: `Payment from ${payment.customer_name || 'Customer'}`,
-        type: 'income',
-        category: 'payment',
-        subcategory: payment.payment_method || payment.method,
-        amount: payment.amount,
-        payment_method: payment.payment_method || payment.method || 'cash',
-        reference: payment.reference,
-        customer_name: payment.customer_name,
-        related_id: payment.id,
-        created_at: payment.date
-      });
-    });
-    
-    // Add expenses as outflow
-    expenses.forEach(expense => {
-      transactions.push({
-        id: `expense-${expense.id}`,
-        date: expense.date,
-        description: expense.description,
-        type: 'expense',
-        category: 'expense',
-        subcategory: expense.category,
-        amount: expense.amount,
-        payment_method: expense.payment_method,
-        related_id: expense.id,
-        created_at: expense.created_at
-      });
-    });
-    
-    // Sort by date (newest first)
-    transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    
-    // Filter by date range
-    const filteredTransactions = transactions.filter(transaction => {
-      const transactionDate = new Date(transaction.date);
-      const fromDate = new Date(cashflowDateRange.from);
-      const toDate = new Date(cashflowDateRange.to);
-      return transactionDate >= fromDate && transactionDate <= toDate;
-    });
-    
-    setCashflowTransactions(filteredTransactions);
-    console.log('✅ Built cashflow transactions:', filteredTransactions.length);
   };
 
   const getPaymentStatusBadge = (status: string, totalPaid: number = 0, orderTotal: number = 0, waivedAmount: number = 0) => {
@@ -2901,6 +3098,234 @@ export function SalesOrderInvoiceManager() {
               {/* Pagination */}
               <PaginationComponent />
             </TabsContent>
+
+            {/* Cashflow Tab */}
+            <TabsContent value="cashflow" className="space-y-4 p-6">
+              {/* Cashflow Summary Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                {(() => {
+                  const filteredTransactions = filterCashflowTransactions(cashflowTransactions, cashflowSearchQuery, cashflowTypeFilter, cashflowCategoryFilter);
+                  const totalInflow = filteredTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+                  const totalOutflow = filteredTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+                  const netCashflow = totalInflow - totalOutflow;
+                  
+                  return (
+                    <>
+                      <Card>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-gray-600">Total Inflow</p>
+                              <p className="text-2xl font-bold text-green-600">{formatCurrency(totalInflow)}</p>
+                            </div>
+                            <TrendingUp className="h-8 w-8 text-green-600" />
+                          </div>
+                        </CardContent>
+                      </Card>
+                      
+                      <Card>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-gray-600">Total Outflow</p>
+                              <p className="text-2xl font-bold text-red-600">{formatCurrency(totalOutflow)}</p>
+                            </div>
+                            <TrendingDown className="h-8 w-8 text-red-600" />
+                          </div>
+                        </CardContent>
+                      </Card>
+                      
+                      <Card>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-gray-600">Net Cashflow</p>
+                              <p className={`text-2xl font-bold ${netCashflow >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {formatCurrency(netCashflow)}
+                              </p>
+                            </div>
+                            <DollarSign className={`h-8 w-8 ${netCashflow >= 0 ? 'text-green-600' : 'text-red-600'}`} />
+                          </div>
+                        </CardContent>
+                      </Card>
+                      
+                      <Card>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-gray-600">Transactions</p>
+                              <p className="text-2xl font-bold text-blue-600">{filteredTransactions.length}</p>
+                            </div>
+                            <Receipt className="h-8 w-8 text-blue-600" />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Filters */}
+              <div className="flex flex-col sm:flex-row gap-4 mb-4">
+                <div className="flex-1">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Input
+                      placeholder="Search cashflow transactions..."
+                      value={cashflowSearchQuery}
+                      onChange={(e) => setCashflowSearchQuery(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex gap-2">
+                  {/* Show All Button */}
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      console.log('🔄 Show All clicked - rebuilding with no date filter...');
+                      setCashflowDateRange({
+                        from: '2020-01-01', // Far past date
+                        to: '2030-12-31'    // Far future date
+                      });
+                    }}
+                    className="whitespace-nowrap"
+                  >
+                    Show All
+                  </Button>
+                  
+                  {/* Date Range Filters */}
+                  <Input
+                    type="date"
+                    value={cashflowDateRange.from}
+                    onChange={(e) => setCashflowDateRange({...cashflowDateRange, from: e.target.value})}
+                    className="w-40"
+                  />
+                  <Input
+                    type="date"
+                    value={cashflowDateRange.to}
+                    onChange={(e) => setCashflowDateRange({...cashflowDateRange, to: e.target.value})}
+                    className="w-40"
+                  />
+                  
+                  {/* Type Filter */}
+                  <Select value={cashflowTypeFilter} onValueChange={(value: 'all' | 'income' | 'expense') => setCashflowTypeFilter(value)}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue placeholder="Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Types</SelectItem>
+                      <SelectItem value="income">Income</SelectItem>
+                      <SelectItem value="expense">Expense</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  
+                  {/* Category Filter */}
+                  <Select value={cashflowCategoryFilter} onValueChange={(value: 'all' | 'payment' | 'investment' | 'withdrawal' | 'expense' | 'vendor_payment' | 'liability_payment') => setCashflowCategoryFilter(value)}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue placeholder="Category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Categories</SelectItem>
+                      <SelectItem value="payment">Payments</SelectItem>
+                      <SelectItem value="investment">Investments</SelectItem>
+                      <SelectItem value="withdrawal">Withdrawals</SelectItem>
+                      <SelectItem value="expense">Expenses</SelectItem>
+                      <SelectItem value="vendor_payment">Vendor Payments</SelectItem>
+                      <SelectItem value="liability_payment">Liability Payments</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Cashflow Table */}
+              <div className="border rounded-lg overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Payment Method</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead>Reference</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(() => {
+                      const filteredTransactions = filterCashflowTransactions(cashflowTransactions, cashflowSearchQuery, cashflowTypeFilter, cashflowCategoryFilter);
+                      const paginatedTransactions = getPaginatedData(filteredTransactions, currentPage, itemsPerPage);
+                      
+                      if (paginatedTransactions.length === 0) {
+                        return (
+                          <TableRow>
+                            <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                              No cashflow transactions found for the selected criteria.
+                            </TableCell>
+                          </TableRow>
+                        );
+                      }
+
+                      return paginatedTransactions.map((transaction) => (
+                        <TableRow key={transaction.id} className="hover:bg-gray-50">
+                          <TableCell>{formatDate(transaction.date)}</TableCell>
+                          <TableCell className="max-w-xs">
+                            <div className="truncate" title={transaction.description}>
+                              {transaction.description}
+                            </div>
+                            {transaction.customer_name && (
+                              <div className="text-xs text-gray-500">{transaction.customer_name}</div>
+                            )}
+                            {transaction.partner_name && (
+                              <div className="text-xs text-gray-500">{transaction.partner_name}</div>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={transaction.type === 'income' ? 'default' : 'destructive'}>
+                              {transaction.type === 'income' ? (
+                                <span className="flex items-center gap-1">
+                                  <TrendingUp className="h-3 w-3" />
+                                  Income
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1">
+                                  <TrendingDown className="h-3 w-3" />
+                                  Expense
+                                </span>
+                              )}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {transaction.category.replace('_', ' ').toUpperCase()}
+                            </Badge>
+                            {transaction.subcategory && (
+                              <div className="text-xs text-gray-500 mt-1">{transaction.subcategory}</div>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">
+                              {transaction.payment_method.replace('_', ' ').toUpperCase()}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className={`text-right font-medium ${transaction.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                            {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
+                          </TableCell>
+                          <TableCell className="text-sm text-gray-500">
+                            {transaction.reference || '-'}
+                          </TableCell>
+                        </TableRow>
+                      ));
+                    })()}
+                  </TableBody>
+                </Table>
+              </div>
+              
+              {/* Pagination */}
+              <PaginationComponent />
+            </TabsContent>
           </div>
         </Tabs>
       </div>
@@ -2915,7 +3340,7 @@ export function SalesOrderInvoiceManager() {
 
       {/* Create Expense Dialog */}
       <Dialog open={createExpenseOpen} onOpenChange={setCreateExpenseOpen}>
-        <DialogContent className="max-w-4xl w-[90vw] max-h-[85vh] overflow-y-auto">
+        <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-y-auto mx-auto">
           <DialogHeader className="pb-6">
             <DialogTitle className="text-xl font-semibold flex items-center gap-2">
               <Receipt className="h-5 w-5 text-red-600" />
@@ -3241,7 +3666,7 @@ export function SalesOrderInvoiceManager() {
 
       {/* Investment Dialog */}
       <Dialog open={createInvestmentOpen} onOpenChange={setCreateInvestmentOpen}>
-        <DialogContent className="max-w-md mx-auto">
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto mx-auto">
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold text-green-700 flex items-center gap-2">
               <TrendingUp className="h-5 w-5" />
@@ -3471,7 +3896,7 @@ export function SalesOrderInvoiceManager() {
 
       {/* Withdrawal Dialog */}
       <Dialog open={createWithdrawalOpen} onOpenChange={setCreateWithdrawalOpen}>
-        <DialogContent className="max-w-md mx-auto">
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto mx-auto">
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold text-purple-700 flex items-center gap-2">
               <TrendingDown className="h-5 w-5" />
@@ -4349,7 +4774,7 @@ export function SalesOrderInvoiceManager() {
 
       {/* Delete Expense Confirmation Dialog */}
       <Dialog open={deleteExpenseOpen} onOpenChange={setDeleteExpenseOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto mx-auto">
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-red-600">
               <Trash2 className="h-5 w-5" />
@@ -4413,7 +4838,7 @@ export function SalesOrderInvoiceManager() {
 
       {/* Add New Investor Modal */}
       <Dialog open={showAddInvestorModal} onOpenChange={setShowAddInvestorModal}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto mx-auto">
           <DialogHeader>
             <DialogTitle>Add New Partner/Investor</DialogTitle>
             <DialogDescription>

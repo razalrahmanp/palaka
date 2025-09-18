@@ -122,7 +122,7 @@ export async function GET() {
   try {
     console.log('📋 Fetching loan opening balances for liability payments...');
 
-    // Get all active loans with their details for liability payment dropdown
+    // Get all loans with their details for liability payment dropdown
     const { data: loanBalances, error } = await supabase
       .from('loan_opening_balances')
       .select(`
@@ -139,7 +139,6 @@ export async function GET() {
         loan_end_date,
         created_at
       `)
-      .eq('is_active', true)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -147,7 +146,7 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    console.log(`🏦 Found ${loanBalances?.length || 0} active loan opening balances`);
+    console.log(`🏦 Found ${loanBalances?.length || 0} loan opening balances`);
 
     return NextResponse.json({ 
       success: true,

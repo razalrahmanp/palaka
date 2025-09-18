@@ -860,6 +860,15 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
                   )}
                 </tbody>
               </table>
+              
+              {/* Discount notation */}
+              {order.discount_amount && order.discount_amount > 0 && (
+                <div className="mt-2 px-2">
+                  <p className="text-xs text-orange-600">
+                    * Order-level discount applied to all items
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 

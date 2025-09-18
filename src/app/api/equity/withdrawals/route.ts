@@ -53,7 +53,8 @@ export async function POST(request: NextRequest) {
       notes = '',
       created_by,
       category_id = null,
-      subcategory_id = null
+      subcategory_id = null,
+      withdrawal_type = 'capital_withdrawal' // New field with default value
     } = body;
 
     // Validation
@@ -147,6 +148,7 @@ export async function POST(request: NextRequest) {
         reference_number: reference_number?.trim() || '',
         upi_reference: upi_reference?.trim() || '',
         notes: notes?.trim() || '',
+        withdrawal_type: withdrawal_type, // Add withdrawal type to record
         created_by: validUserId,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -230,12 +232,17 @@ export async function POST(request: NextRequest) {
         
         const journalNumber = `JE-WDL-${Date.now()}`;
         
+        // Create appropriate description based on withdrawal type
+        const withdrawalTypeDesc = withdrawal_type === 'capital_withdrawal' ? 'Capital withdrawal' :
+                                 withdrawal_type === 'interest_payment' ? 'Interest payment' :
+                                 withdrawal_type === 'profit_distribution' ? 'Profit distribution' : 'Withdrawal';
+        
         const { data: journalEntry, error: journalError } = await supabase
           .from('journal_entries')
           .insert({
             journal_number: journalNumber,
             entry_date: withdrawal_date,
-            description: `Withdrawal by partner ${partner.name}`,
+            description: `${withdrawalTypeDesc} by partner ${partner.name}`,
             entry_type: 'STANDARD',
             status: 'POSTED',
             total_debit: withdrawalAmount,
@@ -245,7 +252,7 @@ export async function POST(request: NextRequest) {
             created_by: validUserId,
             created_at: new Date().toISOString(),
             posted_at: new Date().toISOString(),
-            notes: `Partner ${partner.name} withdrawal of ₹${withdrawalAmount}`
+            notes: `Partner ${partner.name} ${withdrawalTypeDesc.toLowerCase()} of ₹${withdrawalAmount}`
           })
           .select('id')
           .single();
@@ -261,10 +268,10 @@ export async function POST(request: NextRequest) {
               journal_entry_id: journalEntry.id,
               line_number: 1,
               account_id: partnerAccountId,
-              description: `Withdrawal by ${partner.name}`,
+              description: `${withdrawalTypeDesc} by ${partner.name}`,
               debit_amount: withdrawalAmount,
               credit_amount: 0,
-              reference: `Partner Withdrawal - ${partner.name}`
+              reference: `Partner ${withdrawalTypeDesc} - ${partner.name}`
             },
             {
               journal_entry_id: journalEntry.id,
@@ -329,19 +336,24 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // 7. Update partner's total investment amount in partners table (decrease)
+      // 7. Update partner's total investment amount in partners table (only for capital withdrawals)
       try {
-        const newTotal = currentInvestment - withdrawalAmount;
-        
-        await supabase
-          .from('partners')
-          .update({
-            initial_investment: newTotal,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', partner_id);
+        // Only reduce investment for capital withdrawals, not for interest payments or profit distributions
+        if (withdrawal_type === 'capital_withdrawal') {
+          const newTotal = currentInvestment - withdrawalAmount;
+          
+          await supabase
+            .from('partners')
+            .update({
+              initial_investment: newTotal,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', partner_id);
 
-        console.log(`✅ Updated partner ${partner.name} total investment: ₹${currentInvestment} → ₹${newTotal}`);
+          console.log(`✅ Updated partner ${partner.name} total investment: ₹${currentInvestment} → ₹${newTotal} (Capital Withdrawal)`);
+        } else {
+          console.log(`ℹ️ Partner ${partner.name} investment unchanged: ₹${currentInvestment} (${withdrawal_type} - no investment reduction)`);
+        }
       } catch (partnerUpdateError) {
         console.error('Error updating partner investment total:', partnerUpdateError);
         // Don't fail the withdrawal creation

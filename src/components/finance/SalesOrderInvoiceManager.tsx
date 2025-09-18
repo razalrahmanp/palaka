@@ -317,6 +317,7 @@ export function SalesOrderInvoiceManager() {
     bank_account_id: '',
     upi_reference: '',
     reference_number: '',
+    withdrawal_type: 'capital_withdrawal', // New field for withdrawal type
   });
 
   // Entity data states
@@ -1679,6 +1680,7 @@ export function SalesOrderInvoiceManager() {
           upi_reference: withdrawalForm.upi_reference || null,
           reference_number: withdrawalForm.reference_number || null,
           withdrawal_date: withdrawalForm.date,
+          withdrawal_type: withdrawalForm.withdrawal_type, // Add withdrawal type
           notes: null,
           created_by: getCurrentUser()?.id
         }),
@@ -1700,6 +1702,7 @@ export function SalesOrderInvoiceManager() {
           bank_account_id: '',
           upi_reference: '',
           reference_number: '',
+          withdrawal_type: 'capital_withdrawal', // Reset to default
         });
         
         fetchData(); // Refresh data
@@ -4061,6 +4064,54 @@ export function SalesOrderInvoiceManager() {
               />
             </div>
 
+            {/* Withdrawal Type */}
+            <div className="space-y-2">
+              <Label htmlFor="withdrawal_type" className="text-sm font-medium">
+                Withdrawal Type *
+              </Label>
+              <Select 
+                value={withdrawalForm.withdrawal_type} 
+                onValueChange={(value) => setWithdrawalForm(prev => ({ ...prev, withdrawal_type: value }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select withdrawal type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="capital_withdrawal">
+                    <div className="flex flex-col">
+                      <span className="font-medium">💰 Capital Withdrawal</span>
+                      <span className="text-xs text-gray-500">Reduces partner&apos;s investment amount</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="interest_payment">
+                    <div className="flex flex-col">
+                      <span className="font-medium">📈 Interest Payment</span>
+                      <span className="text-xs text-gray-500">Interest on investment - no investment reduction</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="profit_distribution">
+                    <div className="flex flex-col">
+                      <span className="font-medium">🎯 Profit Distribution</span>
+                      <span className="text-xs text-gray-500">Business profit share - no investment reduction</span>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              {/* Info about selected withdrawal type */}
+              {withdrawalForm.withdrawal_type && (
+                <div className={`text-xs p-2 rounded border ${
+                  withdrawalForm.withdrawal_type === 'capital_withdrawal' 
+                    ? 'bg-orange-50 border-orange-200 text-orange-700'
+                    : 'bg-green-50 border-green-200 text-green-700'
+                }`}>
+                  {withdrawalForm.withdrawal_type === 'capital_withdrawal' 
+                    ? '⚠️ This will reduce the partner&apos;s investment balance'
+                    : '✅ This will NOT affect the partner&apos;s investment balance'
+                  }
+                </div>
+              )}
+            </div>
+
             {/* Payment Method */}
             <div className="space-y-2">
               <Label htmlFor="payment_method" className="text-sm font-medium">
@@ -4248,9 +4299,25 @@ export function SalesOrderInvoiceManager() {
               />
             </div>
 
-            {/* Info Box */}
-            <div className="text-xs p-3 rounded bg-purple-50 border border-purple-200 text-purple-700">
-              <span className="font-medium">💡 Withdrawal Info:</span> This will reduce the partner&apos;s equity and be recorded in Drawings Account (3200). This is NOT a business expense but personal equity withdrawal.
+            {/* Info Box - Dynamic based on withdrawal type */}
+            <div className={`text-xs p-3 rounded border ${
+              withdrawalForm.withdrawal_type === 'capital_withdrawal'
+                ? 'bg-purple-50 border-purple-200 text-purple-700'
+                : withdrawalForm.withdrawal_type === 'interest_payment'
+                ? 'bg-blue-50 border-blue-200 text-blue-700'
+                : 'bg-green-50 border-green-200 text-green-700'
+            }`}>
+              <span className="font-medium">💡 {
+                withdrawalForm.withdrawal_type === 'capital_withdrawal' ? 'Capital Withdrawal Info:' :
+                withdrawalForm.withdrawal_type === 'interest_payment' ? 'Interest Payment Info:' :
+                'Profit Distribution Info:'
+              }</span> {
+                withdrawalForm.withdrawal_type === 'capital_withdrawal' 
+                  ? 'This will reduce the partner&apos;s equity and be recorded in Drawings Account (3200). This is NOT a business expense but personal equity withdrawal.'
+                  : withdrawalForm.withdrawal_type === 'interest_payment'
+                  ? 'This will be recorded as an Interest Expense (5200) and will NOT reduce the partner&apos;s investment balance. This is a business expense.'
+                  : 'This will be recorded as a Profit Distribution (3300) and will NOT reduce the partner&apos;s investment balance. This represents a share of business profits.'
+              }
             </div>
           </div>
 

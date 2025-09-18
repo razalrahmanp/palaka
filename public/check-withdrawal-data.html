@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Check Withdrawal Table Data</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        button { background: #007cba; color: white; padding: 10px 20px; border: none; cursor: pointer; margin: 10px 5px; }
+        button:hover { background: #005a87; }
+        .result { margin: 20px 0; padding: 15px; background: #f5f5f5; border-radius: 5px; }
+        .error { background: #ffe6e6; color: #d00; }
+        .success { background: #e6ffe6; color: #080; }
+        table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background: #f2f2f2; }
+        .highlight { background: #fff3cd; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Check Withdrawal Table Data</h1>
+        
+        <button onclick="checkWithdrawals()">Check All Withdrawals</button>
+        <button onclick="checkWithdrawalTypes()">Check Withdrawal Types</button>
+        <button onclick="checkWithdrawalCategories()">Check Withdrawal Categories</button>
+        
+        <div id="result"></div>
+    </div>
+
+    <script>
+        async function checkWithdrawals() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<p>Checking withdrawals...</p>';
+            
+            try {
+                const response = await fetch('/api/equity/withdrawals');
+                const data = await response.json();
+                
+                if (response.ok && data.withdrawals) {
+                    const withdrawals = data.withdrawals;
+                    
+                    let html = `
+                        <div class="result success">
+                            <h3>✅ Found ${withdrawals.length} withdrawal records</h3>
+                            <table>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Partner</th>
+                                    <th>Amount</th>
+                                    <th>Withdrawal Type</th>
+                                    <th>Date</th>
+                                    <th>Description</th>
+                                </tr>
+                    `;
+                    
+                    withdrawals.forEach(w => {
+                        const typeClass = w.withdrawal_type === 'capital_withdrawal' ? 'highlight' : '';
+                        html += `
+                            <tr class="${typeClass}">
+                                <td>${w.id}</td>
+                                <td>${w.partner_name || 'N/A'}</td>
+                                <td>₹${w.amount}</td>
+                                <td><strong>${w.withdrawal_type || 'NULL'}</strong></td>
+                                <td>${w.withdrawal_date}</td>
+                                <td>${w.description || 'N/A'}</td>
+                            </tr>
+                        `;
+                    });
+                    
+                    html += '</table>';
+                    
+                    // Summary by type
+                    const typeCount = {};
+                    withdrawals.forEach(w => {
+                        const type = w.withdrawal_type || 'NULL';
+                        typeCount[type] = (typeCount[type] || 0) + 1;
+                    });
+                    
+                    html += '<h4>Summary by Type:</h4><ul>';
+                    Object.entries(typeCount).forEach(([type, count]) => {
+                        html += `<li><strong>${type}:</strong> ${count} records</li>`;
+                    });
+                    html += '</ul></div>';
+                    
+                    resultDiv.innerHTML = html;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="result error">
+                            <h3>❌ Error or No Data</h3>
+                            <p>${data.error || 'No withdrawals found'}</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="result error">
+                        <h3>❌ Network Error</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        async function checkWithdrawalTypes() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<p>Checking withdrawal types distribution...</p>';
+            
+            try {
+                // This is a mock query - you might need to create a specific API endpoint
+                const response = await fetch('/api/equity/withdrawals');
+                const data = await response.json();
+                
+                if (response.ok && data.withdrawals) {
+                    const withdrawals = data.withdrawals;
+                    
+                    const typeStats = {
+                        capital_withdrawal: 0,
+                        interest_payment: 0,
+                        profit_distribution: 0,
+                        null_or_undefined: 0
+                    };
+                    
+                    withdrawals.forEach(w => {
+                        const type = w.withdrawal_type;
+                        if (type === 'capital_withdrawal') typeStats.capital_withdrawal++;
+                        else if (type === 'interest_payment') typeStats.interest_payment++;
+                        else if (type === 'profit_distribution') typeStats.profit_distribution++;
+                        else typeStats.null_or_undefined++;
+                    });
+                    
+                    resultDiv.innerHTML = `
+                        <div class="result success">
+                            <h3>📊 Withdrawal Types Distribution</h3>
+                            <table>
+                                <tr><th>Type</th><th>Count</th><th>Description</th></tr>
+                                <tr class="highlight">
+                                    <td><strong>capital_withdrawal</strong></td>
+                                    <td>${typeStats.capital_withdrawal}</td>
+                                    <td>Reduces partner investment</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>interest_payment</strong></td>
+                                    <td>${typeStats.interest_payment}</td>
+                                    <td>Does NOT reduce investment</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>profit_distribution</strong></td>
+                                    <td>${typeStats.profit_distribution}</td>
+                                    <td>Does NOT reduce investment</td>
+                                </tr>
+                                <tr style="background: #ffebee;">
+                                    <td><strong>NULL/Default</strong></td>
+                                    <td>${typeStats.null_or_undefined}</td>
+                                    <td>Needs to be updated</td>
+                                </tr>
+                            </table>
+                            <p><strong>Total Records:</strong> ${withdrawals.length}</p>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="result error">
+                            <h3>❌ Error</h3>
+                            <p>${data.error || 'Could not fetch withdrawal data'}</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="result error">
+                        <h3>❌ Network Error</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        async function checkWithdrawalCategories() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<p>Checking withdrawal categories...</p>';
+            
+            try {
+                const response = await fetch('/api/equity/withdrawals/categories');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    let html = `
+                        <div class="result success">
+                            <h3>📂 Withdrawal Categories</h3>
+                            <table>
+                                <tr><th>ID</th><th>Category Name</th><th>Description</th><th>Account Code</th></tr>
+                    `;
+                    
+                    data.forEach(cat => {
+                        const isNew = cat.category_name === 'Interest Payments' || cat.category_name === 'Profit Distributions';
+                        const rowClass = isNew ? 'highlight' : '';
+                        html += `
+                            <tr class="${rowClass}">
+                                <td>${cat.id}</td>
+                                <td><strong>${cat.category_name}</strong></td>
+                                <td>${cat.description || 'N/A'}</td>
+                                <td>${cat.chart_account_code || 'N/A'}</td>
+                            </tr>
+                        `;
+                    });
+                    
+                    html += '</table>';
+                    
+                    const hasInterest = data.some(cat => cat.category_name === 'Interest Payments');
+                    const hasProfit = data.some(cat => cat.category_name === 'Profit Distributions');
+                    
+                    html += `
+                        <h4>New Categories Status:</h4>
+                        <ul>
+                            <li>Interest Payments: ${hasInterest ? '✅ Found' : '❌ Missing'}</li>
+                            <li>Profit Distributions: ${hasProfit ? '✅ Found' : '❌ Missing'}</li>
+                        </ul>
+                        </div>
+                    `;
+                    
+                    resultDiv.innerHTML = html;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="result error">
+                            <h3>❌ Error</h3>
+                            <p>Could not fetch categories</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="result error">
+                        <h3>❌ Network Error</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -2034,6 +2034,7 @@ CREATE TABLE public.withdrawals (
   created_by character varying,
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  withdrawal_type character varying DEFAULT 'capital_withdrawal'::character varying CHECK (withdrawal_type::text = ANY (ARRAY['capital_withdrawal'::character varying, 'interest_payment'::character varying, 'profit_distribution'::character varying]::text[])),
   CONSTRAINT withdrawals_pkey PRIMARY KEY (id),
   CONSTRAINT withdrawals_partner_id_fkey FOREIGN KEY (partner_id) REFERENCES public.partners(id),
   CONSTRAINT withdrawals_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.withdrawal_categories(id),

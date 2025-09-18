@@ -7,6 +7,7 @@ export async function POST(request: Request) {
     const {
       date,
       liability_type,
+      loan_id,
       principal_amount,
       interest_amount,
       total_amount,
@@ -21,6 +22,7 @@ export async function POST(request: Request) {
     console.log('💳 Creating liability payment:', {
       date,
       liability_type,
+      loan_id,
       principal_amount,
       interest_amount,
       total_amount,
@@ -29,7 +31,7 @@ export async function POST(request: Request) {
     });
 
     // Validate required fields
-    if (!date || !liability_type || !description || total_amount <= 0) {
+    if (!date || !description || total_amount <= 0) {
       return NextResponse.json(
         { error: 'Missing required fields or invalid amount' },
         { status: 400 }
@@ -42,6 +44,7 @@ export async function POST(request: Request) {
       .insert({
         date,
         liability_type,
+        loan_id,
         principal_amount: principal_amount || 0,
         interest_amount: interest_amount || 0,
         total_amount,
@@ -61,6 +64,33 @@ export async function POST(request: Request) {
     }
 
     console.log('✅ Liability payment created:', liabilityPayment.id);
+
+    // Update loan balance if loan_id is provided
+    if (loan_id && principal_amount > 0) {
+      console.log('🏦 Updating loan balance for loan_id:', loan_id);
+      
+      const { data: loan, error: loanFetchError } = await supabase
+        .from('loan_opening_balances')
+        .select('current_balance')
+        .eq('id', loan_id)
+        .single();
+
+      if (loanFetchError) {
+        console.error('❌ Error fetching loan:', loanFetchError);
+      } else if (loan) {
+        const newBalance = (loan.current_balance || 0) - principal_amount;
+        const { error: balanceUpdateError } = await supabase
+          .from('loan_opening_balances')
+          .update({ current_balance: newBalance })
+          .eq('id', loan_id);
+
+        if (balanceUpdateError) {
+          console.error('❌ Error updating loan balance:', balanceUpdateError);
+        } else {
+          console.log('✅ Loan balance updated:', { oldBalance: loan.current_balance, newBalance });
+        }
+      }
+    }
 
     // Create bank transaction and update bank balance if bank account is used
     if (bank_account_id && payment_method !== 'cash') {
@@ -96,6 +126,7 @@ export async function POST(request: Request) {
       liabilityPaymentId: liabilityPayment.id,
       date,
       liability_type,
+      loan_id,
       principal_amount: principal_amount || 0,
       interest_amount: interest_amount || 0,
       total_amount,
@@ -156,6 +187,7 @@ async function createLiabilityPaymentJournalEntry({
   liabilityPaymentId,
   date,
   liability_type,
+  loan_id,
   principal_amount,
   interest_amount,
   total_amount,
@@ -166,6 +198,7 @@ async function createLiabilityPaymentJournalEntry({
   liabilityPaymentId: string;
   date: string;
   liability_type: string;
+  loan_id?: string;
   principal_amount: number;
   interest_amount: number;
   total_amount: number;
@@ -175,12 +208,27 @@ async function createLiabilityPaymentJournalEntry({
 }) {
   console.log('📝 Creating journal entries for liability payment:', liabilityPaymentId);
 
-  // Determine account codes based on liability type
+  // Determine account codes based on loan or liability type
   let liabilityAccountCode = '2510'; // Default: Bank Loans
-  if (liability_type === 'bank_loan_current') {
-    liabilityAccountCode = '2210'; // Bank Loan - Current Portion
-  } else if (liability_type === 'equipment_loan') {
-    liabilityAccountCode = '2530'; // Equipment Loans
+  
+  // If loan_id is provided, get the account code from the loan
+  if (loan_id) {
+    const { data: loan } = await supabase
+      .from('loan_opening_balances')
+      .select('account_code')
+      .eq('id', loan_id)
+      .single();
+    
+    if (loan?.account_code) {
+      liabilityAccountCode = loan.account_code;
+    }
+  } else {
+    // Fall back to liability type mapping
+    if (liability_type === 'bank_loan_current') {
+      liabilityAccountCode = '2210'; // Bank Loan - Current Portion
+    } else if (liability_type === 'equipment_loan') {
+      liabilityAccountCode = '2530'; // Equipment Loans
+    }
   }
 
   const interestExpenseAccount = '7010'; // Interest Expense

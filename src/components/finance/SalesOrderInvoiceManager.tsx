@@ -197,6 +197,7 @@ export function SalesOrderInvoiceManager() {
   const [payments, setPayments] = useState<PaymentDetails[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [bankAccounts, setBankAccounts] = useState<{id: string; account_name: string; account_number: string; account_type?: string}[]>([]);
+  const [loans, setLoans] = useState<{id: string; loan_name: string; bank_name: string; loan_account_code: string; current_balance: number; loan_type: string}[]>([]);
   const [investors, setInvestors] = useState<{id: string; name: string; email?: string; phone?: string; notes?: string}[]>([]);
   const [investmentCategories, setInvestmentCategories] = useState<{id: string; category_name: string; description?: string; chart_account_code?: string}[]>([]);
   const [withdrawalCategories, setWithdrawalCategories] = useState<{id: string; category_name: string; description?: string; chart_account_code?: string}[]>([]);
@@ -637,12 +638,13 @@ export function SalesOrderInvoiceManager() {
       console.log('📈 Summary:', ordersData.summary);
       
       // Fetch the rest separately for other components that might need them
-      console.log('🔍 Making API calls including withdrawal endpoints...');
-      const [invoicesRes, paymentsRes, expensesRes, bankAccountsRes, trucksRes, employeesRes, suppliersRes, investorsRes, investmentCategoriesRes, withdrawalCategoriesRes, withdrawalSubcategoriesRes] = await Promise.all([
+      console.log('🔍 Making API calls including withdrawal endpoints and loans...');
+      const [invoicesRes, paymentsRes, expensesRes, bankAccountsRes, loansRes, trucksRes, employeesRes, suppliersRes, investorsRes, investmentCategoriesRes, withdrawalCategoriesRes, withdrawalSubcategoriesRes] = await Promise.all([
         fetch('/api/finance/invoices'),
         fetch('/api/finance/payments'),
         fetch('/api/finance/expenses'),
         fetch('/api/finance/bank-accounts'),
+        fetch('/api/finance/loan-opening-balances'),
         fetch('/api/trucks'),
         fetch('/api/employees?select=id,name,employee_id,position,salary,department'),
         fetch('/api/vendors'),
@@ -669,6 +671,16 @@ export function SalesOrderInvoiceManager() {
       } else {
         console.error('Failed to fetch bank accounts:', bankAccountsRes.statusText);
         // Continue without bank accounts - user will see "No bank accounts available"
+      }
+
+      // Handle loans with error checking
+      let loansData = [];
+      if (loansRes.ok) {
+        const loansResponse = await loansRes.json();
+        loansData = loansResponse.loanBalances || [];
+        console.log('🏦 Loans fetched for liability payments:', loansData.length);
+      } else {
+        console.error('Failed to fetch loans:', loansRes.statusText);
       }
 
       // Handle entity data
@@ -768,6 +780,7 @@ export function SalesOrderInvoiceManager() {
       setPayments(payments);
       setExpenses(expenses);
       setBankAccounts(bankAccounts);
+      setLoans(loansData);
       setInvestors(investorsData);
       setInvestmentCategories(investmentCategoriesData);
       setWithdrawalCategories(withdrawalCategoriesData);
@@ -1719,6 +1732,9 @@ export function SalesOrderInvoiceManager() {
     }
 
     try {
+      // Extract loan_id from the selected loan_account (format: "id-accountCode")
+      const loan_id = liabilityForm.loan_account ? liabilityForm.loan_account.split('-')[0] : null;
+      
       const response = await fetch('/api/finance/liability-payments', {
         method: 'POST',
         headers: {
@@ -1727,6 +1743,7 @@ export function SalesOrderInvoiceManager() {
         body: JSON.stringify({
           date: liabilityForm.date,
           liability_type: liabilityForm.liability_type,
+          loan_id: loan_id,
           principal_amount: principalAmount,
           interest_amount: interestAmount,
           total_amount: totalAmount,
@@ -4293,24 +4310,42 @@ export function SalesOrderInvoiceManager() {
                   </Select>
                 </div>
 
-                {/* Loan Account Selection */}
+                {/* Loan Selection */}
                 <div className="space-y-2 mb-3 md:mb-4">
                   <Label htmlFor="loan_account" className="text-sm font-medium">
-                    Loan Account *
+                    Select Loan *
                   </Label>
                   <Select 
                     value={liabilityForm.loan_account} 
                     onValueChange={(value) => setLiabilityForm(prev => ({ ...prev, loan_account: value }))}
                   >
                     <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select loan account" />
+                      <SelectValue placeholder="Select a loan to pay" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="2210">2210 - Bank Loan (Current Portion)</SelectItem>
-                      <SelectItem value="2510">2510 - Bank Loans (Long-term)</SelectItem>
-                      <SelectItem value="2530">2530 - Equipment Loans</SelectItem>
+                      {loans.length > 0 ? (
+                        loans.map((loan) => (
+                          <SelectItem key={loan.id} value={loan.id}>
+                            <div className="flex flex-col py-1">
+                              <div className="font-medium">{loan.loan_name}</div>
+                              <div className="text-sm text-gray-500">
+                                {loan.bank_name} • {loan.loan_account_code} • Balance: ₹{loan.current_balance?.toLocaleString()}
+                              </div>
+                            </div>
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="" disabled>
+                          No loans available. Create loan opening balances first.
+                        </SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
+                  {loans.length === 0 && (
+                    <p className="text-sm text-amber-600 bg-amber-50 p-2 rounded">
+                      💡 Tip: First create loan opening balances using the orange &ldquo;Loan Setup&rdquo; button above
+                    </p>
+                  )}
                 </div>
 
                 {/* Payment Date */}

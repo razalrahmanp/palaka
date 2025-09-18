@@ -44,6 +44,27 @@ export async function POST(request: Request) {
       );
     }
 
+    // Validate loan type
+    const validLoanTypes = ['bank_loan', 'equipment_loan', 'vehicle_loan', 'business_loan', 'term_loan'];
+    if (loan_type && !validLoanTypes.includes(loan_type)) {
+      return NextResponse.json(
+        { error: `Invalid loan_type. Must be one of: ${validLoanTypes.join(', ')}` },
+        { status: 400 }
+      );
+    }
+
+    // Validate and format dates
+    const formatDate = (dateString: string) => {
+      if (!dateString || dateString.trim() === '') return null;
+      try {
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return null;
+        return date.toISOString().split('T')[0]; // Format as YYYY-MM-DD
+      } catch {
+        return null;
+      }
+    };
+
     // Insert loan opening balance
     const { data: loanBalance, error: insertError } = await supabase
       .from('loan_opening_balances')
@@ -51,7 +72,7 @@ export async function POST(request: Request) {
         loan_account_code,
         loan_name,
         bank_name,
-        loan_type,
+        loan_type: loan_type || 'business_loan', // Default loan type
         loan_number,
         original_loan_amount: parseFloat(original_loan_amount),
         opening_balance: parseFloat(opening_balance),
@@ -59,8 +80,8 @@ export async function POST(request: Request) {
         interest_rate: interest_rate ? parseFloat(interest_rate) : null,
         loan_tenure_months: loan_tenure_months ? parseInt(loan_tenure_months) : null,
         emi_amount: emi_amount ? parseFloat(emi_amount) : null,
-        loan_start_date,
-        loan_end_date,
+        loan_start_date: formatDate(loan_start_date),
+        loan_end_date: formatDate(loan_end_date),
         description,
         created_by
       })
@@ -99,11 +120,26 @@ export async function POST(request: Request) {
 
 export async function GET() {
   try {
-    console.log('📋 Fetching loan opening balances...');
+    console.log('📋 Fetching loan opening balances for liability payments...');
 
+    // Get all active loans with their details for liability payment dropdown
     const { data: loanBalances, error } = await supabase
       .from('loan_opening_balances')
-      .select('*')
+      .select(`
+        id,
+        loan_name,
+        bank_name,
+        loan_account_code,
+        loan_type,
+        original_loan_amount,
+        current_balance,
+        interest_rate,
+        emi_amount,
+        loan_start_date,
+        loan_end_date,
+        created_at
+      `)
+      .eq('is_active', true)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -111,9 +147,12 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    console.log(`🏦 Found ${loanBalances?.length || 0} loan opening balances`);
+    console.log(`🏦 Found ${loanBalances?.length || 0} active loan opening balances`);
 
-    return NextResponse.json({ loanBalances });
+    return NextResponse.json({ 
+      success: true,
+      loanBalances: loanBalances || []
+    });
 
   } catch (error) {
     console.error('❌ Error in loan opening balances GET API:', error);
@@ -182,41 +221,110 @@ async function createLoanOpeningBalanceJournalEntry({
 }) {
   console.log('📝 Creating opening balance journal entry for loan:', loanBalanceId);
 
-  // Determine the corresponding asset/cash account (usually cash received when loan was taken)
-  const cashAccountCode = '1110'; // Cash account - assuming cash was received when loan was taken
+  try {
+    // Step 1: Get account IDs for the journal entry lines
+    const cashAccountCode = '1110'; // Cash account
+    
+    // Get cash account ID
+    const { data: cashAccount, error: cashAccountError } = await supabase
+      .from('chart_of_accounts')
+      .select('id')
+      .eq('account_code', cashAccountCode)
+      .single();
 
-  const journalEntries = [
-    {
-      account_code: cashAccountCode,
-      description: `${loan_name} - Loan Opening Balance (Cash Received)${description ? ' - ' + description : ''}`,
-      debit_amount: opening_balance,
-      credit_amount: 0,
-      reference: `LOB-${loanBalanceId}`,
-      transaction_date: new Date().toISOString().split('T')[0],
-      transaction_type: 'loan_opening_balance',
-      related_id: loanBalanceId
-    },
-    {
-      account_code: loan_account_code,
-      description: `${loan_name} - Loan Opening Balance (Liability)${description ? ' - ' + description : ''}`,
-      debit_amount: 0,
-      credit_amount: opening_balance,
-      reference: `LOB-${loanBalanceId}`,
-      transaction_date: new Date().toISOString().split('T')[0],
-      transaction_type: 'loan_opening_balance',
-      related_id: loanBalanceId
+    if (cashAccountError || !cashAccount) {
+      console.error('❌ Cash account not found:', cashAccountCode);
+      throw new Error(`Cash account ${cashAccountCode} not found`);
     }
-  ];
 
-  // Insert journal entries
-  const { error: journalError } = await supabase
-    .from('journal_entries')
-    .insert(journalEntries);
+    // Get loan account ID
+    const { data: loanAccount, error: loanAccountError } = await supabase
+      .from('chart_of_accounts')
+      .select('id')
+      .eq('account_code', loan_account_code)
+      .single();
 
-  if (journalError) {
-    console.error('❌ Error creating opening balance journal entries:', journalError);
-    throw new Error(`Failed to create opening balance journal entries: ${journalError.message}`);
+    if (loanAccountError || !loanAccount) {
+      console.error('❌ Loan account not found:', loan_account_code);
+      throw new Error(`Loan account ${loan_account_code} not found`);
+    }
+
+    // Step 2: Get a valid user ID for created_by
+    const { data: systemUser, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .limit(1)
+      .single();
+
+    let createdByUserId = null;
+    if (systemUser && !userError) {
+      createdByUserId = systemUser.id;
+    }
+
+    // Step 3: Create journal entry header
+    const today = new Date().toISOString().split('T')[0];
+    const journalDescription = `${loan_name} - Loan Opening Balance${description ? ' - ' + description : ''}`;
+    const reference = `LOB-${loanBalanceId}`;
+
+    const journalEntryData = {
+      journal_number: `JE-${Date.now()}`, // Temporary number, should be generated properly
+      entry_date: today,
+      description: journalDescription,
+      reference_number: reference,
+      entry_type: 'STANDARD' as const,
+      status: 'DRAFT' as const,
+      total_debit: opening_balance,
+      total_credit: opening_balance,
+      source_document_type: 'loan_opening_balance',
+      source_document_id: loanBalanceId,
+      ...(createdByUserId && { created_by: createdByUserId })
+    };
+
+    const { data: journalEntry, error: journalError } = await supabase
+      .from('journal_entries')
+      .insert(journalEntryData)
+      .select()
+      .single();
+
+    if (journalError) {
+      console.error('❌ Error creating journal entry header:', journalError);
+      throw new Error(`Failed to create journal entry: ${journalError.message}`);
+    }
+
+    // Step 3: Create journal entry lines
+    const journalLines = [
+      {
+        journal_entry_id: journalEntry.id,
+        line_number: 1,
+        account_id: cashAccount.id,
+        description: `${loan_name} - Cash Received`,
+        debit_amount: opening_balance,
+        credit_amount: 0
+      },
+      {
+        journal_entry_id: journalEntry.id,
+        line_number: 2,
+        account_id: loanAccount.id,
+        description: `${loan_name} - Loan Liability`,
+        debit_amount: 0,
+        credit_amount: opening_balance
+      }
+    ];
+
+    const { error: linesError } = await supabase
+      .from('journal_entry_lines')
+      .insert(journalLines);
+
+    if (linesError) {
+      console.error('❌ Error creating journal entry lines:', linesError);
+      throw new Error(`Failed to create journal entry lines: ${linesError.message}`);
+    }
+
+    console.log('✅ Opening balance journal entries created for loan:', loanBalanceId);
+    return journalEntry.id;
+
+  } catch (error) {
+    console.error('❌ Error in journal entry creation:', error);
+    throw error;
   }
-
-  console.log('✅ Opening balance journal entries created for loan:', loanBalanceId);
 }

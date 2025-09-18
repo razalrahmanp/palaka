@@ -1085,8 +1085,10 @@ CREATE TABLE public.liability_payments (
   created_by uuid,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
+  loan_id uuid,
   CONSTRAINT liability_payments_pkey PRIMARY KEY (id),
-  CONSTRAINT liability_payments_bank_account_id_fkey FOREIGN KEY (bank_account_id) REFERENCES public.bank_accounts(id)
+  CONSTRAINT liability_payments_bank_account_id_fkey FOREIGN KEY (bank_account_id) REFERENCES public.bank_accounts(id),
+  CONSTRAINT liability_payments_loan_id_fkey FOREIGN KEY (loan_id) REFERENCES public.loan_opening_balances(id)
 );
 CREATE TABLE public.loan_opening_balances (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

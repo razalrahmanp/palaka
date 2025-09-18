@@ -135,10 +135,24 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { sales_order_id, customer_name, total, status, paid_amount } = body;
+  const { sales_order_id, customer_name, total, status, paid_amount, invoiceDate } = body;
 
   // Log received body for debug
   console.log("Received body:", body);
+
+  // Convert invoice date to ISO timestamp for created_at
+  let createdAt = new Date().toISOString();
+  if (invoiceDate) {
+    try {
+      // Parse the invoice date and set time to current time
+      const invoiceDateObj = new Date(invoiceDate);
+      const currentTime = new Date();
+      invoiceDateObj.setHours(currentTime.getHours(), currentTime.getMinutes(), currentTime.getSeconds(), currentTime.getMilliseconds());
+      createdAt = invoiceDateObj.toISOString();
+    } catch (error) {
+      console.warn('Invalid invoice date provided, using current timestamp:', error);
+    }
+  }
 
   // Validate sales_order_id exists
   const { data: so, error: soErr } = await supabase
@@ -168,6 +182,7 @@ export async function POST(req: Request) {
           total,
           status: normalizedStatus,
           paid_amount,
+          created_at: createdAt, // Use invoice date as created_at
         },
       ])
       .select()

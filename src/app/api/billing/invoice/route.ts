@@ -67,7 +67,8 @@ export async function POST(request: NextRequest) {
       paymentMethod,
       billingType = 'invoice',
       bajajFinanceData,
-      notes
+      notes,
+      invoiceDate
     }: {
       customer: BillingCustomer;
       items: BillingItem[];
@@ -77,7 +78,22 @@ export async function POST(request: NextRequest) {
       billingType?: string;
       bajajFinanceData?: BajajFinanceData;
       notes?: string;
+      invoiceDate?: string;
     } = body;
+
+    // Convert invoice date to ISO timestamp for created_at
+    let createdAt = new Date().toISOString();
+    if (invoiceDate) {
+      try {
+        // Parse the invoice date and set time to current time
+        const invoiceDateObj = new Date(invoiceDate);
+        const currentTime = new Date();
+        invoiceDateObj.setHours(currentTime.getHours(), currentTime.getMinutes(), currentTime.getSeconds(), currentTime.getMilliseconds());
+        createdAt = invoiceDateObj.toISOString();
+      } catch (error) {
+        console.warn('Invalid invoice date provided, using current timestamp:', error);
+      }
+    }
 
     // Validate required fields
     if (!customer || (!items?.length && !customItems?.length)) {
@@ -110,7 +126,8 @@ export async function POST(request: NextRequest) {
           emi_monthly: bajajFinanceData?.monthlyEMI || 0,
           bajaj_finance_amount: bajajFinanceData?.financeAmount || 0,
           notes: notes,
-          created_by: currentUserId
+          created_by: currentUserId,
+          created_at: createdAt // Use invoice date as created_at
         })
         .select()
         .single();
@@ -195,7 +212,8 @@ export async function POST(request: NextRequest) {
           emi_monthly: bajajFinanceData?.monthlyEMI || 0,
           bajaj_finance_amount: bajajFinanceData?.financeAmount || 0,
           notes: notes,
-          created_by: currentUserId
+          created_by: currentUserId,
+          created_at: createdAt // Use invoice date as created_at
         })
         .select()
         .single();

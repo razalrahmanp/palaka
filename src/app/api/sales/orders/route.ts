@@ -401,6 +401,7 @@ export async function POST(req: Request) {
     quote_id,
     customer_id,
     date,
+    invoiceDate, // Add support for invoiceDate
     status,
     created_by,
     items,
@@ -431,6 +432,7 @@ export async function POST(req: Request) {
     quote_id?: string;
     customer_id: string;
     date?: string;
+    invoiceDate?: string; // Add type for invoiceDate
     status: string;
     created_by: string;
     items: {
@@ -521,13 +523,27 @@ export async function POST(req: Request) {
     original_price_nullish: original_price == null
   });
 
+  // Convert invoice date to ISO timestamp for created_at
+  let createdAtTimestamp = date ?? new Date().toISOString();
+  if (invoiceDate) {
+    try {
+      // Parse the invoice date and set time to current time
+      const invoiceDateObj = new Date(invoiceDate);
+      const currentTime = new Date();
+      invoiceDateObj.setHours(currentTime.getHours(), currentTime.getMinutes(), currentTime.getSeconds(), currentTime.getMilliseconds());
+      createdAtTimestamp = invoiceDateObj.toISOString();
+    } catch (error) {
+      console.warn('Invalid invoice date provided, using date or current timestamp:', error);
+    }
+  }
+
   // Add more detailed logging for the values being inserted
   const insertData = {
     quote_id: quote_id ?? null,
     customer_id,
     status: validatedStatus,
     created_by: createdBy,
-    created_at: date ?? new Date().toISOString(),
+    created_at: createdAtTimestamp, // Use invoice date if provided
     updated_at: new Date().toISOString(),
     updated_by: createdBy,
     address: null, // Can be updated later

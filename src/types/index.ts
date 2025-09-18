@@ -769,6 +769,7 @@ export interface BillingData {
   deliveryFloor?: string; // New field for floor selection
   isFirstFloorAwareness?: boolean; // New field for 1st floor awareness
   selectedSalesman?: { id: string; name: string; email?: string; user_id?: string } | null;
+  invoiceDate?: string; // User-specified invoice date
   bajajFinanceData?: {
     orderAmount: number;
     financeAmount: number;

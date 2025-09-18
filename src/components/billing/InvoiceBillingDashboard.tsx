@@ -226,6 +226,7 @@ export function InvoiceBillingDashboard({
     isFirstFloorAwareness, // Include awareness flag
     selectedSalesman,
     bajajFinanceData, // Include Bajaj Finance data with card status
+    invoiceDate, // Include invoice date for API
     totals: {
       original_price: originalTotal,
       total_price: subtotal,

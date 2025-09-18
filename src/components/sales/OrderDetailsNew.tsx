@@ -218,7 +218,7 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
                 </div>
                 <div>
                   <h1 className="text-xl font-bold">ESTIMATE</h1>
-                  <p className="text-blue-100 text-sm">FurniFlow ERP</p>
+                  <p className="text-blue-100 text-sm">PalakaERP</p>
                 </div>
               </div>
               <div className="text-right">
@@ -241,12 +241,30 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
             <div className="space-y-2">
               <div className="flex items-center space-x-2">
                 <Building2 className="h-4 w-4 text-blue-600" />
-                <h3 className="font-bold text-sm text-gray-900">FurniFlow ERP</h3>
+                <h3 className="font-bold text-sm text-gray-900">PalakaERP</h3>
               </div>
               <div className="space-y-1 text-xs text-gray-700">
                 <p className="flex items-center">
                   <Phone className="h-3 w-3 mr-1 text-gray-500" />
-                  +91 9645075858 | +91 8606056999 | +91 9747141858
+                  Sales: 9645075858
+                </p>
+                <p className="flex items-center">
+                  <Phone className="h-3 w-3 mr-1 text-gray-500" />
+                  Delivery: 9747141858
+                </p>
+                <p className="flex items-center">
+                  <Phone className="h-3 w-3 mr-1 text-gray-500" />
+                  Service: 9074513057
+                </p>
+                {order.sales_representative && (
+                  <p className="flex items-center">
+                    <UserCheck className="h-3 w-3 mr-1 text-green-500" />
+                    Sales Person: {order.sales_representative.name} - +91 XXXXXXXXXX
+                  </p>
+                )}
+                <p className="flex items-center">
+                  <Truck className="h-3 w-3 mr-1 text-orange-500" />
+                  Logistics Coordinator: +91 XXXXXXXXXX
                 </p>
               </div>
             </div>
@@ -471,7 +489,7 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder 
           <div className="bg-gray-900 text-white p-3 text-center">
             <p className="text-xs">Thank you for your business!</p>
             <p className="text-xs text-gray-400 mt-1">
-              Generated on {new Date().toLocaleDateString('en-IN')} by FurniFlow ERP
+              Generated on {new Date().toLocaleDateString('en-IN')} by PalakaERP
             </p>
           </div>
         </div>

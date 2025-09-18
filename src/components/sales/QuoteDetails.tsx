@@ -171,17 +171,25 @@ export default function QuoteDetails({
               <div className="space-y-3">
                 <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                   <Building className="h-5 w-5 text-blue-600" />
-                  FurniFlow ERP
+                  PalakaERP
                 </h3>
                 <div className="space-y-1 text-sm text-gray-600">
                   <p className="flex items-center gap-2">
                     <MapPin className="h-4 w-4" />
                     Arakkal, Pattambi Road, Perumpilavu, Thrissur, Kerala, 680519
                   </p>
-                  <p className="flex items-center gap-2">
-                    <Phone className="h-4 w-4" />
-                    +91 9645075858 | +91 8606056999 | +91 9747141858
-                  </p>
+                  <div className="space-y-1">
+                    <p className="flex items-center gap-2">
+                      <Phone className="h-4 w-4" />
+                      Sales: 9645075858
+                    </p>
+                    <p className="flex items-center gap-2 ml-6">
+                      Delivery: 9747141858
+                    </p>
+                    <p className="flex items-center gap-2 ml-6">
+                      Service: 9074513057
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -427,7 +435,7 @@ export default function QuoteDetails({
             {/* Footer */}
             <div className="footer text-center text-gray-500">
               <p>Thank you for your business!</p>
-              <p>FurniFlow ERP - Your trusted furniture partner</p>
+              <p>PalakaERP - Your trusted furniture partner</p>
             </div>
           </div>
         </div>

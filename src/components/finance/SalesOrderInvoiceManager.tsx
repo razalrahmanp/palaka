@@ -514,8 +514,25 @@ export function SalesOrderInvoiceManager() {
     
     console.log('🔄 Removed duplicates:', transactions.length - uniqueTransactions.length);
     
-    // Sort by date (newest first)
-    uniqueTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    // Sort by date with today's entries first
+    const today = new Date().toISOString().split('T')[0]; // Get today's date in YYYY-MM-DD format
+    
+    uniqueTransactions.sort((a, b) => {
+      const aDate = new Date(a.date);
+      const bDate = new Date(b.date);
+      const aDateStr = a.date?.split('T')[0] || a.date;
+      const bDateStr = b.date?.split('T')[0] || b.date;
+      
+      // First priority: Today's transactions come first
+      const aIsToday = aDateStr === today;
+      const bIsToday = bDateStr === today;
+      
+      if (aIsToday && !bIsToday) return -1; // a comes first
+      if (!aIsToday && bIsToday) return 1;  // b comes first
+      
+      // If both are today or both are not today, sort by time (newest first)
+      return bDate.getTime() - aDate.getTime();
+    });
     
     // Filter by date range
     let filteredTransactions = uniqueTransactions;
@@ -1266,9 +1283,10 @@ export function SalesOrderInvoiceManager() {
         tax: 0,
         discount: 0,
         total: orderDetails.total_amount || 0,
-        companyName: 'Al Rams Furniture',
-        companyPhone: '+91 9876543210',
-        companyAddress: 'Furniture Store Address, City, State'
+        companyName: 'PalakaERP',
+        companyPhone: 'Sales: 9645075858, Delivery: 9747141858, Service: 9074513057',
+        companyAddress: '',
+        customerAddress: orderDetails.customers?.address || orderDetails.address || ''
       };
 
       WhatsAppService.printInvoice(billData);
@@ -1329,9 +1347,10 @@ export function SalesOrderInvoiceManager() {
         tax: 0,
         discount: 0,
         total: orderDetails.total_amount || 0,
-        companyName: 'Al Rams Furniture',
-        companyPhone: '+91 9876543210',
-        companyAddress: 'Furniture Store Address, City, State',
+        companyName: 'PalakaERP',
+        companyPhone: 'Sales: 9645075858, Delivery: 9747141858, Service: 9074513057',
+        companyAddress: '',
+        customerAddress: orderDetails.customers?.address || orderDetails.address || '',
         paymentInfo: {
           totalPaid: totalPaid,
           balanceDue: balanceDue,

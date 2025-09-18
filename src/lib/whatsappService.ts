@@ -5,12 +5,21 @@ import html2canvas from 'html2canvas';
 export interface WhatsAppBillData {
   customerName: string;
   customerPhone: string;
+  customerAddress?: string;
   orderNumber: string;
   items: Array<{
     name: string;
     quantity: number;
     price: number;
     total: number;
+    // Enhanced product details
+    sku?: string;
+    description?: string;
+    specifications?: string;
+    category?: string;
+    isCustomProduct?: boolean;
+    customConfig?: Record<string, unknown>;
+    supplierName?: string;
   }>;
   subtotal: number;
   tax?: number;
@@ -36,24 +45,25 @@ export class WhatsAppService {
   static formatBillMessage(billData: WhatsAppBillData): string {
     const { 
       customerName, 
+      customerAddress,
       orderNumber, 
       items, 
       subtotal, 
       tax = 0, 
       discount = 0, 
       total,
-      companyName,
-      companyPhone,
-      companyAddress,
       paymentInfo
     } = billData;
 
-    let message = `*${companyName}*\n`;
+    let message = `*PalakaERP*\n`;
     message += `📋 *ESTIMATE DETAILS*\n`;
     message += `═══════════════════════\n\n`;
     
     message += `👤 *Customer:* ${customerName}\n`;
-    message += `📄 *Order #:* ${orderNumber}\n`;
+    if (customerAddress) {
+      message += `� *Address:* ${customerAddress}\n`;
+    }
+    message += `�📄 *Order #:* ${orderNumber}\n`;
     message += `📅 *Date:* ${new Date().toLocaleDateString('en-IN')}\n\n`;
     
     message += `🛍️ *ITEMS ORDERED:*\n`;
@@ -101,15 +111,13 @@ export class WhatsAppService {
     
     message += `📞 *CONTACT INFO:*\n`;
     message += `─────────────────────\n`;
-    message += `Phone: ${companyPhone || 'N/A'}\n`;
-    if (companyAddress) {
-      message += `Address: ${companyAddress}\n`;
-    }
-    message += `Website: www.alramsfurnitures.com\n`;
+    message += `Sales: 9645075858\n`;
+    message += `Delivery: 9747141858\n`;
+    message += `Service: 9074513057\n`;
     
-    message += `\n🙏 *Thank you for choosing ${companyName}!*\n`;
+    message += `\n🙏 *Thank you for choosing PalakaERP!*\n`;
     message += `We appreciate your business and look forward to serving you again.\n\n`;
-    message += `*${companyName}* - Your Trusted Furniture Partner`;
+    message += `*PalakaERP* - Your Trusted Furniture Partner`;
     
     return message;
   }
@@ -402,15 +410,26 @@ export class WhatsAppService {
             ${billData.items.map((item) => `
               <tr>
                 <td>
-                  <div style="display: flex; align-items: center; gap: 10px;">
-                    <div style="width: 20px; height: 20px; border: 1px solid #000000; display: flex; align-items: center; justify-content: center; font-size: 10px;">📦</div>
-                    <div>
-                      <div style="font-weight: bold; font-size: 12px;">${item.name}</div>
+                  <div style="display: flex; align-items: flex-start; gap: 10px;">
+                    <div style="width: 20px; height: 20px; border: 1px solid #000000; display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0;">
+                      ${item.isCustomProduct ? '🔧' : '📦'}
+                    </div>
+                    <div style="flex: 1;">
+                      <div style="font-weight: bold; font-size: 13px; margin-bottom: 2px;">${item.name}</div>
+                      ${item.description ? `<div style="font-size: 10px; color: #333; margin-bottom: 1px; line-height: 1.2;">${item.description.replace(/\n/g, ' • ')}</div>` : ''}
+                      ${item.category ? `<div style="font-size: 9px; color: #666; margin-bottom: 1px;"><strong>Category:</strong> ${item.category}</div>` : ''}
+                      ${item.supplierName ? `<div style="font-size: 9px; color: #666; margin-bottom: 1px;"><strong>Supplier:</strong> ${item.supplierName}</div>` : ''}
+                      ${item.specifications ? `<div style="font-size: 9px; color: #555; margin-top: 3px; padding: 2px 4px; background: #f5f5f5; border-left: 2px solid #333;"><strong>Specifications:</strong> ${item.specifications}</div>` : ''}
+                      ${item.isCustomProduct && Object.keys(item.customConfig || {}).length > 0 ? `
+                        <div style="font-size: 9px; color: #555; margin-top: 3px; padding: 2px 4px; background: #f0f8ff; border-left: 2px solid #0066cc;">
+                          <strong>Custom Config:</strong> ${Object.entries(item.customConfig || {}).map(([key, value]) => `${key}: ${value}`).join(' • ')}
+                        </div>
+                      ` : ''}
                     </div>
                   </div>
                 </td>
-                <td>
-                  <span style="font-family: monospace; background: #ffffff; border: 1px solid #000000; padding: 2px 6px; font-size: 10px;">N/A</span>
+                <td style="vertical-align: top; padding-top: 8px;">
+                  <span style="font-family: monospace; background: #f8f8f8; border: 1px solid #ddd; padding: 2px 6px; font-size: 9px; color: #333;">${item.sku || 'N/A'}</span>
                 </td>
                 <td style="text-align: center;">
                   <span style="background: #ffffff; border: 1px solid #000000; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: bold;">${item.quantity}</span>
@@ -508,7 +527,7 @@ export class WhatsAppService {
       
       // Create a more user-friendly filename
       const customerName = billData.customerName.replace(/[^a-zA-Z0-9]/g, '_');
-      const fileName = `FurniFlow_Estimate_${customerName}_${billData.orderNumber.slice(0,8)}.pdf`;
+      const fileName = `PalakaERP_Estimate_${customerName}_${billData.orderNumber.slice(0,8)}.pdf`;
 
       // If no WhatsApp API is configured, use enhanced web experience
       if (!this.API_URL || !this.API_KEY) {
@@ -532,7 +551,7 @@ export class WhatsAppService {
             await writable.close();
             
             // Create and copy the WhatsApp message
-            const message = `📄 *Estimate from FurniFlow ERP*
+            const message = `📄 *Estimate from PalakaERP*
 
 Dear ${billData.customerName},
 
@@ -545,7 +564,7 @@ ${billData.items.map(item => `• ${item.name} (${item.quantity}x) - Rs.${item.t
 
 📞 Contact us: ${billData.companyPhone}
 
-Thank you for choosing FurniFlow ERP!`;
+Thank you for choosing PalakaERP!`;
 
             // Copy message to clipboard
             await navigator.clipboard.writeText(message);
@@ -578,7 +597,7 @@ Thank you for choosing FurniFlow ERP!`;
         URL.revokeObjectURL(url);
 
         // Create professional WhatsApp message
-        const message = `📄 *Estimate from FurniFlow ERP*
+        const message = `📄 *Estimate from PalakaERP*
 
 Dear ${billData.customerName},
 
@@ -591,7 +610,7 @@ ${billData.items.map(item => `• ${item.name} (${item.quantity}x) - Rs.${item.t
 
 📞 Contact us: ${billData.companyPhone}
 
-Thank you for choosing FurniFlow ERP!`;
+Thank you for choosing PalakaERP!`;
 
         // Copy message to clipboard
         try {
@@ -930,7 +949,7 @@ Thank you for choosing FurniFlow ERP!`;
       // Header - Company Info
       pdf.setFontSize(16);
       pdf.setFont('helvetica', 'bold');
-      pdf.text('FurniFlow ERP', margin, currentY);
+      pdf.text('PalakaERP', margin, currentY);
       currentY += lineHeight;
       
       pdf.setFontSize(10);

@@ -17,6 +17,9 @@ interface OrderItemWithProducts {
     name: string;
     price: number;
     sku?: string;
+    description?: string;
+    category?: string;
+    config_schema?: Record<string, unknown>;
     suppliers?: { name: string }[];
     boms?: { id: string; component: string; quantity: number }[];
   } | null;
@@ -79,7 +82,10 @@ export async function GET(
           id,
           name, 
           sku, 
-          price, 
+          description,
+          category,
+          price,
+          config_schema,
           suppliers(name),
           boms(id, component, quantity)
         ),
@@ -156,6 +162,17 @@ export async function GET(
 
     // Try to get sales representative from quotes if quote_id exists
     let salesRepresentative = null;
+    let quoteCustomItems: Array<{
+      id: string;
+      name: string;
+      specifications?: string;
+      materials?: unknown;
+      dimensions?: string;
+      finish?: string;
+      color?: string;
+      custom_instructions?: string;
+      product_id?: string;
+    }> = [];
     if (orderData.quote_id) {
       const { data: quoteData } = await supabase
         .from('quotes')
@@ -171,6 +188,24 @@ export async function GET(
         .single();
       
       salesRepresentative = quoteData?.users || null;
+
+      // Fetch quote custom items for additional specifications
+      const { data: customItemsData } = await supabase
+        .from('quote_custom_items')
+        .select(`
+          id,
+          name,
+          specifications,
+          materials,
+          dimensions,
+          finish,
+          color,
+          custom_instructions,
+          product_id
+        `)
+        .eq('quote_id', orderData.quote_id);
+      
+      quoteCustomItems = customItemsData || [];
     }
 
     // Map items to include comprehensive product information
@@ -186,15 +221,71 @@ export async function GET(
       const discountAmount = lineTotal * (discountPercentage / 100);
       const finalPrice = lineTotal - discountAmount;
       
+      // Get specifications based on product type
+      let specifications = null;
+      let combinedSpecifications = '';
+      
+      // Find matching quote custom item if available
+      const matchingQuoteItem = quoteCustomItems.find((qci) => 
+        qci.product_id === item.product_id || 
+        qci.name === (item.name || item.products?.name || item.custom_products?.name)
+      );
+      
+      if (matchingQuoteItem) {
+        // Combine all specification fields from quote_custom_items
+        const specParts = [];
+        
+        if (matchingQuoteItem.specifications) {
+          specParts.push(`Specifications: ${matchingQuoteItem.specifications}`);
+        }
+        
+        if (matchingQuoteItem.materials && Array.isArray(matchingQuoteItem.materials) && matchingQuoteItem.materials.length > 0) {
+          specParts.push(`Materials: ${matchingQuoteItem.materials.join(', ')}`);
+        } else if (matchingQuoteItem.materials && typeof matchingQuoteItem.materials === 'string') {
+          specParts.push(`Materials: ${matchingQuoteItem.materials}`);
+        }
+        
+        if (matchingQuoteItem.dimensions) {
+          specParts.push(`Dimensions: ${matchingQuoteItem.dimensions}`);
+        }
+        
+        if (matchingQuoteItem.finish) {
+          specParts.push(`Finish: ${matchingQuoteItem.finish}`);
+        }
+        
+        if (matchingQuoteItem.color) {
+          specParts.push(`Color: ${matchingQuoteItem.color}`);
+        }
+        
+        if (matchingQuoteItem.custom_instructions) {
+          specParts.push(`Custom Instructions: ${matchingQuoteItem.custom_instructions}`);
+        }
+        
+        combinedSpecifications = specParts.join('\n');
+        specifications = combinedSpecifications;
+      } else {
+        // Fallback to config_schema if no quote custom item found
+        if (isCustomProduct && item.custom_products?.config_schema) {
+          specifications = item.custom_products.config_schema;
+        } else if (item.products?.config_schema) {
+          specifications = item.products.config_schema;
+        }
+      }
+      
       return {
         ...item,
         // Product information
         sku: item.products?.sku || item.custom_products?.sku || null,
         name: item.name || item.products?.name || item.custom_products?.name || null,
+        description: item.products?.description || item.custom_products?.description || null,
+        category: item.products?.category || null,
         supplier_name: item.supplier_name || 
           (item.products?.suppliers && item.products.suppliers.length > 0 
             ? item.products.suppliers[0].name 
             : item.custom_products?.supplier_name || null),
+        
+        // Specifications from config_schema
+        specifications: specifications,
         
         // Price calculations
         final_price: finalPrice,
@@ -208,10 +299,7 @@ export async function GET(
         bom_info: item.products?.boms || null,
         
         // Product type for highlighting
-        product_type: isCustomProduct ? 'custom' : (needsManufacturing ? 'manufacturing' : 'standard'),
-        
-        // Additional details
-        description: item.custom_products?.description || null
+        product_type: isCustomProduct ? 'custom' : (needsManufacturing ? 'manufacturing' : 'standard')
       };
     });
 

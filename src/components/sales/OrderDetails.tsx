@@ -29,18 +29,39 @@ interface OrderDetailsProps {
   onSalesRepChange?: (orderId: string) => void;
 }
 
-interface OrderItemDetailed {
-  id: string;
+interface EnhancedOrderItem {
+  // Base OrderItem properties
+  product_id: string;
   name: string;
-  quantity: number;
-  unit_price: number;
-  final_price: number;
-  price?: number;
-  supplier_name?: string;
-  product_id?: string;
-  sku?: string;
-  discount_percentage?: number;
+  quantity: number; 
+  price: number;
+  unit_price?: number;
   cost?: number;
+  final_price?: number;
+  configuration?: Record<string, unknown>;
+  supplier_name?: string;
+  discount_percentage?: number;
+  sku?: string;
+  
+  // Enhanced properties from API
+  specifications?: string | Record<string, unknown>;
+  description?: string;
+  category?: string;
+  products?: {
+    sku?: string;
+    description?: string;
+    category?: string;
+    config_schema?: Record<string, unknown>;
+    supplier_name?: string;
+    suppliers?: { name: string }[];
+  };
+  custom_products?: {
+    sku?: string;
+    description?: string;
+    config_schema?: Record<string, unknown>;
+    supplier_name?: string;
+  };
+  custom_product_id?: string;
 }
 
 interface DetailedOrder {
@@ -75,7 +96,7 @@ interface DetailedOrder {
   notes?: string;
   emi_enabled?: boolean;
   freight_charges?: number;
-  items: OrderItemDetailed[];
+  items: EnhancedOrderItem[];
   status: string;
   total?: number;
   final_price?: number;
@@ -388,17 +409,41 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
       const billData = {
         customerName: order.customer?.name || 'Unknown Customer',
         customerPhone: order.customer?.phone || 'N/A',
+        customerAddress: order.address || order.customer?.address || order.customers?.address || '',
         orderNumber: order.id?.slice(0, 8) || 'N/A',
-        items: order.items?.map(item => ({
-          name: item.name || 'Unknown Product',
-          quantity: item.quantity || 0,
-          price: item.unit_price || item.price || 0,
-          total: item.final_price || (item.quantity || 0) * (item.unit_price || item.price || 0)
-        })) || [],
+        items: order.items?.map(item => {
+          // Check if item is from API response with product/custom_product details
+          const itemWithDetails = item as EnhancedOrderItem;
+          const productDetails = itemWithDetails.products || itemWithDetails.custom_products;
+          
+          return {
+            name: item.name || 'Unknown Product',
+            quantity: item.quantity || 0,
+            price: item.unit_price || item.price || 0,
+            total: item.final_price || (item.quantity || 0) * (item.unit_price || item.price || 0),
+            // Enhanced product details
+            sku: productDetails?.sku || itemWithDetails.sku || 'N/A',
+            description: itemWithDetails.description || productDetails?.description || '',
+            specifications: typeof itemWithDetails.specifications === 'string' 
+              ? itemWithDetails.specifications 
+              : (typeof itemWithDetails.specifications === 'object' && itemWithDetails.specifications
+                ? Object.entries(itemWithDetails.specifications)
+                    .map(([key, value]) => `${key}: ${value}`)
+                    .join(', ')
+                : (productDetails?.config_schema ? 
+                    Object.entries(productDetails.config_schema)
+                      .map(([key, value]) => `${key}: ${value}`)
+                      .join(', ') : '')),
+            category: itemWithDetails.category || (productDetails as { category?: string })?.category || '',
+            isCustomProduct: !!itemWithDetails.custom_product_id,
+            customConfig: productDetails?.config_schema || {},
+            supplierName: item.supplier_name || productDetails?.supplier_name || ((itemWithDetails.products as { suppliers?: { name: string }[] })?.suppliers?.[0]?.name) || ''
+          };
+        }) || [],
         subtotal: order.original_price || order.total || 0,
         discount: order.discount_amount || 0,
         total: order.final_price || order.total || 0,
-        companyName: 'FurniFlow ERP',
+        companyName: 'PalakaERP',
         companyPhone: '+91 9645075858 | +91 8606056999 | +91 9747141858',
         companyAddress: '',
         paymentInfo: paymentInfo || undefined
@@ -429,17 +474,41 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
       const billData = {
         customerName: order.customer?.name || 'Unknown Customer',
         customerPhone: phoneNumber,
+        customerAddress: order.address || order.customer?.address || order.customers?.address || '',
         orderNumber: order.id?.slice(0, 8) || 'N/A',
-        items: order.items?.map(item => ({
-          name: item.name || 'Unknown Product',
-          quantity: item.quantity || 0,
-          price: item.unit_price || item.price || 0,
-          total: item.final_price || (item.quantity || 0) * (item.unit_price || item.price || 0)
-        })) || [],
+        items: order.items?.map(item => {
+          // Check if item is from API response with product/custom_product details
+          const itemWithDetails = item as EnhancedOrderItem;
+          const productDetails = itemWithDetails.products || itemWithDetails.custom_products;
+          
+          return {
+            name: item.name || 'Unknown Product',
+            quantity: item.quantity || 0,
+            price: item.unit_price || item.price || 0,
+            total: item.final_price || (item.quantity || 0) * (item.unit_price || item.price || 0),
+            // Enhanced product details
+            sku: productDetails?.sku || itemWithDetails.sku || 'N/A',
+            description: itemWithDetails.description || productDetails?.description || '',
+            specifications: typeof itemWithDetails.specifications === 'string' 
+              ? itemWithDetails.specifications 
+              : (typeof itemWithDetails.specifications === 'object' && itemWithDetails.specifications
+                ? Object.entries(itemWithDetails.specifications)
+                    .map(([key, value]) => `${key}: ${value}`)
+                    .join(', ')
+                : (productDetails?.config_schema ? 
+                    Object.entries(productDetails.config_schema)
+                      .map(([key, value]) => `${key}: ${value}`)
+                      .join(', ') : '')),
+            category: itemWithDetails.category || (productDetails as { category?: string })?.category || '',
+            isCustomProduct: !!itemWithDetails.custom_product_id,
+            customConfig: productDetails?.config_schema || {},
+            supplierName: item.supplier_name || productDetails?.supplier_name || ((itemWithDetails.products as { suppliers?: { name: string }[] })?.suppliers?.[0]?.name) || ''
+          };
+        }) || [],
         subtotal: order.original_price || order.total || 0,
         discount: order.discount_amount || 0,
         total: order.final_price || order.total || 0,
-        companyName: 'FurniFlow ERP',
+        companyName: 'PalakaERP',
         companyPhone: '+91 9645075858 | +91 8606056999 | +91 9747141858',
         companyAddress: '',
         paymentInfo: paymentInfo || undefined
@@ -520,7 +589,7 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
                 </div>
                 <div>
                   <h1 className="text-xl font-bold">ESTIMATE</h1>
-                  <p className="text-blue-100 text-sm">FurniFlow ERP</p>
+                  <p className="text-blue-100 text-sm">PalakaERP</p>
                 </div>
               </div>
               <div className="text-right">
@@ -543,13 +612,31 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
             <div className="space-y-2">
               <div className="flex items-center space-x-2">
                 <Building2 className="h-4 w-4 text-blue-600" />
-                <h3 className="font-bold text-sm text-gray-900">FurniFlow ERP</h3>
+                <h3 className="font-bold text-sm text-gray-900">PalakaERP</h3>
               </div>
               <div className="space-y-1 text-xs text-gray-700">
                 <p className="flex items-center">
                   <Phone className="h-3 w-3 mr-1 text-gray-500" />
-                  +91 9645075858 | +91 8606056999 | +91 9747141858
+                  Sales: 9645075858
                 </p>
+                <p className="flex items-center">
+                  <Phone className="h-3 w-3 mr-1 text-gray-500" />
+                  Delivery: 9747141858
+                </p>
+                <p className="flex items-center">
+                  <Phone className="h-3 w-3 mr-1 text-gray-500" />
+                  Service: 9074513057
+                </p>
+                {/* {order.sales_representative && (
+                  <p className="flex items-center">
+                    <UserCheck className="h-3 w-3 mr-1 text-green-500" />
+                    Sales Person: {order.sales_representative.name} - +91 XXXXXXXXXX
+                  </p>
+                )} */}
+                {/* <p className="flex items-center">
+                  <Truck className="h-3 w-3 mr-1 text-orange-500" />
+                  Logistics Coordinator: +91 XXXXXXXXXX
+                </p> */}
               </div>
             </div>
 
@@ -693,6 +780,30 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
                                 {item.supplier_name}
                               </div>
                             )}
+                            {(() => {
+                              const specs = (item as EnhancedOrderItem).specifications;
+                              if (!specs) return null;
+                              
+                              let specsText = '';
+                              if (typeof specs === 'string') {
+                                specsText = specs;
+                              } else if (typeof specs === 'object' && specs) {
+                                specsText = Object.entries(specs as Record<string, unknown>)
+                                  .map(([key, value]) => `${key}: ${value}`)
+                                  .join(', ');
+                              }
+                              
+                              return specsText ? (
+                                <div className="text-xs text-blue-600 truncate">
+                                  Specs: {specsText}
+                                </div>
+                              ) : null;
+                            })()}
+                            {(item as EnhancedOrderItem).description && (
+                              <div className="text-xs text-gray-400 truncate">
+                                {(item as EnhancedOrderItem).description}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -710,13 +821,30 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
                         {formatCurrency(item.unit_price || item.price || 0)}
                       </td>
                       <td className="px-2 py-2 text-right">
-                        {item.discount_percentage ? (
-                          <span className="text-green-600 font-medium text-xs">
-                            {item.discount_percentage.toFixed(1)}%
-                          </span>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
+                        {(() => {
+                          // Check if there's an item-level discount
+                          if (item.discount_percentage && item.discount_percentage > 0) {
+                            return (
+                              <span className="text-green-600 font-medium text-xs">
+                                {item.discount_percentage.toFixed(1)}%
+                              </span>
+                            );
+                          }
+                          
+                          // Check if there's an order-level discount affecting this item
+                          const orderDiscount = order.discount_amount || 0;
+                          const originalPrice = order.original_price || 0;
+                          if (orderDiscount > 0 && originalPrice > 0) {
+                            const discountPercentage = (orderDiscount / originalPrice) * 100;
+                            return (
+                              <span className="text-orange-600 font-medium text-xs" title="Order-level discount">
+                                {discountPercentage.toFixed(1)}%*
+                              </span>
+                            );
+                          }
+                          
+                          return <span className="text-gray-400">-</span>;
+                        })()}
                       </td>
                       <td className="px-2 py-2 text-right font-bold text-xs">
                         {formatCurrency(item.final_price || (item.unit_price || item.price || 0) * item.quantity)}
@@ -833,7 +961,7 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
           <div className="bg-gray-900 text-white print-compact p-3 text-center">
             <p className="text-xs">Thank you for your business!</p>
             <p className="text-xs text-gray-400 mt-1">
-              Generated on {new Date().toLocaleDateString('en-IN')} by FurniFlow ERP
+              Generated on {new Date().toLocaleDateString('en-IN')} by PalakaERP
             </p>
           </div>
         </div>

@@ -192,7 +192,6 @@ export async function PUT(request: NextRequest) {
     interface UpdateData {
       updated_at: string;
       paid_amount?: number;
-      remaining_amount?: number;
       status?: string;
       payment_date?: string;
       payment_reference?: string;
@@ -214,13 +213,11 @@ export async function PUT(request: NextRequest) {
     if (isPaymentUpdate) {
       // Payment update logic
       const newPaidAmount = paid_amount ?? currentBill.paid_amount;
-      const remainingAmount = currentBill.total_amount - newPaidAmount;
-      const newStatus = status ?? (remainingAmount <= 0 ? 'paid' : remainingAmount === currentBill.total_amount ? 'pending' : 'partial');
+      const newStatus = status ?? (newPaidAmount >= currentBill.total_amount ? 'paid' : newPaidAmount === 0 ? 'pending' : 'partial');
 
       updateData = {
         ...updateData,
         paid_amount: newPaidAmount,
-        remaining_amount: remainingAmount,
         status: newStatus,
         payment_date,
         payment_reference
@@ -229,8 +226,7 @@ export async function PUT(request: NextRequest) {
       // General bill update logic
       const newTotalAmount = total_amount !== undefined ? total_amount : currentBill.total_amount;
       const currentPaidAmount = currentBill.paid_amount || 0;
-      const newRemainingAmount = newTotalAmount - currentPaidAmount;
-      const newStatus = newRemainingAmount <= 0 ? 'paid' : (currentPaidAmount > 0 ? 'partial' : 'pending');
+      const newStatus = currentPaidAmount >= newTotalAmount ? 'paid' : (currentPaidAmount > 0 ? 'partial' : 'pending');
 
       updateData = {
         ...updateData,
@@ -243,7 +239,6 @@ export async function PUT(request: NextRequest) {
         tax_amount: tax_amount !== undefined ? tax_amount : currentBill.tax_amount,
         discount_amount: discount_amount !== undefined ? discount_amount : currentBill.discount_amount,
         reference_number: reference_number ?? currentBill.reference_number,
-        remaining_amount: newRemainingAmount,
         status: newStatus
       };
     }

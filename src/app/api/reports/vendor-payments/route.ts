@@ -60,16 +60,28 @@ export async function GET(req: NextRequest) {
       }
 
       // Format the data for cash flow consumption
-      const formattedPayments = vendorPayments?.map(payment => ({
-        id: payment.id,
-        amount: payment.amount,
-        payment_date: payment.payment_date,
-        payment_method: payment.payment_method,
-        reference_number: payment.reference_number,
-        description: payment.notes || 'Vendor payment',
-        supplier_name: payment.suppliers?.name || 'Unknown Vendor',
-        created_at: payment.created_at
-      })) || [];
+      const formattedPayments = vendorPayments?.map(payment => {
+        // Handle suppliers relationship - could be array or object
+        let supplierName = 'Unknown Vendor';
+        if (payment.suppliers) {
+          if (Array.isArray(payment.suppliers) && payment.suppliers.length > 0) {
+            supplierName = payment.suppliers[0].name || 'Unknown Vendor';
+          } else if (!Array.isArray(payment.suppliers)) {
+            supplierName = (payment.suppliers as { name?: string }).name || 'Unknown Vendor';
+          }
+        }
+
+        return {
+          id: payment.id,
+          amount: payment.amount,
+          payment_date: payment.payment_date,
+          payment_method: payment.payment_method,
+          reference_number: payment.reference_number,
+          description: payment.notes || 'Vendor payment',
+          supplier_name: supplierName,
+          created_at: payment.created_at
+        };
+      }) || [];
 
       console.log(`✅ Found ${formattedPayments.length} vendor payments for cash flow`);
       return NextResponse.json(formattedPayments);

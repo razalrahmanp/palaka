@@ -145,14 +145,27 @@ export async function PUT(request: NextRequest) {
   try {
     const data = await request.json();
     const {
-      id,
+      bill_id,  // For general updates, we use bill_id
+      id,       // For payment updates, we use id
+      // Payment-specific fields
       paid_amount,
       status,
       payment_date,
-      payment_reference
+      payment_reference,
+      // General bill fields
+      supplier_id,
+      bill_number,
+      bill_date,
+      due_date,
+      total_amount,
+      description,
+      tax_amount,
+      discount_amount,
+      reference_number
     } = data;
 
-    if (!id) {
+    const billId = bill_id || id;
+    if (!billId) {
       return NextResponse.json(
         { success: false, error: 'Bill ID is required' },
         { status: 400 }
@@ -162,8 +175,8 @@ export async function PUT(request: NextRequest) {
     // Get the current bill
     const { data: currentBill, error: fetchError } = await supabaseAdmin
       .from('vendor_bills')
-      .select('total_amount, paid_amount')
-      .eq('id', id)
+      .select('*')
+      .eq('id', billId)
       .single();
 
     if (fetchError || !currentBill) {
@@ -173,23 +186,73 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Calculate new paid amount and remaining amount
-    const newPaidAmount = paid_amount ?? currentBill.paid_amount;
-    const remainingAmount = currentBill.total_amount - newPaidAmount;
-    const newStatus = status ?? (remainingAmount <= 0 ? 'paid' : 'partial');
+    // Determine if this is a payment update or general bill update
+    const isPaymentUpdate = paid_amount !== undefined && !total_amount;
+    
+    interface UpdateData {
+      updated_at: string;
+      paid_amount?: number;
+      remaining_amount?: number;
+      status?: string;
+      payment_date?: string;
+      payment_reference?: string;
+      supplier_id?: string;
+      bill_number?: string;
+      bill_date?: string;
+      due_date?: string;
+      total_amount?: number;
+      description?: string;
+      tax_amount?: number;
+      discount_amount?: number;
+      reference_number?: string;
+    }
+    
+    let updateData: UpdateData = {
+      updated_at: new Date().toISOString()
+    };
 
-    // Update the bill
-    const { data: updatedBill, error } = await supabaseAdmin
-      .from('vendor_bills')
-      .update({
+    if (isPaymentUpdate) {
+      // Payment update logic
+      const newPaidAmount = paid_amount ?? currentBill.paid_amount;
+      const remainingAmount = currentBill.total_amount - newPaidAmount;
+      const newStatus = status ?? (remainingAmount <= 0 ? 'paid' : remainingAmount === currentBill.total_amount ? 'pending' : 'partial');
+
+      updateData = {
+        ...updateData,
         paid_amount: newPaidAmount,
         remaining_amount: remainingAmount,
         status: newStatus,
         payment_date,
-        payment_reference,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', id)
+        payment_reference
+      };
+    } else {
+      // General bill update logic
+      const newTotalAmount = total_amount !== undefined ? total_amount : currentBill.total_amount;
+      const currentPaidAmount = currentBill.paid_amount || 0;
+      const newRemainingAmount = newTotalAmount - currentPaidAmount;
+      const newStatus = newRemainingAmount <= 0 ? 'paid' : (currentPaidAmount > 0 ? 'partial' : 'pending');
+
+      updateData = {
+        ...updateData,
+        supplier_id: supplier_id ?? currentBill.supplier_id,
+        bill_number: bill_number ?? currentBill.bill_number,
+        bill_date: bill_date ?? currentBill.bill_date,
+        due_date: due_date ?? currentBill.due_date,
+        total_amount: newTotalAmount,
+        description: description ?? currentBill.description,
+        tax_amount: tax_amount !== undefined ? tax_amount : currentBill.tax_amount,
+        discount_amount: discount_amount !== undefined ? discount_amount : currentBill.discount_amount,
+        reference_number: reference_number ?? currentBill.reference_number,
+        remaining_amount: newRemainingAmount,
+        status: newStatus
+      };
+    }
+
+    // Update the bill
+    const { data: updatedBill, error } = await supabaseAdmin
+      .from('vendor_bills')
+      .update(updateData)
+      .eq('id', billId)
       .select(`
         *,
         suppliers(

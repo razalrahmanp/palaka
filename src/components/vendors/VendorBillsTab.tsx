@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileText, Plus, Calendar, DollarSign, Eye, CreditCard, Receipt, Search, Minus, Clock, Trash2 } from 'lucide-react';
+import { FileText, Plus, Calendar, DollarSign, CreditCard, Receipt, Search, Minus, Clock, Trash2, Edit, Calculator } from 'lucide-react';
 import { VendorBillForm } from './VendorBillForm';
 import { subcategoryMap } from '@/types';
 
@@ -105,6 +105,40 @@ export function VendorBillsTab({
   const [createBillOpen, setCreateBillOpen] = useState(false);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [selectedBillForPayment, setSelectedBillForPayment] = useState<VendorBill | null>(null);
+  
+  // Edit bill state
+  const [editBillOpen, setEditBillOpen] = useState(false);
+  const [selectedBillForEdit, setSelectedBillForEdit] = useState<VendorBill | null>(null);
+  const [editBillForm, setEditBillForm] = useState({
+    bill_number: '',
+    bill_date: '',
+    due_date: '',
+    total_amount: '',
+    description: '',
+    tax_amount: '',
+    discount_amount: '',
+    reference_number: ''
+  });
+  
+  // Smart payment state
+  const [smartPaymentOpen, setSmartPaymentOpen] = useState(false);
+  const [smartPaymentForm, setSmartPaymentForm] = useState({
+    amount: '',
+    payment_date: new Date().toISOString().split('T')[0],
+    payment_method: 'bank_transfer',
+    bank_account_id: '',
+    reference_number: '',
+    notes: ''
+  });
+  const [paymentPreview, setPaymentPreview] = useState<Array<{
+    billId: string;
+    billNumber: string;
+    currentOutstanding: number;
+    paymentAmount: number;
+    remainingAfterPayment: number;
+    willBeFullyPaid: boolean;
+  }>>([]);
+  
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [paymentForm, setPaymentForm] = useState<PaymentForm>({
     amount: '',
@@ -400,6 +434,174 @@ export function VendorBillsTab({
     }
   };
 
+  // Edit bill functionality
+  const handleEditBill = (bill: VendorBill) => {
+    setSelectedBillForEdit(bill);
+    setEditBillForm({
+      bill_number: bill.bill_number,
+      bill_date: bill.bill_date,
+      due_date: bill.due_date,
+      total_amount: bill.total_amount.toString(),
+      description: bill.description || '',
+      tax_amount: bill.tax_amount?.toString() || '0',
+      discount_amount: bill.discount_amount?.toString() || '0',
+      reference_number: bill.reference_number || ''
+    });
+    setEditBillOpen(true);
+  };
+
+  const handleUpdateBill = async () => {
+    if (!selectedBillForEdit) return;
+
+    // Validation
+    if (!editBillForm.total_amount || parseFloat(editBillForm.total_amount) <= 0) {
+      alert('Please enter a valid total amount greater than 0');
+      return;
+    }
+
+    if (!editBillForm.bill_number.trim()) {
+      alert('Please enter a bill number');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/finance/vendor-bills', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          bill_id: selectedBillForEdit.id,
+          supplier_id: vendorId,
+          bill_number: editBillForm.bill_number.trim(),
+          bill_date: editBillForm.bill_date,
+          due_date: editBillForm.due_date,
+          total_amount: parseFloat(editBillForm.total_amount),
+          description: editBillForm.description.trim(),
+          tax_amount: parseFloat(editBillForm.tax_amount) || 0,
+          discount_amount: parseFloat(editBillForm.discount_amount) || 0,
+          reference_number: editBillForm.reference_number.trim()
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to update bill');
+      }
+
+      setEditBillOpen(false);
+      setSelectedBillForEdit(null);
+      setEditBillForm({
+        bill_number: '',
+        bill_date: '',
+        due_date: '',
+        total_amount: '',
+        description: '',
+        tax_amount: '',
+        discount_amount: '',
+        reference_number: ''
+      });
+      
+      // Refresh bill data
+      onBillUpdate();
+      alert('Bill updated successfully!');
+    } catch (error) {
+      console.error('Error updating bill:', error);
+      alert(`Error updating bill: ${error instanceof Error ? error.message : 'Please try again.'}`);
+    }
+  };
+
+  // Smart payment calculation logic
+  const calculateSmartPayment = (amount: number) => {
+    if (!amount || amount <= 0) {
+      setPaymentPreview([]);
+      return;
+    }
+
+    // Get outstanding bills sorted by due date (oldest first)
+    const outstandingBills = bills
+      .filter(bill => bill.remaining_amount > 0)
+      .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+
+    let remainingAmount = amount;
+    const preview = [];
+
+    for (const bill of outstandingBills) {
+      if (remainingAmount <= 0) break;
+
+      const paymentForThisBill = Math.min(remainingAmount, bill.remaining_amount);
+      const willBeFullyPaid = paymentForThisBill >= bill.remaining_amount;
+      
+      preview.push({
+        billId: bill.id,
+        billNumber: bill.bill_number,
+        currentOutstanding: bill.remaining_amount,
+        paymentAmount: paymentForThisBill,
+        remainingAfterPayment: bill.remaining_amount - paymentForThisBill,
+        willBeFullyPaid
+      });
+
+      remainingAmount -= paymentForThisBill;
+    }
+
+    setPaymentPreview(preview);
+  };
+
+  const handleSmartPayment = async () => {
+    if (!smartPaymentForm.amount || parseFloat(smartPaymentForm.amount) <= 0) {
+      alert('Please enter a valid payment amount');
+      return;
+    }
+
+    if (!smartPaymentForm.bank_account_id && smartPaymentForm.payment_method !== 'cash') {
+      alert('Please select a bank account for this payment method');
+      return;
+    }
+
+    try {
+      // Create individual payments for each bill that receives payment
+      const payments = paymentPreview.filter(p => p.paymentAmount > 0);
+      
+      for (const payment of payments) {
+        const response = await fetch(`/api/vendors/${vendorId}/payments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            amount: payment.paymentAmount,
+            payment_date: smartPaymentForm.payment_date,
+            payment_method: smartPaymentForm.payment_method,
+            bank_account_id: smartPaymentForm.bank_account_id || '',
+            reference_number: `${smartPaymentForm.reference_number} - Smart Settlement`,
+            notes: `Smart payment settlement: ${smartPaymentForm.notes}`,
+            vendor_bill_id: payment.billId
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to record payment for bill ${payment.billNumber}`);
+        }
+      }
+
+      setSmartPaymentOpen(false);
+      setSmartPaymentForm({
+        amount: '',
+        payment_date: new Date().toISOString().split('T')[0],
+        payment_method: 'bank_transfer',
+        bank_account_id: '',
+        reference_number: '',
+        notes: ''
+      });
+      setPaymentPreview([]);
+      
+      // Refresh bill data
+      onBillUpdate();
+      alert(`Smart payment completed! Amount distributed across ${payments.length} bills.`);
+    } catch (error) {
+      console.error('Error processing smart payment:', error);
+      alert(`Error processing payment: ${error instanceof Error ? error.message : 'Please try again.'}`);
+    }
+  };
+
   const totals = {
     totalAmount: financialSummary.totalBillAmount,
     totalPaid: financialSummary.totalPaidAmount,
@@ -466,13 +668,24 @@ export function VendorBillsTab({
                 <CardTitle className="text-lg font-semibold text-gray-900">
                   Vendor Bills
                 </CardTitle>
-                <Button 
-                  onClick={() => setCreateBillOpen(true)}
-                  className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Bill
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                  {bills.some(bill => bill.remaining_amount > 0) && (
+                    <Button 
+                      onClick={() => setSmartPaymentOpen(true)}
+                      className="bg-green-600 hover:bg-green-700 w-full sm:w-auto"
+                    >
+                      <Calculator className="h-4 w-4 mr-2" />
+                      Pay Amount
+                    </Button>
+                  )}
+                  <Button 
+                    onClick={() => setCreateBillOpen(true)}
+                    className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Bill
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -557,8 +770,10 @@ export function VendorBillsTab({
                                   variant="outline"
                                   size="sm"
                                   className="h-8 w-8 p-0"
+                                  onClick={() => handleEditBill(bill)}
+                                  title="Edit bill"
                                 >
-                                  <Eye className="h-3 w-3" />
+                                  <Edit className="h-3 w-3" />
                                 </Button>
                                 {bill.remaining_amount > 0 && (
                                   <Button
@@ -782,6 +997,161 @@ export function VendorBillsTab({
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Edit Bill Dialog */}
+      <Dialog open={editBillOpen} onOpenChange={setEditBillOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit className="h-5 w-5" />
+              Edit Vendor Bill
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Left Column */}
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="edit_bill_number">Bill Number *</Label>
+                  <Input
+                    id="edit_bill_number"
+                    value={editBillForm.bill_number}
+                    onChange={(e) => setEditBillForm({...editBillForm, bill_number: e.target.value})}
+                    placeholder="Enter bill number"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="edit_bill_date">Bill Date *</Label>
+                  <Input
+                    id="edit_bill_date"
+                    type="date"
+                    value={editBillForm.bill_date}
+                    onChange={(e) => setEditBillForm({...editBillForm, bill_date: e.target.value})}
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="edit_due_date">Due Date *</Label>
+                  <Input
+                    id="edit_due_date"
+                    type="date"
+                    value={editBillForm.due_date}
+                    onChange={(e) => setEditBillForm({...editBillForm, due_date: e.target.value})}
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="edit_reference_number">Reference Number</Label>
+                  <Input
+                    id="edit_reference_number"
+                    value={editBillForm.reference_number}
+                    onChange={(e) => setEditBillForm({...editBillForm, reference_number: e.target.value})}
+                    placeholder="Enter reference number (optional)"
+                  />
+                </div>
+              </div>
+              
+              {/* Right Column */}
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="edit_total_amount">Total Amount *</Label>
+                  <Input
+                    id="edit_total_amount"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editBillForm.total_amount}
+                    onChange={(e) => setEditBillForm({...editBillForm, total_amount: e.target.value})}
+                    placeholder="0.00"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="edit_tax_amount">Tax Amount</Label>
+                  <Input
+                    id="edit_tax_amount"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editBillForm.tax_amount}
+                    onChange={(e) => setEditBillForm({...editBillForm, tax_amount: e.target.value})}
+                    placeholder="0.00"
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="edit_discount_amount">Discount Amount</Label>
+                  <Input
+                    id="edit_discount_amount"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editBillForm.discount_amount}
+                    onChange={(e) => setEditBillForm({...editBillForm, discount_amount: e.target.value})}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+            </div>
+            
+            <div>
+              <Label htmlFor="edit_description">Description</Label>
+              <Textarea
+                id="edit_description"
+                value={editBillForm.description}
+                onChange={(e) => setEditBillForm({...editBillForm, description: e.target.value})}
+                placeholder="Enter bill description"
+                rows={3}
+              />
+            </div>
+            
+            {/* Summary */}
+            {selectedBillForEdit && (
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h4 className="font-medium text-gray-900 mb-2">Bill Summary</h4>
+                <div className="text-sm text-gray-600 space-y-1">
+                  <p><strong>Current Paid Amount:</strong> {formatCurrency(selectedBillForEdit.paid_amount)}</p>
+                  <p><strong>Current Outstanding:</strong> {formatCurrency(selectedBillForEdit.remaining_amount)}</p>
+                  <p className="text-xs text-orange-600 mt-2">
+                    Note: Changing the total amount will automatically recalculate the outstanding balance.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter className="pt-6 border-t border-gray-200">
+            <div className="flex gap-3 w-full sm:w-auto">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setEditBillOpen(false);
+                  setSelectedBillForEdit(null);
+                }}
+                className="flex-1 sm:flex-none"
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="button" 
+                onClick={handleUpdateBill}
+                disabled={!editBillForm.bill_number.trim() || !editBillForm.total_amount || parseFloat(editBillForm.total_amount) <= 0}
+                className="bg-blue-600 hover:bg-blue-700 flex-1 sm:flex-none"
+              >
+                <Edit className="h-4 w-4 mr-2" />
+                Update Bill
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Vendor Bill Form Dialog */}
       <VendorBillForm
@@ -1237,6 +1607,235 @@ export function VendorBillsTab({
               >
                 <Receipt className="h-4 w-4 mr-2" />
                 {selectedBillForPayment ? 'Record Payment' : 'Create Expense'}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Smart Payment Dialog */}
+      <Dialog open={smartPaymentOpen} onOpenChange={setSmartPaymentOpen}>
+        <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Calculator className="h-5 w-5 text-green-600" />
+              Smart Bill Payment - {vendorName}
+            </DialogTitle>
+            <p className="text-sm text-gray-600">
+              Enter the amount you have available. Our smart system will automatically settle your oldest bills first.
+            </p>
+          </DialogHeader>
+
+          <div className="space-y-6">
+            {/* Payment Amount Input */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="smart_amount">Available Amount *</Label>
+                  <Input
+                    id="smart_amount"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={smartPaymentForm.amount}
+                    onChange={(e) => {
+                      setSmartPaymentForm({...smartPaymentForm, amount: e.target.value});
+                      calculateSmartPayment(parseFloat(e.target.value) || 0);
+                    }}
+                    placeholder="Enter amount to pay"
+                    className="text-lg font-semibold"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Total Outstanding: {formatCurrency(bills.reduce((sum, bill) => sum + bill.remaining_amount, 0))}
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="smart_payment_date">Payment Date *</Label>
+                  <Input
+                    id="smart_payment_date"
+                    type="date"
+                    value={smartPaymentForm.payment_date}
+                    onChange={(e) => setSmartPaymentForm({...smartPaymentForm, payment_date: e.target.value})}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="smart_payment_method">Payment Method *</Label>
+                  <Select
+                    value={smartPaymentForm.payment_method}
+                    onValueChange={(value) => setSmartPaymentForm({...smartPaymentForm, payment_method: value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">💵 Cash</SelectItem>
+                      <SelectItem value="bank_transfer">🏦 Bank Transfer</SelectItem>
+                      <SelectItem value="cheque">📝 Cheque</SelectItem>
+                      <SelectItem value="card">💳 Card</SelectItem>
+                      <SelectItem value="upi">📱 UPI</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {smartPaymentForm.payment_method !== 'cash' && (
+                  <div>
+                    <Label htmlFor="smart_bank_account">Bank Account *</Label>
+                    <Select
+                      value={smartPaymentForm.bank_account_id}
+                      onValueChange={(value) => setSmartPaymentForm({...smartPaymentForm, bank_account_id: value})}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select bank account" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {bankAccounts.filter(account => account.account_type === 'BANK').map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            <div className="flex flex-col">
+                              <span>{account.name}</span>
+                              <span className="text-xs text-gray-500">
+                                {account.account_number || 'N/A'}
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div>
+                  <Label htmlFor="smart_reference">Reference Number</Label>
+                  <Input
+                    id="smart_reference"
+                    value={smartPaymentForm.reference_number}
+                    onChange={(e) => setSmartPaymentForm({...smartPaymentForm, reference_number: e.target.value})}
+                    placeholder="Payment reference (optional)"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="smart_notes">Notes</Label>
+                  <Textarea
+                    id="smart_notes"
+                    value={smartPaymentForm.notes}
+                    onChange={(e) => setSmartPaymentForm({...smartPaymentForm, notes: e.target.value})}
+                    placeholder="Additional notes (optional)"
+                    rows={3}
+                  />
+                </div>
+              </div>
+
+              {/* Payment Preview */}
+              <div className="space-y-4">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-green-900 mb-3 flex items-center gap-2">
+                    <Calculator className="h-4 w-4" />
+                    Smart Settlement Preview
+                  </h3>
+                  
+                  {paymentPreview.length === 0 ? (
+                    <div className="text-center py-8">
+                      <Calculator className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                      <p className="text-gray-500 text-sm">Enter an amount above to see payment distribution</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="text-sm text-green-800 mb-3">
+                        <strong>Settlement Order:</strong> Oldest bills first (by due date)
+                      </div>
+                      
+                      {paymentPreview.map((preview, index) => (
+                        <div key={preview.billId} className="bg-white rounded-lg p-3 border border-green-200">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="bg-green-600 text-white text-xs px-2 py-1 rounded-full">
+                                #{index + 1}
+                              </span>
+                              <span className="font-medium text-sm">{preview.billNumber}</span>
+                              {preview.willBeFullyPaid && (
+                                <Badge className="bg-green-100 text-green-700 text-xs">FULLY PAID</Badge>
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                              <span className="text-gray-600">Outstanding:</span>
+                              <span className="font-semibold ml-1">{formatCurrency(preview.currentOutstanding)}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-600">Payment:</span>
+                              <span className="font-semibold ml-1 text-green-600">{formatCurrency(preview.paymentAmount)}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-600">Remaining:</span>
+                              <span className={`font-semibold ml-1 ${preview.remainingAfterPayment === 0 ? 'text-green-600' : 'text-orange-600'}`}>
+                                {formatCurrency(preview.remainingAfterPayment)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-4">
+                        <div className="text-sm">
+                          <div className="flex justify-between">
+                            <span>Total Payment Amount:</span>
+                            <span className="font-semibold">{formatCurrency(parseFloat(smartPaymentForm.amount) || 0)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Bills Being Settled:</span>
+                            <span className="font-semibold">{paymentPreview.length}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Bills Fully Paid:</span>
+                            <span className="font-semibold text-green-600">{paymentPreview.filter(p => p.willBeFullyPaid).length}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="pt-6 border-t border-gray-200">
+            <div className="flex gap-3 w-full sm:w-auto">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setSmartPaymentOpen(false);
+                  setSmartPaymentForm({
+                    amount: '',
+                    payment_date: new Date().toISOString().split('T')[0],
+                    payment_method: 'bank_transfer',
+                    bank_account_id: '',
+                    reference_number: '',
+                    notes: ''
+                  });
+                  setPaymentPreview([]);
+                }}
+                className="flex-1 sm:flex-none"
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="button" 
+                onClick={handleSmartPayment}
+                disabled={
+                  !smartPaymentForm.amount || 
+                  parseFloat(smartPaymentForm.amount) <= 0 || 
+                  paymentPreview.length === 0 ||
+                  (smartPaymentForm.payment_method !== 'cash' && !smartPaymentForm.bank_account_id)
+                }
+                className="bg-green-600 hover:bg-green-700 flex-1 sm:flex-none"
+              >
+                <Calculator className="h-4 w-4 mr-2" />
+                Process Smart Payment
               </Button>
             </div>
           </DialogFooter>

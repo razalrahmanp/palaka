@@ -48,7 +48,6 @@ export async function POST(request: NextRequest) {
         bill_date: bill_date || new Date().toISOString().split('T')[0],
         due_date: due_date || new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],
         total_amount,
-        remaining_amount: total_amount, // Initially, full amount is remaining
         paid_amount: 0,
         description,
         reference_number,
@@ -275,6 +274,77 @@ export async function PUT(request: NextRequest) {
 
   } catch (error) {
     console.error('Error in vendor bills PUT API:', error);
+    return NextResponse.json(
+      { success: false, error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const data = await request.json();
+    const { bill_id } = data;
+
+    if (!bill_id) {
+      return NextResponse.json(
+        { success: false, error: 'Bill ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Check if bill exists and get its details
+    const { data: existingBill, error: fetchError } = await supabaseAdmin
+      .from('vendor_bills')
+      .select('id, bill_number, paid_amount, status')
+      .eq('id', bill_id)
+      .single();
+
+    if (fetchError || !existingBill) {
+      return NextResponse.json(
+        { success: false, error: 'Bill not found' },
+        { status: 404 }
+      );
+    }
+
+    // Check for any payments associated with this bill
+    if (existingBill.paid_amount > 0) {
+      // Delete associated payment history records first
+      const { error: paymentDeleteError } = await supabaseAdmin
+        .from('vendor_payment_history')
+        .delete()
+        .eq('vendor_bill_id', bill_id);
+
+      if (paymentDeleteError) {
+        console.error('Error deleting payment history:', paymentDeleteError);
+        return NextResponse.json(
+          { success: false, error: 'Failed to delete associated payment records' },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Delete the vendor bill
+    const { error: deleteError } = await supabaseAdmin
+      .from('vendor_bills')
+      .delete()
+      .eq('id', bill_id);
+
+    if (deleteError) {
+      console.error('Error deleting vendor bill:', deleteError);
+      return NextResponse.json(
+        { success: false, error: 'Failed to delete vendor bill' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Vendor bill ${existingBill.bill_number} deleted successfully`
+    });
+
+  } catch (error) {
+    console.error('Error in vendor bills DELETE API:', error);
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
       { status: 500 }

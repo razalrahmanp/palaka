@@ -109,6 +109,8 @@ export function VendorBillsTab({
   // Edit bill state
   const [editBillOpen, setEditBillOpen] = useState(false);
   const [selectedBillForEdit, setSelectedBillForEdit] = useState<VendorBill | null>(null);
+  const [isUpdatingBill, setIsUpdatingBill] = useState(false);
+  const [isDeletingBill, setIsDeletingBill] = useState(false);
   const [editBillForm, setEditBillForm] = useState({
     bill_number: '',
     bill_date: '',
@@ -464,6 +466,7 @@ export function VendorBillsTab({
       return;
     }
 
+    setIsUpdatingBill(true);
     try {
       const response = await fetch('/api/finance/vendor-bills', {
         method: 'PUT',
@@ -508,6 +511,76 @@ export function VendorBillsTab({
     } catch (error) {
       console.error('Error updating bill:', error);
       alert(`Error updating bill: ${error instanceof Error ? error.message : 'Please try again.'}`);
+    } finally {
+      setIsUpdatingBill(false);
+    }
+  };
+
+  const closeEditDialog = () => {
+    setEditBillOpen(false);
+    setSelectedBillForEdit(null);
+    setIsUpdatingBill(false);
+    setIsDeletingBill(false);
+    setEditBillForm({
+      bill_number: '',
+      bill_date: '',
+      due_date: '',
+      total_amount: '',
+      description: '',
+      tax_amount: '',
+      discount_amount: '',
+      reference_number: ''
+    });
+  };
+
+  const handleDeleteBill = async () => {
+    if (!selectedBillForEdit) return;
+
+    // Confirm deletion
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete bill "${selectedBillForEdit.bill_number}"?\n\n` +
+      `This action cannot be undone and will permanently remove the bill and all associated data.`
+    );
+
+    if (!confirmDelete) return;
+
+    // Additional confirmation for bills with payments
+    if (selectedBillForEdit.paid_amount > 0) {
+      const confirmWithPayments = window.confirm(
+        `⚠️ WARNING: This bill has payments totaling ${formatCurrency(selectedBillForEdit.paid_amount)}.\n\n` +
+        `Deleting this bill may affect your accounting records. Are you absolutely sure you want to proceed?`
+      );
+
+      if (!confirmWithPayments) return;
+    }
+
+    setIsDeletingBill(true);
+    try {
+      const response = await fetch('/api/finance/vendor-bills', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          bill_id: selectedBillForEdit.id
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete bill');
+      }
+
+      closeEditDialog();
+      
+      // Refresh bill data
+      onBillUpdate();
+      alert('Bill deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting bill:', error);
+      alert(`Error deleting bill: ${error instanceof Error ? error.message : 'Please try again.'}`);
+    } finally {
+      setIsDeletingBill(false);
     }
   };
 
@@ -999,7 +1072,11 @@ export function VendorBillsTab({
       </Tabs>
 
       {/* Edit Bill Dialog */}
-      <Dialog open={editBillOpen} onOpenChange={setEditBillOpen}>
+      <Dialog open={editBillOpen} onOpenChange={(open) => {
+        if (!open && !isUpdatingBill && !isDeletingBill) {
+          closeEditDialog();
+        }
+      }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1127,27 +1204,58 @@ export function VendorBillsTab({
           </div>
           
           <DialogFooter className="pt-6 border-t border-gray-200">
-            <div className="flex gap-3 w-full sm:w-auto">
+            <div className="flex justify-between items-center w-full">
+              {/* Delete button on the left */}
               <Button
                 type="button"
-                variant="outline"
-                onClick={() => {
-                  setEditBillOpen(false);
-                  setSelectedBillForEdit(null);
-                }}
-                className="flex-1 sm:flex-none"
+                variant="destructive"
+                onClick={handleDeleteBill}
+                disabled={isUpdatingBill || isDeletingBill}
+                className="flex items-center gap-2"
               >
-                Cancel
+                {isDeletingBill ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4" />
+                    Delete Bill
+                  </>
+                )}
               </Button>
-              <Button 
-                type="button" 
-                onClick={handleUpdateBill}
-                disabled={!editBillForm.bill_number.trim() || !editBillForm.total_amount || parseFloat(editBillForm.total_amount) <= 0}
-                className="bg-blue-600 hover:bg-blue-700 flex-1 sm:flex-none"
-              >
-                <Edit className="h-4 w-4 mr-2" />
-                Update Bill
-              </Button>
+
+              {/* Cancel and Update buttons on the right */}
+              <div className="flex gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={closeEditDialog}
+                  disabled={isUpdatingBill || isDeletingBill}
+                  className="flex-1 sm:flex-none"
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  type="button" 
+                  onClick={handleUpdateBill}
+                  disabled={!editBillForm.bill_number.trim() || !editBillForm.total_amount || parseFloat(editBillForm.total_amount) <= 0 || isUpdatingBill || isDeletingBill}
+                  className="bg-blue-600 hover:bg-blue-700 flex-1 sm:flex-none"
+                >
+                  {isUpdatingBill ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Updating...
+                    </>
+                  ) : (
+                    <>
+                      <Edit className="h-4 w-4 mr-2" />
+                      Update Bill
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </DialogFooter>
         </DialogContent>

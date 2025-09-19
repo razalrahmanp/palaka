@@ -826,6 +826,45 @@ export async function POST(req: Request) {
 
   console.log(`Successfully inserted ${itemsToInsert.length} items for sales order ${orderId}`);
 
+  // Adjust inventory for regular products after successful sales order creation
+  const productsToAdjust = items.filter(item => item.product_id && item.name !== 'Custom Product');
+  if (productsToAdjust.length > 0) {
+    console.log(`Adjusting inventory for ${productsToAdjust.length} products after sales order creation`);
+    
+    try {
+      const inventoryAdjustments = productsToAdjust.map(async (item) => {
+        try {
+          const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/inventory/adjust`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              productId: item.product_id,
+              quantity: item.quantity,
+              type: 'decrease',
+              reason: `Sales order ${orderId}`,
+            }),
+          });
+          
+          if (!response.ok) {
+            console.error(`Failed to adjust inventory for product ${item.product_id}:`, await response.text());
+          } else {
+            console.log(`Successfully adjusted inventory for product ${item.product_id}: decreased by ${item.quantity}`);
+          }
+        } catch (error) {
+          console.error(`Error adjusting inventory for product ${item.product_id}:`, error);
+        }
+      });
+      
+      // Execute all inventory adjustments concurrently
+      await Promise.all(inventoryAdjustments);
+    } catch (error) {
+      console.error('Error in inventory adjustment process:', error);
+      // Don't fail the sales order creation if inventory adjustment fails
+    }
+  }
+
   return NextResponse.json({ 
     success: true, 
     order_id: orderId,

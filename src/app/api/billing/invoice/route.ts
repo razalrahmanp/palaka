@@ -258,6 +258,37 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Adjust inventory for regular products (not custom products)
+      const regularProducts = items.filter(item => !item.isCustom && item.product?.product_id);
+      if (regularProducts.length > 0) {
+        console.log(`Adjusting inventory for ${regularProducts.length} regular products`);
+        
+        try {
+          await Promise.all(
+            regularProducts.map(async (item: BillingItem) => {
+              const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/inventory/adjust`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  product_id: item.product?.product_id,
+                  quantity: item.quantity,
+                  type: 'decrease',
+                }),
+              });
+
+              if (!response.ok) {
+                console.error(`Failed to adjust inventory for product ${item.product?.product_id}:`, await response.text());
+              } else {
+                console.log(`✅ Inventory adjusted for product ${item.product?.product_id}: -${item.quantity}`);
+              }
+            })
+          );
+        } catch (inventoryError) {
+          console.error('Error adjusting inventory:', inventoryError);
+          // Don't fail the sales order creation if inventory adjustment fails
+        }
+      }
+
       return NextResponse.json({
         success: true,
         sales_order_id: salesOrder.id,

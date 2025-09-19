@@ -157,6 +157,7 @@ export function VendorBillsTab({
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [createExpenseOpen, setCreateExpenseOpen] = useState(false);
   const [expensesSearchQuery, setExpensesSearchQuery] = useState('');
+  const [isSyncingExpenses, setIsSyncingExpenses] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [expenseForm, setExpenseForm] = useState({
@@ -885,27 +886,59 @@ export function VendorBillsTab({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  // Refresh expenses data
+                disabled={isSyncingExpenses}
+                onClick={async () => {
                   console.log('Refreshing expenses for vendor:', vendorId);
-                  fetch(`/api/finance/expenses?entity_id=${vendorId}&entity_type=supplier`)
-                    .then(res => res.json())
-                    .then(data => {
-                      console.log('Refresh expenses API response:', data);
-                      const allExpenses = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
-                      // Client-side filtering as fallback to ensure only vendor expenses are shown
-                      const expenses = allExpenses.filter((expense: Expense) => 
-                        expense.entity_type === 'supplier' && expense.entity_id === vendorId
-                      );
-                      console.log('Parsed expenses after refresh:', expenses);
-                      setExpenses(expenses);
-                    })
-                    .catch(console.error);
+                  setIsSyncingExpenses(true);
+                  
+                  try {
+                    // First, sync vendor payments to expenses if any are missing
+                    console.log('Syncing vendor payments to expenses...');
+                    const syncResponse = await fetch(`/api/vendors/${vendorId}/sync-expenses`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' }
+                    });
+                    
+                    if (syncResponse.ok) {
+                      const syncResult = await syncResponse.json();
+                      console.log('Sync result:', syncResult);
+                      if (syncResult.synced > 0) {
+                        alert(`Successfully synced ${syncResult.synced} vendor payments to expenses!`);
+                      }
+                    }
+                    
+                    // Then refresh expenses data
+                    const expensesResponse = await fetch(`/api/finance/expenses?entity_id=${vendorId}&entity_type=supplier`);
+                    const data = await expensesResponse.json();
+                    console.log('Refresh expenses API response:', data);
+                    
+                    const allExpenses = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+                    const expenses = allExpenses.filter((expense: Expense) => 
+                      expense.entity_type === 'supplier' && expense.entity_id === vendorId
+                    );
+                    console.log('Parsed expenses after refresh:', expenses);
+                    setExpenses(expenses);
+                    
+                  } catch (error) {
+                    console.error('Error refreshing expenses:', error);
+                    alert('Error refreshing expenses. Please try again.');
+                  } finally {
+                    setIsSyncingExpenses(false);
+                  }
                 }}
                 className="flex items-center gap-2"
               >
-                <Clock className="h-4 w-4" />
-                Refresh
+                {isSyncingExpenses ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
+                    Syncing...
+                  </>
+                ) : (
+                  <>
+                    <Clock className="h-4 w-4" />
+                    Refresh & Sync
+                  </>
+                )}
               </Button>
             </div>
           </div>

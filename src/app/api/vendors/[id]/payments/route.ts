@@ -183,6 +183,47 @@ export async function POST(
 
       if (updateError) console.error('Error updating PO paid amount:', updateError);
 
+      // Create corresponding expense record for the fallback vendor payment
+      console.log('📝 Creating expense record for fallback vendor payment...');
+      
+      // Get vendor details for expense description
+      const { data: vendor } = await supabase
+        .from('suppliers')
+        .select('name')
+        .eq('id', vendorId)
+        .single();
+
+      const vendorName = vendor?.name || 'Unknown Vendor';
+      
+      // Create expense record
+      const expenseDescription = vendor_bill_id 
+        ? `Payment for vendor bill - ${vendorName}` 
+        : `Vendor payment - ${vendorName}`;
+
+      const { data: expenseRecord, error: expenseError } = await supabase
+        .from('expenses')
+        .insert({
+          date: payment_date || new Date().toISOString().split('T')[0],
+          category: 'Manufacturing',
+          type: 'Direct',
+          description: `${expenseDescription}${notes ? ` (${notes})` : ''}`,
+          amount: parseFloat(amount),
+          payment_method: payment_method,
+          entity_type: 'supplier',
+          entity_id: vendorId,
+          entity_reference_id: poPayment.id,
+          created_by: created_by || null
+        })
+        .select()
+        .single();
+
+      if (expenseError) {
+        console.error('⚠️ Failed to create expense record for fallback vendor payment:', expenseError);
+        // Don't fail the payment, just log the error
+      } else {
+        console.log('✅ Created expense record for fallback vendor payment:', expenseRecord.id);
+      }
+
       return NextResponse.json(poPayment, { status: 201 });
     }
 
@@ -261,6 +302,47 @@ export async function POST(
         .eq('id', purchase_order_id);
 
       if (updateError) console.error('Error updating PO paid amount:', updateError);
+    }
+
+    // Create corresponding expense record for the vendor payment
+    console.log('📝 Creating expense record for vendor payment...');
+    
+    // Get vendor details for expense description
+    const { data: vendor } = await supabase
+      .from('suppliers')
+      .select('name')
+      .eq('id', vendorId)
+      .single();
+
+    const vendorName = vendor?.name || 'Unknown Vendor';
+    
+    // Create expense record
+    const expenseDescription = vendor_bill_id 
+      ? `Payment for vendor bill - ${vendorName}` 
+      : `Vendor payment - ${vendorName}`;
+
+    const { data: expenseRecord, error: expenseError } = await supabase
+      .from('expenses')
+      .insert({
+        date: payment_date || new Date().toISOString().split('T')[0],
+        category: 'Manufacturing',
+        type: 'Direct',
+        description: `${expenseDescription}${notes ? ` (${notes})` : ''}`,
+        amount: parseFloat(amount),
+        payment_method: payment_method,
+        entity_type: 'supplier',
+        entity_id: vendorId,
+        entity_reference_id: payment.id,
+        created_by: created_by || null
+      })
+      .select()
+      .single();
+
+    if (expenseError) {
+      console.error('⚠️ Failed to create expense record for vendor payment:', expenseError);
+      // Don't fail the payment, just log the error
+    } else {
+      console.log('✅ Created expense record for vendor payment:', expenseRecord.id);
     }
 
     return NextResponse.json(payment, { status: 201 });

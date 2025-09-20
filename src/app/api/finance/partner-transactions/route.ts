@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
           payment_method: inv.payment_method || 'cash',
           reference_number: inv.reference_number,
           upi_reference: inv.upi_reference,
-          category: (inv.investment_categories as any)?.category_name,
+          category: (inv.investment_categories as { category_name?: string } | null)?.category_name,
           created_at: inv.created_at
         });
       });
@@ -104,8 +104,8 @@ export async function GET(request: NextRequest) {
           payment_method: wd.payment_method || 'cash',
           reference_number: wd.reference_number,
           upi_reference: wd.upi_reference,
-          category: (wd.withdrawal_categories as any)?.category_name,
-          subcategory: (wd.withdrawal_subcategories as any)?.subcategory_name,
+          category: (wd.withdrawal_categories as { category_name?: string } | null)?.category_name,
+          subcategory: (wd.withdrawal_subcategories as { subcategory_name?: string } | null)?.subcategory_name,
           created_at: wd.created_at
         });
       });
@@ -123,7 +123,22 @@ export async function GET(request: NextRequest) {
       .filter(t => t.type === 'withdrawal')
       .reduce((sum, t) => sum + t.amount, 0);
 
+    // Fetch opening balance for this partner
+    const { data: openingBalance, error: openingBalanceError } = await supabaseAdmin
+      .from('opening_balances')
+      .select('debit_amount, credit_amount, description')
+      .eq('entity_id', partnerId)
+      .eq('entity_type', 'partner')
+      .single();
+
+    let openingBalanceAmount = 0;
+    if (!openingBalanceError && openingBalance) {
+      // For partners, opening balance represents what partner owes or is owed
+      openingBalanceAmount = (openingBalance.debit_amount || 0) - (openingBalance.credit_amount || 0);
+    }
+
     const netEquity = totalInvestments - totalWithdrawals;
+    const balanceDue = openingBalanceAmount + netEquity; // Opening balance + current equity
 
     // Paginate results
     const paginatedTransactions = transactions.slice(offset, offset + limit);
@@ -144,6 +159,8 @@ export async function GET(request: NextRequest) {
           total_investments: totalInvestments,
           total_withdrawals: totalWithdrawals,
           net_equity: netEquity,
+          opening_balance: openingBalanceAmount,
+          balance_due: balanceDue,
           transaction_count: transactions.length
         },
         transactions: paginatedTransactions,

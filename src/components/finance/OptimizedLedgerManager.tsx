@@ -179,6 +179,12 @@ export default function OptimizedLedgerManager() {
   // Debounced search function
   const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
 
+  // Debug selectedLedger
+  useEffect(() => {
+    console.log('Selected ledger changed:', selectedLedger);
+    console.log('Selected ledger type:', selectedLedger?.type);
+  }, [selectedLedger]);
+
   const fetchLedgers = useCallback(async (
     page: number = 1,
     type: string = 'customer',
@@ -608,8 +614,8 @@ export default function OptimizedLedgerManager() {
             <p className="text-gray-600 capitalize">{selectedLedger.type} Ledger Transactions</p>
           </div>
           <div className="ml-auto flex gap-2">
-            {/* Supplier-specific buttons */}
-            {selectedLedger.type === 'supplier' && (
+            {/* Customer and Supplier buttons */}
+            {(selectedLedger.type === 'supplier' || selectedLedger.type === 'customer') && (
               <>
                 <Dialog open={showOpeningBalanceDialog} onOpenChange={setShowOpeningBalanceDialog}>
                   <DialogTrigger asChild>
@@ -628,7 +634,9 @@ export default function OptimizedLedgerManager() {
                     <div className="space-y-4">
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <Label htmlFor="debitAmount">Debit Amount (What they owe us)</Label>
+                          <Label htmlFor="debitAmount">
+                            {selectedLedger.type === 'customer' ? 'Debit Amount (What customer owes us)' : 'Debit Amount (What they owe us)'}
+                          </Label>
                           <Input
                             id="debitAmount"
                             type="number"
@@ -639,7 +647,9 @@ export default function OptimizedLedgerManager() {
                           />
                         </div>
                         <div>
-                          <Label htmlFor="creditAmount">Credit Amount (What we owe them)</Label>
+                          <Label htmlFor="creditAmount">
+                            {selectedLedger.type === 'customer' ? 'Credit Amount (What we owe customer)' : 'Credit Amount (What we owe them)'}
+                          </Label>
                           <Input
                             id="creditAmount"
                             type="number"
@@ -680,19 +690,26 @@ export default function OptimizedLedgerManager() {
                   <DialogTrigger asChild>
                     <Button variant="outline" size="sm" className="flex items-center gap-2">
                       <Plus className="h-4 w-4" />
-                      Add What We Owe
+                      {selectedLedger.type === 'customer' ? 'Add Outstanding Amount' : 'Add What We Owe'}
                     </Button>
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>Add Current Debt</DialogTitle>
+                      <DialogTitle>
+                        {selectedLedger.type === 'customer' ? 'Add Outstanding Amount' : 'Add Current Debt'}
+                      </DialogTitle>
                       <DialogDescription>
-                        Record what we currently owe to {selectedLedger.name}
+                        {selectedLedger.type === 'customer' 
+                          ? `Record outstanding amount from ${selectedLedger.name}`
+                          : `Record what we currently owe to ${selectedLedger.name}`
+                        }
                       </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4">
                       <div>
-                        <Label htmlFor="debtAmount">Amount We Owe</Label>
+                        <Label htmlFor="debtAmount">
+                          {selectedLedger.type === 'customer' ? 'Outstanding Amount' : 'Amount We Owe'}
+                        </Label>
                         <Input
                           id="debtAmount"
                           type="number"
@@ -703,7 +720,9 @@ export default function OptimizedLedgerManager() {
                         />
                       </div>
                       <div>
-                        <Label htmlFor="dueDate">Due Date</Label>
+                        <Label htmlFor="dueDate">
+                          {selectedLedger.type === 'customer' ? 'Expected Payment Date' : 'Due Date'}
+                        </Label>
                         <Input
                           id="dueDate"
                           type="date"
@@ -717,7 +736,10 @@ export default function OptimizedLedgerManager() {
                           id="debtDescription"
                           value={currentDebtForm.description}
                           onChange={(e) => setCurrentDebtForm(prev => ({ ...prev, description: e.target.value }))}
-                          placeholder="Reason for debt, purchase details..."
+                          placeholder={selectedLedger.type === 'customer' 
+                            ? 'Sales details, invoice information...'
+                            : 'Reason for debt, purchase details...'
+                          }
                         />
                       </div>
                       <div>
@@ -731,7 +753,7 @@ export default function OptimizedLedgerManager() {
                       </div>
                       <Button onClick={handleCreateCurrentDebt} className="w-full">
                         <Save className="h-4 w-4 mr-2" />
-                        Add Debt Record
+                        {selectedLedger.type === 'customer' ? 'Add Outstanding Record' : 'Add Debt Record'}
                       </Button>
                     </div>
                   </DialogContent>

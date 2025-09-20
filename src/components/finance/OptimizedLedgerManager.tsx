@@ -32,13 +32,16 @@ import {
   Plus,
   ArrowLeft,
   DollarSign,
-  Save
+  Save,
+  CreditCard,
+  HandCoins,
+  Banknote
 } from 'lucide-react';
 
 interface LedgerSummary {
   id: string;
   name: string;
-  type: 'customer' | 'supplier' | 'employee' | 'bank' | 'product';
+  type: 'customer' | 'supplier' | 'employee' | 'bank' | 'product' | 'investors' | 'loans';
   email?: string;
   phone?: string;
   total_transactions: number;
@@ -73,6 +76,41 @@ interface LedgerTransaction {
   balance: number;
   source_document?: string;
   status?: string;
+}
+
+interface PartnerTransaction {
+  id: string;
+  date: string;
+  type: 'investment' | 'withdrawal';
+  amount: number;
+  description: string;
+  payment_method: string;
+  reference_number?: string;
+  upi_reference?: string;
+  category?: string;
+  subcategory?: string;
+}
+
+interface BankTransaction {
+  id: string;
+  date: string;
+  type: 'deposit' | 'withdrawal';
+  amount: number;
+  description: string;
+  reference: string;
+  transaction_type?: 'bank_transaction' | 'vendor_payment' | 'withdrawal' | 'liability_payment';
+}
+
+interface LoanPayment {
+  id: string;
+  date: string;
+  principal_amount: number;
+  interest_amount: number;
+  total_amount: number;
+  description: string;
+  payment_method: string;
+  reference_number?: string;
+  upi_reference?: string;
 }
 
 interface PaginationInfo {
@@ -110,7 +148,7 @@ export default function OptimizedLedgerManager() {
     email: '',
     phone: '',
     address: '',
-    type: activeTab as 'customer' | 'supplier' | 'employee'
+    type: activeTab as 'customer' | 'supplier' | 'employee' | 'investors' | 'loans' | 'banks'
   });
 
   // Adjustment form state
@@ -188,23 +226,124 @@ export default function OptimizedLedgerManager() {
     try {
       setTransactionsLoading(true);
       
+      let apiEndpoint = '';
+      let paramKey = '';
+      
+      // Determine which API endpoint to use based on ledger type
+      if (ledger.type === 'investors') {
+        apiEndpoint = '/api/finance/partner-transactions';
+        paramKey = 'partner_id';
+      } else if (ledger.type === 'bank') {
+        apiEndpoint = '/api/finance/bank-transactions';
+        paramKey = 'bank_account_id';
+      } else if (ledger.type === 'loans') {
+        apiEndpoint = '/api/finance/loan-payments';
+        paramKey = 'loan_id';
+      } else {
+        // Fall back to existing API for other types
+        const params = new URLSearchParams({
+          type: ledger.type,
+          page: page.toString(),
+          limit: '50',
+          _t: Date.now().toString()
+        });
+
+        const response = await fetch(`/api/finance/ledgers/${ledger.id}?${params}`);
+        const data = await response.json();
+
+        if (data.success) {
+          if (page === 1) {
+            setTransactions(data.data);
+          } else {
+            setTransactions(prev => [...prev, ...data.data]);
+          }
+        } else {
+          console.error('Failed to fetch transactions:', data.error);
+          setTransactions([]);
+        }
+        return;
+      }
+      
+      // Use the new detailed APIs for investors, banks, and loans
       const params = new URLSearchParams({
-        type: ledger.type,
+        [paramKey]: ledger.id,
         page: page.toString(),
         limit: '50',
         _t: Date.now().toString()
       });
 
-      const response = await fetch(`/api/finance/ledgers/${ledger.id}?${params}`);
+      const response = await fetch(`${apiEndpoint}?${params}`);
       const data = await response.json();
 
       if (data.success) {
-        if (page === 1) {
-          setTransactions(data.data);
-        } else {
-          setTransactions(prev => [...prev, ...data.data]);
+        // Transform the detailed transaction data to match our interface
+        let transformedTransactions: LedgerTransaction[] = [];
+        
+        if (ledger.type === 'investors') {
+          transformedTransactions = data.data.transactions.map((tx: PartnerTransaction) => ({
+            id: tx.id,
+            date: tx.date,
+            description: `${tx.type === 'investment' ? 'Investment' : 'Withdrawal'}: ${tx.description}`,
+            reference_number: tx.reference_number || tx.upi_reference,
+            transaction_type: tx.type,
+            debit_amount: tx.type === 'withdrawal' ? tx.amount : 0,
+            credit_amount: tx.type === 'investment' ? tx.amount : 0,
+            balance: 0, // We'll calculate running balance if needed
+            source_document: tx.category,
+            status: 'completed'
+          }));
+        } else if (ledger.type === 'bank') {
+          // Calculate running balance for bank transactions
+          const currentBalance = data.data.bank_account.current_balance || 0;
+          
+          transformedTransactions = data.data.transactions.map((tx: BankTransaction, index: number) => {
+            // Calculate balance by working backwards from current balance
+            // First transaction is most recent, so we subtract all transactions after it
+            let transactionBalance = currentBalance;
+            for (let i = 0; i < index; i++) {
+              const prevTx = data.data.transactions[i];
+              if (prevTx.type === 'deposit') {
+                transactionBalance -= prevTx.amount;
+              } else {
+                transactionBalance += prevTx.amount;
+              }
+            }
+
+            return {
+              id: tx.id,
+              date: tx.date,
+              description: tx.description,
+              reference_number: tx.reference,
+              transaction_type: tx.transaction_type || tx.type,
+              debit_amount: tx.type === 'withdrawal' ? tx.amount : 0,
+              credit_amount: tx.type === 'deposit' ? tx.amount : 0,
+              balance: transactionBalance,
+              source_document: tx.transaction_type === 'vendor_payment' ? 'Vendor Payment' :
+                              tx.transaction_type === 'withdrawal' ? 'Owner Withdrawal' :
+                              tx.transaction_type === 'liability_payment' ? 'Loan Payment' : 'Bank Transaction',
+              status: 'completed'
+            };
+          });
+        } else if (ledger.type === 'loans') {
+          transformedTransactions = data.data.payments.map((tx: LoanPayment) => ({
+            id: tx.id,
+            date: tx.date,
+            description: `Loan Payment: ${tx.description}`,
+            reference_number: tx.reference_number || tx.upi_reference,
+            transaction_type: 'payment',
+            debit_amount: tx.total_amount,
+            credit_amount: 0,
+            balance: 0,
+            source_document: `Principal: ₹${tx.principal_amount} | Interest: ₹${tx.interest_amount}`,
+            status: 'completed'
+          }));
         }
-        // Note: Transaction pagination not needed for current implementation
+        
+        if (page === 1) {
+          setTransactions(transformedTransactions);
+        } else {
+          setTransactions(prev => [...prev, ...transformedTransactions]);
+        }
       } else {
         console.error('Failed to fetch transactions:', data.error);
         setTransactions([]);
@@ -361,7 +500,7 @@ export default function OptimizedLedgerManager() {
 
   const handleTabChange = (newTab: string) => {
     setActiveTab(newTab);
-    setNewLedgerForm(prev => ({ ...prev, type: newTab as 'customer' | 'supplier' | 'employee' }));
+    setNewLedgerForm(prev => ({ ...prev, type: newTab as 'customer' | 'supplier' | 'employee' | 'investors' | 'loans' | 'banks' }));
     setSelectedLedger(null); // Close transaction view
     setPagination(prev => ({ ...prev, page: 1 }));
   };
@@ -1019,7 +1158,7 @@ export default function OptimizedLedgerManager() {
       <div className="flex-1 overflow-auto">
         <div className="space-y-4">
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="customer" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
             Customers
@@ -1031,6 +1170,18 @@ export default function OptimizedLedgerManager() {
           <TabsTrigger value="employee" className="flex items-center gap-2">
             <UserCheck className="h-4 w-4" />
             Employees
+          </TabsTrigger>
+          <TabsTrigger value="investors" className="flex items-center gap-2">
+            <HandCoins className="h-4 w-4" />
+            Investors/Partners
+          </TabsTrigger>
+          <TabsTrigger value="loans" className="flex items-center gap-2">
+            <Banknote className="h-4 w-4" />
+            Loans
+          </TabsTrigger>
+          <TabsTrigger value="banks" className="flex items-center gap-2">
+            <CreditCard className="h-4 w-4" />
+            Banks
           </TabsTrigger>
           <TabsTrigger value="all" className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
@@ -1046,7 +1197,11 @@ export default function OptimizedLedgerManager() {
                 <span>
                   {activeTab === 'all' ? 'All Ledgers' : 
                    activeTab === 'customer' ? 'Customer Ledgers' :
-                   activeTab === 'supplier' ? 'Supplier Ledgers' : 'Employee Ledgers'}
+                   activeTab === 'supplier' ? 'Supplier Ledgers' : 
+                   activeTab === 'employee' ? 'Employee Ledgers' :
+                   activeTab === 'investors' ? 'Investors/Partners Ledgers' :
+                   activeTab === 'loans' ? 'Loans Ledgers' :
+                   activeTab === 'banks' ? 'Banks Ledgers' : 'Ledgers'}
                 </span>
                 {loading && <Loader2 className="h-4 w-4 animate-spin" />}
               </CardTitle>

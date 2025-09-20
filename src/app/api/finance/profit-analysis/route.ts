@@ -77,6 +77,31 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch expense data' }, { status: 500 });
     }
 
+    // Get vendor payment data (operational expenses)
+    const { data: vendorPaymentData, error: vendorPaymentError } = await supabase
+      .from('vendor_payment_history')
+      .select('amount, payment_date, created_at')
+      .eq('status', 'completed')
+      .gte('payment_date', startDate.toISOString().split('T')[0])
+      .lte('payment_date', endDate.toISOString().split('T')[0]);
+
+    if (vendorPaymentError) {
+      console.error('Vendor payment data error:', vendorPaymentError);
+      // Continue without vendor payments rather than failing completely
+    }
+
+    // Get liability payment data (loan/equipment payments)
+    const { data: liabilityPaymentData, error: liabilityPaymentError } = await supabase
+      .from('liability_payments')
+      .select('amount, payment_date, created_at, liability_type')
+      .gte('payment_date', startDate.toISOString().split('T')[0])
+      .lte('payment_date', endDate.toISOString().split('T')[0]);
+
+    if (liabilityPaymentError) {
+      console.error('Liability payment data error:', liabilityPaymentError);
+      // Continue without liability payments rather than failing completely
+    }
+
     // Process sales data for profit analysis
     let totalRevenue = 0;
     let totalCost = 0;
@@ -179,8 +204,22 @@ export async function GET(request: NextRequest) {
       });
     });
 
-    // Calculate total expenses
-    const totalExpenses = expenseData?.reduce((sum, expense) => sum + (expense.amount || 0), 0) || 0;
+    // Calculate total expenses including all operational costs
+    const regularExpenses = expenseData?.reduce((sum, expense) => sum + (expense.amount || 0), 0) || 0;
+    const vendorPaymentExpenses = vendorPaymentData?.reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
+    const liabilityPaymentExpenses = liabilityPaymentData?.reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
+    
+    const totalExpenses = regularExpenses + vendorPaymentExpenses + liabilityPaymentExpenses;
+
+    // Log expense breakdown for analysis
+    console.log('📊 Enhanced Expense Analysis:', {
+      regularExpenses: `₹${regularExpenses.toLocaleString()}`,
+      vendorPaymentExpenses: `₹${vendorPaymentExpenses.toLocaleString()}`,
+      liabilityPaymentExpenses: `₹${liabilityPaymentExpenses.toLocaleString()}`,
+      totalExpenses: `₹${totalExpenses.toLocaleString()}`,
+      vendorPaymentCount: vendorPaymentData?.length || 0,
+      liabilityPaymentCount: liabilityPaymentData?.length || 0
+    });
 
     // Calculate profit metrics
     const grossProfit = totalRevenue - totalCost;
@@ -283,7 +322,14 @@ export async function GET(request: NextRequest) {
         netProfit,
         totalExpenses,
         grossProfitMargin,
-        netProfitMargin
+        netProfitMargin,
+        expenseBreakdown: {
+          regularExpenses,
+          vendorPaymentExpenses,
+          liabilityPaymentExpenses,
+          vendorPaymentCount: vendorPaymentData?.length || 0,
+          liabilityPaymentCount: liabilityPaymentData?.length || 0
+        }
       },
       regularProducts: {
         count: regularProductCount,

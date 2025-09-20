@@ -4,7 +4,7 @@ import { supabase as supabaseAdmin } from '@/lib/supabaseAdmin';
 interface LedgerSummary {
   id: string;
   name: string;
-  type: 'customer' | 'supplier' | 'employee' | 'bank' | 'product';
+  type: 'customer' | 'supplier' | 'employee' | 'bank' | 'product' | 'investors' | 'loans';
   email?: string;
   phone?: string;
   total_transactions: number;
@@ -26,6 +26,24 @@ interface LedgerSummary {
   total_po_value?: number;
   pending_po_value?: number;
   paid_po_value?: number;
+  // Investor/Partner specific fields
+  partner_type?: string;
+  equity_percentage?: number;
+  total_investments?: number;
+  total_withdrawals?: number;
+  net_equity?: number;
+  // Loan specific fields
+  loan_type?: string;
+  original_amount?: number;
+  current_balance?: number;
+  emi_amount?: number;
+  interest_rate?: number;
+  loan_tenure_months?: number;
+  // Bank account specific fields
+  account_number?: string;
+  account_type?: string;
+  current_balance_amount?: number;
+  upi_id?: string;
 }
 
 export async function GET(request: NextRequest) {
@@ -64,6 +82,27 @@ export async function GET(request: NextRequest) {
       console.log('Fetching employee ledgers...');
       const employeeLedgers = await getEmployeeLedgers(search, hideZeroBalances);
       ledgers.push(...employeeLedgers);
+    }
+
+    // INVESTOR/PARTNER LEDGERS
+    if (type === 'all' || type === 'investors') {
+      console.log('Fetching investor/partner ledgers...');
+      const investorLedgers = await getInvestorLedgers(search, hideZeroBalances);
+      ledgers.push(...investorLedgers);
+    }
+
+    // LOAN LEDGERS
+    if (type === 'all' || type === 'loans') {
+      console.log('Fetching loan ledgers...');
+      const loanLedgers = await getLoansLedgers(search, hideZeroBalances);
+      ledgers.push(...loanLedgers);
+    }
+
+    // BANK ACCOUNT LEDGERS
+    if (type === 'all' || type === 'banks') {
+      console.log('Fetching bank account ledgers...');
+      const bankLedgers = await getBankLedgers(search, hideZeroBalances);
+      ledgers.push(...bankLedgers);
     }
 
     const totalCount = ledgers.length;
@@ -506,6 +545,308 @@ async function getEmployeeLedgers(search: string, hideZeroBalances: boolean): Pr
 
   } catch (error) {
     console.error('Error fetching employee ledgers:', error);
+    return [];
+  }
+}
+
+async function getInvestorLedgers(search: string, hideZeroBalances: boolean): Promise<LedgerSummary[]> {
+  try {
+    console.log('Fetching investor/partner ledgers...');
+    
+    // First, check if partners table exists
+    const { error: testError } = await supabaseAdmin
+      .from('partners')
+      .select('id')
+      .limit(1);
+
+    if (testError) {
+      console.log('Partners table not found or accessible:', testError.message);
+      return [];
+    }
+
+    // Base query for partners
+    let partnerQuery = supabaseAdmin
+      .from('partners')
+      .select('id, name, email, phone, partner_type, initial_investment, equity_percentage, is_active, created_at')
+      .eq('is_active', true)
+      .order('name');
+
+    if (search) {
+      partnerQuery = partnerQuery.or(`name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%,partner_type.ilike.%${search}%`);
+    }
+
+    const { data: partners, error: partnerError } = await partnerQuery;
+    
+    if (partnerError) {
+      console.error('Error fetching partners:', partnerError);
+      return [];
+    }
+
+    if (!partners || partners.length === 0) {
+      console.log('No partners found');
+      return [];
+    }
+
+    console.log(`Found ${partners.length} partners/investors`);
+    const partnerIds = partners.map(p => p.id);
+
+    // Fetch investments
+    const { data: investments, error: investmentError } = await supabaseAdmin
+      .from('investments')
+      .select('partner_id, amount, investment_date, description, payment_method')
+      .in('partner_id', partnerIds);
+
+    // Fetch withdrawals
+    const { data: withdrawals, error: withdrawalError } = await supabaseAdmin
+      .from('withdrawals')
+      .select('partner_id, amount, withdrawal_date, description, payment_method')
+      .in('partner_id', partnerIds);
+
+    console.log(`Found ${investments?.length || 0} investments, ${withdrawals?.length || 0} withdrawals`);
+    
+    if (investmentError) console.error('Investment error:', investmentError);
+    if (withdrawalError) console.error('Withdrawal error:', withdrawalError);
+
+    // Calculate financial data for each partner
+    const ledgers: LedgerSummary[] = partners.map(partner => {
+      // Calculate investments
+      const partnerInvestments = investments?.filter(inv => inv.partner_id === partner.id) || [];
+      const totalInvestments = partnerInvestments.reduce((sum, inv) => sum + (inv.amount || 0), 0);
+      
+      // Calculate withdrawals
+      const partnerWithdrawals = withdrawals?.filter(wd => wd.partner_id === partner.id) || [];
+      const totalWithdrawals = partnerWithdrawals.reduce((sum, wd) => sum + (wd.amount || 0), 0);
+      
+      // Calculate net equity
+      const initialInvestment = partner.initial_investment || 0;
+      const netEquity = initialInvestment + totalInvestments - totalWithdrawals;
+      
+      // Get total transactions count
+      const totalTransactions = partnerInvestments.length + partnerWithdrawals.length;
+      
+      // Get last transaction date
+      const allTransactionDates = [
+        ...partnerInvestments.map(inv => inv.investment_date),
+        ...partnerWithdrawals.map(wd => wd.withdrawal_date)
+      ].filter(Boolean).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+      
+      const lastTransactionDate = allTransactionDates[0] || partner.created_at;
+      
+      return {
+        id: partner.id.toString(),
+        name: `${partner.name}${partner.partner_type ? ` (${partner.partner_type})` : ''}`,
+        type: 'investors' as const,
+        email: partner.email,
+        phone: partner.phone,
+        total_transactions: totalTransactions,
+        total_amount: totalInvestments + totalWithdrawals,
+        balance_due: netEquity,
+        last_transaction_date: lastTransactionDate,
+        status: partner.is_active ? 'active' : 'inactive',
+        partner_type: partner.partner_type,
+        equity_percentage: partner.equity_percentage,
+        total_investments: totalInvestments,
+        total_withdrawals: totalWithdrawals,
+        net_equity: netEquity
+      };
+    });
+
+    console.log(`Processed ${ledgers.length} investor/partner ledgers`);
+    
+    // Apply hideZeroBalances filter if needed
+    if (hideZeroBalances) {
+      return ledgers.filter(ledger => ledger.balance_due !== 0);
+    }
+    
+    return ledgers;
+
+  } catch (error) {
+    console.error('Error fetching investor/partner ledgers:', error);
+    return [];
+  }
+}
+
+async function getLoansLedgers(search: string, hideZeroBalances: boolean): Promise<LedgerSummary[]> {
+  try {
+    console.log('Fetching loan ledgers...');
+    
+    // Base query for loans
+    let loanQuery = supabaseAdmin
+      .from('loan_opening_balances')
+      .select('id, loan_name, bank_name, loan_type, loan_number, original_loan_amount, opening_balance, current_balance, interest_rate, loan_tenure_months, emi_amount, loan_start_date, loan_end_date, status, description, created_at')
+      .order('loan_name');
+
+    if (search) {
+      loanQuery = loanQuery.or(`loan_name.ilike.%${search}%,bank_name.ilike.%${search}%,loan_number.ilike.%${search}%,loan_type.ilike.%${search}%`);
+    }
+
+    const { data: loans, error: loanError } = await loanQuery;
+    
+    if (loanError) {
+      console.error('Error fetching loans:', loanError);
+      return [];
+    }
+
+    if (!loans || loans.length === 0) {
+      console.log('No loans found');
+      return [];
+    }
+
+    console.log(`Found ${loans.length} loans`);
+    const loanIds = loans.map(l => l.id);
+
+    // Fetch liability payments for these loans
+    const { data: payments, error: paymentError } = await supabaseAdmin
+      .from('liability_payments')
+      .select('loan_id, date, principal_amount, interest_amount, total_amount, description, payment_method')
+      .in('loan_id', loanIds)
+      .order('date', { ascending: false });
+
+    console.log(`Found ${payments?.length || 0} liability payments`);
+    
+    if (paymentError) console.error('Payment error:', paymentError);
+
+    // Calculate financial data for each loan
+    const ledgers: LedgerSummary[] = loans.map(loan => {
+      // Calculate payments
+      const loanPayments = payments?.filter(pay => pay.loan_id === loan.id) || [];
+      const totalPayments = loanPayments.reduce((sum, pay) => sum + (pay.total_amount || 0), 0);
+      const totalPrincipalPaid = loanPayments.reduce((sum, pay) => sum + (pay.principal_amount || 0), 0);
+      
+      // Calculate remaining balance
+      const remainingBalance = loan.current_balance || loan.opening_balance - totalPrincipalPaid;
+      
+      // Get last payment date
+      const lastPayment = loanPayments[0]; // Already sorted by date desc
+      const lastPaymentDate = lastPayment?.date || loan.created_at;
+      
+      return {
+        id: loan.id,
+        name: `${loan.loan_name}${loan.bank_name ? ` (${loan.bank_name})` : ''}`,
+        type: 'loans' as const,
+        total_transactions: loanPayments.length,
+        total_amount: loan.original_loan_amount || 0,
+        balance_due: remainingBalance,
+        last_transaction_date: lastPaymentDate,
+        status: loan.status,
+        loan_type: loan.loan_type,
+        original_amount: loan.original_loan_amount,
+        current_balance: remainingBalance,
+        emi_amount: loan.emi_amount,
+        interest_rate: loan.interest_rate,
+        loan_tenure_months: loan.loan_tenure_months,
+        total_paid: totalPayments,
+        phone: loan.loan_number
+      };
+    });
+
+    console.log(`Processed ${ledgers.length} loan ledgers`);
+    
+    // Apply hideZeroBalances filter if needed
+    if (hideZeroBalances) {
+      return ledgers.filter(ledger => ledger.balance_due > 0);
+    }
+    
+    return ledgers;
+
+  } catch (error) {
+    console.error('Error fetching loan ledgers:', error);
+    return [];
+  }
+}
+
+async function getBankLedgers(search: string, hideZeroBalances: boolean): Promise<LedgerSummary[]> {
+  try {
+    console.log('Fetching bank account ledgers...');
+    
+    // Base query for bank accounts
+    let bankQuery = supabaseAdmin
+      .from('bank_accounts')
+      .select('id, name, account_number, current_balance, currency, account_type, upi_id, is_active, created_at')
+      .eq('is_active', true)
+      .order('name');
+
+    if (search) {
+      bankQuery = bankQuery.or(`name.ilike.%${search}%,account_number.ilike.%${search}%,upi_id.ilike.%${search}%`);
+    }
+
+    const { data: bankAccounts, error: bankError } = await bankQuery;
+    
+    if (bankError) {
+      console.error('Error fetching bank accounts:', bankError);
+      return [];
+    }
+
+    if (!bankAccounts || bankAccounts.length === 0) {
+      console.log('No bank accounts found');
+      return [];
+    }
+
+    console.log(`Found ${bankAccounts.length} bank accounts`);
+    const bankAccountIds = bankAccounts.map(b => b.id);
+
+    // Fetch bank transactions for these accounts
+    const { data: transactions, error: transactionError } = await supabaseAdmin
+      .from('bank_transactions')
+      .select('bank_account_id, date, type, amount, description, reference')
+      .in('bank_account_id', bankAccountIds)
+      .order('date', { ascending: false });
+
+    console.log(`Found ${transactions?.length || 0} bank transactions`);
+    
+    if (transactionError) console.error('Transaction error:', transactionError);
+
+    // Calculate financial data for each bank account
+    const ledgers: LedgerSummary[] = bankAccounts.map(account => {
+      // Calculate transactions
+      const accountTransactions = transactions?.filter(tx => tx.bank_account_id === account.id) || [];
+      const totalDeposits = accountTransactions
+        .filter(tx => tx.type === 'deposit')
+        .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+      const totalWithdrawals = accountTransactions
+        .filter(tx => tx.type === 'withdrawal')
+        .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+      
+      // Get last transaction date
+      const lastTransaction = accountTransactions[0]; // Already sorted by date desc
+      const lastTransactionDate = lastTransaction?.date || account.created_at;
+      
+      // Format account display name
+      let displayName = account.name;
+      if (account.account_type === 'UPI' && account.upi_id) {
+        displayName += ` (UPI: ${account.upi_id})`;
+      } else if (account.account_number) {
+        displayName += ` (${account.account_number})`;
+      }
+      
+      return {
+        id: account.id,
+        name: displayName,
+        type: 'bank' as const,
+        total_transactions: accountTransactions.length,
+        total_amount: totalDeposits + totalWithdrawals,
+        balance_due: account.current_balance || 0,
+        last_transaction_date: lastTransactionDate,
+        status: account.is_active ? 'active' : 'inactive',
+        account_number: account.account_number,
+        account_type: account.account_type,
+        current_balance_amount: account.current_balance,
+        upi_id: account.upi_id,
+        phone: account.account_number // Using phone field for account number display
+      };
+    });
+
+    console.log(`Processed ${ledgers.length} bank account ledgers`);
+    
+    // Apply hideZeroBalances filter if needed
+    if (hideZeroBalances) {
+      return ledgers.filter(ledger => ledger.balance_due !== 0);
+    }
+    
+    return ledgers;
+
+  } catch (error) {
+    console.error('Error fetching bank account ledgers:', error);
     return [];
   }
 }

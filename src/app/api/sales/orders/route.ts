@@ -502,8 +502,8 @@ export async function POST(req: Request) {
   const createdBy = created_by || null;
 
   // Validate status - ensure it's a valid sales_order_status enum value
-  const validStatuses = ['draft', 'confirmed', 'shipped', 'delivered'];
-  const validatedStatus = validStatuses.includes(status) ? status : 'confirmed';
+  const validStatuses = ['draft', 'confirmed', 'shipped', 'delivered', 'ready_for_delivery'];
+  const validatedStatus = validStatuses.includes(status) ? status : 'ready_for_delivery';
 
   // 1. Create the sales order with all fields
   console.log("Creating sales order with pricing data:", {

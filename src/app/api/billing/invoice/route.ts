@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
           final_price: totals.final_price,     // After all discounts
           discount_amount: totals.discount_amount,
           freight_charges: totals.freight_charges || 0,
-          status: 'Draft',
+          status: 'ready_for_delivery',
           items: [...items, ...customItems], // All items in JSON array
           emi_enabled: bajajFinanceData ? true : false,
           emi_plan: bajajFinanceData?.plan || {},
@@ -205,7 +205,7 @@ export async function POST(request: NextRequest) {
           discount_amount: totals.discount_amount,
           freight_charges: totals.freight_charges || 0,
           payment_method: paymentMethod || 'cash',
-          status: 'Draft',
+          status: 'ready_for_delivery',
           items: items.filter(item => !item.isCustom),
           emi_enabled: bajajFinanceData ? true : false,
           emi_plan: bajajFinanceData?.plan || {},

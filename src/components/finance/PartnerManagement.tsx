@@ -26,7 +26,9 @@ import {
   AlertCircle,
   Building2,
   Loader2,
-  CreditCard
+  CreditCard,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 interface Partner {
@@ -131,9 +133,13 @@ export function PartnerManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [selectedPartner, setSelectedPartner] = useState<PartnerSummary | null>(null);
+
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+
+  const [activeTab, setActiveTab] = useState('partners');
+  const [expandedPartner, setExpandedPartner] = useState<number | null>(null);
+  const [expandedLoan, setExpandedLoan] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
     name: '',
     email: '',
@@ -220,6 +226,22 @@ export function PartnerManagement() {
     return allTransactions;
   };
 
+  // Get liability payments for selected loan
+  const getLoanLiabilityPayments = (loanId: string) => {
+    return liabilityPayments.filter(payment => payment.loan_id === loanId);
+  };
+
+  // Handle showing partner details
+  // Handle partner row expansion
+  const togglePartnerExpansion = (partnerId: number) => {
+    setExpandedPartner(expandedPartner === partnerId ? null : partnerId);
+  };
+
+  // Handle loan row expansion
+  const toggleLoanExpansion = (loanId: string) => {
+    setExpandedLoan(expandedLoan === loanId ? null : loanId);
+  };
+
   // Handle edit partner
   const handleEditPartner = (partner: PartnerSummary) => {
     setSelectedPartner(partner);
@@ -295,12 +317,6 @@ export function PartnerManagement() {
     }
   };
 
-  // Show partner details
-  const showPartnerDetails = (partner: PartnerSummary) => {
-    setSelectedPartner(partner);
-    setDetailsDialogOpen(true);
-  };
-
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -341,26 +357,26 @@ export function PartnerManagement() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center space-x-2">
-              <Users className="h-5 w-5 text-blue-600" />
+              <Users className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Partners</p>
-                <p className="text-2xl font-bold">{partners.length}</p>
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Total Partners</p>
+                <p className="text-xl sm:text-2xl font-bold">{partners.length}</p>
               </div>
             </div>
           </CardContent>
         </Card>
         
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center space-x-2">
-              <TrendingUp className="h-5 w-5 text-green-600" />
+              <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Investments</p>
-                <p className="text-2xl font-bold text-green-600">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Total Investments</p>
+                <p className="text-lg sm:text-2xl font-bold text-green-600">
                   {formatCurrency(partners.reduce((sum, p) => sum + p.total_investments, 0))}
                 </p>
               </div>
@@ -369,12 +385,12 @@ export function PartnerManagement() {
         </Card>
         
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center space-x-2">
-              <TrendingDown className="h-5 w-5 text-red-600" />
+              <TrendingDown className="h-4 w-4 sm:h-5 sm:w-5 text-red-600" />
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Withdrawals</p>
-                <p className="text-2xl font-bold text-red-600">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Total Withdrawals</p>
+                <p className="text-lg sm:text-2xl font-bold text-red-600">
                   {formatCurrency(partners.reduce((sum, p) => sum + p.total_withdrawals, 0))}
                 </p>
               </div>
@@ -383,12 +399,12 @@ export function PartnerManagement() {
         </Card>
         
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center space-x-2">
-              <DollarSign className="h-5 w-5 text-purple-600" />
+              <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600" />
               <div>
-                <p className="text-sm font-medium text-gray-600">Net Balance</p>
-                <p className="text-2xl font-bold text-purple-600">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Net Balance</p>
+                <p className="text-lg sm:text-2xl font-bold text-purple-600">
                   {formatCurrency(partners.reduce((sum, p) => sum + p.current_balance, 0))}
                 </p>
               </div>
@@ -397,12 +413,12 @@ export function PartnerManagement() {
         </Card>
         
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center space-x-2">
-              <Building2 className="h-5 w-5 text-orange-600" />
+              <Building2 className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600" />
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Loans</p>
-                <p className="text-2xl font-bold text-orange-600">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Total Loans</p>
+                <p className="text-lg sm:text-2xl font-bold text-orange-600">
                   {formatCurrency(loans.reduce((sum, loan) => sum + loan.current_balance, 0))}
                 </p>
                 <p className="text-xs text-gray-500">{loans.length} active loans</p>
@@ -412,12 +428,12 @@ export function PartnerManagement() {
         </Card>
         
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center space-x-2">
-              <CreditCard className="h-5 w-5 text-indigo-600" />
+              <CreditCard className="h-4 w-4 sm:h-5 sm:w-5 text-indigo-600" />
               <div>
-                <p className="text-sm font-medium text-gray-600">Liability Payments</p>
-                <p className="text-2xl font-bold text-indigo-600">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Liability Payments</p>
+                <p className="text-lg sm:text-2xl font-bold text-indigo-600">
                   {formatCurrency(liabilityPayments.reduce((sum, payment) => sum + payment.total_amount, 0))}
                 </p>
                 <p className="text-xs text-gray-500">{liabilityPayments.length} payments</p>
@@ -427,298 +443,607 @@ export function PartnerManagement() {
         </Card>
       </div>
 
-      {/* Filters and Search */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="Search partners by name, email, or phone..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
+      {/* Main Tabs Interface */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="partners">Partners</TabsTrigger>
+          <TabsTrigger value="loans">Loans</TabsTrigger>
+          <TabsTrigger value="liability-payments">Liability Payments</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="partners" className="space-y-4">
+          {/* Partners Filters and Search */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex-1">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      placeholder="Search partners by name, email, or phone..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+                
+                <div className="sm:w-48">
+                  <Select value={filterType} onValueChange={setFilterType}>
+                    <SelectTrigger>
+                      <Filter className="h-4 w-4 mr-2" />
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Partners</SelectItem>
+                      <SelectItem value="active">Active Only</SelectItem>
+                      <SelectItem value="inactive">Inactive Only</SelectItem>
+                      <SelectItem value="investor">Investors</SelectItem>
+                      <SelectItem value="partner">Partners</SelectItem>
+                      <SelectItem value="owner">Owners</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            </div>
-            
-            <div className="sm:w-48">
-              <Select value={filterType} onValueChange={setFilterType}>
-                <SelectTrigger>
-                  <Filter className="h-4 w-4 mr-2" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Partners</SelectItem>
-                  <SelectItem value="active">Active Only</SelectItem>
-                  <SelectItem value="inactive">Inactive Only</SelectItem>
-                  <SelectItem value="investor">Investors</SelectItem>
-                  <SelectItem value="partner">Partners</SelectItem>
-                  <SelectItem value="owner">Owners</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
 
-      {/* Partners Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Partners Overview</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Partner</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Equity %</TableHead>
-                  <TableHead>Investments</TableHead>
-                  <TableHead>Withdrawals</TableHead>
-                  <TableHead>Current Balance</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredPartners.map((partner) => (
-                  <TableRow key={partner.id}>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{partner.name}</div>
-                        <div className="text-sm text-gray-500">
-                          ID: {partner.id}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">
-                        {partner.partner_type}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        {partner.email && <div>{partner.email}</div>}
-                        {partner.phone && <div>{partner.phone}</div>}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="font-medium">{partner.equity_percentage}%</span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-green-600 font-medium">
-                        {formatCurrency(partner.total_investments)}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-red-600 font-medium">
-                        {formatCurrency(partner.total_withdrawals)}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className={`font-medium ${partner.current_balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {formatCurrency(partner.current_balance)}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={partner.is_active ? "default" : "secondary"}>
-                        {partner.is_active ? 'Active' : 'Inactive'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex space-x-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => showPartnerDetails(partner)}
+          {/* Partners Table */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Partners Overview</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Partner</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Contact</TableHead>
+                      <TableHead>Equity %</TableHead>
+                      <TableHead>Investments</TableHead>
+                      <TableHead>Withdrawals</TableHead>
+                      <TableHead>Current Balance</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredPartners.map((partner) => (
+                      <React.Fragment key={partner.id}>
+                        <TableRow 
+                          className="cursor-pointer hover:bg-gray-50"
+                          onClick={() => togglePartnerExpansion(partner.id)}
                         >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleEditPartner(partner)}
-                        >
-                          <Edit3 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setSelectedPartner(partner);
-                            setDeleteDialogOpen(true);
-                          }}
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          
-          {filteredPartners.length === 0 && (
-            <div className="text-center py-8">
-              <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">No partners found matching your criteria</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <div>
+                                <div className="font-medium">{partner.name}</div>
+                                <div className="text-sm text-gray-500">
+                                  ID: {partner.id}
+                                </div>
+                              </div>
+                              {expandedPartner === partner.id ? (
+                                <ChevronUp className="h-4 w-4 text-gray-400 transition-transform duration-200" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4 text-gray-400 transition-transform duration-200" />
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {partner.partner_type}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              {partner.email && <div>{partner.email}</div>}
+                              {partner.phone && <div>{partner.phone}</div>}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-medium">{partner.equity_percentage}%</span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-green-600 font-medium">
+                              {formatCurrency(partner.total_investments)}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-red-600 font-medium">
+                              {formatCurrency(partner.total_withdrawals)}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className={`font-medium ${partner.current_balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {formatCurrency(partner.current_balance)}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={partner.is_active ? "default" : "secondary"}>
+                              {partner.is_active ? 'Active' : 'Inactive'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex space-x-2" onClick={(e) => e.stopPropagation()}>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleEditPartner(partner)}
+                              >
+                                <Edit3 className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedPartner(partner);
+                                  setDeleteDialogOpen(true);
+                                }}
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                        
+                        {/* Expandable Details Row */}
+                        {expandedPartner === partner.id && (
+                          <TableRow>
+                            <TableCell colSpan={9} className="p-0">
+                              <div className="bg-gray-50 border-t border-gray-200 animate-in slide-in-from-top-2 duration-300">
+                                <div className="p-6 space-y-6">
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {/* Partner Information */}
+                                    <Card>
+                                      <CardHeader>
+                                        <CardTitle className="text-lg">Partner Information</CardTitle>
+                                      </CardHeader>
+                                      <CardContent className="space-y-3">
+                                        <div><strong>Name:</strong> {partner.name}</div>
+                                        <div><strong>Type:</strong> {partner.partner_type}</div>
+                                        <div><strong>Email:</strong> {partner.email || 'N/A'}</div>
+                                        <div><strong>Phone:</strong> {partner.phone || 'N/A'}</div>
+                                        <div><strong>Equity:</strong> {partner.equity_percentage}%</div>
+                                        <div><strong>Status:</strong> 
+                                          <Badge className="ml-2" variant={partner.is_active ? "default" : "secondary"}>
+                                            {partner.is_active ? 'Active' : 'Inactive'}
+                                          </Badge>
+                                        </div>
+                                        <div><strong>Member Since:</strong> {formatDate(partner.created_at)}</div>
+                                      </CardContent>
+                                    </Card>
+                                    
+                                    {/* Financial Summary */}
+                                    <Card>
+                                      <CardHeader>
+                                        <CardTitle className="text-lg">Financial Summary</CardTitle>
+                                      </CardHeader>
+                                      <CardContent className="space-y-3">
+                                        <div className="flex justify-between">
+                                          <span>Total Investments:</span>
+                                          <span className="text-green-600 font-medium">
+                                            {formatCurrency(partner.total_investments)}
+                                          </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span>Total Withdrawals:</span>
+                                          <span className="text-red-600 font-medium">
+                                            {formatCurrency(partner.total_withdrawals)}
+                                          </span>
+                                        </div>
+                                        <div className="flex justify-between border-t pt-2">
+                                          <span className="font-medium">Current Balance:</span>
+                                          <span className={`font-bold ${partner.current_balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                            {formatCurrency(partner.current_balance)}
+                                          </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span>Total Transactions:</span>
+                                          <span className="font-medium">{partner.transaction_count}</span>
+                                        </div>
+                                      </CardContent>
+                                    </Card>
+                                  </div>
+                                  
+                                  {/* Transaction History */}
+                                  <Card>
+                                    <CardHeader>
+                                      <CardTitle>Transaction History</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                      <div className="overflow-x-auto">
+                                        <Table>
+                                          <TableHeader>
+                                            <TableRow>
+                                              <TableHead>Date</TableHead>
+                                              <TableHead>Type</TableHead>
+                                              <TableHead>Amount</TableHead>
+                                              <TableHead>Method</TableHead>
+                                              <TableHead>Description</TableHead>
+                                              <TableHead>Reference</TableHead>
+                                            </TableRow>
+                                          </TableHeader>
+                                          <TableBody>
+                                            {getPartnerTransactions(partner.id).map((transaction, index) => (
+                                              <TableRow key={`${transaction.type}-${transaction.id}-${index}`}>
+                                                <TableCell>{formatDate(transaction.date)}</TableCell>
+                                                <TableCell>
+                                                  <Badge variant={transaction.type === 'investment' ? "default" : "destructive"}>
+                                                    {transaction.type === 'investment' ? (
+                                                      <TrendingUp className="h-3 w-3 mr-1" />
+                                                    ) : (
+                                                      <TrendingDown className="h-3 w-3 mr-1" />
+                                                    )}
+                                                    {transaction.type}
+                                                  </Badge>
+                                                </TableCell>
+                                                <TableCell>
+                                                  <span className={transaction.type === 'investment' ? 'text-green-600' : 'text-red-600'}>
+                                                    {transaction.type === 'investment' ? '+' : '-'}{formatCurrency(transaction.amount)}
+                                                  </span>
+                                                </TableCell>
+                                                <TableCell>{transaction.payment_method}</TableCell>
+                                                <TableCell>{transaction.description}</TableCell>
+                                                <TableCell>{transaction.reference_number || 'N/A'}</TableCell>
+                                              </TableRow>
+                                            ))}
+                                          </TableBody>
+                                        </Table>
+                                      </div>
+                                    </CardContent>
+                                  </Card>
 
-      {/* Loans Overview */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Building2 className="h-5 w-5" />
-            Loans Overview
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Loan Name</TableHead>
-                  <TableHead>Bank/Lender</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Original Amount</TableHead>
-                  <TableHead>Current Balance</TableHead>
-                  <TableHead>Interest Rate</TableHead>
-                  <TableHead>EMI Amount</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loans.length > 0 ? loans.map((loan) => (
-                  <TableRow key={loan.id}>
-                    <TableCell className="font-medium">{loan.loan_name}</TableCell>
-                    <TableCell>{loan.bank_name || 'N/A'}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">
-                        {loan.loan_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{formatCurrency(loan.original_loan_amount)}</TableCell>
-                    <TableCell className="font-semibold text-red-600">
-                      {formatCurrency(loan.current_balance)}
-                    </TableCell>
-                    <TableCell>
-                      {loan.interest_rate ? `${loan.interest_rate}%` : 'N/A'}
-                    </TableCell>
-                    <TableCell>
-                      {loan.emi_amount ? formatCurrency(loan.emi_amount) : 'N/A'}
-                    </TableCell>
-                    <TableCell>
-                      <Badge 
-                        variant={loan.status === 'active' ? 'default' : 'secondary'}
-                        className={loan.status === 'active' ? 'bg-green-100 text-green-800' : ''}
-                      >
-                        {loan.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Button size="sm" variant="outline" className="h-8 w-8 p-0">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )) : (
-                  <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8">
-                      <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <p className="text-gray-500">No loans found</p>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+                                  {/* Notes if available */}
+                                  {partner.notes && (
+                                    <Card>
+                                      <CardHeader>
+                                        <CardTitle className="text-lg">Notes</CardTitle>
+                                      </CardHeader>
+                                      <CardContent>
+                                        <p className="text-gray-700">{partner.notes}</p>
+                                      </CardContent>
+                                    </Card>
+                                  )}
+                                </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              
+              {filteredPartners.length === 0 && (
+                <div className="text-center py-8">
+                  <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-500">No partners found matching your criteria</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-      {/* Liability Payments Overview */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CreditCard className="h-5 w-5" />
-            Liability Payments Overview
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Principal Amount</TableHead>
-                  <TableHead>Interest Amount</TableHead>
-                  <TableHead>Total Amount</TableHead>
-                  <TableHead>Payment Method</TableHead>
-                  <TableHead>Bank Account</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {liabilityPayments.length > 0 ? liabilityPayments.map((payment) => (
-                  <TableRow key={payment.id}>
-                    <TableCell>{formatDate(payment.date)}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">
-                        {payment.liability_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-semibold text-blue-600">
-                      {formatCurrency(payment.principal_amount)}
-                    </TableCell>
-                    <TableCell className="font-semibold text-orange-600">
-                      {formatCurrency(payment.interest_amount)}
-                    </TableCell>
-                    <TableCell className="font-semibold text-red-600">
-                      {formatCurrency(payment.total_amount)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{payment.payment_method}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      {payment.bank_accounts?.name || 'N/A'}
-                    </TableCell>
-                    <TableCell className="max-w-xs truncate" title={payment.description}>
-                      {payment.description}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Button size="sm" variant="outline" className="h-8 w-8 p-0">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )) : (
-                  <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8">
-                      <CreditCard className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <p className="text-gray-500">No liability payments found</p>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+        <TabsContent value="loans" className="space-y-4">
+          {/* Loans Table */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="h-5 w-5" />
+                Loans Overview
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Loan Name</TableHead>
+                      <TableHead>Bank/Lender</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Original Amount</TableHead>
+                      <TableHead>Current Balance</TableHead>
+                      <TableHead>Interest Rate</TableHead>
+                      <TableHead>EMI Amount</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {loans.length > 0 ? loans.map((loan) => (
+                      <React.Fragment key={loan.id}>
+                        <TableRow 
+                          className="cursor-pointer hover:bg-gray-50"
+                          onClick={() => toggleLoanExpansion(loan.id)}
+                        >
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">{loan.loan_name}</span>
+                              {expandedLoan === loan.id ? (
+                                <ChevronUp className="h-4 w-4 text-gray-400 transition-transform duration-200" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4 text-gray-400 transition-transform duration-200" />
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>{loan.bank_name || 'N/A'}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {loan.loan_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{formatCurrency(loan.original_loan_amount)}</TableCell>
+                          <TableCell className="font-semibold text-red-600">
+                            {formatCurrency(loan.current_balance)}
+                          </TableCell>
+                          <TableCell>
+                            {loan.interest_rate ? `${loan.interest_rate}%` : 'N/A'}
+                          </TableCell>
+                          <TableCell>
+                            {loan.emi_amount ? formatCurrency(loan.emi_amount) : 'N/A'}
+                          </TableCell>
+                          <TableCell>
+                            <Badge 
+                              variant={loan.status === 'active' ? 'default' : 'secondary'}
+                              className={loan.status === 'active' ? 'bg-green-100 text-green-800' : ''}
+                            >
+                              {loan.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                              {/* Action buttons can be added here if needed */}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+
+                        {/* Expandable Loan Details Row */}
+                        {expandedLoan === loan.id && (
+                          <TableRow>
+                            <TableCell colSpan={9} className="p-0">
+                              <div className="bg-gray-50 border-t border-gray-200 animate-in slide-in-from-top-2 duration-300">
+                                <div className="p-6 space-y-6">
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {/* Loan Information */}
+                                    <Card>
+                                      <CardHeader>
+                                        <CardTitle className="text-lg">Loan Information</CardTitle>
+                                      </CardHeader>
+                                      <CardContent className="space-y-3">
+                                        <div><strong>Loan Name:</strong> {loan.loan_name}</div>
+                                        <div><strong>Bank/Lender:</strong> {loan.bank_name || 'N/A'}</div>
+                                        <div><strong>Type:</strong> {loan.loan_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</div>
+                                        <div><strong>Loan Number:</strong> {loan.loan_number || 'N/A'}</div>
+                                        <div><strong>Account Code:</strong> {loan.loan_account_code}</div>
+                                        <div><strong>Status:</strong> 
+                                          <Badge className="ml-2" variant={loan.status === 'active' ? "default" : "secondary"}>
+                                            {loan.status}
+                                          </Badge>
+                                        </div>
+                                        {loan.loan_start_date && (
+                                          <div><strong>Start Date:</strong> {formatDate(loan.loan_start_date)}</div>
+                                        )}
+                                        {loan.loan_end_date && (
+                                          <div><strong>End Date:</strong> {formatDate(loan.loan_end_date)}</div>
+                                        )}
+                                      </CardContent>
+                                    </Card>
+                                    
+                                    {/* Financial Details */}
+                                    <Card>
+                                      <CardHeader>
+                                        <CardTitle className="text-lg">Financial Details</CardTitle>
+                                      </CardHeader>
+                                      <CardContent className="space-y-3">
+                                        <div className="flex justify-between">
+                                          <span>Original Amount:</span>
+                                          <span className="font-medium">
+                                            {formatCurrency(loan.original_loan_amount)}
+                                          </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span>Opening Balance:</span>
+                                          <span className="font-medium">
+                                            {formatCurrency(loan.opening_balance)}
+                                          </span>
+                                        </div>
+                                        <div className="flex justify-between border-t pt-2">
+                                          <span className="font-medium">Current Balance:</span>
+                                          <span className="font-bold text-red-600">
+                                            {formatCurrency(loan.current_balance)}
+                                          </span>
+                                        </div>
+                                        {loan.interest_rate && (
+                                          <div className="flex justify-between">
+                                            <span>Interest Rate:</span>
+                                            <span className="font-medium">{loan.interest_rate}%</span>
+                                          </div>
+                                        )}
+                                        {loan.emi_amount && (
+                                          <div className="flex justify-between">
+                                            <span>EMI Amount:</span>
+                                            <span className="font-medium text-blue-600">
+                                              {formatCurrency(loan.emi_amount)}
+                                            </span>
+                                          </div>
+                                        )}
+                                        {loan.loan_tenure_months && (
+                                          <div className="flex justify-between">
+                                            <span>Tenure:</span>
+                                            <span className="font-medium">{loan.loan_tenure_months} months</span>
+                                          </div>
+                                        )}
+                                      </CardContent>
+                                    </Card>
+                                  </div>
+
+                                  {/* Description if available */}
+                                  {loan.description && (
+                                    <Card>
+                                      <CardHeader>
+                                        <CardTitle className="text-lg">Description</CardTitle>
+                                      </CardHeader>
+                                      <CardContent>
+                                        <p className="text-gray-700">{loan.description}</p>
+                                      </CardContent>
+                                    </Card>
+                                  )}
+
+                                  {/* Liability Payments for this loan */}
+                                  <Card>
+                                    <CardHeader>
+                                      <CardTitle>Liability Payments for this Loan</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                      <div className="overflow-x-auto">
+                                        <Table>
+                                          <TableHeader>
+                                            <TableRow>
+                                              <TableHead>Date</TableHead>
+                                              <TableHead>Principal</TableHead>
+                                              <TableHead>Interest</TableHead>
+                                              <TableHead>Total Amount</TableHead>
+                                              <TableHead>Method</TableHead>
+                                              <TableHead>Bank Account</TableHead>
+                                              <TableHead>Description</TableHead>
+                                            </TableRow>
+                                          </TableHeader>
+                                          <TableBody>
+                                            {getLoanLiabilityPayments(loan.id).length > 0 ? getLoanLiabilityPayments(loan.id).map((payment) => (
+                                              <TableRow key={payment.id}>
+                                                <TableCell>{formatDate(payment.date)}</TableCell>
+                                                <TableCell className="font-semibold text-blue-600">
+                                                  {formatCurrency(payment.principal_amount)}
+                                                </TableCell>
+                                                <TableCell className="font-semibold text-orange-600">
+                                                  {formatCurrency(payment.interest_amount)}
+                                                </TableCell>
+                                                <TableCell className="font-semibold text-red-600">
+                                                  {formatCurrency(payment.total_amount)}
+                                                </TableCell>
+                                                <TableCell>
+                                                  <Badge variant="secondary">{payment.payment_method}</Badge>
+                                                </TableCell>
+                                                <TableCell>
+                                                  {payment.bank_accounts?.name || 'N/A'}
+                                                </TableCell>
+                                                <TableCell className="max-w-xs truncate" title={payment.description}>
+                                                  {payment.description}
+                                                </TableCell>
+                                              </TableRow>
+                                            )) : (
+                                              <TableRow>
+                                                <TableCell colSpan={7} className="text-center py-8">
+                                                  <CreditCard className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                                                  <p className="text-gray-500">No liability payments found for this loan</p>
+                                                </TableCell>
+                                              </TableRow>
+                                            )}
+                                          </TableBody>
+                                        </Table>
+                                      </div>
+                                    </CardContent>
+                                  </Card>
+                                </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </React.Fragment>
+                    )) : (
+                      <TableRow>
+                        <TableCell colSpan={9} className="text-center py-8">
+                          <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                          <p className="text-gray-500">No loans found</p>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="liability-payments" className="space-y-4">
+          {/* Liability Payments Table */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CreditCard className="h-5 w-5" />
+                Liability Payments Overview
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Principal Amount</TableHead>
+                      <TableHead>Interest Amount</TableHead>
+                      <TableHead>Total Amount</TableHead>
+                      <TableHead>Payment Method</TableHead>
+                      <TableHead>Bank Account</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {liabilityPayments.length > 0 ? liabilityPayments.map((payment) => (
+                      <TableRow key={payment.id}>
+                        <TableCell>{formatDate(payment.date)}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">
+                            {payment.liability_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-semibold text-blue-600">
+                          {formatCurrency(payment.principal_amount)}
+                        </TableCell>
+                        <TableCell className="font-semibold text-orange-600">
+                          {formatCurrency(payment.interest_amount)}
+                        </TableCell>
+                        <TableCell className="font-semibold text-red-600">
+                          {formatCurrency(payment.total_amount)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">{payment.payment_method}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          {payment.bank_accounts?.name || 'N/A'}
+                        </TableCell>
+                        <TableCell className="max-w-xs truncate" title={payment.description}>
+                          {payment.description}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Button size="sm" variant="outline" className="h-8 w-8 p-0">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )) : (
+                      <TableRow>
+                        <TableCell colSpan={9} className="text-center py-8">
+                          <CreditCard className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                          <p className="text-gray-500">No liability payments found</p>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Edit Partner Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
@@ -878,263 +1203,6 @@ export function PartnerManagement() {
               )}
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Partner Details Dialog */}
-      <Dialog open={detailsDialogOpen} onOpenChange={setDetailsDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Partner Details</DialogTitle>
-          </DialogHeader>
-          
-          {selectedPartner && (
-            <Tabs defaultValue="overview" className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="transactions">Transactions</TabsTrigger>
-                <TabsTrigger value="loans">Loans</TabsTrigger>
-                <TabsTrigger value="liability-payments">Liability Payments</TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="overview" className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Partner Information</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      <div><strong>Name:</strong> {selectedPartner.name}</div>
-                      <div><strong>Type:</strong> {selectedPartner.partner_type}</div>
-                      <div><strong>Email:</strong> {selectedPartner.email || 'N/A'}</div>
-                      <div><strong>Phone:</strong> {selectedPartner.phone || 'N/A'}</div>
-                      <div><strong>Equity:</strong> {selectedPartner.equity_percentage}%</div>
-                      <div><strong>Status:</strong> 
-                        <Badge className="ml-2" variant={selectedPartner.is_active ? "default" : "secondary"}>
-                          {selectedPartner.is_active ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </div>
-                      <div><strong>Member Since:</strong> {formatDate(selectedPartner.created_at)}</div>
-                    </CardContent>
-                  </Card>
-                  
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Financial Summary</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      <div className="flex justify-between">
-                        <span>Total Investments:</span>
-                        <span className="text-green-600 font-medium">
-                          {formatCurrency(selectedPartner.total_investments)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Total Withdrawals:</span>
-                        <span className="text-red-600 font-medium">
-                          {formatCurrency(selectedPartner.total_withdrawals)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between border-t pt-2">
-                        <span className="font-medium">Current Balance:</span>
-                        <span className={`font-bold ${selectedPartner.current_balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {formatCurrency(selectedPartner.current_balance)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Total Transactions:</span>
-                        <span className="font-medium">{selectedPartner.transaction_count}</span>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-                
-                {selectedPartner.notes && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Notes</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-gray-700">{selectedPartner.notes}</p>
-                    </CardContent>
-                  </Card>
-                )}
-              </TabsContent>
-              
-              <TabsContent value="transactions">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Transaction History</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Date</TableHead>
-                            <TableHead>Type</TableHead>
-                            <TableHead>Amount</TableHead>
-                            <TableHead>Method</TableHead>
-                            <TableHead>Description</TableHead>
-                            <TableHead>Reference</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {getPartnerTransactions(selectedPartner.id).map((transaction, index) => (
-                            <TableRow key={`${transaction.type}-${transaction.id}-${index}`}>
-                              <TableCell>{formatDate(transaction.date)}</TableCell>
-                              <TableCell>
-                                <Badge variant={transaction.type === 'investment' ? "default" : "destructive"}>
-                                  {transaction.type === 'investment' ? (
-                                    <TrendingUp className="h-3 w-3 mr-1" />
-                                  ) : (
-                                    <TrendingDown className="h-3 w-3 mr-1" />
-                                  )}
-                                  {transaction.type}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                <span className={transaction.type === 'investment' ? 'text-green-600' : 'text-red-600'}>
-                                  {transaction.type === 'investment' ? '+' : '-'}{formatCurrency(transaction.amount)}
-                                </span>
-                              </TableCell>
-                              <TableCell>{transaction.payment_method}</TableCell>
-                              <TableCell>{transaction.description}</TableCell>
-                              <TableCell>{transaction.reference_number || 'N/A'}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-              
-              <TabsContent value="loans">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Loan Information</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Loan Name</TableHead>
-                            <TableHead>Bank/Lender</TableHead>
-                            <TableHead>Type</TableHead>
-                            <TableHead>Original Amount</TableHead>
-                            <TableHead>Current Balance</TableHead>
-                            <TableHead>Interest Rate</TableHead>
-                            <TableHead>EMI</TableHead>
-                            <TableHead>Status</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {loans.length > 0 ? loans.map((loan) => (
-                            <TableRow key={loan.id}>
-                              <TableCell className="font-medium">{loan.loan_name}</TableCell>
-                              <TableCell>{loan.bank_name || 'N/A'}</TableCell>
-                              <TableCell>
-                                <Badge variant="outline">{loan.loan_type.replace('_', ' ')}</Badge>
-                              </TableCell>
-                              <TableCell>{formatCurrency(loan.original_loan_amount)}</TableCell>
-                              <TableCell className="font-semibold text-red-600">
-                                {formatCurrency(loan.current_balance)}
-                              </TableCell>
-                              <TableCell>
-                                {loan.interest_rate ? `${loan.interest_rate}%` : 'N/A'}
-                              </TableCell>
-                              <TableCell>
-                                {loan.emi_amount ? formatCurrency(loan.emi_amount) : 'N/A'}
-                              </TableCell>
-                              <TableCell>
-                                <Badge 
-                                  variant={loan.status === 'active' ? 'default' : 'secondary'}
-                                >
-                                  {loan.status}
-                                </Badge>
-                              </TableCell>
-                            </TableRow>
-                          )) : (
-                            <TableRow>
-                              <TableCell colSpan={8} className="text-center py-8">
-                                <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                                <p className="text-gray-500">No loans found</p>
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-              
-              <TabsContent value="liability-payments">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Liability Payments</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Date</TableHead>
-                            <TableHead>Type</TableHead>
-                            <TableHead>Principal</TableHead>
-                            <TableHead>Interest</TableHead>
-                            <TableHead>Total Amount</TableHead>
-                            <TableHead>Method</TableHead>
-                            <TableHead>Bank Account</TableHead>
-                            <TableHead>Description</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {liabilityPayments.length > 0 ? liabilityPayments.map((payment) => (
-                            <TableRow key={payment.id}>
-                              <TableCell>{formatDate(payment.date)}</TableCell>
-                              <TableCell>
-                                <Badge variant="outline">
-                                  {payment.liability_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="font-semibold text-blue-600">
-                                {formatCurrency(payment.principal_amount)}
-                              </TableCell>
-                              <TableCell className="font-semibold text-orange-600">
-                                {formatCurrency(payment.interest_amount)}
-                              </TableCell>
-                              <TableCell className="font-semibold text-red-600">
-                                {formatCurrency(payment.total_amount)}
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="secondary">{payment.payment_method}</Badge>
-                              </TableCell>
-                              <TableCell>
-                                {payment.bank_accounts?.name || 'N/A'}
-                              </TableCell>
-                              <TableCell className="max-w-xs truncate" title={payment.description}>
-                                {payment.description}
-                              </TableCell>
-                            </TableRow>
-                          )) : (
-                            <TableRow>
-                              <TableCell colSpan={8} className="text-center py-8">
-                                <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                                <p className="text-gray-500">No liability payments found</p>
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
-          )}
         </DialogContent>
       </Dialog>
     </div>

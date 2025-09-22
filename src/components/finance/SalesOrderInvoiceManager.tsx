@@ -226,6 +226,8 @@ export function SalesOrderInvoiceManager() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(20);
   const [activeTab, setActiveTab] = useState('orders');
+  const [showPagination, setShowPagination] = useState(true); // Toggle between pagination and full list
+  const [cashflowSortOrder, setCashflowSortOrder] = useState<'desc' | 'asc'>('desc'); // desc = newest first, asc = oldest first
   
   // Search states for each tab
   const [ordersSearchQuery, setOrdersSearchQuery] = useState('');
@@ -527,33 +529,61 @@ export function SalesOrderInvoiceManager() {
     });
     
     console.log('🔄 Removed duplicates:', transactions.length - uniqueTransactions.length);
-    
-    // Sort by date with today's entries first, then previous days in descending order
+
+    // Helper function to parse dates properly
+    const parseDate = (dateStr: string): Date => {
+      if (!dateStr) return new Date(0);
+      
+      // Check if it's in DD/MM/YYYY format (common in displays)
+      if (dateStr.includes('/') && !dateStr.includes('T')) {
+        const parts = dateStr.split('/');
+        if (parts.length === 3) {
+          // Convert DD/MM/YYYY to YYYY-MM-DD for proper parsing
+          const day = parts[0].padStart(2, '0');
+          const month = parts[1].padStart(2, '0');
+          const year = parts[2];
+          return new Date(`${year}-${month}-${day}`);
+        }
+      }
+      
+      // Handle ISO format or other standard formats
+      return new Date(dateStr);
+    };
+
+    // Sort by date: Pure chronological sorting
     uniqueTransactions.sort((a, b) => {
-      const aDate = new Date(a.date);
-      const bDate = new Date(b.date);
       const aDateStr = a.date?.split('T')[0] || a.date;
       const bDateStr = b.date?.split('T')[0] || b.date;
       
-      // Compare dates (without time) for grouping by day
-      const aDateOnly = new Date(aDateStr);
-      const bDateOnly = new Date(bDateStr);
+      // Parse dates properly
+      const aDateOnly = parseDate(aDateStr);
+      const bDateOnly = parseDate(bDateStr);
+      const aDate = parseDate(a.date);
+      const bDate = parseDate(b.date);
       
-      // If different dates, sort by date (newest date first)
+      // If different dates, sort by date based on sort order
       if (aDateStr !== bDateStr) {
-        return bDateOnly.getTime() - aDateOnly.getTime();
+        if (cashflowSortOrder === 'desc') {
+          // Newest to oldest (pure date sort)
+          return bDateOnly.getTime() - aDateOnly.getTime();
+        } else {
+          // Oldest to newest (pure date sort)
+          return aDateOnly.getTime() - bDateOnly.getTime();
+        }
       }
       
-      // If same date, sort by time (newest transaction first within the same day)
-      return bDate.getTime() - aDate.getTime();
-    });
-    
-    // Filter by date range
+      // If same date, sort by time based on sort order
+      if (cashflowSortOrder === 'desc') {
+        return bDate.getTime() - aDate.getTime(); // newest first within same day
+      } else {
+        return aDate.getTime() - bDate.getTime(); // oldest first within same day
+      }
+    });    // Filter by date range
     let filteredTransactions = uniqueTransactions;
     
     // Only apply date filtering if we have valid dates and not showing all
     if (cashflowDateRange.from && cashflowDateRange.to && cashflowDateRange.from !== 'all' && cashflowDateRange.to !== 'all') {
-      filteredTransactions = transactions.filter(transaction => {
+      filteredTransactions = uniqueTransactions.filter(transaction => {
         if (!transaction.date) {
           console.log('⚠️ Transaction missing date:', transaction);
           return false;
@@ -597,7 +627,7 @@ export function SalesOrderInvoiceManager() {
     setCashflowTransactions(filteredTransactions);
     console.log('✅ Built cashflow transactions after date filtering:', filteredTransactions.length);
     console.log('📊 Sample filtered transaction:', filteredTransactions[0]);
-  }, [payments, expenses, cashflowDateRange]);
+  }, [payments, expenses, cashflowDateRange, cashflowSortOrder]);
 
   const fetchCashflowData = useCallback(async () => {
     try {
@@ -3310,9 +3340,36 @@ export function SalesOrderInvoiceManager() {
                       className="pl-10"
                     />
                   </div>
+                  <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    Sorted: {cashflowSortOrder === 'desc' ? 'Newest to oldest by date' : 'Oldest to newest by date'}
+                  </div>
                 </div>
                 
                 <div className="flex gap-2">
+                  {/* Date Sort Toggle */}
+                  <Button 
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCashflowSortOrder(cashflowSortOrder === 'desc' ? 'asc' : 'desc')}
+                    className="whitespace-nowrap"
+                    title={`Sort ${cashflowSortOrder === 'desc' ? 'oldest first' : 'newest first'}`}
+                  >
+                    {cashflowSortOrder === 'desc' ? '↓ Newest' : '↑ Oldest'}
+                  </Button>
+                  {/* Pagination Toggle */}
+                  <Button 
+                    variant={showPagination ? "default" : "outline"}
+                    onClick={() => {
+                      setShowPagination(!showPagination);
+                      setCurrentPage(1); // Reset to first page when toggling
+                    }}
+                    className="whitespace-nowrap"
+                    title={showPagination ? "Switch to full list view" : "Switch to paginated view"}
+                  >
+                    {showPagination ? "Show All" : "Paginate"}
+                  </Button>
+                  
                   {/* Show All Button */}
                   <Button 
                     variant="outline" 
@@ -3325,7 +3382,7 @@ export function SalesOrderInvoiceManager() {
                     }}
                     className="whitespace-nowrap"
                   >
-                    Show All
+                    All Dates
                   </Button>
                   
                   {/* Date Range Filters */}
@@ -3377,7 +3434,12 @@ export function SalesOrderInvoiceManager() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Date</TableHead>
+                      <TableHead className="flex items-center gap-1">
+                        Date 
+                        <span className="text-xs text-gray-500">
+                          {cashflowSortOrder === 'desc' ? '↓' : '↑'}
+                        </span>
+                      </TableHead>
                       <TableHead>Description</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Category</TableHead>
@@ -3389,9 +3451,11 @@ export function SalesOrderInvoiceManager() {
                   <TableBody>
                     {(() => {
                       const filteredTransactions = filterCashflowTransactions(cashflowTransactions, cashflowSearchQuery, cashflowTypeFilter, cashflowCategoryFilter);
-                      const paginatedTransactions = getPaginatedData(filteredTransactions, currentPage, itemsPerPage);
+                      const displayTransactions = showPagination 
+                        ? getPaginatedData(filteredTransactions, currentPage, itemsPerPage)
+                        : filteredTransactions;
                       
-                      if (paginatedTransactions.length === 0) {
+                      if (displayTransactions.length === 0) {
                         return (
                           <TableRow>
                             <TableCell colSpan={7} className="text-center py-8 text-gray-500">
@@ -3401,7 +3465,7 @@ export function SalesOrderInvoiceManager() {
                         );
                       }
 
-                      return paginatedTransactions.map((transaction) => (
+                      return displayTransactions.map((transaction) => (
                         <TableRow key={transaction.id} className="hover:bg-gray-50">
                           <TableCell>{formatDate(transaction.date)}</TableCell>
                           <TableCell className="max-w-xs">
@@ -3456,8 +3520,20 @@ export function SalesOrderInvoiceManager() {
                 </Table>
               </div>
               
-              {/* Pagination */}
-              <PaginationComponent />
+              {/* Conditional Pagination */}
+              {showPagination && <PaginationComponent />}
+              
+              {/* Full List Info */}
+              {!showPagination && (
+                <div className="flex justify-center py-4">
+                  <div className="text-sm text-gray-600 bg-gray-50 px-4 py-2 rounded-lg">
+                    Showing all {(() => {
+                      const filteredTransactions = filterCashflowTransactions(cashflowTransactions, cashflowSearchQuery, cashflowTypeFilter, cashflowCategoryFilter);
+                      return filteredTransactions.length;
+                    })()} transactions
+                  </div>
+                </div>
+              )}
             </TabsContent>
           </div>
         </Tabs>

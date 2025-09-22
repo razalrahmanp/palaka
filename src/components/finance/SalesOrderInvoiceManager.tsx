@@ -30,7 +30,8 @@ import {
   Trash2,
   TrendingUp,
   TrendingDown,
-  Building2
+  Building2,
+  Loader2
 } from 'lucide-react';
 import { SalesOrder, Invoice, subcategoryMap } from '@/types';
 import { PaymentTrackingDialog } from './PaymentTrackingDialog';
@@ -206,10 +207,12 @@ export function SalesOrderInvoiceManager() {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [paymentTrackingOpen, setPaymentTrackingOpen] = useState(false);
   const [createExpenseOpen, setCreateExpenseOpen] = useState(false);
+  const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
   const [createInvestmentOpen, setCreateInvestmentOpen] = useState(false);
   const [createWithdrawalOpen, setCreateWithdrawalOpen] = useState(false);
   const [withdrawalLoading, setWithdrawalLoading] = useState(false);
   const [createLiabilityOpen, setCreateLiabilityOpen] = useState(false);
+  const [liabilityLoading, setLiabilityLoading] = useState(false);
   const [loanSetupOpen, setLoanSetupOpen] = useState(false);
   const [showAddInvestorModal, setShowAddInvestorModal] = useState(false);
   
@@ -262,6 +265,16 @@ export function SalesOrderInvoiceManager() {
     entity_type: '', // 'truck', 'employee', 'supplier'
     vendor_bill_id: '', // New field for vendor bill selection
     payroll_record_id: '', // New field for payroll record selection
+  });
+
+  const [invoiceForm, setInvoiceForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    customer_name: '',
+    customer_phone: '',
+    customer_email: '',
+    amount: '',
+    description: '',
+    notes: '',
   });
 
   const [liabilityForm, setLiabilityForm] = useState({
@@ -515,23 +528,23 @@ export function SalesOrderInvoiceManager() {
     
     console.log('🔄 Removed duplicates:', transactions.length - uniqueTransactions.length);
     
-    // Sort by date with today's entries first
-    const today = new Date().toISOString().split('T')[0]; // Get today's date in YYYY-MM-DD format
-    
+    // Sort by date with today's entries first, then previous days in descending order
     uniqueTransactions.sort((a, b) => {
       const aDate = new Date(a.date);
       const bDate = new Date(b.date);
       const aDateStr = a.date?.split('T')[0] || a.date;
       const bDateStr = b.date?.split('T')[0] || b.date;
       
-      // First priority: Today's transactions come first
-      const aIsToday = aDateStr === today;
-      const bIsToday = bDateStr === today;
+      // Compare dates (without time) for grouping by day
+      const aDateOnly = new Date(aDateStr);
+      const bDateOnly = new Date(bDateStr);
       
-      if (aIsToday && !bIsToday) return -1; // a comes first
-      if (!aIsToday && bIsToday) return 1;  // b comes first
+      // If different dates, sort by date (newest date first)
+      if (aDateStr !== bDateStr) {
+        return bDateOnly.getTime() - aDateOnly.getTime();
+      }
       
-      // If both are today or both are not today, sort by time (newest first)
+      // If same date, sort by time (newest transaction first within the same day)
       return bDate.getTime() - aDate.getTime();
     });
     
@@ -1446,6 +1459,63 @@ export function SalesOrderInvoiceManager() {
     }
   };
 
+  const handleCreateInvoice = async () => {
+    // Validation
+    if (!invoiceForm.customer_name.trim()) {
+      alert('Please enter a customer name');
+      return;
+    }
+
+    if (!invoiceForm.amount || parseFloat(invoiceForm.amount) <= 0) {
+      alert('Please enter a valid amount greater than 0');
+      return;
+    }
+
+    if (!invoiceForm.description.trim()) {
+      alert('Please enter a description for the invoice');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/finance/standalone-invoices', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          customer_name: invoiceForm.customer_name,
+          customer_phone: invoiceForm.customer_phone || null,
+          customer_email: invoiceForm.customer_email || null,
+          amount: parseFloat(invoiceForm.amount),
+          description: invoiceForm.description,
+          notes: invoiceForm.notes || null,
+          date: invoiceForm.date
+        }),
+      });
+
+      if (response.ok) {
+        setCreateInvoiceOpen(false);
+        setInvoiceForm({
+          date: new Date().toISOString().split('T')[0],
+          customer_name: '',
+          customer_phone: '',
+          customer_email: '',
+          amount: '',
+          description: '',
+          notes: '',
+        });
+        fetchData(); // Refresh data
+        alert('Invoice created successfully with automatic journal entry!');
+      } else {
+        const error = await response.json();
+        alert(`Failed to create invoice: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error creating invoice:', error);
+      alert('Error creating invoice. Please try again.');
+    }
+  };
+
   const handleDeleteExpense = (expense: Expense) => {
     setSelectedExpenseForDelete(expense);
     setDeleteExpenseOpen(true);
@@ -1753,9 +1823,22 @@ export function SalesOrderInvoiceManager() {
       return;
     }
 
+    setLiabilityLoading(true);
+
     try {
-      // Extract loan_id from the selected loan_account (format: "id-accountCode")
-      const loan_id = liabilityForm.loan_account ? liabilityForm.loan_account.split('-')[0] : null;
+      // The loan_account is the direct loan ID (UUID), no need to split
+      const loan_id = liabilityForm.loan_account || null;
+      
+      console.log('💳 Creating liability payment:', {
+        date: liabilityForm.date,
+        liability_type: liabilityForm.liability_type,
+        loan_id: loan_id,
+        principal_amount: principalAmount,
+        interest_amount: interestAmount,
+        total_amount: totalAmount,
+        description: liabilityForm.description,
+        payment_method: liabilityForm.payment_method
+      });
       
       const response = await fetch('/api/finance/liability-payments', {
         method: 'POST',
@@ -1798,7 +1881,7 @@ export function SalesOrderInvoiceManager() {
         });
         
         fetchData(); // Refresh data
-        alert('Liability payment recorded successfully!');
+        alert('✅ Liability payment recorded successfully! Journal entries have been created automatically.');
         console.log('Liability payment result:', result);
       } else {
         const error = await response.json();
@@ -1807,6 +1890,8 @@ export function SalesOrderInvoiceManager() {
     } catch (error) {
       console.error('Error recording liability payment:', error);
       alert('Error recording liability payment. Please try again.');
+    } finally {
+      setLiabilityLoading(false);
     }
   };
 
@@ -2551,6 +2636,15 @@ export function SalesOrderInvoiceManager() {
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-900">Invoice Management</h3>
                 <div className="flex gap-2">
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => setCreateInvoiceOpen(true)}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    New Invoice
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
@@ -3703,6 +3797,170 @@ export function SalesOrderInvoiceManager() {
         </DialogContent>
       </Dialog>
 
+      {/* Create Invoice Dialog */}
+      <Dialog open={createInvoiceOpen} onOpenChange={setCreateInvoiceOpen}>
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto mx-auto">
+          <DialogHeader className="pb-6">
+            <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+              <FileText className="h-5 w-5 text-blue-600" />
+              Create New Invoice
+            </DialogTitle>
+            <p className="text-sm text-gray-600 mt-1">
+              Create a standalone invoice for tracking old sales orders and receivables
+            </p>
+          </DialogHeader>
+          
+          <div className="space-y-6 py-4">
+            {/* Customer Information */}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="font-medium text-gray-900 mb-4 flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Customer Information
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="customer_name" className="text-sm font-medium">
+                    Customer Name *
+                  </Label>
+                  <Input
+                    id="customer_name"
+                    placeholder="Enter customer name"
+                    value={invoiceForm.customer_name}
+                    onChange={(e) => setInvoiceForm({ ...invoiceForm, customer_name: e.target.value })}
+                    className="w-full"
+                    list="existing-customers"
+                  />
+                  <datalist id="existing-customers">
+                    {Array.from(new Set(salesOrders
+                      .map(order => order.customer?.name)
+                      .filter(name => name && name.trim() !== '')
+                    )).map((customerName, index) => (
+                      <option key={index} value={customerName} />
+                    ))}
+                  </datalist>
+                  <p className="text-xs text-gray-500">
+                    Start typing to see existing customers or enter a new one
+                  </p>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="customer_phone" className="text-sm font-medium">
+                    Phone Number
+                  </Label>
+                  <Input
+                    id="customer_phone"
+                    placeholder="Enter phone number"
+                    value={invoiceForm.customer_phone}
+                    onChange={(e) => setInvoiceForm({ ...invoiceForm, customer_phone: e.target.value })}
+                    className="w-full"
+                  />
+                </div>
+                
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="customer_email" className="text-sm font-medium">
+                    Email Address
+                  </Label>
+                  <Input
+                    id="customer_email"
+                    type="email"
+                    placeholder="Enter email address"
+                    value={invoiceForm.customer_email}
+                    onChange={(e) => setInvoiceForm({ ...invoiceForm, customer_email: e.target.value })}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Invoice Details */}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="font-medium text-gray-900 mb-4 flex items-center gap-2">
+                <Receipt className="h-4 w-4" />
+                Invoice Details
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="invoice_date" className="text-sm font-medium">
+                    Invoice Date *
+                  </Label>
+                  <Input
+                    id="invoice_date"
+                    type="date"
+                    value={invoiceForm.date}
+                    onChange={(e) => setInvoiceForm({ ...invoiceForm, date: e.target.value })}
+                    className="w-full"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="invoice_amount" className="text-sm font-medium">
+                    Amount (₹) *
+                  </Label>
+                  <Input
+                    id="invoice_amount"
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={invoiceForm.amount}
+                    onChange={(e) => setInvoiceForm({ ...invoiceForm, amount: e.target.value })}
+                    className="w-full text-lg"
+                  />
+                </div>
+                
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="invoice_description" className="text-sm font-medium">
+                    Description *
+                  </Label>
+                  <Input
+                    id="invoice_description"
+                    placeholder="Enter invoice description"
+                    value={invoiceForm.description}
+                    onChange={(e) => setInvoiceForm({ ...invoiceForm, description: e.target.value })}
+                    className="w-full"
+                  />
+                </div>
+                
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="invoice_notes" className="text-sm font-medium">
+                    Notes
+                  </Label>
+                  <Textarea
+                    id="invoice_notes"
+                    placeholder="Additional notes (optional)"
+                    value={invoiceForm.notes}
+                    onChange={(e) => setInvoiceForm({ ...invoiceForm, notes: e.target.value })}
+                    className="w-full min-h-20"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <DialogFooter className="flex flex-col sm:flex-row gap-3 pt-6">
+            <div className="flex flex-col sm:flex-row gap-3 w-full">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => setCreateInvoiceOpen(false)}
+                className="w-full sm:w-auto order-2 sm:order-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="default"
+                type="button" 
+                onClick={handleCreateInvoice}
+                disabled={!invoiceForm.customer_name || !invoiceForm.amount || !invoiceForm.description}
+                className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto order-1 sm:order-2"
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Create Invoice
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Investment Dialog */}
       <Dialog open={createInvestmentOpen} onOpenChange={setCreateInvestmentOpen}>
         <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto mx-auto">
@@ -4609,11 +4867,20 @@ export function SalesOrderInvoiceManager() {
             <Button 
               type="button" 
               onClick={handleCreateLiabilityPayment}
-              disabled={!liabilityForm.description || !liabilityForm.principal_amount || !liabilityForm.loan_account}
+              disabled={!liabilityForm.description || !liabilityForm.principal_amount || !liabilityForm.loan_account || liabilityLoading}
               className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto order-1 sm:order-2"
             >
-              <CreditCard className="h-4 w-4 mr-2" />
-              Record Payment
+              {liabilityLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Recording...
+                </>
+              ) : (
+                <>
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  Record Payment
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

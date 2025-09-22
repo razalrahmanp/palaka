@@ -132,7 +132,8 @@ export async function POST(request: Request) {
       total_amount,
       description,
       payment_method,
-      bank_account_id
+      bank_account_id,
+      created_by
     });
 
     return NextResponse.json({ 
@@ -193,7 +194,8 @@ async function createLiabilityPaymentJournalEntry({
   total_amount,
   description,
   payment_method,
-  bank_account_id
+  bank_account_id,
+  created_by
 }: {
   liabilityPaymentId: string;
   date: string;
@@ -205,6 +207,7 @@ async function createLiabilityPaymentJournalEntry({
   description: string;
   payment_method: string;
   bank_account_id?: string;
+  created_by?: string;
 }) {
   console.log('📝 Creating journal entries for liability payment:', liabilityPaymentId);
 
@@ -250,56 +253,106 @@ async function createLiabilityPaymentJournalEntry({
     }
   }
 
-  const journalEntries = [];
+  // Create the main journal entry header
+  let validCreatedBy = created_by;
+  
+  // If no created_by provided or invalid, try to get a valid user from the system
+  if (!validCreatedBy) {
+    const { data: systemUser } = await supabase
+      .from('users')
+      .select('id')
+      .limit(1)
+      .single();
+    
+    if (systemUser) {
+      validCreatedBy = systemUser.id;
+    } else {
+      // If no users exist, we can't create journal entries
+      throw new Error('No valid user found to create journal entries. Please ensure at least one user exists in the system.');
+    }
+  }
+
+  const { data: journalEntry, error: journalHeaderError } = await supabase
+    .from('journal_entries')
+    .insert({
+      entry_date: date,
+      description: description,
+      reference_number: `LP-${liabilityPaymentId}`,
+      entry_type: 'STANDARD',
+      source_document_type: 'LIABILITY_PAYMENT',
+      source_document_id: liabilityPaymentId,
+      created_by: validCreatedBy,
+      status: 'POSTED',
+      journal_number: `JE-LP-${liabilityPaymentId.substring(0, 8)}`,
+      total_debit: total_amount,
+      total_credit: total_amount
+    })
+    .select('id')
+    .single();
+
+  if (journalHeaderError || !journalEntry) {
+    console.error('❌ Error creating journal entry header:', journalHeaderError);
+    throw new Error(`Failed to create journal entry header: ${journalHeaderError?.message}`);
+  }
+
+  const journalEntryId = journalEntry.id;
+  const journalLines = [];
+
+  // Get account IDs for the journal entry lines
+  const { data: accounts } = await supabase
+    .from('chart_of_accounts')
+    .select('id, account_code')
+    .in('account_code', [liabilityAccountCode, interestExpenseAccount, cashAccountCode]);
+
+  const accountMap = accounts?.reduce((acc: Record<string, string>, account: {id: string, account_code: string}) => {
+    acc[account.account_code] = account.id;
+    return acc;
+  }, {} as Record<string, string>) || {};
+
+  let lineNumber = 1;
 
   // Entry 1: Debit Liability Account (Principal Payment)
   if (principal_amount > 0) {
-    journalEntries.push({
-      account_code: liabilityAccountCode,
+    journalLines.push({
+      journal_entry_id: journalEntryId,
+      line_number: lineNumber++,
+      account_id: accountMap[liabilityAccountCode],
       description: `${description} - Principal Payment`,
       debit_amount: principal_amount,
-      credit_amount: 0,
-      reference: `LP-${liabilityPaymentId}`,
-      transaction_date: date,
-      transaction_type: 'liability_payment',
-      related_id: liabilityPaymentId
+      credit_amount: 0
     });
   }
 
   // Entry 2: Debit Interest Expense (Interest Payment)
   if (interest_amount > 0) {
-    journalEntries.push({
-      account_code: interestExpenseAccount,
+    journalLines.push({
+      journal_entry_id: journalEntryId,
+      line_number: lineNumber++,
+      account_id: accountMap[interestExpenseAccount],
       description: `${description} - Interest Payment`,
       debit_amount: interest_amount,
-      credit_amount: 0,
-      reference: `LP-${liabilityPaymentId}`,
-      transaction_date: date,
-      transaction_type: 'liability_payment',
-      related_id: liabilityPaymentId
+      credit_amount: 0
     });
   }
 
   // Entry 3: Credit Cash/Bank Account (Total Payment)
-  journalEntries.push({
-    account_code: cashAccountCode,
+  journalLines.push({
+    journal_entry_id: journalEntryId,
+    line_number: lineNumber++,
+    account_id: accountMap[cashAccountCode],
     description: `${description} - Payment`,
     debit_amount: 0,
-    credit_amount: total_amount,
-    reference: `LP-${liabilityPaymentId}`,
-    transaction_date: date,
-    transaction_type: 'liability_payment',
-    related_id: liabilityPaymentId
+    credit_amount: total_amount
   });
 
-  // Insert all journal entries
-  const { error: journalError } = await supabase
-    .from('journal_entries')
-    .insert(journalEntries);
+  // Insert all journal entry lines
+  const { error: journalLinesError } = await supabase
+    .from('journal_entry_lines')
+    .insert(journalLines);
 
-  if (journalError) {
-    console.error('❌ Error creating journal entries for liability payment:', journalError);
-    throw new Error(`Failed to create journal entries: ${journalError.message}`);
+  if (journalLinesError) {
+    console.error('❌ Error creating journal entry lines:', journalLinesError);
+    throw new Error(`Failed to create journal entry lines: ${journalLinesError.message}`);
   }
 
   console.log('✅ Journal entries created for liability payment:', liabilityPaymentId);

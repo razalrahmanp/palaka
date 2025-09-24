@@ -257,3 +257,156 @@ export async function DELETE(
     }, { status: 500 });
   }
 }
+
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: paymentId } = await params;
+    const body = await request.json();
+    const { amount, payment_date, description, method, reference, bank_account_id } = body;
+
+    if (!paymentId) {
+      return NextResponse.json({ error: 'Payment ID is required' }, { status: 400 });
+    }
+
+    const newAmount = parseFloat(amount);
+    if (isNaN(newAmount) || newAmount <= 0) {
+      return NextResponse.json({ error: 'Valid amount is required' }, { status: 400 });
+    }
+
+    console.log('🔄 Starting payment update with related records:', paymentId);
+
+    // 1. Get the current payment to calculate difference and related data
+    const { data: currentPayment, error: fetchError } = await supabase
+      .from('payments')
+      .select(`
+        amount,
+        payment_date,
+        bank_account_id,
+        invoice_id,
+        invoices(paid_amount)
+      `)
+      .eq('id', paymentId)
+      .single();
+
+    if (fetchError || !currentPayment) {
+      return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
+    }
+
+    const oldAmount = currentPayment.amount;
+    const amountDifference = newAmount - oldAmount;
+    
+    console.log('💰 Payment amount change:', { oldAmount, newAmount, difference: amountDifference });
+
+    // 2. Update the payment record
+    const { data: updatedPayment, error: updateError } = await supabase
+      .from('payments')
+      .update({
+        amount: newAmount,
+        payment_date,
+        description,
+        method,
+        reference,
+        bank_account_id,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', paymentId)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('Error updating payment:', updateError);
+      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    // 3. Update invoice paid_amount if amount changed
+    if (currentPayment.invoice_id && amountDifference !== 0) {
+      console.log('📄 Updating invoice paid amount for invoice:', currentPayment.invoice_id);
+      
+      // Get current invoice paid amount separately to avoid TypeScript issues
+      const { data: invoice } = await supabase
+        .from('invoices')
+        .select('paid_amount')
+        .eq('id', currentPayment.invoice_id)
+        .single();
+      
+      const currentPaidAmount = invoice?.paid_amount || 0;
+      const newPaidAmount = Math.max(0, currentPaidAmount + amountDifference);
+      
+      await supabase
+        .from('invoices')
+        .update({ paid_amount: newPaidAmount })
+        .eq('id', currentPayment.invoice_id);
+      
+      console.log('✅ Updated invoice paid amount by', amountDifference);
+    }
+
+    // 4. Update related bank transaction if it exists
+    if (currentPayment.bank_account_id && amountDifference !== 0) {
+      console.log('🏦 Updating bank transaction for bank account:', currentPayment.bank_account_id);
+      
+      // Find the related bank transaction (payments create deposits)
+      const { data: bankTransaction } = await supabase
+        .from('bank_transactions')
+        .select('id, amount')
+        .eq('bank_account_id', currentPayment.bank_account_id)
+        .eq('date', currentPayment.payment_date)
+        .eq('type', 'deposit')
+        .eq('amount', oldAmount)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (bankTransaction) {
+        // Update bank transaction amount
+        await supabase
+          .from('bank_transactions')
+          .update({ 
+            amount: newAmount,
+            date: payment_date,
+            description: `Payment: ${description}` 
+          })
+          .eq('id', bankTransaction.id);
+
+        // Update bank account balance (payments increase balance)
+        const { data: bankAccount, error: bankError } = await supabase
+          .from('bank_accounts')
+          .select('current_balance')
+          .eq('id', currentPayment.bank_account_id)
+          .single();
+
+        if (!bankError && bankAccount) {
+          // Adjust balance by the difference (add additional amount or subtract reduced amount)
+          const newBalance = (bankAccount.current_balance || 0) + amountDifference;
+          await supabase
+            .from('bank_accounts')
+            .update({ current_balance: newBalance })
+            .eq('id', currentPayment.bank_account_id);
+          
+          console.log('✅ Updated bank balance by', amountDifference);
+        }
+      }
+    }
+
+    // 5. Journal entry updates would go here
+    // Note: This requires complex reversal and recreation logic
+    // For now, this is a known limitation that should be addressed in future updates
+    
+    console.log('✅ Payment update completed successfully');
+    console.log('⚠️ Note: Journal entry updates not implemented - manual reconciliation may be needed');
+
+    return NextResponse.json({
+      success: true,
+      data: updatedPayment,
+      message: 'Payment and related records updated successfully'
+    });
+
+  } catch (error) {
+    console.error('Unexpected error in payment update:', error);
+    return NextResponse.json({ 
+      error: 'Internal server error' 
+    }, { status: 500 });
+  }
+}

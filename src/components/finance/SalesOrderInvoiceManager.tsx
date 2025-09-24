@@ -1,6 +1,18 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+
+interface CustomerData {
+  customer_name?: string;
+  customer_phone?: string;
+  customer_email?: string;
+  customer_address?: string;
+  name?: string;
+  phone?: string;
+  mobile?: string;
+  email?: string;
+  address?: string;
+}
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -31,7 +43,8 @@ import {
   TrendingUp,
   TrendingDown,
   Building2,
-  Loader2
+  Loader2,
+  BookOpen
 } from 'lucide-react';
 import { SalesOrder, Invoice, subcategoryMap } from '@/types';
 import { PaymentTrackingDialog } from './PaymentTrackingDialog';
@@ -40,6 +53,7 @@ import { WhatsAppService, WhatsAppBillData } from '@/lib/whatsappService';
 import { WaiveOffDialog } from './WaiveOffDialog';
 import { PaymentDeletionManager } from './PaymentDeletionManager';
 import { getCurrentUser } from '@/lib/auth';
+import OptimizedLedgerManager from './OptimizedLedgerManager';
 
 // Component interfaces and types
 
@@ -278,6 +292,9 @@ export function SalesOrderInvoiceManager() {
     description: '',
     notes: '',
   });
+  const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
+  const [customers, setCustomers] = useState<Array<{name: string; phone?: string; email?: string; address?: string}>>([]);
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
 
   const [liabilityForm, setLiabilityForm] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -344,9 +361,51 @@ export function SalesOrderInvoiceManager() {
   const [vendorBills, setVendorBills] = useState<VendorBill[]>([]);
   const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>([]);
 
+  const fetchCustomers = useCallback(async () => {
+    console.log('🚀 Starting fetchCustomers from customers table...');
+    try {
+      const response = await fetch('/api/crm/customers');
+      console.log('📊 Customers API response:', { 
+        ok: response.ok, 
+        status: response.status,
+        statusText: response.statusText
+      });
+
+      if (response.ok) {
+        const customersData = await response.json();
+        console.log('📦 Customers data structure:', customersData);
+        
+        // Handle different possible response structures
+        const customersList = Array.isArray(customersData) 
+          ? customersData 
+          : (customersData.customers || customersData.data || []);
+        
+        console.log('📋 Processing customers:', customersList.length);
+        
+        const processedCustomers = customersList
+          .filter((customer: CustomerData) => customer.name && customer.name.trim())
+          .map((customer: CustomerData) => ({
+            name: customer.name || '',
+            phone: customer.phone || customer.mobile || '',
+            email: customer.email || '',
+            address: customer.address || ''
+          }))
+          .sort((a: {name: string}, b: {name: string}) => a.name.localeCompare(b.name));
+
+        console.log('🎯 Final customer list:', processedCustomers.length, processedCustomers);
+        setCustomers(processedCustomers);
+      } else {
+        console.error('❌ Customers API failed:', response.status, response.statusText);
+      }
+    } catch (error) {
+      console.error('💥 Error fetching customers:', error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchData();
-  }, []);
+    fetchCustomers();
+  }, [fetchCustomers]);
 
   const buildCashflowFromExistingData = useCallback(async () => {
     console.log('🔧 Building comprehensive cashflow from all data sources...');
@@ -861,6 +920,8 @@ export function SalesOrderInvoiceManager() {
       setLoading(false);
     }
   };
+
+
 
   const getPaymentStatusBadge = (status: string, totalPaid: number = 0, orderTotal: number = 0, waivedAmount: number = 0) => {
     // Determine actual status based on payment amounts and waived amounts
@@ -1489,6 +1550,18 @@ export function SalesOrderInvoiceManager() {
     }
   };
 
+  const handleCustomerSelect = (customer: {name: string; phone?: string; email?: string; address?: string}) => {
+    setInvoiceForm(prev => ({
+      ...prev,
+      customer_name: customer.name,
+      customer_phone: customer.phone || '',
+      customer_email: customer.email || ''
+    }));
+    
+    // Hide the dropdown after selection
+    setShowCustomerDropdown(false);
+  };
+
   const handleCreateInvoice = async () => {
     // Validation
     if (!invoiceForm.customer_name.trim()) {
@@ -1506,6 +1579,7 @@ export function SalesOrderInvoiceManager() {
       return;
     }
 
+    setIsCreatingInvoice(true);
     try {
       const response = await fetch('/api/finance/standalone-invoices', {
         method: 'POST',
@@ -1543,6 +1617,8 @@ export function SalesOrderInvoiceManager() {
     } catch (error) {
       console.error('Error creating invoice:', error);
       alert('Error creating invoice. Please try again.');
+    } finally {
+      setIsCreatingInvoice(false);
     }
   };
 
@@ -2049,21 +2125,21 @@ export function SalesOrderInvoiceManager() {
     <div className="space-y-6">
       {/* Header Section with Navigation Tabs */}
       <div className="bg-white rounded-lg border shadow-sm">
-        <div className="p-6 border-b">
+        <div className="p-4 border-b">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
-                <Receipt className="h-6 w-6 text-blue-600" />
-                Sales Orders & Invoice Management
+              <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <Receipt className="h-5 w-5 text-blue-600" />
+                Sales Orders & Invoices
               </h1>
-              <p className="text-gray-600 mt-1">Manage sales orders, create invoices, and track payments</p>
+              <p className="text-gray-600 text-sm">Manage orders, invoices, and payments</p>
             </div>
           </div>
         </div>
         
         {/* Main Navigation Tabs */}
         <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-          <TabsList className="grid w-full grid-cols-6 h-12 bg-gray-50 rounded-none border-b">
+          <TabsList className="grid w-full grid-cols-7 h-12 bg-gray-50 rounded-none border-b">
             <TabsTrigger 
               value="orders" 
               className="text-sm font-medium h-full data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-blue-500"
@@ -2083,7 +2159,14 @@ export function SalesOrderInvoiceManager() {
               className="text-sm font-medium h-full data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-blue-500"
             >
               <CreditCard className="h-4 w-4 mr-2" />
-              Payments ({payments.length})
+              Receipt ({payments.length})
+            </TabsTrigger>
+            <TabsTrigger 
+              value="expenses"
+              className="text-sm font-medium h-full data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-blue-500"
+            >
+              <Minus className="h-4 w-4 mr-2" />
+              Expenses ({expenses.length})
             </TabsTrigger>
             <TabsTrigger 
               value="cashflow"
@@ -2097,100 +2180,101 @@ export function SalesOrderInvoiceManager() {
               className="text-sm font-medium h-full data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-red-500"
             >
               <Receipt className="h-4 w-4 mr-2" />
-              Payment Manager
+              Cashflow Manager
             </TabsTrigger>
+            
             <TabsTrigger 
-              value="expenses"
-              className="text-sm font-medium h-full data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-blue-500"
+              value="ledgers"
+              className="text-sm font-medium h-full data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-purple-500"
             >
-              <Minus className="h-4 w-4 mr-2" />
-              Expenses ({expenses.length})
+              <BookOpen className="h-4 w-4 mr-2" />
+              Ledgers
             </TabsTrigger>
           </TabsList>
 
           {/* Summary Cards - Contextual based on active tab */}
-          <div className="p-6 bg-gray-50">
+          <div className="bg-gray-50">
             {activeTab === 'orders' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3 mb-4 p-4">
                 <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 shadow-md">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-blue-500 rounded-lg">
-                        <Package className="h-5 w-5 text-white" />
+                  <CardContent className="p-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-blue-500 rounded-lg">
+                        <Package className="h-4 w-4 text-white" />
                       </div>
                       <div>
-                        <p className="text-sm text-blue-600 font-medium">Total Orders Value</p>
-                        <p className="text-xl font-bold text-blue-900">{formatCurrency(totalOrderValue)}</p>
+                        <p className="text-xs text-blue-600 font-medium">Total Orders Value</p>
+                        <p className="text-lg font-bold text-blue-900">{formatCurrency(totalOrderValue)}</p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
 
                 <Card className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-yellow-200 shadow-md">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-yellow-500 rounded-lg">
-                        <Clock className="h-5 w-5 text-white" />
+                  <CardContent className="p-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-yellow-500 rounded-lg">
+                        <Clock className="h-4 w-4 text-white" />
                       </div>
                       <div>
-                        <p className="text-sm text-yellow-600 font-medium">Pending Invoicing</p>
-                        <p className="text-xl font-bold text-yellow-900">{formatCurrency(pendingInvoicing)}</p>
+                        <p className="text-xs text-yellow-600 font-medium">Pending Invoicing</p>
+                        <p className="text-lg font-bold text-yellow-900">{formatCurrency(pendingInvoicing)}</p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
 
                 <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 shadow-md">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-green-500 rounded-lg">
-                        <FileText className="h-5 w-5 text-white" />
+                  <CardContent className="p-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-green-500 rounded-lg">
+                        <FileText className="h-4 w-4 text-white" />
                       </div>
                       <div>
-                        <p className="text-sm text-green-600 font-medium">Already Invoiced</p>
-                        <p className="text-xl font-bold text-green-900">{formatCurrency(totalInvoiced)}</p>
+                        <p className="text-xs text-green-600 font-medium">Already Invoiced</p>
+                        <p className="text-lg font-bold text-green-900">{formatCurrency(totalInvoiced)}</p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
 
                 <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200 shadow-md">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-emerald-500 rounded-lg">
-                        <DollarSign className="h-5 w-5 text-white" />
+                  <CardContent className="p-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-emerald-500 rounded-lg">
+                        <DollarSign className="h-4 w-4 text-white" />
                       </div>
                       <div>
-                        <p className="text-sm text-emerald-600 font-medium">Total Collected</p>
-                        <p className="text-xl font-bold text-emerald-900">{formatCurrency(totalPaid)}</p>
+                        <p className="text-xs text-emerald-600 font-medium">Total Collected</p>
+                        <p className="text-lg font-bold text-emerald-900">{formatCurrency(totalPaid)}</p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
 
                 <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 shadow-md">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-red-500 rounded-lg">
-                        <AlertCircle className="h-5 w-5 text-white" />
+                  <CardContent className="p-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-red-500 rounded-lg">
+                        <AlertCircle className="h-4 w-4 text-white" />
                       </div>
                       <div>
-                        <p className="text-sm text-red-600 font-medium">Outstanding</p>
-                        <p className="text-xl font-bold text-red-900">{formatCurrency(pendingPayments)}</p>
+                        <p className="text-xs text-red-600 font-medium">Outstanding</p>
+                        <p className="text-lg font-bold text-red-900">{formatCurrency(pendingPayments)}</p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
 
                 <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200 shadow-md">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-purple-500 rounded-lg">
-                        <Receipt className="h-5 w-5 text-white" />
+                  <CardContent className="p-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-purple-500 rounded-lg">
+                        <Receipt className="h-4 w-4 text-white" />
                       </div>
                       <div>
-                        <p className="text-sm text-purple-600 font-medium">Payment Rate</p>
-                        <p className="text-xl font-bold text-purple-900">
+                        <p className="text-xs text-purple-600 font-medium">Payment Rate</p>
+                        <p className="text-lg font-bold text-purple-900">
                           {totalInvoiced > 0 ? Math.round((totalPaid / totalInvoiced) * 100) : 0}%
                         </p>
                       </div>
@@ -2201,9 +2285,9 @@ export function SalesOrderInvoiceManager() {
             )}
 
             {activeTab === 'invoices' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4 p-4">
                 <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 shadow-md">
-                  <CardContent className="p-4">
+                  <CardContent className="p-3">
                     <div className="flex items-center gap-3">
                       <div className="p-2 bg-green-500 rounded-lg">
                         <FileText className="h-5 w-5 text-white" />
@@ -2334,11 +2418,10 @@ export function SalesOrderInvoiceManager() {
               </div>
             )}
           </div>
-
           {/* Tab Content with improved styling */}
           <div className="bg-white">
             {/* Sales Orders Tab */}
-            <TabsContent value="orders" className="space-y-4 p-6">
+            <TabsContent value="orders" className="space-y-4 p-4">
               
               {/* Nested tab for Sales Orders and Payments */}
               <Tabs defaultValue="invoice-orders">
@@ -2662,9 +2745,9 @@ export function SalesOrderInvoiceManager() {
             </TabsContent>
 
             {/* Invoices Tab */}
-            <TabsContent value="invoices" className="space-y-4 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">Invoice Management</h3>
+            <TabsContent value="invoices" className="space-y-4 p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-base font-semibold text-gray-900">Invoices</h3>
                 <div className="flex gap-2">
                   <Button
                     variant="default"
@@ -2687,8 +2770,8 @@ export function SalesOrderInvoiceManager() {
               </div>
 
               {/* Search Bar and Filters */}
-              <div className="flex flex-col gap-4 mb-4">
-                <div className="flex items-center gap-4">
+              <div className="flex flex-col gap-2 mb-3">
+                <div className="flex items-center gap-3">
                   <div className="relative flex-1 max-w-md">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                     <Input
@@ -2896,7 +2979,7 @@ export function SalesOrderInvoiceManager() {
             </TabsContent>
 
             {/* Payments Tab */}
-            <TabsContent value="payments" className="space-y-4 p-6">
+            <TabsContent value="payments" className="space-y-4 p-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-900">Payment History</h3>
                 <div className="flex gap-2">
@@ -3003,12 +3086,12 @@ export function SalesOrderInvoiceManager() {
             </TabsContent>
 
             {/* Payment Manager Tab */}
-            <TabsContent value="payment-manager" className="space-y-4 p-6">
+            <TabsContent value="payment-manager" className="space-y-4 p-4">
               <PaymentDeletionManager />
             </TabsContent>
 
             {/* Expenses Tab */}
-            <TabsContent value="expenses" className="space-y-4 p-6">
+            <TabsContent value="expenses" className="space-y-4 p-4">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900">Expense Management</h3>
@@ -3263,7 +3346,7 @@ export function SalesOrderInvoiceManager() {
             </TabsContent>
 
             {/* Cashflow Tab */}
-            <TabsContent value="cashflow" className="space-y-4 p-6">
+            <TabsContent value="cashflow" className="space-y-4 p-4">
               {/* Cashflow Summary Cards */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 {(() => {
@@ -3534,6 +3617,24 @@ export function SalesOrderInvoiceManager() {
                   </div>
                 </div>
               )}
+            </TabsContent>
+
+            {/* Ledgers Tab */}
+            <TabsContent value="ledgers" className="space-y-4 p-4">
+              <div className="bg-white rounded-lg shadow-sm border">
+                <div className="p-4 border-b">
+                  <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                    <BookOpen className="h-5 w-5 text-purple-600" />
+                    Ledger Management
+                  </h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    View and manage all account ledger entries and balances
+                  </p>
+                </div>
+                <div className="p-6">
+                  <OptimizedLedgerManager />
+                </div>
+              </div>
             </TabsContent>
           </div>
         </Tabs>
@@ -3894,28 +3995,88 @@ export function SalesOrderInvoiceManager() {
                 Customer Information
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
+                <div className="space-y-2 relative">
                   <Label htmlFor="customer_name" className="text-sm font-medium">
                     Customer Name *
                   </Label>
                   <Input
                     id="customer_name"
-                    placeholder="Enter customer name"
+                    placeholder="Start typing customer name..."
                     value={invoiceForm.customer_name}
-                    onChange={(e) => setInvoiceForm({ ...invoiceForm, customer_name: e.target.value })}
+                    onChange={(e) => {
+                      setInvoiceForm({ ...invoiceForm, customer_name: e.target.value });
+                      // Always show dropdown when typing, even if it was hidden
+                      if (!showCustomerDropdown) {
+                        setShowCustomerDropdown(true);
+                      }
+                    }}
+                    onFocus={() => {
+                      setShowCustomerDropdown(true);
+                      // Refresh customers when focusing
+                      if (customers.length === 0) {
+                        fetchCustomers();
+                      }
+                    }}
+                    onBlur={() => {
+                      // Hide dropdown after a longer delay to allow for selection
+                      setTimeout(() => setShowCustomerDropdown(false), 300);
+                    }}
                     className="w-full"
-                    list="existing-customers"
                   />
-                  <datalist id="existing-customers">
-                    {Array.from(new Set(salesOrders
-                      .map(order => order.customer?.name)
-                      .filter(name => name && name.trim() !== '')
-                    )).map((customerName, index) => (
-                      <option key={index} value={customerName} />
-                    ))}
-                  </datalist>
+                  {/* Enhanced dropdown with customer suggestions */}
+                  {showCustomerDropdown && (
+                  <div 
+                    className="absolute top-full left-0 right-0 bg-white border border-gray-300 rounded-md shadow-xl max-h-60 min-h-[60px] overflow-y-auto z-[9999] mt-1"
+                    onMouseDown={(e) => e.preventDefault()} // Prevent input blur when clicking dropdown
+                  >
+                    {(() => {
+                      const searchTerm = invoiceForm.customer_name.toLowerCase().trim();
+                      console.log('🔍 Search term:', searchTerm, 'Available customers:', customers.length);
+                      
+                      const filteredCustomers = customers.filter(customer => {
+                        if (!searchTerm) return true; // Show all customers if no search term
+                        const nameMatch = customer.name.toLowerCase().includes(searchTerm);
+                        const phoneMatch = customer.phone && customer.phone.includes(searchTerm);
+                        const emailMatch = customer.email && customer.email.toLowerCase().includes(searchTerm);
+                        return nameMatch || phoneMatch || emailMatch;
+                      });
+
+                      console.log('🎯 Filtered customers:', filteredCustomers.length);
+
+                      if (filteredCustomers.length === 0) {
+                        return (
+                          <div className="px-3 py-2 text-sm text-gray-500">
+                            {customers.length === 0 
+                              ? "Loading customers..." 
+                              : searchTerm 
+                                ? `No customers match "${invoiceForm.customer_name}". You can create a new customer.`
+                                : "Start typing to search customers..."
+                            }
+                          </div>
+                        );
+                      }
+
+                      return filteredCustomers.slice(0, 10).map((customer, index) => (
+                        <div
+                          key={index}
+                          className="px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                          onClick={() => handleCustomerSelect(customer)}
+                        >
+                          <div className="font-medium text-sm text-gray-900">{customer.name}</div>
+                          {(customer.phone || customer.email) && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              {customer.phone && <span>📞 {customer.phone}</span>}
+                              {customer.phone && customer.email && <span> • </span>}
+                              {customer.email && <span>✉️ {customer.email}</span>}
+                            </div>
+                          )}
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                  )}
                   <p className="text-xs text-gray-500">
-                    Start typing to see existing customers or enter a new one
+                    Start typing to see existing customers or enter a new customer name
                   </p>
                 </div>
                 
@@ -4026,11 +4187,20 @@ export function SalesOrderInvoiceManager() {
                 variant="default"
                 type="button" 
                 onClick={handleCreateInvoice}
-                disabled={!invoiceForm.customer_name || !invoiceForm.amount || !invoiceForm.description}
-                className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto order-1 sm:order-2"
+                disabled={!invoiceForm.customer_name || !invoiceForm.amount || !invoiceForm.description || isCreatingInvoice}
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 w-full sm:w-auto order-1 sm:order-2"
               >
-                <FileText className="h-4 w-4 mr-2" />
-                Create Invoice
+                {isCreatingInvoice ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <FileText className="h-4 w-4 mr-2" />
+                    Create Invoice
+                  </>
+                )}
               </Button>
             </div>
           </DialogFooter>

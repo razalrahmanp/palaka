@@ -25,7 +25,6 @@ import {
 import { BankAccountManager } from '@/components/finance/BankAccountManager';
 import ChartOfAccounts from '@/components/finance/ChartOfAccounts';
 import JournalEntryManager from '@/components/finance/JournalEntryManager';
-import OptimizedLedgerManager from '@/components/finance/OptimizedLedgerManager';
 import GeneralLedger from '@/components/finance/GeneralLedger';
 import FinancialReportsManager from '@/components/finance/FinancialReportsManager';
 import { DetailedFinanceOverview } from '@/components/finance/DetailedFinanceOverview';
@@ -549,7 +548,7 @@ export default function FinancePage() {
       <Card>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <CardHeader className="pb-0">
-            <TabsList className="grid w-full grid-cols-7 h-12">
+            <TabsList className="grid w-full grid-cols-6 h-12">
               <TabsTrigger value="overview" className="flex items-center gap-2">
                 <PieChart className="h-4 w-4" />
                 Overview
@@ -561,10 +560,6 @@ export default function FinancePage() {
               <TabsTrigger value="accounts" className="flex items-center gap-2">
                 <BookOpen className="h-4 w-4" />
                 Chart of Accounts
-              </TabsTrigger>
-              <TabsTrigger value="journals" className="flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Ledgers
               </TabsTrigger>
               <TabsTrigger value="ledger" className="flex items-center gap-2">
                 <Receipt className="h-4 w-4" />
@@ -595,11 +590,6 @@ export default function FinancePage() {
             {/* Chart of Accounts Tab */}
             <TabsContent value="accounts">
               <ChartOfAccounts />
-            </TabsContent>
-
-            {/* Ledgers Tab */}
-            <TabsContent value="journals">
-              <OptimizedLedgerManager />
             </TabsContent>
 
             {/* Journal Entries Tab */}

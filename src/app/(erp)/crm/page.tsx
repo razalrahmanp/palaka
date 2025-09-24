@@ -61,13 +61,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format } from 'date-fns';
 import {
-  PlusCircle, Edit, Trash2, MessageSquare, Users, CalendarIcon, ArrowUpDown, ArrowUp, ArrowDown, X, ChevronDown, ChevronRight, Package, DollarSign, MapPin, FileText
+  PlusCircle, Edit, Trash2, MessageSquare, CalendarIcon, ArrowUpDown, ArrowUp, ArrowDown, X, ChevronDown, ChevronRight, Package, DollarSign, MapPin, FileText
 } from 'lucide-react';
 import { CustomerFilters } from '@/components/crm/CustomerFilter';
 import { CustomerForm } from '@/components/crm/CustomerForm';
 import { InteractionLogForm } from '@/components/crm/InteractionLogForm';
-import { UserListByRole } from '@/components/crm/UserListByRole';
-import { MobileSalespeoplePopover } from '@/components/crm/MobileSalesPeoplePopover';
 
 export default function CrmPage() {
   const qc = useQueryClient();
@@ -1435,42 +1433,6 @@ export default function CrmPage() {
             </Card>
           )}
         </div>
-
-{isAdmin && (
-  <>
-    {/* Desktop sidebar */}
-    <div className="hidden lg:block lg:w-1/4 space-y-6">
-      <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300">
-        <CardHeader className="bg-gradient-to-r from-green-50 to-teal-50 rounded-t-xl border-b border-green-100/50">
-          <CardTitle className="text-xl font-bold text-gray-900 flex items-center">
-            <div className="h-8 w-8 bg-gradient-to-br from-green-500 to-teal-600 rounded-lg flex items-center justify-center mr-3">
-              <Users className="h-5 w-5 text-white" />
-            </div>
-            Sales Team
-          </CardTitle>
-          <CardDescription className="text-gray-600">
-            Filter customers by sales representative
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-6">
-          <div className="max-h-[500px] overflow-y-auto">
-            <UserListByRole
-              role="roles.name"
-              onSelectUser={(id) => setSelectedSalespersonId(prev => prev === id ? null : id)}
-            />
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-
-    {/* Mobile button */}
-    <div className="lg:hidden">
-      <MobileSalespeoplePopover
-        onSelectUser={(id) => setSelectedSalespersonId(prev => prev === id ? null : id)}
-      />
-    </div>
-  </>
-)}
 
       </div>
 

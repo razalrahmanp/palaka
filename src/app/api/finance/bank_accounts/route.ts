@@ -73,18 +73,68 @@ export async function GET(req: Request) {
         let paymentsBalance = 0;
         let paymentCount = 0;
         if (paymentMethods.length > 0) {
-          const { data: payments, error: paymentsError } = await supabase
-            .from('payments')
-            .select('amount, method')
-            .in('method', paymentMethods);
+          if (account.account_type === 'CASH') {
+            // For cash accounts, calculate balance from all cash-related transactions
+            let cashBalance = 0;
+            let cashPaymentCount = 0;
 
-          if (!paymentsError && payments) {
-            paymentCount = payments.length;
-            // For bank accounts, divide payments among all bank accounts
-            // For UPI accounts, divide UPI payments among all UPI accounts
-            const accountsOfSameType = data.filter(acc => acc.account_type === account.account_type);
-            const totalPayments = payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
-            paymentsBalance = totalPayments / (accountsOfSameType.length || 1);
+            // 1. Cash payments (sales)
+            const { data: cashPayments } = await supabase
+              .from('payments')
+              .select('amount')
+              .ilike('method', 'cash');
+            
+            if (cashPayments) {
+              cashBalance += cashPayments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+              cashPaymentCount += cashPayments.length;
+            }
+
+            // 2. Cash investments
+            const { data: cashInvestments } = await supabase
+              .from('investments')
+              .select('amount')
+              .ilike('payment_method', 'cash');
+            
+            if (cashInvestments) {
+              cashBalance += cashInvestments.reduce((sum, inv) => sum + Number(inv.amount), 0);
+            }
+
+            // 3. Cash withdrawals (subtract)
+            const { data: cashWithdrawals } = await supabase
+              .from('withdrawals')
+              .select('amount')
+              .ilike('payment_method', 'cash');
+            
+            if (cashWithdrawals) {
+              cashBalance -= cashWithdrawals.reduce((sum, withdrawal) => sum + Number(withdrawal.amount), 0);
+            }
+
+            // 4. Cash liability payments (subtract)
+            const { data: cashLiabilityPayments } = await supabase
+              .from('liability_payments')
+              .select('total_amount')
+              .ilike('payment_method', 'cash');
+            
+            if (cashLiabilityPayments) {
+              cashBalance -= cashLiabilityPayments.reduce((sum, payment) => sum + Number(payment.total_amount), 0);
+            }
+
+            paymentsBalance = cashBalance;
+            paymentCount = cashPaymentCount;
+          } else {
+            // For bank and UPI accounts, use payment method filtering
+            const { data: payments, error: paymentsError } = await supabase
+              .from('payments')
+              .select('amount, method')
+              .in('method', paymentMethods);
+
+            if (!paymentsError && payments) {
+              paymentCount = payments.length;
+              // For non-cash accounts, divide payments among accounts of same type
+              const accountsOfSameType = data.filter(acc => acc.account_type === account.account_type);
+              const totalPayments = payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+              paymentsBalance = totalPayments / (accountsOfSameType.length || 1);
+            }
           }
         }
 

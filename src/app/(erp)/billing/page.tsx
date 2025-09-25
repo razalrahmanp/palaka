@@ -356,8 +356,9 @@ export default function BillingPage() {
           first_floor_awareness: data.isFirstFloorAwareness,
           payment_methods: data.paymentMethods,
           notes: data.notes,
-          status: 'confirmed',
+          status: 'ready_for_delivery',
           created_by: data.selectedSalesman?.user_id || null,
+          invoiceDate: data.invoiceDate, // Pass the invoice date to set created_at
           emi_enabled: updatedQuote.emi_enabled,
           emi_plan: updatedQuote.emi_plan,
           emi_monthly: updatedQuote.emi_monthly,
@@ -423,8 +424,9 @@ export default function BillingPage() {
           first_floor_awareness: data.isFirstFloorAwareness,
           payment_methods: data.paymentMethods,
           notes: data.notes,
-          status: 'confirmed',
+          status: 'ready_for_delivery',
           created_by: data.selectedSalesman?.user_id || null,
+          invoiceDate: data.invoiceDate, // Pass the invoice date to set created_at
           emi_enabled: hasEMIPayment(data.paymentMethods),
           emi_plan: calculateEMIPlan(data),
           emi_monthly: calculateMonthlyEMI(data),
@@ -819,8 +821,9 @@ export default function BillingPage() {
           first_floor_awareness: data.isFirstFloorAwareness,
           payment_methods: data.paymentMethods,
           notes: data.notes,
-          status: 'confirmed', // Set as Confirmed immediately
+          status: 'ready_for_delivery', // Set as Ready for Delivery immediately
           created_by: data.selectedSalesman?.user_id || null,
+          invoiceDate: data.invoiceDate, // Pass the invoice date to set created_at
           emi_enabled: createdQuote.emi_enabled,
           emi_plan: createdQuote.emi_plan,
           emi_monthly: createdQuote.emi_monthly,

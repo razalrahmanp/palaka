@@ -102,6 +102,18 @@ export async function GET(request: NextRequest) {
       // Continue without liability payments rather than failing completely
     }
 
+    // Get withdrawal data (partner withdrawals are business expenses)
+    const { data: withdrawalData, error: withdrawalError } = await supabase
+      .from('withdrawals')
+      .select('amount, withdrawal_date, created_at, description')
+      .gte('withdrawal_date', startDate.toISOString().split('T')[0])
+      .lte('withdrawal_date', endDate.toISOString().split('T')[0]);
+
+    if (withdrawalError) {
+      console.error('Withdrawal data error:', withdrawalError);
+      // Continue without withdrawals rather than failing completely
+    }
+
     // Process sales data for profit analysis
     let totalRevenue = 0;
     let totalCost = 0;
@@ -208,17 +220,20 @@ export async function GET(request: NextRequest) {
     const regularExpenses = expenseData?.reduce((sum, expense) => sum + (expense.amount || 0), 0) || 0;
     const vendorPaymentExpenses = vendorPaymentData?.reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
     const liabilityPaymentExpenses = liabilityPaymentData?.reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
+    const withdrawalExpenses = withdrawalData?.reduce((sum, withdrawal) => sum + (withdrawal.amount || 0), 0) || 0;
     
-    const totalExpenses = regularExpenses + vendorPaymentExpenses + liabilityPaymentExpenses;
+    const totalExpenses = regularExpenses + vendorPaymentExpenses + liabilityPaymentExpenses + withdrawalExpenses;
 
     // Log expense breakdown for analysis
     console.log('📊 Enhanced Expense Analysis:', {
       regularExpenses: `₹${regularExpenses.toLocaleString()}`,
       vendorPaymentExpenses: `₹${vendorPaymentExpenses.toLocaleString()}`,
       liabilityPaymentExpenses: `₹${liabilityPaymentExpenses.toLocaleString()}`,
+      withdrawalExpenses: `₹${withdrawalExpenses.toLocaleString()}`,
       totalExpenses: `₹${totalExpenses.toLocaleString()}`,
       vendorPaymentCount: vendorPaymentData?.length || 0,
-      liabilityPaymentCount: liabilityPaymentData?.length || 0
+      liabilityPaymentCount: liabilityPaymentData?.length || 0,
+      withdrawalCount: withdrawalData?.length || 0
     });
 
     // Calculate profit metrics
@@ -327,8 +342,10 @@ export async function GET(request: NextRequest) {
           regularExpenses,
           vendorPaymentExpenses,
           liabilityPaymentExpenses,
+          withdrawalExpenses,
           vendorPaymentCount: vendorPaymentData?.length || 0,
-          liabilityPaymentCount: liabilityPaymentData?.length || 0
+          liabilityPaymentCount: liabilityPaymentData?.length || 0,
+          withdrawalCount: withdrawalData?.length || 0
         }
       },
       regularProducts: {

@@ -14,11 +14,7 @@ import {
   CreditCard,
   PieChart,
   BarChart3,
-  Plus,
-  RefreshCw,
-  Users,
-  ChevronUp,
-  ChevronDown
+  RefreshCw
 } from 'lucide-react';
 
 // Import subcomponents
@@ -64,8 +60,10 @@ interface ProfitAnalysis {
     regularExpenses: number;
     vendorPaymentExpenses: number;
     liabilityPaymentExpenses: number;
+    withdrawalExpenses: number;
     vendorPaymentCount: number;
     liabilityPaymentCount: number;
+    withdrawalCount: number;
   };
   regularProducts?: {
     count: number;
@@ -119,12 +117,14 @@ export default function FinancePage() {
       regularExpenses: 0,
       vendorPaymentExpenses: 0,
       liabilityPaymentExpenses: 0,
+      withdrawalExpenses: 0,
       vendorPaymentCount: 0,
       liabilityPaymentCount: 0,
+      withdrawalCount: 0,
     },
   });
 
-  const [isExpanded, setIsExpanded] = useState(false);
+
 
   useEffect(() => {
     fetchFinancialData();
@@ -227,29 +227,11 @@ export default function FinancePage() {
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
-          <Button>
-            <Plus className="h-4 w-4 mr-2" />
-            Quick Entry
-          </Button>
         </div>
       </div>
 
       {/* Key Performance Indicators */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 h-16">
-          <CardContent className="p-2 h-full">
-            <div className="flex items-center justify-between h-full">
-              <div>
-                <p className="text-xs font-medium text-blue-600">Total Assets</p>
-                <p className="text-sm font-bold text-blue-900">{formatCurrency(financialSummary.totalAssets)}</p>
-              </div>
-              <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-                <TrendingUp className="h-4 w-4 text-white" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 h-16">
           <CardContent className="p-2 h-full">
             <div className="flex items-center justify-between h-full">
@@ -283,7 +265,7 @@ export default function FinancePage() {
             <div className="flex items-center justify-between h-full">
               <div>
                 <p className="text-xs font-medium text-red-600">Total Expenses</p>
-                <p className="text-sm font-bold text-red-900">{formatCurrency(financialSummary.totalExpenses)}</p>
+                <p className="text-sm font-bold text-red-900">{formatCurrency(profitAnalysis?.totalExpenses || financialSummary.totalExpenses)}</p>
               </div>
               <div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center">
                 <Receipt className="h-4 w-4 text-white" />
@@ -368,184 +350,12 @@ export default function FinancePage() {
         </Card>
       </div>
 
-      {/* Key Financial Metrics */}
-      <div className="space-y-4">
-        {/* Header with expand/collapse button */}
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900">Financial Overview</h3>
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="flex items-center gap-2 px-3 py-1 text-sm bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-colors"
-          >
-            {isExpanded ? 'Show Less' : 'Show All'}
-            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </button>
-        </div>
 
-        {/* Key Metrics Grid */}
-        <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-${isExpanded ? '4' : '4'} gap-4 transition-all duration-300`}>
-          {/* Total Assets */}
-          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 h-20">
-            <CardContent className="p-3 h-full">
-              <div className="flex items-center justify-between h-full">
-                <div>
-                  <p className="text-xs font-medium text-blue-600">Total Assets</p>
-                  <p className="text-lg font-bold text-blue-900">₹{((financialSummary?.totalAssets || 0) / 100000).toFixed(2)}L</p>
-                </div>
-                <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
-                  <BarChart3 className="h-5 w-5 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
 
-          {/* Net Income */}
-          <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200 h-20">
-            <CardContent className="p-3 h-full">
-              <div className="flex items-center justify-between h-full">
-                <div>
-                  <p className="text-xs font-medium text-emerald-600">Net Income</p>
-                  <p className="text-lg font-bold text-emerald-900">₹{((profitAnalysis?.netProfit || 0) / 100000).toFixed(2)}L</p>
-                </div>
-                <div className="w-10 h-10 bg-emerald-500 rounded-lg flex items-center justify-center">
-                  <TrendingUp className="h-5 w-5 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Cash Balance */}
-          <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 h-20">
-            <CardContent className="p-3 h-full">
-              <div className="flex items-center justify-between h-full">
-                <div>
-                  <p className="text-xs font-medium text-green-600">Cash Balance</p>
-                  <p className="text-lg font-bold text-green-900">₹{((financialSummary?.totalAssets || 0) / 100000 * 0.9).toFixed(2)}L</p>
-                </div>
-                <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
-                  <CreditCard className="h-5 w-5 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Total Expenses */}
-          <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 h-20">
-            <CardContent className="p-3 h-full">
-              <div className="flex items-center justify-between h-full">
-                <div>
-                  <p className="text-xs font-medium text-red-600">Total Expenses</p>
-                  <p className="text-lg font-bold text-red-900">₹{((profitAnalysis?.totalExpenses || 0) / 100000).toFixed(2)}L</p>
-                </div>
-                <div className="w-10 h-10 bg-red-500 rounded-lg flex items-center justify-center">
-                  <Receipt className="h-5 w-5 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Detailed Profit Analysis - Show only when expanded */}
-        {isExpanded && (
-          <div className="mt-6">
-            <h4 className="text-md font-semibold text-gray-800 mb-4">Detailed Profit Analysis</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-              {/* Gross Profit */}
-              <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200 h-16">
-                <CardContent className="p-2 h-full">
-                  <div className="flex items-center justify-between h-full">
-                    <div>
-                      <p className="text-xs font-medium text-emerald-600">Gross Profit</p>
-                      <p className="text-sm font-bold text-emerald-900">₹{(profitAnalysis?.grossProfit || 0).toLocaleString()}</p>
-                    </div>
-                    <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center">
-                      <TrendingUp className="h-4 w-4 text-white" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Gross Profit Margin */}
-              <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 h-16">
-                <CardContent className="p-2 h-full">
-                  <div className="flex items-center justify-between h-full">
-                    <div>
-                      <p className="text-xs font-medium text-green-600">Gross Margin</p>
-                      <p className="text-sm font-bold text-green-900">{(profitAnalysis?.grossProfitMargin || 0).toFixed(1)}%</p>
-                    </div>
-                    <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
-                      <BarChart3 className="h-4 w-4 text-white" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Net Profit */}
-              <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 h-16">
-                <CardContent className="p-2 h-full">
-                  <div className="flex items-center justify-between h-full">
-                    <div>
-                      <p className="text-xs font-medium text-blue-600">Net Profit</p>
-                      <p className="text-sm font-bold text-blue-900">₹{(profitAnalysis?.netProfit || 0).toLocaleString()}</p>
-                    </div>
-                    <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-                      <DollarSign className="h-4 w-4 text-white" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Net Profit Margin */}
-              <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-indigo-200 h-16">
-                <CardContent className="p-2 h-full">
-                  <div className="flex items-center justify-between h-full">
-                    <div>
-                      <p className="text-xs font-medium text-indigo-600">Net Margin</p>
-                      <p className="text-sm font-bold text-indigo-900">{(profitAnalysis?.netProfitMargin || 0).toFixed(1)}%</p>
-                    </div>
-                    <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center">
-                      <PieChart className="h-4 w-4 text-white" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Vendor Payments */}
-              <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 h-16">
-                <CardContent className="p-2 h-full">
-                  <div className="flex items-center justify-between h-full">
-                    <div>
-                      <p className="text-xs font-medium text-orange-600">Vendor Payments</p>
-                      <p className="text-sm font-bold text-orange-900">₹{(profitAnalysis?.expenseBreakdown?.vendorPaymentExpenses || 0).toLocaleString()}</p>
-                    </div>
-                    <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
-                      <Users className="h-4 w-4 text-white" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Total Operating Expenses */}
-              <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 h-16">
-                <CardContent className="p-2 h-full">
-                  <div className="flex items-center justify-between h-full">
-                    <div>
-                      <p className="text-xs font-medium text-red-600">Operating Expenses</p>
-                      <p className="text-sm font-bold text-red-900">₹{(profitAnalysis?.totalExpenses || 0).toLocaleString()}</p>
-                    </div>
-                    <div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center">
-                      <Receipt className="h-4 w-4 text-white" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* Main Navigation Tabs */}
       <Card>
+
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <CardHeader className="pb-0">
             <TabsList className="grid w-full grid-cols-6 h-12">
@@ -561,52 +371,44 @@ export default function FinancePage() {
                 <BookOpen className="h-4 w-4" />
                 Chart of Accounts
               </TabsTrigger>
-              <TabsTrigger value="ledger" className="flex items-center gap-2">
-                <Receipt className="h-4 w-4" />
+              <TabsTrigger value="journals" className="flex items-center gap-2">
+                <BookOpen className="h-4 w-4" />
                 Journal Entries
               </TabsTrigger>
-              <TabsTrigger value="general-ledger" className="flex items-center gap-2">
+              <TabsTrigger value="ledger" className="flex items-center gap-2">
                 <BookOpen className="h-4 w-4" />
                 General Ledger
               </TabsTrigger>
               <TabsTrigger value="reports" className="flex items-center gap-2">
                 <BarChart3 className="h-4 w-4" />
-                Reports & Aging
+                Reports
               </TabsTrigger>
             </TabsList>
           </CardHeader>
+          
+          <TabsContent value="overview">
+            <DetailedFinanceOverview />
+          </TabsContent>
 
-          <CardContent className="pt-6">
-            {/* Overview Tab */}
-            <TabsContent value="overview" className="space-y-6">
-              <DetailedFinanceOverview />
-            </TabsContent>
+          <TabsContent value="bank-accounts">
+            <BankAccountManager />
+          </TabsContent>
 
-            {/* Bank Accounts Management Tab */}
-            <TabsContent value="bank-accounts">
-              <BankAccountManager />
-            </TabsContent>
+          <TabsContent value="accounts">
+            <ChartOfAccounts />
+          </TabsContent>
 
-            {/* Chart of Accounts Tab */}
-            <TabsContent value="accounts">
-              <ChartOfAccounts />
-            </TabsContent>
+          <TabsContent value="journals">
+            <JournalEntryManager />
+          </TabsContent>
 
-            {/* Journal Entries Tab */}
-            <TabsContent value="ledger">
-              <JournalEntryManager />
-            </TabsContent>
+          <TabsContent value="ledger">
+            <GeneralLedger />
+          </TabsContent>
 
-            {/* General Ledger Tab */}
-            <TabsContent value="general-ledger">
-              <GeneralLedger />
-            </TabsContent>
-
-            {/* Financial Reports Tab */}
-            <TabsContent value="reports">
-              <FinancialReportsManager />
-            </TabsContent>
-          </CardContent>
+          <TabsContent value="reports">
+            <FinancialReportsManager />
+          </TabsContent>
         </Tabs>
       </Card>
     </div>

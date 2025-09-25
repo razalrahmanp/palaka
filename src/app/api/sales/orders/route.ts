@@ -834,23 +834,46 @@ export async function POST(req: Request) {
     try {
       const inventoryAdjustments = productsToAdjust.map(async (item) => {
         try {
-          const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/inventory/adjust`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              productId: item.product_id,
-              quantity: item.quantity,
-              type: 'decrease',
-              reason: `Sales order ${orderId}`,
-            }),
+          // Use supabaseAdmin directly for inventory adjustment using RPC
+          const { data: newQuantity, error: adjustError } = await supabaseAdmin.rpc('adjust_inventory', {
+            product_id_in: item.product_id,
+            adjustment_quantity: -item.quantity // Negative for decrease
           });
           
-          if (!response.ok) {
-            console.error(`Failed to adjust inventory for product ${item.product_id}:`, await response.text());
+          if (adjustError) {
+            console.error(`Failed to adjust inventory for product ${item.product_id}:`, adjustError.message);
+            // Check if product exists in inventory table, if not create it
+            if (adjustError.message.includes('Inventory record not found')) {
+              console.log(`Creating inventory record for product ${item.product_id} and then adjusting`);
+              
+              // Create inventory record first
+              const { error: createError } = await supabaseAdmin
+                .from('inventory')
+                .insert([{
+                  product_id: item.product_id,
+                  quantity_in_stock: 0,
+                  min_stock_level: 0,
+                  max_stock_level: 1000
+                }]);
+              
+              if (createError) {
+                console.error(`Failed to create inventory record for product ${item.product_id}:`, createError.message);
+              } else {
+                // Try adjustment again after creating record
+                const { data: retryNewQuantity, error: retryError } = await supabaseAdmin.rpc('adjust_inventory', {
+                  product_id_in: item.product_id,
+                  adjustment_quantity: -item.quantity
+                });
+                
+                if (retryError) {
+                  console.error(`Failed to adjust inventory after creating record for product ${item.product_id}:`, retryError.message);
+                } else {
+                  console.log(`Successfully adjusted inventory for product ${item.product_id}: decreased by ${item.quantity}, new quantity: ${retryNewQuantity}`);
+                }
+              }
+            }
           } else {
-            console.log(`Successfully adjusted inventory for product ${item.product_id}: decreased by ${item.quantity}`);
+            console.log(`Successfully adjusted inventory for product ${item.product_id}: decreased by ${item.quantity}, new quantity: ${newQuantity}`);
           }
         } catch (error) {
           console.error(`Error adjusting inventory for product ${item.product_id}:`, error);

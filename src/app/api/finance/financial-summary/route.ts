@@ -21,18 +21,19 @@ export async function GET() {
       console.error('Error fetching invoices data:', allInvoicesError);
     }
 
-    // Get all payments for accurate calculation of cash balance (collected amount)
+    // Get cash payments only for accurate calculation of cash balance
     const { data: allPayments, error: paymentsError } = await supabase
       .from('payments')
-      .select('invoice_id, amount');
+      .select('invoice_id, amount, method');
 
     if (paymentsError) {
       console.error('Error fetching payments data:', paymentsError);
     }
 
-    // Calculate total actual payments received (cash balance) from ALL payments
-    const actualCashBalance = allPayments?.reduce((sum, payment) => 
-      sum + (payment.amount || 0), 0) || 0;
+    // Calculate actual cash balance from CASH payments only
+    const actualCashBalance = allPayments
+      ?.filter(payment => payment.method && payment.method.toLowerCase() === 'cash')
+      .reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
 
     // Calculate real revenue and payment metrics from sales data
     const salesOrders = salesOrdersData || [];

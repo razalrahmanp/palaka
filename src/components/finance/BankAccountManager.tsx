@@ -16,25 +16,23 @@ import {
   DialogTrigger,
   DialogFooter 
 } from '@/components/ui/dialog';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+
 import { 
   Building2, 
   Plus, 
-  Eye, 
-  CreditCard, 
+ 
   ArrowUpCircle, 
   ArrowDownCircle,
   Receipt,
   Wallet,
   Smartphone,
-  Link
+  Link,
+  ArrowRightLeft,
+  Banknote,
+  IndianRupee,
+  Loader2,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 interface BankAccount {
@@ -94,12 +92,12 @@ interface CashAccount {
 
 interface BankTransaction {
   id: string;
-  bank_account_id: string;
   date: string;
   type: 'deposit' | 'withdrawal';
   amount: number;
   description: string;
   reference: string;
+  transaction_type: 'bank_transaction' | 'vendor_payment' | 'withdrawal' | 'liability_payment';
 }
 
 export function BankAccountManager() {
@@ -107,14 +105,24 @@ export function BankAccountManager() {
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [upiAccounts, setUpiAccounts] = useState<UpiAccount[]>([]);
   const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([]);
+  const [cashTransactions, setCashTransactions] = useState<{
+    id: string;
+    transaction_date: string;
+    description: string;
+    amount: number;
+    transaction_type: string;
+    reference_number: string;
+    account_name: string;
+    source: string;
+    balance_after: number;
+  }[]>([]);
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
-  const [bankTransactions, setBankTransactions] = useState<Record<string, BankTransaction[]>>({});
-  const [selectedAccount, setSelectedAccount] = useState<BankAccount | null>(null);
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [showAddUpi, setShowAddUpi] = useState(false);
-  const [showAddCash, setShowAddCash] = useState(false);
-  const [showTransactions, setShowTransactions] = useState(false);
+  const [showFundTransfer, setShowFundTransfer] = useState(false);
+  const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [transferLoading, setTransferLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'bank' | 'upi' | 'cash'>('bank');
   
   const [newAccount, setNewAccount] = useState({
@@ -131,16 +139,20 @@ export function BankAccountManager() {
     current_balance: 0
   });
 
-  const [newCashAccount, setNewCashAccount] = useState({
-    name: '',
-    currency: 'INR',
-    current_balance: 0
+  const [fundTransfer, setFundTransfer] = useState({
+    fromAccountId: '',
+    toAccountId: '',
+    amount: '',
+    description: '',
+    reference: '',
+    date: new Date().toISOString().split('T')[0]
   });
 
   useEffect(() => {
     fetchBankAccounts();
     fetchUpiAccounts();
     fetchCashAccounts();
+    fetchCashTransactions();
   }, []);
 
   const fetchBankAccounts = async () => {
@@ -150,27 +162,7 @@ export function BankAccountManager() {
         const result = await response.json();
         const accounts = result.data || [];
         setBankAccounts(accounts);
-        
-        // Fetch transactions for each bank account
-        const transactionsPromises = accounts.map(async (account: BankAccount) => {
-          console.log(`Fetching transactions for account ${account.name} (ID: ${account.id})`); // Debug log
-          const txResponse = await fetch(`/api/finance/bank_accounts/transactions?bank_account_id=${account.id}`);
-          if (txResponse.ok) {
-            const txResult = await txResponse.json();
-            console.log(`Account ${account.name} transactions:`, txResult.data?.length || 0, 'transactions'); // Debug log
-            return { accountId: account.id, transactions: txResult.data || [] };
-          }
-          return { accountId: account.id, transactions: [] };
-        });
-        
-        const allTransactions = await Promise.all(transactionsPromises);
-        const transactionsMap = allTransactions.reduce((acc, { accountId, transactions }) => {
-          acc[accountId] = transactions.slice(0, 5); // Only show last 5 transactions
-          return acc;
-        }, {} as Record<string, BankTransaction[]>);
-        
-        console.log('Final transactions map:', transactionsMap); // Debug log
-        setBankTransactions(transactionsMap);
+
       }
     } catch (error) {
       console.error('Error fetching bank accounts:', error);
@@ -203,15 +195,34 @@ export function BankAccountManager() {
     }
   };
 
+  const fetchCashTransactions = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/finance/cash-transactions');
+      if (!response.ok) {
+        throw new Error('Failed to fetch cash transactions');
+      }
+      const data = await response.json();
+      setCashTransactions(data);
+    } catch (error) {
+      console.error('Error fetching cash transactions:', error);
+      alert('Failed to fetch cash transactions');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const fetchTransactions = async (bankAccountId: string) => {
     try {
-      const response = await fetch(`/api/finance/bank_accounts/transactions?bank_account_id=${bankAccountId}`);
+      // Use the comprehensive bank-transactions API that includes all transaction types
+      const response = await fetch(`/api/finance/bank-transactions?bank_account_id=${bankAccountId}&limit=100`);
       if (response.ok) {
         const result = await response.json();
-        setTransactions(result.data || []);
+        // The API returns comprehensive transactions including vendor payments, withdrawals, liability payments
+        setTransactions(result.data?.transactions || []);
       }
     } catch (error) {
-      console.error('Error fetching bank transactions:', error);
+      console.error('Error fetching comprehensive bank transactions:', error);
     }
   };
 
@@ -272,38 +283,91 @@ export function BankAccountManager() {
     }
   };
 
-  const addCashAccount = async () => {
-    try {
-      const response = await fetch('/api/finance/bank_accounts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: newCashAccount.name,
-          current_balance: newCashAccount.current_balance,
-          account_type: 'CASH',
-          currency: newCashAccount.currency,
-          account_number: null // Cash accounts don't have account numbers
-        })
-      });
 
-      if (response.ok) {
-        setNewCashAccount({
-          name: '',
-          currency: 'INR',
-          current_balance: 0
-        });
-        setShowAddCash(false);
-        fetchCashAccounts();
-      }
-    } catch (error) {
-      console.error('Error adding cash account:', error);
+
+  const toggleAccountExpanded = (accountId: string) => {
+    const newExpandedAccounts = new Set(expandedAccounts);
+    if (newExpandedAccounts.has(accountId)) {
+      newExpandedAccounts.delete(accountId);
+    } else {
+      newExpandedAccounts.add(accountId);
+      // Fetch all transactions for this account when expanding
+      fetchTransactions(accountId);
     }
+    setExpandedAccounts(newExpandedAccounts);
   };
 
-  const handleViewTransactions = (account: BankAccount) => {
-    setSelectedAccount(account);
-    fetchTransactions(account.id);
-    setShowTransactions(true);
+  // Combine all accounts for fund transfer dropdowns
+  const allAccounts = [
+    ...bankAccounts.map(account => ({
+      id: account.id,
+      name: account.name,
+      type: 'bank' as const,
+      balance: account.current_balance
+    })),
+    ...upiAccounts.map(account => ({
+      id: account.id,
+      name: account.name,
+      type: 'upi' as const,
+      balance: account.current_balance
+    })),
+    ...cashAccounts.map(account => ({
+      id: account.id,
+      name: account.name,
+      type: 'cash' as const,
+      balance: account.current_balance
+    }))
+  ];
+
+  const handleFundTransfer = async () => {
+    const amountValue = parseFloat(fundTransfer.amount);
+    if (!fundTransfer.fromAccountId || !fundTransfer.toAccountId || !fundTransfer.amount || amountValue <= 0) {
+      alert('Please fill in all required fields with valid values.');
+      return;
+    }
+
+    if (fundTransfer.fromAccountId === fundTransfer.toAccountId) {
+      alert('Source and destination accounts must be different.');
+      return;
+    }
+
+    setTransferLoading(true);
+    try {
+      const response = await fetch('/api/finance/fund-transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fundTransfer)
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        alert(`Fund transfer successful! ₹${fundTransfer.amount.toLocaleString()} transferred successfully.`);
+        
+        // Reset form
+        setFundTransfer({
+          fromAccountId: '',
+          toAccountId: '',
+          amount: '',
+          description: '',
+          reference: '',
+          date: new Date().toISOString().split('T')[0]
+        });
+        setShowFundTransfer(false);
+        
+        // Refresh accounts to show updated balances
+        fetchBankAccounts();
+        fetchUpiAccounts();
+        fetchCashAccounts();
+      } else {
+        alert(`Transfer failed: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error processing fund transfer:', error);
+      alert('An error occurred while processing the transfer.');
+    } finally {
+      setTransferLoading(false);
+    }
   };
 
   const handleViewAllTransactions = () => {
@@ -336,6 +400,30 @@ export function BankAccountManager() {
     }, 0);
     
     return bankTotal + cashTotal;
+  };
+
+  const getTotalPaymentMethods = () => {
+    const allMethods = new Set<string>();
+    
+    bankAccounts.forEach(account => {
+      if (account.payment_methods) {
+        account.payment_methods.forEach(method => allMethods.add(method));
+      }
+    });
+    
+    upiAccounts.forEach(account => {
+      if (account.payment_methods) {
+        account.payment_methods.forEach(method => allMethods.add(method));
+      }
+    });
+    
+    cashAccounts.forEach(account => {
+      if (account.payment_methods) {
+        account.payment_methods.forEach(method => allMethods.add(method));
+      }
+    });
+    
+    return allMethods.size;
   };
 
   const getBankIcon = (bankName: string) => {
@@ -397,67 +485,53 @@ export function BankAccountManager() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-          <CardContent className="p-6">
+          <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-blue-600">Total Balance</p>
-                <p className="text-2xl font-bold text-blue-900">
+                <p className="text-xl font-bold text-blue-900">
                   {formatCurrency(getTotalBalance())}
                 </p>
               </div>
-              <div className="p-3 bg-blue-500 rounded-lg">
-                <Wallet className="h-6 w-6 text-white" />
+              <div className="p-2 bg-blue-500 rounded-lg">
+                <Wallet className="h-5 w-5 text-white" />
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-          <CardContent className="p-6">
+          <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-green-600">Active Accounts</p>
-                <p className="text-2xl font-bold text-green-900">{bankAccounts.length}</p>
+                <p className="text-xl font-bold text-green-900">{bankAccounts.length}</p>
               </div>
-              <div className="p-3 bg-green-500 rounded-lg">
-                <Building2 className="h-6 w-6 text-white" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-purple-600">Total Payments</p>
-                <p className="text-2xl font-bold text-purple-900">-</p>
-              </div>
-              <div className="p-3 bg-purple-500 rounded-lg">
-                <CreditCard className="h-6 w-6 text-white" />
+              <div className="p-2 bg-green-500 rounded-lg">
+                <Building2 className="h-5 w-5 text-white" />
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
-          <CardContent className="p-6">
+          <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-orange-600">Payment Methods</p>
-                <p className="text-2xl font-bold text-orange-900">-</p>
+                <p className="text-xl font-bold text-orange-900">{getTotalPaymentMethods()}</p>
               </div>
-              <div className="p-3 bg-orange-500 rounded-lg">
-                <Receipt className="h-6 w-6 text-white" />
+              <div className="p-2 bg-orange-500 rounded-lg">
+                <Receipt className="h-5 w-5 text-white" />
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Tabbed Interface for Bank, UPI and Cash Accounts */}
+      {/* Tabbed Interface for Bank, UPI and Cash Transactions */}
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'bank' | 'upi' | 'cash')}>
         <div className="flex justify-between items-center mb-4">
           <TabsList className="grid w-[600px] grid-cols-3">
@@ -471,11 +545,21 @@ export function BankAccountManager() {
             </TabsTrigger>
             <TabsTrigger value="cash" className="flex items-center gap-2">
               <Wallet className="h-4 w-4" />
-              Cash Accounts
+              Cash Transactions
             </TabsTrigger>
           </TabsList>
           
           <div className="flex gap-2">
+            {/* Fund Transfer Button */}
+            <Dialog open={showFundTransfer} onOpenChange={setShowFundTransfer}>
+              <DialogTrigger asChild>
+                <Button className="bg-purple-600 hover:bg-purple-700">
+                  <ArrowRightLeft className="h-4 w-4 mr-2" />
+                  Fund Transfer
+                </Button>
+              </DialogTrigger>
+            </Dialog>
+
             <Dialog open={showAddAccount} onOpenChange={setShowAddAccount}>
               <DialogTrigger asChild>
                 <Button className="bg-blue-600 hover:bg-blue-700" disabled={activeTab !== 'bank'}>
@@ -490,15 +574,6 @@ export function BankAccountManager() {
                 <Button className="bg-green-600 hover:bg-green-700" disabled={activeTab !== 'upi'}>
                   <Plus className="h-4 w-4 mr-2" />
                   Add UPI Account
-                </Button>
-              </DialogTrigger>
-            </Dialog>
-
-            <Dialog open={showAddCash} onOpenChange={setShowAddCash}>
-              <DialogTrigger asChild>
-                <Button className="bg-orange-600 hover:bg-orange-700" disabled={activeTab !== 'cash'}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Cash Account
                 </Button>
               </DialogTrigger>
             </Dialog>
@@ -538,70 +613,95 @@ export function BankAccountManager() {
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => handleViewTransactions(account)}
+                              onClick={() => toggleAccountExpanded(account.id)}
                               className="mt-2"
                             >
-                              <Eye className="h-4 w-4 mr-1" />
-                              View All Transactions
+                              {expandedAccounts.has(account.id) ? (
+                                <>
+                                  <ChevronUp className="h-4 w-4 mr-1" />
+                                  Hide All Transactions
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronDown className="h-4 w-4 mr-1" />
+                                  View All Transactions
+                                </>
+                              )}
                             </Button>
                           </div>
                         </div>
                       </div>
                       
-                      {/* Recent Transactions */}
+                      {/* Expanded All Transactions */}
                       <div className="p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <h4 className="font-medium text-gray-900">Recent Transactions</h4>
-                          <Badge variant="secondary" className="text-xs">
-                            Last 5 transactions
-                          </Badge>
-                        </div>
-                        
-                        {bankTransactions[account.id] && bankTransactions[account.id].length > 0 ? (
-                          <div className="space-y-2">
-                            {bankTransactions[account.id].map((transaction, index) => (
-                              <div 
-                                key={transaction.id || index} 
-                                className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                              >
-                                <div className="flex items-center gap-3">
-                                  <div className={`p-1 rounded-full ${
-                                    transaction.type === 'deposit' 
-                                      ? 'bg-green-100 text-green-600' 
-                                      : 'bg-red-100 text-red-600'
-                                  }`}>
-                                    {transaction.type === 'deposit' ? (
-                                      <ArrowUpCircle className="h-3 w-3" />
-                                    ) : (
-                                      <ArrowDownCircle className="h-3 w-3" />
-                                    )}
+                        {expandedAccounts.has(account.id) && (
+                          <div>
+                            <h4 className="font-medium text-gray-900 mb-3">All Transactions</h4>
+                            {transactions && transactions.length > 0 ? (
+                              <div className="space-y-2 max-h-96 overflow-y-auto">
+                                {transactions.map((transaction, index) => (
+                                  <div 
+                                    key={transaction.id || index} 
+                                    className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div className={`p-1 rounded-full ${
+                                        transaction.type === 'deposit' 
+                                          ? 'bg-green-100 text-green-600' 
+                                          : 'bg-red-100 text-red-600'
+                                      }`}>
+                                        {transaction.type === 'deposit' ? (
+                                          <ArrowUpCircle className="h-3 w-3" />
+                                        ) : (
+                                          <ArrowDownCircle className="h-3 w-3" />
+                                        )}
+                                      </div>
+                                      <div>
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <p className="text-sm font-medium text-gray-900">
+                                            {transaction.description}
+                                          </p>
+                                          {transaction.transaction_type && (
+                                            <Badge 
+                                              variant="secondary" 
+                                              className={`text-xs px-1.5 py-0.5 ${
+                                                transaction.transaction_type === 'vendor_payment' ? 'bg-blue-100 text-blue-700' :
+                                                transaction.transaction_type === 'withdrawal' ? 'bg-orange-100 text-orange-700' :
+                                                transaction.transaction_type === 'liability_payment' ? 'bg-purple-100 text-purple-700' :
+                                                'bg-gray-100 text-gray-700'
+                                              }`}
+                                            >
+                                              {transaction.transaction_type === 'vendor_payment' ? 'Vendor' :
+                                               transaction.transaction_type === 'withdrawal' ? 'Withdrawal' :
+                                               transaction.transaction_type === 'liability_payment' ? 'Loan Payment' :
+                                               'Bank Transfer'}
+                                            </Badge>
+                                          )}
+                                        </div>
+                                        <p className="text-xs text-gray-500">
+                                          {new Date(transaction.date).toLocaleDateString()} • {transaction.reference}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <div className="text-right">
+                                      <p className={`text-sm font-semibold ${
+                                        transaction.type === 'deposit' 
+                                          ? 'text-green-600' 
+                                          : 'text-red-600'
+                                      }`}>
+                                        {transaction.type === 'deposit' ? '+' : '-'}
+                                        {formatCurrency(transaction.amount, account.currency)}
+                                      </p>
+                                    </div>
                                   </div>
-                                  <div>
-                                    <p className="text-sm font-medium text-gray-900">
-                                      {transaction.description}
-                                    </p>
-                                    <p className="text-xs text-gray-500">
-                                      {new Date(transaction.date).toLocaleDateString()} • {transaction.reference}
-                                    </p>
-                                  </div>
-                                </div>
-                                <div className="text-right">
-                                  <p className={`text-sm font-semibold ${
-                                    transaction.type === 'deposit' 
-                                      ? 'text-green-600' 
-                                      : 'text-red-600'
-                                  }`}>
-                                    {transaction.type === 'deposit' ? '+' : '-'}
-                                    {formatCurrency(transaction.amount, account.currency)}
-                                  </p>
-                                </div>
+                                ))}
                               </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="text-center py-6 text-gray-500">
-                            <Receipt className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                            <p className="text-sm">No recent transactions</p>
+                            ) : (
+                              <div className="text-center py-6 text-gray-500">
+                                <Receipt className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                                <p className="text-sm">No transactions found</p>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -676,55 +776,99 @@ export function BankAccountManager() {
           </Card>
         </TabsContent>
 
-        {/* Cash Accounts Tab */}
+        {/* Cash Transactions Tab */}
         <TabsContent value="cash">
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Wallet className="h-5 w-5" />
-                Cash Accounts ({cashAccounts.length})
-              </CardTitle>
+            <CardHeader className="pb-3">
+              <div className="flex justify-between items-center">
+                <CardTitle className="flex items-center gap-2">
+                  <Wallet className="h-5 w-5" />
+                  Cash Transactions
+                </CardTitle>
+                <div className="text-right">
+                  <p className="text-sm text-gray-500">Current Cash Balance</p>
+                  <p className="text-2xl font-bold text-green-600">
+                    ₹{(cashTransactions.length > 0 ? cashTransactions[0]?.balance_after || 0 : 0).toLocaleString()}
+                  </p>
+                </div>
+              </div>
             </CardHeader>
-            <CardContent>
-              <div className="grid gap-4">
-                {cashAccounts.map((account) => (
-                  <Card key={account.id} className="border border-gray-200 hover:shadow-md transition-shadow">
-                    <CardContent className="p-4">
-                      <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-orange-100 rounded-lg">
-                            <Wallet className="h-6 w-6 text-orange-600" />
-                          </div>
-                          <div>
-                            <h3 className="font-semibold text-gray-900">{account.name}</h3>
-                            <p className="text-sm text-gray-600">Cash Account • {account.currency}</p>
-                            <div className="flex items-center gap-1 mt-1">
+            <CardContent className="p-0">
+              {loading ? (
+                <div className="text-center py-8 px-6">
+                  <p>Loading cash transactions...</p>
+                </div>
+              ) : (
+                <>
+                  {cashTransactions.length === 0 ? (
+                    <div className="text-center py-8 px-6 text-gray-500">
+                      <Wallet className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                      <p>No cash transactions found</p>
+                      <p className="text-sm">Cash transactions from sales, investments, and other operations will appear here</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-hidden">
+                      {/* Header Row */}
+                      <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-gray-50 border-b text-sm font-medium text-gray-700">
+                        <div className="col-span-2">Date</div>
+                        <div className="col-span-4">Description</div>
+                        <div className="col-span-2">Source</div>
+                        <div className="col-span-2 text-right">Amount</div>
+                        <div className="col-span-2 text-right">Balance</div>
+                      </div>
+                      
+                      {/* Transaction Rows */}
+                      <div className="divide-y divide-gray-100">
+                        {cashTransactions.map((transaction) => (
+                          <div key={transaction.id} className="grid grid-cols-12 gap-4 px-6 py-3 hover:bg-gray-50 transition-colors">
+                            {/* Date */}
+                            <div className="col-span-2 text-sm text-gray-600">
+                              {new Date(transaction.transaction_date).toLocaleDateString('en-IN', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric'
+                              })}
+                            </div>
+                            
+                            {/* Description */}
+                            <div className="col-span-4">
+                              <p className="text-sm font-medium text-gray-900">{transaction.description}</p>
                               <p className="text-xs text-gray-500">
-                                Physical cash handling
+                                Ref: {transaction.reference_number || 'N/A'}
                               </p>
                             </div>
+                            
+                            {/* Source */}
+                            <div className="col-span-2">
+                              <Badge variant="outline" className="text-xs">
+                                {transaction.source}
+                              </Badge>
+                            </div>
+                            
+                            {/* Amount */}
+                            <div className="col-span-2 text-right">
+                              <span className={`text-sm font-semibold ${
+                                transaction.transaction_type === 'CREDIT' 
+                                  ? 'text-green-600' 
+                                  : 'text-red-600'
+                              }`}>
+                                {transaction.transaction_type === 'CREDIT' ? '+' : '-'}₹{Math.abs(transaction.amount).toLocaleString()}
+                              </span>
+                            </div>
+                            
+                            {/* Running Balance */}
+                            <div className="col-span-2 text-right">
+                              <span className="text-sm font-medium text-gray-900">
+                                ₹{transaction.balance_after.toLocaleString()}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-lg font-bold text-gray-900">
-                            {getDisplayBalance(account)}
-                          </p>
-                          <Badge className={account.is_active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}>
-                            {account.is_active ? 'Active' : 'Inactive'}
-                          </Badge>
-                        </div>
+                        ))}
                       </div>
-                    </CardContent>
-                  </Card>
-                ))}
-                {cashAccounts.length === 0 && (
-                  <div className="text-center py-8 text-gray-500">
-                    <Wallet className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                    <p>No cash accounts found</p>
-                    <p className="text-sm">Add your first cash account to get started</p>
-                  </div>
-                )}
-              </div>
+                    </div>
+                  )}
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -865,157 +1009,175 @@ export function BankAccountManager() {
         </DialogContent>
       </Dialog>
 
-      {/* Add Cash Account Dialog */}
-      <Dialog open={showAddCash} onOpenChange={setShowAddCash}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Wallet className="h-5 w-5" />
-              Add Cash Account
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="cash_name">Cash Account Name</Label>
-              <Input
-                id="cash_name"
-                value={newCashAccount.name}
-                onChange={(e) => setNewCashAccount({ ...newCashAccount, name: e.target.value })}
-                placeholder="e.g., Main Cash Register, Petty Cash, Counter Cash"
-              />
+
+
+
+
+      {/* Fund Transfer Dialog */}
+      <Dialog open={showFundTransfer} onOpenChange={setShowFundTransfer}>
+        <DialogContent className="sm:max-w-md">
+          <div className="flex items-center gap-3 p-6 border-b">
+            <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
+              <ArrowRightLeft className="h-5 w-5 text-purple-600" />
             </div>
             <div>
-              <Label htmlFor="cash_currency">Currency</Label>
+              <h3 className="text-lg font-semibold">Fund Transfer</h3>
+              <p className="text-sm text-gray-600">Transfer funds between accounts</p>
+            </div>
+          </div>
+
+          <div className="p-6 space-y-4">
+            {/* From Account */}
+            <div className="space-y-2">
+              <Label htmlFor="fromAccount">From Account</Label>
               <Select
-                value={newCashAccount.currency}
-                onValueChange={(value) => setNewCashAccount({ ...newCashAccount, currency: value })}
+                value={fundTransfer.fromAccountId}
+                onValueChange={(value) => setFundTransfer({
+                  ...fundTransfer, 
+                  fromAccountId: value
+                })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select currency" />
+                  <SelectValue placeholder="Select source account" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="INR">INR (Indian Rupee)</SelectItem>
-                  <SelectItem value="USD">USD (US Dollar)</SelectItem>
-                  <SelectItem value="EUR">EUR (Euro)</SelectItem>
+                  {allAccounts.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      <div className="flex items-center gap-2">
+                        {account.type === 'bank' && <Building2 className="h-4 w-4" />}
+                        {account.type === 'upi' && <Smartphone className="h-4 w-4" />}
+                        {account.type === 'cash' && <Banknote className="h-4 w-4" />}
+                        <span>{account.name}</span>
+                        <span className="text-sm text-gray-500">
+                          (₹{account.balance?.toFixed(2)})
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label htmlFor="cash_balance">Initial Balance</Label>
-              <Input
-                id="cash_balance"
-                type="number"
-                value={newCashAccount.current_balance}
-                onChange={(e) => setNewCashAccount({ ...newCashAccount, current_balance: parseFloat(e.target.value) || 0 })}
-                placeholder="0.00"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Enter the current physical cash amount in this account
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddCash(false)}>
-              Cancel
-            </Button>
-            <Button onClick={addCashAccount} className="bg-orange-600 hover:bg-orange-700">
-              <Wallet className="h-4 w-4 mr-2" />
-              Add Cash Account
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
-      {/* Bank Account Transactions Dialog */}
-      <Dialog open={showTransactions} onOpenChange={setShowTransactions}>
-        <DialogContent className="max-w-7xl w-[95vw] max-h-[90vh] h-auto p-0 overflow-hidden">
-          <div className="flex flex-col max-h-[90vh]">
-            <DialogHeader className="px-6 py-4 border-b shrink-0">
-              <DialogTitle className="flex items-center gap-2">
-                {selectedAccount && getBankIcon(selectedAccount.name)}
-                {selectedAccount?.name} - Bank Transactions
-              </DialogTitle>
-              <p className="text-sm text-gray-600">
-                Current Balance: {selectedAccount && getDisplayBalance(selectedAccount)}
-              </p>
-            </DialogHeader>
-            
-            <div className="flex-1 overflow-hidden px-6 py-4">
-              <div className="h-full overflow-auto">
-                {transactions.length > 0 ? (
-                  <div className="border rounded-lg overflow-hidden">
-                    <div className="overflow-auto max-h-[70vh]">
-                      <Table className="w-full">
-                        <TableHeader className="sticky top-0 bg-white z-10">
-                          <TableRow>
-                            <TableHead className="w-[140px]">Date</TableHead>
-                            <TableHead className="w-[140px]">Type</TableHead>
-                            <TableHead className="min-w-[300px]">Description</TableHead>
-                            <TableHead className="w-[250px]">Reference</TableHead>
-                            <TableHead className="text-right w-[140px]">Amount</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                      <TableBody>
-                        {transactions.map((transaction) => (
-                          <TableRow key={transaction.id}>
-                            <TableCell>
-                              {(() => {
-                                const date = new Date(transaction.date);
-                                return isNaN(date.getTime()) ? 'No Date' : date.toLocaleDateString();
-                              })()}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                {transaction.type === 'deposit' ? (
-                                  <ArrowUpCircle className="h-4 w-4 text-green-600" />
-                                ) : (
-                                  <ArrowDownCircle className="h-4 w-4 text-red-600" />
-                                )}
-                                <Badge variant={transaction.type === 'deposit' ? 'default' : 'destructive'}>
-                                  {transaction.type === 'deposit' ? 'Credit' : 'Debit'}
-                                </Badge>
-                              </div>
-                            </TableCell>
-                            <TableCell className="max-w-[300px]">
-                              <div className="truncate" title={transaction.description}>
-                                {transaction.description}
-                              </div>
-                            </TableCell>
-                            <TableCell className="max-w-[250px]">
-                              <div className="truncate" title={transaction.reference || 'N/A'}>
-                                {transaction.reference || 'N/A'}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <span className={transaction.type === 'deposit' ? 'text-green-600' : 'text-red-600'}>
-                                {transaction.type === 'deposit' ? '+' : '-'}
-                                {formatCurrency(transaction.amount, selectedAccount?.currency)}
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <CreditCard className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>No bank transactions found</p>
-                  </div>
-                )}
+            {/* To Account */}
+            <div className="space-y-2">
+              <Label htmlFor="toAccount">To Account</Label>
+              <Select
+                value={fundTransfer.toAccountId}
+                onValueChange={(value) => setFundTransfer({
+                  ...fundTransfer, 
+                  toAccountId: value
+                })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select destination account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {allAccounts
+                    .filter(account => account.id !== fundTransfer.fromAccountId)
+                    .map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      <div className="flex items-center gap-2">
+                        {account.type === 'bank' && <Building2 className="h-4 w-4" />}
+                        {account.type === 'upi' && <Smartphone className="h-4 w-4" />}
+                        {account.type === 'cash' && <Banknote className="h-4 w-4" />}
+                        <span>{account.name}</span>
+                        <span className="text-sm text-gray-500">
+                          (₹{account.balance?.toFixed(2)})
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Amount */}
+            <div className="space-y-2">
+              <Label htmlFor="amount">Amount</Label>
+              <div className="relative">
+                <IndianRupee className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                <Input
+                  id="amount"
+                  type="number"
+                  placeholder="0.00"
+                  value={fundTransfer.amount}
+                  onChange={(e) => setFundTransfer({...fundTransfer, amount: e.target.value})}
+                  className="pl-9"
+                  step="0.01"
+                  min="0"
+                />
               </div>
             </div>
-            
-            <DialogFooter className="px-6 py-4 border-t shrink-0">
-              <Button 
-                variant="outline" 
-                onClick={() => setShowTransactions(false)}
-                className="w-full sm:w-auto"
-              >
-                Close
-              </Button>
-            </DialogFooter>
+
+            {/* Description */}
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Input
+                id="description"
+                placeholder="Transfer description (optional)"
+                value={fundTransfer.description}
+                onChange={(e) => setFundTransfer({...fundTransfer, description: e.target.value})}
+              />
+            </div>
+
+            {/* Reference */}
+            <div className="space-y-2">
+              <Label htmlFor="reference">Reference</Label>
+              <Input
+                id="reference"
+                placeholder="Reference number (optional)"
+                value={fundTransfer.reference}
+                onChange={(e) => setFundTransfer({...fundTransfer, reference: e.target.value})}
+              />
+            </div>
+
+            {/* Date */}
+            <div className="space-y-2">
+              <Label htmlFor="date">Date</Label>
+              <Input
+                id="date"
+                type="date"
+                value={fundTransfer.date}
+                onChange={(e) => setFundTransfer({...fundTransfer, date: e.target.value})}
+              />
+            </div>
+
+            {/* Transfer Summary */}
+            {fundTransfer.fromAccountId && fundTransfer.toAccountId && fundTransfer.amount && (
+              <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                <h4 className="font-medium text-sm text-gray-700">Transfer Summary</h4>
+                <div className="text-sm text-gray-600">
+                  <div>From: {allAccounts.find(a => a.id === fundTransfer.fromAccountId)?.name}</div>
+                  <div>To: {allAccounts.find(a => a.id === fundTransfer.toAccountId)?.name}</div>
+                  <div className="font-medium text-gray-900">Amount: ₹{parseFloat(fundTransfer.amount || '0').toFixed(2)}</div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-3 p-6 border-t">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowFundTransfer(false)}
+              className="flex-1"
+              disabled={transferLoading}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleFundTransfer}
+              disabled={
+                !fundTransfer.fromAccountId || 
+                !fundTransfer.toAccountId || 
+                !fundTransfer.amount || 
+                parseFloat(fundTransfer.amount || '0') <= 0 ||
+                transferLoading
+              }
+              className="flex-1 bg-purple-600 hover:bg-purple-700"
+            >
+              {transferLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Transfer Funds
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { PlusCircle, Eye, Edit, Package, DollarSign, ShoppingCart, CreditCard, RefreshCw, Star, Target, Filter } from 'lucide-react';
+import { PlusCircle, Eye, Edit, Package, DollarSign, ShoppingCart, CreditCard, RefreshCw, Star, Target, Filter, Grid, List } from 'lucide-react';
 import Link from 'next/link';
 
 interface VendorStats {
@@ -53,6 +53,31 @@ export default function VendorsPage() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [filterStatus, setFilterStatus] = useState<'all' | 'Active' | 'Inactive'>('all');
   const [performanceFilter, setPerformanceFilter] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
+
+  // Load preferred view mode from localStorage
+  useEffect(() => {
+    const savedViewMode = localStorage.getItem('vendors-view-mode');
+    if (savedViewMode === 'card' || savedViewMode === 'list') {
+      setViewMode(savedViewMode);
+    }
+  }, []);
+
+  // Save view mode preference to localStorage
+  const handleViewModeChange = (newMode: 'card' | 'list') => {
+    setViewMode(newMode);
+    localStorage.setItem('vendors-view-mode', newMode);
+  };
+
+  // Adjust items per page when switching view modes
+  useEffect(() => {
+    if (viewMode === 'list') {
+      setItemsPerPage(25); // Show more items in list view
+    } else {
+      setItemsPerPage(10); // Show fewer items in card view
+    }
+    setCurrentPage(1); // Reset to first page when switching views
+  }, [viewMode]);
 
   const fetchVendors = useCallback(async () => {
     try {
@@ -219,6 +244,29 @@ export default function VendorsPage() {
             <div className="h-8 w-8 bg-gradient-to-br from-emerald-500 to-green-600 rounded-lg flex items-center justify-center">
               <Package className="h-5 w-5 text-white" />
             </div>
+            
+            {/* View Mode Toggle */}
+            <div className="flex items-center bg-gray-100 rounded-lg p-1">
+              <Button
+                variant={viewMode === 'card' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => handleViewModeChange('card')}
+                className="h-8 px-3 rounded-md transition-all"
+              >
+                <Grid className="h-4 w-4 mr-1" />
+                Cards
+              </Button>
+              <Button
+                variant={viewMode === 'list' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => handleViewModeChange('list')}
+                className="h-8 px-3 rounded-md transition-all"
+              >
+                <List className="h-4 w-4 mr-1" />
+                List
+              </Button>
+            </div>
+            
             <Button variant="outline" onClick={handleSyncSuppliers} className="bg-white/80 backdrop-blur-sm border-white/20">
               <RefreshCw className="h-4 w-4 mr-2" />
               Sync Suppliers
@@ -533,7 +581,22 @@ export default function VendorsPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>All Vendors</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                All Vendors
+                <Badge variant="outline" className="font-normal">
+                  {viewMode === 'card' ? (
+                    <>
+                      <Grid className="h-3 w-3 mr-1" />
+                      Card View
+                    </>
+                  ) : (
+                    <>
+                      <List className="h-3 w-3 mr-1" />
+                      List View
+                    </>
+                  )}
+                </Badge>
+              </CardTitle>
               <CardDescription>
                 Complete list of all vendors with their performance metrics
               </CardDescription>
@@ -560,7 +623,7 @@ export default function VendorsPage() {
             <div className="flex items-center justify-center h-32">
               <p className="text-gray-500">Loading vendors...</p>
             </div>
-          ) : (
+          ) : viewMode === 'card' ? (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {paginatedVendors.map((vendor) => (
                 <Card key={vendor.id} className="group relative overflow-hidden border-0 shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-br from-white to-gray-50/50">
@@ -766,6 +829,129 @@ export default function VendorsPage() {
                   </CardContent>
                 </Card>
               ))}
+            </div>
+          ) : (
+            /* List View */
+            <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <table className="w-full min-w-[1200px] bg-white">
+                <thead>
+                  <tr className="border-b border-gray-200 bg-gray-50">
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Vendor</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Status</th>
+                    <th className="text-right py-3 px-4 font-semibold text-gray-700">Products</th>
+                    <th className="text-right py-3 px-4 font-semibold text-gray-700">Stock Qty</th>
+                    <th className="text-right py-3 px-4 font-semibold text-gray-700">Stock Cost</th>
+                    <th className="text-right py-3 px-4 font-semibold text-gray-700">Stock Value</th>
+                    <th className="text-right py-3 px-4 font-semibold text-gray-700">Profit</th>
+                    <th className="text-right py-3 px-4 font-semibold text-gray-700">Profit %</th>
+                    <th className="text-right py-3 px-4 font-semibold text-gray-700">Paid</th>
+                    <th className="text-right py-3 px-4 font-semibold text-gray-700">Pending</th>
+                    <th className="text-center py-3 px-4 font-semibold text-gray-700">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedVendors.map((vendor) => (
+                    <tr key={vendor.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors group">
+                      <td className="py-4 px-4">
+                        <div className="flex flex-col">
+                          <Link 
+                            href={`/vendors/${vendor.id}`} 
+                            className="font-semibold text-gray-900 hover:text-emerald-600 transition-colors"
+                          >
+                            {vendor.name}
+                          </Link>
+                          <span className="text-sm text-gray-500">{vendor.contact || 'No contact'}</span>
+                        </div>
+                      </td>
+                      <td className="py-4 px-4">
+                        <Badge className={`${getStatusBadge(vendor.status)} font-medium`}>
+                          {vendor.status}
+                        </Badge>
+                      </td>
+                      <td className="py-4 px-4 text-right">
+                        <span className="font-medium text-gray-900">
+                          {vendor.inventory_summary?.total_products || vendor.products_count || 0}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 text-right">
+                        <span className="font-medium text-gray-900">
+                          {(vendor.inventory_summary?.total_quantity || vendor.current_stock_quantity || 0).toLocaleString()}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 text-right">
+                        <span className="font-medium text-green-700">
+                          {formatCurrency(vendor.inventory_summary?.total_stock_cost || vendor.total_cost_inr || 0)}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 text-right">
+                        <span className="font-medium text-orange-700">
+                          {formatCurrency(vendor.inventory_summary?.total_stock_value || vendor.total_mrp_inr || 0)}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 text-right">
+                        <span className={`font-medium ${
+                          (vendor.inventory_summary?.total_profit || vendor.profit_margin_inr || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          {formatCurrency(vendor.inventory_summary?.total_profit || vendor.profit_margin_inr || 0)}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 text-right">
+                        <span className={`font-medium ${
+                          (vendor.inventory_summary?.overall_profit_margin || vendor.profit_percentage || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          {(vendor.inventory_summary?.overall_profit_margin || vendor.profit_percentage || 0).toFixed(1)}%
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 text-right">
+                        <span className="font-medium text-green-600">
+                          {formatCurrency(vendor.total_paid || 0)}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 text-right">
+                        <span className={`font-medium ${(vendor.total_pending || 0) > 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                          {formatCurrency(vendor.total_pending || 0)}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4">
+                        <div className="flex items-center justify-center space-x-1">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            asChild
+                            className="h-8 w-8 p-0 hover:bg-emerald-50 hover:border-emerald-300 group-hover:opacity-100 opacity-70 transition-all"
+                          >
+                            <Link href={`/vendors/${vendor.id}`}>
+                              <Eye className="h-3 w-3" />
+                            </Link>
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            asChild
+                            className="h-8 w-8 p-0 hover:bg-blue-50 hover:border-blue-300 group-hover:opacity-100 opacity-70 transition-all"
+                          >
+                            <Link href={`/vendors/${vendor.id}/edit`}>
+                              <Edit className="h-3 w-3" />
+                            </Link>
+                          </Button>
+                          {(vendor.inventory_summary?.total_products || vendor.products_count || 0) > 0 && (
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              asChild
+                              className="h-8 w-8 p-0 hover:bg-purple-50 hover:border-purple-300 group-hover:opacity-100 opacity-70 transition-all"
+                            >
+                              <Link href={`/vendors/${vendor.id}/inventory`}>
+                                <Package className="h-3 w-3" />
+                              </Link>
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
           

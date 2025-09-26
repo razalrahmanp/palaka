@@ -8,6 +8,8 @@ import { hasPermission } from "@/lib/auth";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { 
   ChartContainer, 
   InventoryStatusChart, 
@@ -47,11 +49,8 @@ interface SalesRepStats {
 
 import { 
   IndianRupee, 
-  Package, 
-  AlertTriangle,
   TrendingUp,
   Factory,
-  Truck,
   RefreshCw,
   Calendar,
   Download,
@@ -67,15 +66,20 @@ import {
 } from "lucide-react";
 
 // Data fetching hooks
-const useKPIData = () => {
+const useKPIData = (dateRange: { startDate: string; endDate: string }) => {
   return useQuery({
-    queryKey: ['dashboard-kpis'],
+    queryKey: ['dashboard-kpis', dateRange.startDate, dateRange.endDate],
     queryFn: async () => {
-      const response = await fetch('/api/dashboard/kpis');
+      const params = new URLSearchParams({
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate
+      });
+      const response = await fetch(`/api/dashboard/kpis?${params}`);
       if (!response.ok) throw new Error('Failed to fetch KPIs');
       return response.json();
     },
     refetchInterval: 5 * 60 * 1000,
+    enabled: !!dateRange.startDate && !!dateRange.endDate,
   });
 };
 
@@ -108,8 +112,54 @@ export default function EnhancedModularDashboard() {
   // Finance State
   const [financeLoading, setFinanceLoading] = useState(false);
 
+  // Date Filtering State
+  const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'month' | 'custom'>('month');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
+
+  // Utility function to get date range based on filter
+  const getDateRange = useCallback(() => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    switch (dateFilter) {
+      case 'today':
+        return {
+          startDate: today.toISOString().split('T')[0],
+          endDate: today.toISOString().split('T')[0]
+        };
+      case 'week':
+        const weekStart = new Date(today);
+        weekStart.setDate(today.getDate() - today.getDay());
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+        return {
+          startDate: weekStart.toISOString().split('T')[0],
+          endDate: weekEnd.toISOString().split('T')[0]
+        };
+      case 'month':
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        return {
+          startDate: monthStart.toISOString().split('T')[0],
+          endDate: monthEnd.toISOString().split('T')[0]
+        };
+      case 'custom':
+        return {
+          startDate: customStartDate || today.toISOString().split('T')[0],
+          endDate: customEndDate || today.toISOString().split('T')[0]
+        };
+      default:
+        return {
+          startDate: '',
+          endDate: ''
+        };
+    }
+  }, [dateFilter, customStartDate, customEndDate]);
+
   // Data hooks
-  const { data: kpiData, isLoading: kpiLoading, refetch: refetchKPI } = useKPIData();
+  const dateRange = getDateRange();
+  const { data: kpiData, isLoading: kpiLoading, refetch: refetchKPI } = useKPIData(dateRange);
   const { data: operationalData, isLoading: operationalLoading } = useOperationalData();
 
   useEffect(() => {
@@ -254,18 +304,97 @@ export default function EnhancedModularDashboard() {
               <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-700 bg-clip-text text-transparent">
                 Palaka Furniture ERP
               </h1>
-              <p className="text-sm text-gray-600">Executive Dashboard & Business Intelligence</p>
+              <p className="text-sm text-gray-600">
+                Executive Dashboard & Business Intelligence
+                {dateRange.startDate && dateRange.endDate && (
+                  <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                    {dateFilter === 'today' ? 'Today' :
+                     dateFilter === 'week' ? 'This Week' :
+                     dateFilter === 'month' ? 'This Month' :
+                     `${dateRange.startDate} to ${dateRange.endDate}`}
+                  </span>
+                )}
+              </p>
             </div>
           </div>
           
           <div className="flex items-center space-x-3">
+            {/* Date Filter Controls */}
+            <div className="flex items-center space-x-2 border rounded-lg p-1 bg-gray-50">
+              <Button 
+                variant={dateFilter === 'today' ? "default" : "ghost"} 
+                size="sm"
+                onClick={() => setDateFilter('today')}
+                className="text-xs h-7"
+              >
+                Today
+              </Button>
+              <Button 
+                variant={dateFilter === 'week' ? "default" : "ghost"} 
+                size="sm"
+                onClick={() => setDateFilter('week')}
+                className="text-xs h-7"
+              >
+                Week
+              </Button>
+              <Button 
+                variant={dateFilter === 'month' ? "default" : "ghost"} 
+                size="sm"
+                onClick={() => setDateFilter('month')}
+                className="text-xs h-7"
+              >
+                Month
+              </Button>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button 
+                    variant={dateFilter === 'custom' ? "default" : "ghost"} 
+                    size="sm"
+                    className="text-xs h-7"
+                  >
+                    <Calendar className="h-3 w-3 mr-1" />
+                    Custom
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 p-3">
+                  <div className="space-y-3">
+                    <h4 className="font-medium">Custom Date Range</h4>
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-sm font-medium">Start Date</label>
+                        <Input
+                          type="date"
+                          value={customStartDate}
+                          onChange={(e) => setCustomStartDate(e.target.value)}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium">End Date</label>
+                        <Input
+                          type="date"
+                          value={customEndDate}
+                          onChange={(e) => setCustomEndDate(e.target.value)}
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      onClick={() => setDateFilter('custom')}
+                      disabled={!customStartDate || !customEndDate}
+                      className="w-full"
+                    >
+                      Apply Custom Range
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+
             <Button variant="outline" size="sm" onClick={refreshAllData} disabled={isLoading}>
               <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
               Refresh
-            </Button>
-            <Button variant="outline" size="sm">
-              <Calendar className="h-4 w-4 mr-2" />
-              30D
             </Button>
             <Button variant="outline" size="sm">
               <Download className="h-4 w-4 mr-2" />
@@ -279,130 +408,124 @@ export default function EnhancedModularDashboard() {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-full mx-auto p-6 space-y-6">
+      <div className="max-w-full mx-auto p-3 sm:p-4 md:p-6 space-y-4 md:space-y-6">
         {/* KPI Section */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
           {/* MTD Revenue Card */}
-          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 h-20">
-            <CardContent className="p-3 h-full">
+          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 h-20 sm:h-24">
+            <CardContent className="p-2 sm:p-3 h-full">
               <div className="flex items-center justify-between h-full">
-                <div>
-                  <p className="text-xs font-medium text-blue-600">MTD Revenue</p>
-                  <p className="text-lg font-bold text-blue-900">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs sm:text-sm font-medium text-blue-600 truncate">
+                    {dateFilter === 'today' ? 'Today Revenue' :
+                     dateFilter === 'week' ? 'Week Revenue' :
+                     dateFilter === 'month' ? 'MTD Revenue' :
+                     'Custom Revenue'}
+                  </p>
+                  <p className="text-sm sm:text-lg font-bold text-blue-900 truncate">
                     {isLoading ? (
-                      <div className="h-6 w-20 bg-blue-200 rounded animate-pulse"></div>
+                      <div className="h-4 sm:h-6 w-16 sm:w-20 bg-blue-200 rounded animate-pulse"></div>
                     ) : (
                       `₹${(kpiData?.data?.mtdRevenue || 0).toLocaleString()}`
                     )}
                   </p>
                 </div>
-                <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
-                  <IndianRupee className="h-5 w-5 text-white" />
+                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
+                  <IndianRupee className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Quote Pipeline Card */}
-          <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 h-20">
-            <CardContent className="p-3 h-full">
+          {/* Total Profit Card */}
+          <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 h-20 sm:h-24">
+            <CardContent className="p-2 sm:p-3 h-full">
               <div className="flex items-center justify-between h-full">
-                <div>
-                  <p className="text-xs font-medium text-green-600">Quote Pipeline</p>
-                  <p className="text-lg font-bold text-green-900">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs sm:text-sm font-medium text-green-600 truncate">
+                    {dateFilter === 'today' ? 'Today Profit' :
+                     dateFilter === 'week' ? 'Week Profit' :
+                     dateFilter === 'month' ? 'MTD Profit' :
+                     'Custom Profit'}
+                  </p>
+                  <p className="text-sm sm:text-lg font-bold text-green-900 truncate">
                     {isLoading ? (
-                      <div className="h-6 w-20 bg-green-200 rounded animate-pulse"></div>
+                      <div className="h-4 sm:h-6 w-16 sm:w-20 bg-green-200 rounded animate-pulse"></div>
                     ) : (
-                      `₹${(kpiData?.data?.quotePipeline?.totalValue || 0).toLocaleString()}`
+                      `₹${(kpiData?.data?.totalProfit || 0).toLocaleString()}`
                     )}
                   </p>
                 </div>
-                <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
-                  <TrendingUp className="h-5 w-5 text-white" />
+                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-green-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
+                  <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Custom Orders Card */}
-          <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200 h-20">
-            <CardContent className="p-3 h-full">
+          {/* Net Profit Margin Card */}
+          <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200 h-20 sm:h-24">
+            <CardContent className="p-2 sm:p-3 h-full">
               <div className="flex items-center justify-between h-full">
-                <div>
-                  <p className="text-xs font-medium text-purple-600">Custom Orders</p>
-                  <p className="text-lg font-bold text-purple-900">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs sm:text-sm font-medium text-emerald-600 truncate">Net Margin</p>
+                  <p className="text-sm sm:text-lg font-bold text-emerald-900 truncate">
                     {isLoading ? (
-                      <div className="h-6 w-16 bg-purple-200 rounded animate-pulse"></div>
+                      <div className="h-4 sm:h-6 w-12 sm:w-16 bg-emerald-200 rounded animate-pulse"></div>
                     ) : (
-                      `${kpiData?.data?.customOrdersPending || 0}`
+                      `${(kpiData?.data?.profitMargin || 0).toFixed(1)}%`
                     )}
                   </p>
                 </div>
-                <div className="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center">
-                  <Factory className="h-5 w-5 text-white" />
+                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
+                  <Percent className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Low Stock Items Card */}
-          <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 h-20">
-            <CardContent className="p-3 h-full">
+          {/* Gross Profit Margin Card */}
+          <Card className="bg-gradient-to-br from-teal-50 to-teal-100 border-teal-200 h-20 sm:h-24">
+            <CardContent className="p-2 sm:p-3 h-full">
               <div className="flex items-center justify-between h-full">
-                <div>
-                  <p className="text-xs font-medium text-red-600">Low Stock Items</p>
-                  <p className="text-lg font-bold text-red-900">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs sm:text-sm font-medium text-teal-600 truncate">Gross Margin</p>
+                  <p className="text-sm sm:text-lg font-bold text-teal-900 truncate">
                     {isLoading ? (
-                      <div className="h-6 w-16 bg-red-200 rounded animate-pulse"></div>
+                      <div className="h-4 sm:h-6 w-12 sm:w-16 bg-teal-200 rounded animate-pulse"></div>
                     ) : (
-                      `${kpiData?.data?.lowStockItems || 0}`
+                      `${(kpiData?.data?.grossProfitMargin || 0).toFixed(1)}%`
                     )}
                   </p>
                 </div>
-                <div className="w-10 h-10 bg-red-500 rounded-lg flex items-center justify-center">
-                  <AlertTriangle className="h-5 w-5 text-white" />
+                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-teal-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
+                  <Percent className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Open POs Card */}
-          <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 h-20">
-            <CardContent className="p-3 h-full">
+          {/* New Customers Card */}
+          <Card className="bg-gradient-to-br from-violet-50 to-violet-100 border-violet-200 h-20 sm:h-24">
+            <CardContent className="p-2 sm:p-3 h-full">
               <div className="flex items-center justify-between h-full">
-                <div>
-                  <p className="text-xs font-medium text-orange-600">Open POs</p>
-                  <p className="text-lg font-bold text-orange-900">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs sm:text-sm font-medium text-violet-600 truncate">
+                    {dateFilter === 'today' ? 'New Today' :
+                     dateFilter === 'week' ? 'New Week' :
+                     dateFilter === 'month' ? 'New MTD' :
+                     'New Custom'}
+                  </p>
+                  <p className="text-sm sm:text-lg font-bold text-violet-900 truncate">
                     {isLoading ? (
-                      <div className="h-6 w-20 bg-orange-200 rounded animate-pulse"></div>
+                      <div className="h-4 sm:h-6 w-12 sm:w-16 bg-violet-200 rounded animate-pulse"></div>
                     ) : (
-                      `₹${(kpiData?.data?.openPurchaseOrders?.value || 0).toLocaleString()}`
+                      `${kpiData?.data?.newCustomers || 0}`
                     )}
                   </p>
                 </div>
-                <div className="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center">
-                  <Package className="h-5 w-5 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Delivery Rate Card */}
-          <Card className="bg-gradient-to-br from-teal-50 to-teal-100 border-teal-200 h-20">
-            <CardContent className="p-3 h-full">
-              <div className="flex items-center justify-between h-full">
-                <div>
-                  <p className="text-xs font-medium text-teal-600">Delivery Rate</p>
-                  <p className="text-lg font-bold text-teal-900">
-                    {isLoading ? (
-                      <div className="h-6 w-16 bg-teal-200 rounded animate-pulse"></div>
-                    ) : (
-                      `${(kpiData?.data?.onTimeDeliveryRate || 100).toFixed(1)}%`
-                    )}
-                  </p>
-                </div>
-                <div className="w-10 h-10 bg-teal-500 rounded-lg flex items-center justify-center">
-                  <Truck className="h-5 w-5 text-white" />
+                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-violet-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
+                  <Users className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                 </div>
               </div>
             </CardContent>

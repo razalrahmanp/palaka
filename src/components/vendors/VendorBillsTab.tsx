@@ -122,7 +122,7 @@ export function VendorBillsTab({
     reference_number: ''
   });
   
-  // Smart payment state
+  // Smart payment states
   const [smartPaymentOpen, setSmartPaymentOpen] = useState(false);
   const [isProcessingSmartPayment, setIsProcessingSmartPayment] = useState(false);
   const [smartPaymentForm, setSmartPaymentForm] = useState({

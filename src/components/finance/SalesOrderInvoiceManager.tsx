@@ -3654,7 +3654,7 @@ export function SalesOrderInvoiceManager() {
 
       {/* Create Expense Dialog */}
       <Dialog open={createExpenseOpen} onOpenChange={isCreatingExpense ? undefined : setCreateExpenseOpen}>
-        <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-y-auto mx-auto relative">
+        <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto">
           {/* Loading Overlay */}
           {isCreatingExpense && (
             <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center rounded-lg">
@@ -4004,7 +4004,7 @@ export function SalesOrderInvoiceManager() {
 
       {/* Create Invoice Dialog */}
       <Dialog open={createInvoiceOpen} onOpenChange={setCreateInvoiceOpen}>
-        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto mx-auto">
+        <DialogContent className="max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader className="pb-6">
             <DialogTitle className="text-xl font-semibold flex items-center gap-2">
               <FileText className="h-5 w-5 text-blue-600" />
@@ -4237,7 +4237,7 @@ export function SalesOrderInvoiceManager() {
 
       {/* Investment Dialog */}
       <Dialog open={createInvestmentOpen} onOpenChange={setCreateInvestmentOpen}>
-        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto mx-auto">
+        <DialogContent className="max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold text-green-700 flex items-center gap-2">
               <TrendingUp className="h-5 w-5" />
@@ -4467,7 +4467,7 @@ export function SalesOrderInvoiceManager() {
 
       {/* Withdrawal Dialog */}
       <Dialog open={createWithdrawalOpen} onOpenChange={setCreateWithdrawalOpen}>
-        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto mx-auto">
+        <DialogContent className="max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold text-purple-700 flex items-center gap-2">
               <TrendingDown className="h-5 w-5" />
@@ -4888,7 +4888,7 @@ export function SalesOrderInvoiceManager() {
 
       {/* Liability Payment Dialog */}
       <Dialog open={createLiabilityOpen} onOpenChange={setCreateLiabilityOpen}>
-        <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-y-auto mx-auto">
+        <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold text-blue-700 flex items-center gap-2">
               <CreditCard className="h-5 w-5" />
@@ -5162,7 +5162,7 @@ export function SalesOrderInvoiceManager() {
 
       {/* Loan Setup Dialog */}
       <Dialog open={loanSetupOpen} onOpenChange={setLoanSetupOpen}>
-        <DialogContent className="w-[95vw] max-w-3xl max-h-[90vh] overflow-y-auto mx-auto">
+        <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold text-orange-700 flex items-center gap-2">
               <Building2 className="h-5 w-5" />
@@ -5436,7 +5436,7 @@ export function SalesOrderInvoiceManager() {
 
       {/* Delete Expense Confirmation Dialog */}
       <Dialog open={deleteExpenseOpen} onOpenChange={setDeleteExpenseOpen}>
-        <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto mx-auto">
+        <DialogContent className="max-w-md w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-red-600">
               <Trash2 className="h-5 w-5" />

@@ -102,10 +102,10 @@ export default function RedesignedSalesPage() {
     }
   };
 
-  // Fetch payments on component mount and when orders change
+  // Fetch payments on component mount
   useEffect(() => {
     fetchActualPayments();
-  }, []);
+  }, []); // Only fetch once, then filter client-side
 
   const { handleSaveQuote, handleDeleteOrder, handleDeleteQuote } = createSalesHandlers(
     currentUser,
@@ -146,10 +146,23 @@ export default function RedesignedSalesPage() {
     
     // Handle both created_at and date field names
     const dateString = item.created_at || item.date;
-    if (!dateString) return false;
+    if (!dateString) {
+      console.log('⚠️ Item without date:', item);
+      return false;
+    }
     
     const itemDate = new Date(dateString);
     const now = new Date(); 
+    
+    // Debug logging for daily filter
+    if (filter === 'daily') {
+      console.log('🔍 Daily filter check:', {
+        dateString,
+        itemDate: itemDate.toDateString(),
+        now: now.toDateString(),
+        matches: itemDate.toDateString() === now.toDateString()
+      });
+    }
     
     switch (filter) {
       case 'daily':
@@ -179,6 +192,10 @@ export default function RedesignedSalesPage() {
     const dateB = new Date(b.created_at || '').getTime();
     return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
   });
+
+  console.log(`🔍 Filtering results: timeFilter=${timeFilter}`);
+  console.log(`📊 Original quotes: ${quotes.length}, filtered quotes: ${filteredQuotes.length}`);
+  if (quotes.length > 0) console.log('📊 Sample quote dates:', quotes.slice(0,2).map(q => ({id: q.id, created_at: q.created_at})));
 
   const filteredOrders = orders.filter(order => {
     const matchesSearch = !searchTerm || 
@@ -210,6 +227,9 @@ export default function RedesignedSalesPage() {
     return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
   });
 
+  console.log(`📦 Original orders: ${orders.length}, filtered orders: ${filteredOrders.length}`);
+  if (orders.length > 0) console.log('📦 Sample order dates:', orders.slice(0,2).map(o => ({id: o.id, date: o.date})));
+
   // Enhanced statistics with real payment and invoice data - based on filtered data
   const stats = (() => {
     // Type extension for orders with payment data
@@ -226,13 +246,17 @@ export default function RedesignedSalesPage() {
       }>;
     };
     
-    // Use filtered data for calculations
+    // Use filtered data for calculations - this gives consistent filtering
     const ordersWithPayment = filteredOrders as OrderWithPayment[];
     const quotesFiltered = filteredQuotes;
     
     // Debug logging
     console.log(`📈 Sales stats: timeFilter=${timeFilter}, totalOrders=${orders.length}, filteredOrders=${ordersWithPayment.length}, totalQuotes=${quotes.length}, filteredQuotes=${quotesFiltered.length}`);
-    console.log(`💰 Profit calculation: Using final_price (actual amount received) - cost`);
+    console.log(`💰 Filtered payments count: ${actualPayments.length}, paymentsLoading: ${paymentsLoading}`);
+    
+    // Apply consistent time filtering to payments (same logic as orders/quotes)
+    const filteredPayments = actualPayments.filter(payment => filterByTimePeriod(payment, timeFilter));
+    console.log(`💰 Client-side filtered payments: ${filteredPayments.length} out of ${actualPayments.length}`);
     
     // Basic counts
     const totalQuotes = quotesFiltered.length;
@@ -243,12 +267,7 @@ export default function RedesignedSalesPage() {
       return sum + (order.final_price || order.total || 0);
     }, 0);
     
-    // Filter payments by time period same as orders/quotes
-    const filteredPayments = actualPayments.filter(payment => {
-      return filterByTimePeriod(payment, timeFilter);
-    });
-
-    // Total amount actually collected (real payments) - using filtered payments data for accuracy
+    // Total amount actually collected (real payments) - using consistently filtered payments
     const totalCollected = !paymentsLoading && filteredPayments.length > 0 
       ? filteredPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0)
       : ordersWithPayment.reduce((sum, order) => sum + (order.total_paid || 0), 0);
@@ -261,8 +280,7 @@ export default function RedesignedSalesPage() {
       fromActualPayments: totalCollectedFromPayments,
       usingActualPayments: !paymentsLoading && filteredPayments.length > 0,
       paymentsCount: filteredPayments.length,
-      timeFilter: timeFilter,
-      originalPaymentsCount: actualPayments.length
+      timeFilter: timeFilter
     });
     
     // Outstanding balance across all orders
@@ -276,8 +294,8 @@ export default function RedesignedSalesPage() {
     const pendingPaymentOrders = ordersWithPayment.filter(order => order.payment_status === 'pending').length;
     
     // Quote conversion metrics
-    const conversionRate = totalQuotes > 0 ? Math.round((quotes.filter(q => q.status === 'Converted').length / totalQuotes) * 100) : 0;
-    const pendingQuotes = quotes.filter(q => q.status === 'Draft' || q.status === 'Pending').length;
+    const conversionRate = totalQuotes > 0 ? Math.round((quotesFiltered.filter(q => q.status === 'Converted').length / totalQuotes) * 100) : 0;
+    const pendingQuotes = quotesFiltered.filter(q => q.status === 'Draft' || q.status === 'Pending').length;
     const confirmedOrders = ordersWithPayment.filter(o => o.status === 'confirmed').length;
     
     // Monthly metrics (current month)
@@ -292,10 +310,10 @@ export default function RedesignedSalesPage() {
       return sum + (order.final_price || order.total || 0);
     }, 0);
     
-    // Calculate collected amount based on time filter (not just monthly)
+    // Calculate collected amount based on time filter (consistently filtered)
     let periodCollected = 0;
     if (!paymentsLoading && filteredPayments.length > 0) {
-      // Use already filtered payments for the selected time period
+      // Use consistently filtered payments for the selected time period
       periodCollected = filteredPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
     } else {
       // Fallback to filtered orders data
@@ -313,10 +331,10 @@ export default function RedesignedSalesPage() {
       ? paidOrders.reduce((sum, order) => sum + (order.final_price || order.total || 0), 0) / paidOrders.length
       : 0;
     
-    // Legacy fields for compatibility (using quote data)
-    const totalPendingPayments = quotes.reduce((sum, q) => sum + (q.remaining_balance || 0), 0);
-    const partialPaidQuotes = quotes.filter(q => q.payment_status === 'partial').length;
-    const fullyPaidQuotes = quotes.filter(q => q.payment_status === 'paid').length;
+    // Legacy fields for compatibility (using filtered quote data)
+    const totalPendingPayments = quotesFiltered.reduce((sum, q) => sum + (q.remaining_balance || 0), 0);
+    const partialPaidQuotes = quotesFiltered.filter(q => q.payment_status === 'partial').length;
+    const fullyPaidQuotes = quotesFiltered.filter(q => q.payment_status === 'paid').length;
     
     // Additional required fields
     const pendingOrders = ordersWithPayment.filter(o => o.status === 'draft').length; // using 'draft' as pending equivalent

@@ -210,3 +210,206 @@ export async function POST(req: Request) {
   }
 }
 
+export async function DELETE(req: Request) {
+  try {
+    const { expense_id } = await req.json();
+
+    if (!expense_id) {
+      return NextResponse.json({ error: "Expense ID is required" }, { status: 400 });
+    }
+
+    // First, get the expense details for validation and relationship handling
+    const { data: expense, error: fetchError } = await supabase
+      .from('expenses')
+      .select('*')
+      .eq('id', expense_id)
+      .single();
+
+    if (fetchError || !expense) {
+      return NextResponse.json({ error: "Expense not found" }, { status: 404 });
+    }
+
+    // If this expense is linked to a vendor bill, we need to handle the relationships
+    if (expense.vendor_bill_id) {
+      console.log(`🔗 Expense ${expense_id} is linked to vendor bill ${expense.vendor_bill_id}. Handling relationships...`);
+
+      // Get the current vendor bill details
+      const { data: vendorBill, error: billError } = await supabase
+        .from('vendor_bills')
+        .select('*')
+        .eq('id', expense.vendor_bill_id)
+        .single();
+
+      if (billError) {
+        console.error('Error fetching vendor bill:', billError);
+        return NextResponse.json({ error: "Failed to fetch associated vendor bill" }, { status: 500 });
+      }
+
+      if (vendorBill) {
+        // Calculate new paid amount (reduce by the expense amount)
+        const newPaidAmount = Math.max(0, (vendorBill.paid_amount || 0) - expense.amount);
+        const newRemainingAmount = vendorBill.total_amount - newPaidAmount;
+        
+        // Determine new status based on payment amounts
+        let newStatus = vendorBill.status;
+        if (newPaidAmount === 0) {
+          newStatus = 'pending';
+        } else if (newPaidAmount < vendorBill.total_amount) {
+          newStatus = 'partial';
+        } else if (newPaidAmount >= vendorBill.total_amount) {
+          newStatus = 'paid';
+        }
+
+        // Update the vendor bill
+        const { error: updateBillError } = await supabase
+          .from('vendor_bills')
+          .update({
+            paid_amount: newPaidAmount,
+            remaining_amount: newRemainingAmount,
+            status: newStatus,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', expense.vendor_bill_id);
+
+        if (updateBillError) {
+          console.error('Error updating vendor bill:', updateBillError);
+          return NextResponse.json({ error: "Failed to update vendor bill" }, { status: 500 });
+        }
+
+        // Delete associated vendor payment history record
+        // Try multiple approaches to find and delete the correct payment history record
+        
+        // First approach: Match by vendor_bill_id, amount, and payment_date
+        const { error: paymentHistoryError1 } = await supabase
+          .from('vendor_payment_history')
+          .delete()
+          .match({
+            vendor_bill_id: expense.vendor_bill_id,
+            amount: expense.amount,
+            payment_date: expense.date
+          });
+
+        if (paymentHistoryError1) {
+          console.log('First approach failed, trying alternative matching...');
+          
+          // Second approach: Match by vendor_bill_id and amount (in case dates don't match exactly)
+          const { error: paymentHistoryError2 } = await supabase
+            .from('vendor_payment_history')
+            .delete()
+            .match({
+              vendor_bill_id: expense.vendor_bill_id,
+              amount: expense.amount
+            })
+            .limit(1);  // Only delete one record
+
+          if (paymentHistoryError2) {
+            console.log('Second approach failed, trying by supplier and amount...');
+            
+            // Third approach: Match by supplier_id, amount, and payment_date
+            const { error: paymentHistoryError3 } = await supabase
+              .from('vendor_payment_history')
+              .delete()
+              .match({
+                supplier_id: expense.entity_id,
+                amount: expense.amount,
+                payment_date: expense.date
+              })
+              .limit(1);
+
+            if (paymentHistoryError3) {
+              console.warn('Warning: Could not delete vendor payment history with any approach:', {
+                error1: paymentHistoryError1,
+                error2: paymentHistoryError2, 
+                error3: paymentHistoryError3
+              });
+            } else {
+              console.log('✅ Successfully deleted vendor payment history using supplier matching');
+            }
+          } else {
+            console.log('✅ Successfully deleted vendor payment history using bill and amount matching');
+          }
+        } else {
+          console.log('✅ Successfully deleted vendor payment history using bill, amount, and date matching');
+        }
+
+        console.log(`✅ Updated vendor bill ${expense.vendor_bill_id}: paid_amount: ${vendorBill.paid_amount} → ${newPaidAmount}, status: ${vendorBill.status} → ${newStatus}`);
+      }
+    }
+
+    // Handle bank account reversal if the expense was paid from a bank account
+    let bankAccountUpdated = false;
+    let bankTransactionDeleted = false;
+    
+    if (expense.bank_account_id) {
+      console.log(`💰 Expense ${expense_id} was paid from bank account ${expense.bank_account_id}. Reversing bank transaction...`);
+
+      // 1. Delete the bank transaction
+      const { error: bankTransactionError } = await supabase
+        .from('bank_transactions')
+        .delete()
+        .match({
+          bank_account_id: expense.bank_account_id,
+          type: 'withdrawal',
+          amount: expense.amount,
+          description: `Expense: ${expense.description}`
+        });
+
+      if (bankTransactionError) {
+        console.warn('Warning: Could not delete bank transaction:', bankTransactionError);
+      } else {
+        bankTransactionDeleted = true;
+        console.log(`✅ Deleted bank transaction for expense ${expense_id}`);
+      }
+
+      // 2. Restore bank account balance
+      const { data: bankAccount, error: bankAccountError } = await supabase
+        .from('bank_accounts')
+        .select('current_balance')
+        .eq('id', expense.bank_account_id)
+        .single();
+
+      if (!bankAccountError && bankAccount) {
+        const restoredBalance = (bankAccount.current_balance || 0) + expense.amount;
+        
+        const { error: updateBalanceError } = await supabase
+          .from('bank_accounts')
+          .update({ current_balance: restoredBalance })
+          .eq('id', expense.bank_account_id);
+
+        if (updateBalanceError) {
+          console.error('Error restoring bank account balance:', updateBalanceError);
+          return NextResponse.json({ error: "Failed to restore bank account balance" }, { status: 500 });
+        } else {
+          bankAccountUpdated = true;
+          console.log(`✅ Restored bank account ${expense.bank_account_id} balance: ${bankAccount.current_balance} → ${restoredBalance} (+${expense.amount})`);
+        }
+      } else {
+        console.error('Error fetching bank account for balance restoration:', bankAccountError);
+        return NextResponse.json({ error: "Failed to fetch bank account for balance restoration" }, { status: 500 });
+      }
+    }
+
+    // Delete the expense
+    const { error: deleteError } = await supabase
+      .from('expenses')
+      .delete()
+      .eq('id', expense_id);
+
+    if (deleteError) {
+      console.error('Error deleting expense:', deleteError);
+      return NextResponse.json({ error: "Failed to delete expense" }, { status: 500 });
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      message: "Expense deleted successfully with complete accounting reversal",
+      deleted_expense: expense,
+      vendor_bill_updated: !!expense.vendor_bill_id,
+      bank_account_updated: bankAccountUpdated,
+      bank_transaction_deleted: bankTransactionDeleted
+    });
+  } catch (error) {
+    console.error('Error in DELETE /api/finance/expenses:', error);
+    return NextResponse.json({ error: "Failed to delete expense" }, { status: 500 });
+  }
+}

@@ -124,6 +124,7 @@ export function VendorBillsTab({
   
   // Smart payment state
   const [smartPaymentOpen, setSmartPaymentOpen] = useState(false);
+  const [isProcessingSmartPayment, setIsProcessingSmartPayment] = useState(false);
   const [smartPaymentForm, setSmartPaymentForm] = useState({
     amount: '',
     payment_date: new Date().toISOString().split('T')[0],
@@ -158,6 +159,7 @@ export function VendorBillsTab({
   const [createExpenseOpen, setCreateExpenseOpen] = useState(false);
   const [expensesSearchQuery, setExpensesSearchQuery] = useState('');
   const [isSyncingExpenses, setIsSyncingExpenses] = useState(false);
+  const [isCreatingExpense, setIsCreatingExpense] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [expenseForm, setExpenseForm] = useState({
@@ -297,38 +299,13 @@ export function VendorBillsTab({
       return;
     }
 
+    setIsCreatingExpense(true);
     try {
-      // If this is a bill payment, also record it as a vendor payment
-      const iseBillPayment = expenseForm.vendor_bill_id && selectedBillForPayment;
+      // Check if this is a bill payment
+      const isBillPayment = expenseForm.vendor_bill_id && selectedBillForPayment;
       
-      // Create the expense
-      const expenseResponse = await fetch('/api/finance/expenses', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          date: expenseForm.date,
-          subcategory: expenseForm.category,
-          description: `${expenseForm.description} [Vendor: ${vendorName}]`,
-          amount: parseFloat(expenseForm.amount),
-          payment_method: expenseForm.payment_method,
-          bank_account_id: (expenseForm.bank_account_id && expenseForm.bank_account_id !== 'no-accounts') 
-            ? expenseForm.bank_account_id 
-            : (bankAccounts.length > 0 ? bankAccounts[0].id : 1),
-          entity_id: expenseForm.entity_id || vendorId,
-          entity_type: expenseForm.entity_type || 'supplier',
-          vendor_bill_id: expenseForm.vendor_bill_id === 'none' ? null : expenseForm.vendor_bill_id || null,
-        }),
-      });
-
-      if (!expenseResponse.ok) {
-        const error = await expenseResponse.json();
-        throw new Error(error.error || 'Failed to create expense');
-      }
-
-      // If this is a bill payment, also record it through the vendor payment API
-      if (iseBillPayment) {
+      if (isBillPayment) {
+        // For bill payments, use the vendor payments API (which creates its own expense record)
         const paymentResponse = await fetch(`/api/vendors/${vendorId}/payments`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -338,14 +315,41 @@ export function VendorBillsTab({
             payment_method: expenseForm.payment_method,
             bank_account_id: expenseForm.bank_account_id || '',
             upi_account_id: '',
-            reference_number: `Expense Payment - ${new Date().getTime()}`,
-            notes: `Payment recorded through expense system: ${expenseForm.description}`,
+            reference_number: `Bill Payment - ${new Date().getTime()}`,
+            notes: `${expenseForm.description}`,
             vendor_bill_id: expenseForm.vendor_bill_id
           })
         });
 
         if (!paymentResponse.ok) {
-          console.warn('Expense created but failed to update bill payment status');
+          const error = await paymentResponse.json();
+          throw new Error(error.error || 'Failed to create bill payment');
+        }
+      } else {
+        // For regular expenses, use the expenses API
+        const expenseResponse = await fetch('/api/finance/expenses', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            date: expenseForm.date,
+            subcategory: expenseForm.category,
+            description: `${expenseForm.description} [Vendor: ${vendorName}]`,
+            amount: parseFloat(expenseForm.amount),
+            payment_method: expenseForm.payment_method,
+            bank_account_id: (expenseForm.bank_account_id && expenseForm.bank_account_id !== 'no-accounts') 
+              ? expenseForm.bank_account_id 
+              : (bankAccounts.length > 0 ? bankAccounts[0].id : 1),
+            entity_id: expenseForm.entity_id || vendorId,
+            entity_type: expenseForm.entity_type || 'supplier',
+            vendor_bill_id: null, // No vendor bill for regular expenses
+          }),
+        });
+
+        if (!expenseResponse.ok) {
+          const error = await expenseResponse.json();
+          throw new Error(error.error || 'Failed to create expense');
         }
       }
 
@@ -374,14 +378,16 @@ export function VendorBillsTab({
       setExpenses(expenses);
       
       // Refresh bill data if this was a bill payment
-      if (iseBillPayment) {
+      if (isBillPayment) {
         onBillUpdate();
       }
       
-      alert(iseBillPayment ? 'Bill payment recorded successfully!' : 'Expense created successfully!');
+      alert(isBillPayment ? 'Bill payment recorded successfully!' : 'Expense created successfully!');
     } catch (error) {
       console.error('Error creating expense:', error);
       alert(`Error creating expense: ${error instanceof Error ? error.message : 'Please try again.'}`);
+    } finally {
+      setIsCreatingExpense(false);
     }
   };
 
@@ -585,6 +591,69 @@ export function VendorBillsTab({
     }
   };
 
+  const handleDeleteExpense = async (expense: Expense) => {
+    // Confirm deletion with enhanced information
+    const billInfo = expense.vendor_bill_id ? 
+      `\n⚠️  This expense is linked to a vendor bill and will:\n` +
+      `   • Update the bill's paid amount\n` +
+      `   • Remove payment history record\n` +
+      `   • Restore bank account balance\n\n` 
+      : '\n';
+      
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete this expense?\n\n` +
+      `Description: ${expense.description}\n` +
+      `Amount: ${formatCurrency(expense.amount)}\n` +
+      `Date: ${formatDate(expense.date)}` +
+      billInfo +
+      `This action cannot be undone and will permanently remove the expense record.`
+    );
+
+    if (!confirmDelete) return;
+
+    try {
+      console.log(`🗑️ Deleting vendor expense: ${expense.id}`, {
+        description: expense.description,
+        amount: expense.amount,
+        vendor_bill_id: expense.vendor_bill_id,
+        hasVendorBill: !!expense.vendor_bill_id
+      });
+
+      const response = await fetch('/api/finance/expenses', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          expense_id: expense.id
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete expense');
+      }
+
+      const result = await response.json();
+      console.log('✅ Expense deletion result:', result);
+
+      // Remove expense from local state
+      setExpenses(prevExpenses => 
+        prevExpenses.filter(exp => exp.id !== expense.id)
+      );
+      
+      // If this expense was linked to a vendor bill, refresh the bill data
+      if (expense.vendor_bill_id) {
+        onBillUpdate(); // Refresh bills to show updated paid amounts and status
+      }
+      
+      alert('Expense deleted successfully with complete cleanup!');
+    } catch (error) {
+      console.error('Error deleting expense:', error);
+      alert(`Error deleting expense: ${error instanceof Error ? error.message : 'Please try again.'}`);
+    }
+  };
+
   // Smart payment calculation logic
   const calculateSmartPayment = (amount: number) => {
     if (!amount || amount <= 0) {
@@ -632,6 +701,7 @@ export function VendorBillsTab({
       return;
     }
 
+    setIsProcessingSmartPayment(true);
     try {
       // Create individual payments for each bill that receives payment
       const payments = paymentPreview.filter(p => p.paymentAmount > 0);
@@ -673,6 +743,8 @@ export function VendorBillsTab({
     } catch (error) {
       console.error('Error processing smart payment:', error);
       alert(`Error processing payment: ${error instanceof Error ? error.message : 'Please try again.'}`);
+    } finally {
+      setIsProcessingSmartPayment(false);
     }
   };
 
@@ -1088,8 +1160,9 @@ export function VendorBillsTab({
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-7 w-7 p-0"
+                            className="h-7 w-7 p-0 hover:bg-red-50 hover:border-red-300 hover:text-red-600"
                             title="Delete expense"
+                            onClick={() => handleDeleteExpense(expense)}
                           >
                             <Trash2 className="h-3 w-3" />
                           </Button>
@@ -1441,7 +1514,7 @@ export function VendorBillsTab({
       </Dialog>
 
       {/* Create Expense Dialog */}
-      <Dialog open={createExpenseOpen} onOpenChange={(open) => {
+      <Dialog open={createExpenseOpen} onOpenChange={isCreatingExpense ? undefined : (open) => {
         setCreateExpenseOpen(open);
         if (!open) {
           setSelectedBillForPayment(null);
@@ -1736,6 +1809,7 @@ export function VendorBillsTab({
                     vendor_bill_id: '',
                   });
                 }}
+                disabled={isCreatingExpense}
                 className="w-full sm:w-auto order-2 sm:order-1"
               >
                 Cancel
@@ -1743,11 +1817,20 @@ export function VendorBillsTab({
               <Button 
                 type="button" 
                 onClick={handleCreateExpense}
-                disabled={!expenseForm.description || !expenseForm.amount}
+                disabled={!expenseForm.description || !expenseForm.amount || isCreatingExpense}
                 className="bg-red-600 hover:bg-red-700 w-full sm:w-auto order-1 sm:order-2"
               >
-                <Receipt className="h-4 w-4 mr-2" />
-                {selectedBillForPayment ? 'Record Payment' : 'Create Expense'}
+                {isCreatingExpense ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
+                    {selectedBillForPayment ? 'Recording...' : 'Creating...'}
+                  </>
+                ) : (
+                  <>
+                    <Receipt className="h-4 w-4 mr-2" />
+                    {selectedBillForPayment ? 'Record Payment' : 'Create Expense'}
+                  </>
+                )}
               </Button>
             </div>
           </DialogFooter>
@@ -1755,7 +1838,7 @@ export function VendorBillsTab({
       </Dialog>
 
       {/* Smart Payment Dialog */}
-      <Dialog open={smartPaymentOpen} onOpenChange={setSmartPaymentOpen}>
+      <Dialog open={smartPaymentOpen} onOpenChange={(open) => !isProcessingSmartPayment && setSmartPaymentOpen(open)}>
         <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1960,6 +2043,7 @@ export function VendorBillsTab({
                   });
                   setPaymentPreview([]);
                 }}
+                disabled={isProcessingSmartPayment}
                 className="flex-1 sm:flex-none"
               >
                 Cancel
@@ -1968,15 +2052,25 @@ export function VendorBillsTab({
                 type="button" 
                 onClick={handleSmartPayment}
                 disabled={
+                  isProcessingSmartPayment ||
                   !smartPaymentForm.amount || 
                   parseFloat(smartPaymentForm.amount) <= 0 || 
                   paymentPreview.length === 0 ||
                   (smartPaymentForm.payment_method !== 'cash' && !smartPaymentForm.bank_account_id)
                 }
-                className="bg-green-600 hover:bg-green-700 flex-1 sm:flex-none"
+                className="bg-green-600 hover:bg-green-700 flex-1 sm:flex-none cursor-pointer disabled:cursor-not-allowed"
               >
-                <Calculator className="h-4 w-4 mr-2" />
-                Process Smart Payment
+                {isProcessingSmartPayment ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Processing Payment...
+                  </>
+                ) : (
+                  <>
+                    <Calculator className="h-4 w-4 mr-2" />
+                    Process Smart Payment
+                  </>
+                )}
               </Button>
             </div>
           </DialogFooter>

@@ -293,6 +293,7 @@ export function SalesOrderInvoiceManager() {
     notes: '',
   });
   const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
+  const [isCreatingExpense, setIsCreatingExpense] = useState(false);
   const [customers, setCustomers] = useState<Array<{name: string; phone?: string; email?: string; address?: string}>>([]);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
 
@@ -1497,6 +1498,7 @@ export function SalesOrderInvoiceManager() {
       return;
     }
 
+    setIsCreatingExpense(true);
     try {
       const response = await fetch('/api/finance/expenses', {
         method: 'POST',
@@ -1547,6 +1549,8 @@ export function SalesOrderInvoiceManager() {
     } catch (error) {
       console.error('Error creating expense:', error);
       alert('Error creating expense. Please try again.');
+    } finally {
+      setIsCreatingExpense(false);
     }
   };
 
@@ -3649,8 +3653,19 @@ export function SalesOrderInvoiceManager() {
       />
 
       {/* Create Expense Dialog */}
-      <Dialog open={createExpenseOpen} onOpenChange={setCreateExpenseOpen}>
-        <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-y-auto mx-auto">
+      <Dialog open={createExpenseOpen} onOpenChange={isCreatingExpense ? undefined : setCreateExpenseOpen}>
+        <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-y-auto mx-auto relative">
+          {/* Loading Overlay */}
+          {isCreatingExpense && (
+            <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center rounded-lg">
+              <div className="flex flex-col items-center gap-3">
+                <div className="animate-spin rounded-full h-8 w-8 border-3 border-red-600 border-t-transparent"></div>
+                <p className="text-sm font-medium text-gray-700">Recording Expense...</p>
+                <p className="text-xs text-gray-500">Please wait while we process your expense</p>
+              </div>
+            </div>
+          )}
+          
           <DialogHeader className="pb-6">
             <DialogTitle className="text-xl font-semibold flex items-center gap-2">
               <Receipt className="h-5 w-5 text-red-600" />
@@ -3679,6 +3694,7 @@ export function SalesOrderInvoiceManager() {
                       type="date"
                       value={expenseForm.date}
                       onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })}
+                      disabled={isCreatingExpense}
                       className="w-full"
                     />
                   </div>
@@ -3694,6 +3710,7 @@ export function SalesOrderInvoiceManager() {
                       placeholder="0.00"
                       value={expenseForm.amount}
                       onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
+                      disabled={isCreatingExpense}
                       className="w-full text-lg"
                     />
                   </div>
@@ -3702,7 +3719,7 @@ export function SalesOrderInvoiceManager() {
                     <Label htmlFor="category" className="text-sm font-medium">
                       Expense Category *
                     </Label>
-                    <Select value={expenseForm.category} onValueChange={handleCategoryChange}>
+                    <Select value={expenseForm.category} onValueChange={handleCategoryChange} disabled={isCreatingExpense}>
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select expense category" />
                       </SelectTrigger>
@@ -3857,7 +3874,7 @@ export function SalesOrderInvoiceManager() {
                     <Label htmlFor="payment_method" className="text-sm font-medium">
                       Payment Method *
                     </Label>
-                    <Select value={expenseForm.payment_method} onValueChange={(value) => setExpenseForm({ ...expenseForm, payment_method: value })}>
+                    <Select value={expenseForm.payment_method} onValueChange={(value) => setExpenseForm({ ...expenseForm, payment_method: value })} disabled={isCreatingExpense}>
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select payment method" />
                       </SelectTrigger>
@@ -3877,7 +3894,7 @@ export function SalesOrderInvoiceManager() {
                         Bank Account *
                       </Label>
                       <div className="flex gap-2">
-                        <Select value={expenseForm.bank_account_id} onValueChange={(value) => setExpenseForm({ ...expenseForm, bank_account_id: value })}>
+                        <Select value={expenseForm.bank_account_id} onValueChange={(value) => setExpenseForm({ ...expenseForm, bank_account_id: value })} disabled={isCreatingExpense}>
                           <SelectTrigger className="flex-1">
                             <SelectValue placeholder="Select bank account" />
                           </SelectTrigger>
@@ -3931,6 +3948,7 @@ export function SalesOrderInvoiceManager() {
                     placeholder="Enter detailed expense description, vendor name, purpose, etc..."
                     value={expenseForm.description}
                     onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
+                    disabled={isCreatingExpense}
                     className="w-full min-h-[100px] resize-y"
                   />
                   <p className="text-xs text-gray-500">
@@ -3956,6 +3974,7 @@ export function SalesOrderInvoiceManager() {
                 type="button"
                 variant="outline"
                 onClick={() => setCreateExpenseOpen(false)}
+                disabled={isCreatingExpense}
                 className="w-full sm:w-auto order-2 sm:order-1"
               >
                 Cancel
@@ -3963,11 +3982,20 @@ export function SalesOrderInvoiceManager() {
               <Button 
                 type="button" 
                 onClick={handleCreateExpense}
-                disabled={!expenseForm.description || !expenseForm.amount}
+                disabled={!expenseForm.description || !expenseForm.amount || isCreatingExpense}
                 className="bg-red-600 hover:bg-red-700 w-full sm:w-auto order-1 sm:order-2"
               >
-                <Receipt className="h-4 w-4 mr-2" />
-                Create Expense
+                {isCreatingExpense ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
+                    Recording...
+                  </>
+                ) : (
+                  <>
+                    <Receipt className="h-4 w-4 mr-2" />
+                    Create Expense
+                  </>
+                )}
               </Button>
             </div>
           </DialogFooter>

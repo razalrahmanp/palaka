@@ -243,19 +243,26 @@ export default function RedesignedSalesPage() {
       return sum + (order.final_price || order.total || 0);
     }, 0);
     
-    // Total amount actually collected (real payments) - using actual payments data for accuracy
-    const totalCollected = !paymentsLoading && actualPayments.length > 0 
-      ? actualPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0)
+    // Filter payments by time period same as orders/quotes
+    const filteredPayments = actualPayments.filter(payment => {
+      return filterByTimePeriod(payment, timeFilter);
+    });
+
+    // Total amount actually collected (real payments) - using filtered payments data for accuracy
+    const totalCollected = !paymentsLoading && filteredPayments.length > 0 
+      ? filteredPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0)
       : ordersWithPayment.reduce((sum, order) => sum + (order.total_paid || 0), 0);
 
     // Debug: Compare old vs new calculation methods
     const totalCollectedFromOrders = ordersWithPayment.reduce((sum, order) => sum + (order.total_paid || 0), 0);
-    const totalCollectedFromPayments = actualPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
+    const totalCollectedFromPayments = filteredPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
     console.log('💰 COLLECTED AMOUNT COMPARISON:', {
       fromOrders: totalCollectedFromOrders,
       fromActualPayments: totalCollectedFromPayments,
-      usingActualPayments: !paymentsLoading && actualPayments.length > 0,
-      paymentsCount: actualPayments.length
+      usingActualPayments: !paymentsLoading && filteredPayments.length > 0,
+      paymentsCount: filteredPayments.length,
+      timeFilter: timeFilter,
+      originalPaymentsCount: actualPayments.length
     });
     
     // Outstanding balance across all orders
@@ -285,19 +292,14 @@ export default function RedesignedSalesPage() {
       return sum + (order.final_price || order.total || 0);
     }, 0);
     
-    // Calculate monthly collected using actual payments for current month
-    let monthlyCollected = 0;
-    if (!paymentsLoading && actualPayments.length > 0) {
-      // Filter actual payments by current month/year
-      monthlyCollected = actualPayments
-        .filter((payment: { payment_date?: string; date?: string }) => {
-          const paymentDate = new Date(payment.payment_date || payment.date || '');
-          return paymentDate.getMonth() === currentMonth && paymentDate.getFullYear() === currentYear;
-        })
-        .reduce((sum, payment) => sum + (payment.amount || 0), 0);
+    // Calculate collected amount based on time filter (not just monthly)
+    let periodCollected = 0;
+    if (!paymentsLoading && filteredPayments.length > 0) {
+      // Use already filtered payments for the selected time period
+      periodCollected = filteredPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
     } else {
-      // Fallback to order-level data
-      monthlyCollected = monthlyOrders.reduce((sum, order) => {
+      // Fallback to filtered orders data
+      periodCollected = ordersWithPayment.reduce((sum, order) => {
         return sum + (order.total_paid || 0);
       }, 0);
     }
@@ -376,7 +378,7 @@ export default function RedesignedSalesPage() {
       pendingQuotes,
       confirmedOrders,
       monthlyRevenue,
-      monthlyCollected,
+      periodCollected,
       monthlyOrders: monthlyOrders.length,
       collectionRate,
       averageOrderValue,

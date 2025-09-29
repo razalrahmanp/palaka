@@ -62,7 +62,10 @@ import {
   MessageSquare,
   DollarSign,
   Percent,
-  Users
+  Users,
+  CreditCard,
+  Building,
+  Receipt
 } from "lucide-react";
 
 // Data fetching hooks
@@ -140,9 +143,14 @@ export default function EnhancedModularDashboard() {
       case 'month':
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
         const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        
+        // Fix timezone issue by using local date formatting
+        const monthStartStr = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}-${String(monthStart.getDate()).padStart(2, '0')}`;
+        const monthEndStr = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, '0')}-${String(monthEnd.getDate()).padStart(2, '0')}`;
+        
         return {
-          startDate: monthStart.toISOString().split('T')[0],
-          endDate: monthEnd.toISOString().split('T')[0]
+          startDate: monthStartStr,
+          endDate: monthEndStr
         };
       case 'custom':
         return {
@@ -409,127 +417,207 @@ export default function EnhancedModularDashboard() {
 
       {/* Main Content */}
       <div className="max-w-full mx-auto p-3 sm:p-4 md:p-6 space-y-4 md:space-y-6">
-        {/* KPI Section */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
-          {/* MTD Revenue Card */}
-          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 h-20 sm:h-24">
-            <CardContent className="p-2 sm:p-3 h-full">
-              <div className="flex items-center justify-between h-full">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs sm:text-sm font-medium text-blue-600 truncate">
-                    {dateFilter === 'today' ? 'Today Revenue' :
-                     dateFilter === 'week' ? 'Week Revenue' :
-                     dateFilter === 'month' ? 'MTD Revenue' :
-                     'Custom Revenue'}
-                  </p>
-                  <p className="text-sm sm:text-lg font-bold text-blue-900 truncate">
-                    {isLoading ? (
-                      <div className="h-4 sm:h-6 w-16 sm:w-20 bg-blue-200 rounded animate-pulse"></div>
-                    ) : (
-                      `₹${(kpiData?.data?.mtdRevenue || 0).toLocaleString()}`
-                    )}
-                  </p>
+        {/* KPI Section - Two Rows Layout */}
+        <div className="space-y-3 md:space-y-4">
+          {/* First Row: Revenue, Profit, Gross Profit, Payment Collected */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+            {/* Revenue (MTD) Card */}
+            <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 h-20 sm:h-24">
+              <CardContent className="p-2 sm:p-3 h-full">
+                <div className="flex items-center justify-between h-full">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-blue-600 truncate">
+                      Revenue (MTD)
+                    </p>
+                    <div className="text-sm sm:text-lg font-bold text-blue-900 truncate">
+                      {isLoading ? (
+                        <div className="h-4 sm:h-6 w-16 sm:w-20 bg-blue-200 rounded animate-pulse"></div>
+                      ) : (
+                        `₹${(kpiData?.data?.mtdRevenue || 0).toLocaleString()}`
+                      )}
+                    </div>
+                  </div>
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
+                    <IndianRupee className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                  </div>
                 </div>
-                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
-                  <IndianRupee className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          {/* Total Profit Card */}
-          <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 h-20 sm:h-24">
-            <CardContent className="p-2 sm:p-3 h-full">
-              <div className="flex items-center justify-between h-full">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs sm:text-sm font-medium text-green-600 truncate">
-                    {dateFilter === 'today' ? 'Today Profit' :
-                     dateFilter === 'week' ? 'Week Profit' :
-                     dateFilter === 'month' ? 'MTD Profit' :
-                     'Custom Profit'}
-                  </p>
-                  <p className="text-sm sm:text-lg font-bold text-green-900 truncate">
-                    {isLoading ? (
-                      <div className="h-4 sm:h-6 w-16 sm:w-20 bg-green-200 rounded animate-pulse"></div>
-                    ) : (
-                      `₹${(kpiData?.data?.totalProfit || 0).toLocaleString()}`
-                    )}
-                  </p>
+            {/* Profit (MTD) Card */}
+            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 h-20 sm:h-24">
+              <CardContent className="p-2 sm:p-3 h-full">
+                <div className="flex items-center justify-between h-full">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-green-600 truncate">
+                      Profit (MTD)
+                    </p>
+                    <div className="text-sm sm:text-lg font-bold text-green-900 truncate">
+                      {isLoading ? (
+                        <div className="h-4 sm:h-6 w-16 sm:w-20 bg-green-200 rounded animate-pulse"></div>
+                      ) : (
+                        `₹${(kpiData?.data?.totalProfit || 0).toLocaleString()}`
+                      )}
+                    </div>
+                  </div>
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-green-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
+                    <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                  </div>
                 </div>
-                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-green-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
-                  <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          {/* Net Profit Margin Card */}
-          <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200 h-20 sm:h-24">
-            <CardContent className="p-2 sm:p-3 h-full">
-              <div className="flex items-center justify-between h-full">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs sm:text-sm font-medium text-emerald-600 truncate">Net Margin</p>
-                  <p className="text-sm sm:text-lg font-bold text-emerald-900 truncate">
-                    {isLoading ? (
-                      <div className="h-4 sm:h-6 w-12 sm:w-16 bg-emerald-200 rounded animate-pulse"></div>
-                    ) : (
-                      `${(kpiData?.data?.profitMargin || 0).toFixed(1)}%`
-                    )}
-                  </p>
+            {/* Gross Profit (MTD) Card */}
+            <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-indigo-200 h-20 sm:h-24">
+              <CardContent className="p-2 sm:p-3 h-full">
+                <div className="flex items-center justify-between h-full">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-indigo-600 truncate">
+                      Gross Profit (MTD)
+                    </p>
+                    <div className="text-sm sm:text-lg font-bold text-indigo-900 truncate">
+                      {isLoading ? (
+                        <div className="h-4 sm:h-6 w-16 sm:w-20 bg-indigo-200 rounded animate-pulse"></div>
+                      ) : (
+                        `₹${(kpiData?.data?.grossProfit || 0).toLocaleString()}`
+                      )}
+                    </div>
+                  </div>
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-indigo-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
+                    <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                  </div>
                 </div>
-                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
-                  <Percent className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          {/* Gross Profit Margin Card */}
-          <Card className="bg-gradient-to-br from-teal-50 to-teal-100 border-teal-200 h-20 sm:h-24">
-            <CardContent className="p-2 sm:p-3 h-full">
-              <div className="flex items-center justify-between h-full">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs sm:text-sm font-medium text-teal-600 truncate">Gross Margin</p>
-                  <p className="text-sm sm:text-lg font-bold text-teal-900 truncate">
-                    {isLoading ? (
-                      <div className="h-4 sm:h-6 w-12 sm:w-16 bg-teal-200 rounded animate-pulse"></div>
-                    ) : (
-                      `${(kpiData?.data?.grossProfitMargin || 0).toFixed(1)}%`
-                    )}
-                  </p>
+            {/* Payment Collected Card */}
+            <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200 h-20 sm:h-24">
+              <CardContent className="p-2 sm:p-3 h-full">
+                <div className="flex items-center justify-between h-full">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-emerald-600 truncate">Payment Collected</p>
+                    <div className="text-sm sm:text-lg font-bold text-emerald-900 truncate">
+                      {isLoading ? (
+                        <div className="h-4 sm:h-6 w-16 sm:w-20 bg-emerald-200 rounded animate-pulse"></div>
+                      ) : (
+                        `₹${(kpiData?.data?.totalCollected || 0).toLocaleString()}`
+                      )}
+                    </div>
+                    <div className="text-xs text-emerald-600 truncate">
+                      {isLoading ? (
+                        <div className="h-3 w-12 bg-emerald-200 rounded animate-pulse"></div>
+                      ) : (
+                        `${kpiData?.data?.collectionRate || 0}% collected`
+                      )}
+                    </div>
+                  </div>
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
+                    <CreditCard className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                  </div>
                 </div>
-                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-teal-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
-                  <Percent className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
 
-          {/* New Customers Card */}
-          <Card className="bg-gradient-to-br from-violet-50 to-violet-100 border-violet-200 h-20 sm:h-24">
-            <CardContent className="p-2 sm:p-3 h-full">
-              <div className="flex items-center justify-between h-full">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs sm:text-sm font-medium text-violet-600 truncate">
-                    {dateFilter === 'today' ? 'New Today' :
-                     dateFilter === 'week' ? 'New Week' :
-                     dateFilter === 'month' ? 'New MTD' :
-                     'New Custom'}
-                  </p>
-                  <p className="text-sm sm:text-lg font-bold text-violet-900 truncate">
-                    {isLoading ? (
-                      <div className="h-4 sm:h-6 w-12 sm:w-16 bg-violet-200 rounded animate-pulse"></div>
-                    ) : (
-                      `${kpiData?.data?.newCustomers || 0}`
-                    )}
-                  </p>
+          {/* Second Row: Total Expenses, Outstanding, Vendor Payments, Customer Conversion */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+            {/* Total Expenses (MTD) Card */}
+            <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200 h-20 sm:h-24">
+              <CardContent className="p-2 sm:p-3 h-full">
+                <div className="flex items-center justify-between h-full">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-amber-600 truncate">
+                      Total Expenses (MTD)
+                    </p>
+                    <div className="text-sm sm:text-lg font-bold text-amber-900 truncate">
+                      {isLoading ? (
+                        <div className="h-4 sm:h-6 w-16 sm:w-20 bg-amber-200 rounded animate-pulse"></div>
+                      ) : (
+                        `₹${(kpiData?.data?.totalExpenses || 0).toLocaleString()}`
+                      )}
+                    </div>
+                  </div>
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-amber-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
+                    <Receipt className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                  </div>
                 </div>
-                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-violet-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
-                  <Users className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+              </CardContent>
+            </Card>
+
+            {/* Outstanding Card */}
+            <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 h-20 sm:h-24">
+              <CardContent className="p-2 sm:p-3 h-full">
+                <div className="flex items-center justify-between h-full">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-orange-600 truncate">Outstanding</p>
+                    <div className="text-sm sm:text-lg font-bold text-orange-900 truncate">
+                      {isLoading ? (
+                        <div className="h-4 sm:h-6 w-16 sm:w-20 bg-orange-200 rounded animate-pulse"></div>
+                      ) : (
+                        `₹${(kpiData?.data?.totalOutstanding || 0).toLocaleString()}`
+                      )}
+                    </div>
+                    <p className="text-xs text-orange-600 truncate">
+                      Revenue - Collected
+                    </p>
+                  </div>
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-orange-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
+                    <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+
+            {/* Vendor Payments Card */}
+            <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 h-20 sm:h-24">
+              <CardContent className="p-2 sm:p-3 h-full">
+                <div className="flex items-center justify-between h-full">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-red-600 truncate">Vendor Payments</p>
+                    <div className="text-sm sm:text-lg font-bold text-red-900 truncate">
+                      {isLoading ? (
+                        <div className="h-4 sm:h-6 w-16 sm:w-20 bg-red-200 rounded animate-pulse"></div>
+                      ) : (
+                        `₹${(kpiData?.data?.vendorPayments || 0).toLocaleString()}`
+                      )}
+                    </div>
+                    <p className="text-xs text-red-600 truncate">
+                      COGS (MTD)
+                    </p>
+                  </div>
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-red-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
+                    <Building className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Customer Conversion Card */}
+            <Card className="bg-gradient-to-br from-violet-50 to-violet-100 border-violet-200 h-20 sm:h-24">
+              <CardContent className="p-2 sm:p-3 h-full">
+                <div className="flex items-center justify-between h-full">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-violet-600 truncate">
+                      Customer Conversion
+                    </p>
+                    <div className="text-sm sm:text-lg font-bold text-violet-900 truncate">
+                      {isLoading ? (
+                        <div className="h-4 sm:h-6 w-12 sm:w-16 bg-violet-200 rounded animate-pulse"></div>
+                      ) : (
+                        `${kpiData?.data?.customerConversionRatio || 0}%`
+                      )}
+                    </div>
+                    <p className="text-xs text-violet-600 truncate">
+                      Purchased / Total
+                    </p>
+                  </div>
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-violet-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
+                    <Percent className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
         {/* Main Dashboard Tabs */}

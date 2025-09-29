@@ -15,23 +15,31 @@ export async function GET(request: Request) {
         endDate
       };
     } else {
-      // Default to current month if no dates provided
+      // Default to current month if no dates provided (fixed timezone issue)
       const now = new Date();
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      
+      // Convert to local date strings to avoid timezone issues
+      const monthStartStr = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}-${String(monthStart.getDate()).padStart(2, '0')}`;
+      const monthEndStr = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, '0')}-${String(monthEnd.getDate()).padStart(2, '0')}`;
+      
       dateFilter = {
-        startDate: monthStart,
-        endDate: monthEnd
+        startDate: monthStartStr,
+        endDate: monthEndStr
       };
     }
 
-    // Fetch sales orders with items for profit calculation
+    // Fetch sales orders with items for profit calculation (MTD with ALL STATUSES)
     let salesOrdersQuery = supabase
       .from('sales_orders')
       .select(`
         id,
         final_price,
+        original_price,
+        discount_amount,
         created_at,
+        status,
         customer_id,
         sales_order_items(
           quantity,
@@ -44,11 +52,31 @@ export async function GET(request: Request) {
         )
       `);
 
+    // Apply date filtering for MTD calculation using created_at field (order creation date)
     if (dateFilter.startDate && dateFilter.endDate) {
       salesOrdersQuery = salesOrdersQuery
-        .gte('created_at', dateFilter.startDate)
+        .gte('created_at', dateFilter.startDate + 'T00:00:00.000Z')
         .lte('created_at', dateFilter.endDate + 'T23:59:59.999Z');
+      
+      console.log('📅 MTD Date filter applied:', {
+        startDate: dateFilter.startDate + 'T00:00:00.000Z',
+        endDate: dateFilter.endDate + 'T23:59:59.999Z',
+        statusFilter: 'ALL STATUSES INCLUDED',
+        note: 'Month-to-date revenue using created_at field with all order statuses'
+      });
     }
+
+    // DEBUG: Test query without date filter to see if we can access sales_orders at all
+    const testQuery = await supabase
+      .from('sales_orders')
+      .select('id, created_at, final_price')
+      .limit(5);
+    
+    console.log('🧪 Test Query Result:', {
+      totalRows: testQuery.data?.length || 0,
+      error: testQuery.error,
+      sampleData: testQuery.data?.slice(0, 2)
+    });
 
     // Fetch customers for new customer calculation
     const customersQuery = supabase
@@ -57,18 +85,17 @@ export async function GET(request: Request) {
       .gte('created_at', dateFilter.startDate)
       .lte('created_at', dateFilter.endDate + 'T23:59:59.999Z');
 
-    // Fetch date-filtered revenue from sales orders (same as finance API)
-    const revenueQuery = supabase
-      .from('sales_orders')
-      .select('grand_total')
-      .in('status', ['confirmed', 'delivered', 'ready_for_delivery'])
+    // Fetch all customers for MTD to calculate conversion ratio
+    const allCustomersQuery = supabase
+      .from('customers')
+      .select('id, created_at')
       .gte('created_at', dateFilter.startDate)
       .lte('created_at', dateFilter.endDate + 'T23:59:59.999Z');
 
     const [
       salesOrdersResult,
       customersResult,
-      revenueResult,
+      allCustomersResult,
       customPendingResult,
       lowStockResult,
       openPOsResult,
@@ -80,8 +107,8 @@ export async function GET(request: Request) {
       // New customers for customer metrics
       customersQuery,
 
-      // Date-filtered revenue from payments
-      revenueQuery,
+      // All customers in MTD period for conversion calculation
+      allCustomersQuery,
 
       // Custom Orders Pending from view (not date-dependent)
       supabase
@@ -108,38 +135,32 @@ export async function GET(request: Request) {
         .single()
     ]);
 
-    // Calculate revenue from sales orders (same as finance API)
-    const totalRevenue = revenueResult.data?.reduce((sum, order) => sum + (order.grand_total || 0), 0) || 0;
+    // Debug the salesOrdersResult immediately after Promise.all
+    console.log('🔍 Sales Orders Result Debug:', {
+      error: salesOrdersResult.error,
+      dataLength: salesOrdersResult.data?.length || 0,
+      filterApplied: `${dateFilter.startDate}T00:00:00.000Z to ${dateFilter.endDate}T23:59:59.999Z`,
+      sampleData: salesOrdersResult.data?.slice(0, 2)
+    });
 
-    // Fetch expenses to calculate net profit (like finance overview)
-    const [
-      expenseResult,
-      vendorPaymentResult,
-      withdrawalResult
-    ] = await Promise.all([
-      // Regular expenses
-      supabase
-        .from('expenses')
-        .select('amount')
-        .gte('created_at', dateFilter.startDate)
-        .lte('created_at', dateFilter.endDate + 'T23:59:59.999Z'),
+    // Debug logging for orders found
+    console.log('🔍 Sales Orders Debug (MTD):', {
+      totalOrdersFound: salesOrdersResult.data?.length || 0,
+      dateRange: `${dateFilter.startDate} to ${dateFilter.endDate}`,
+      statusFilter: 'ALL STATUSES INCLUDED',
+      note: 'Month-to-date revenue calculation using created_at field with all order statuses',
+      sampleOrders: salesOrdersResult.data?.slice(0, 3).map(order => ({
+        id: order.id,
+        created_at: order.created_at,
+        status: order.status,
+        final_price: order.final_price,
+        original_price: order.original_price,
+        discount_amount: order.discount_amount
+      }))
+    });
 
-      // Vendor payment expenses  
-      supabase
-        .from('vendor_payment_history')
-        .select('amount')
-        .gte('created_at', dateFilter.startDate)
-        .lte('created_at', dateFilter.endDate + 'T23:59:59.999Z'),
-
-      // Withdrawal expenses
-      supabase
-        .from('withdrawals')
-        .select('amount')
-        .gte('created_at', dateFilter.startDate)
-        .lte('created_at', dateFilter.endDate + 'T23:59:59.999Z')
-    ]);
-
-    // Calculate gross profit from sales orders
+    // Calculate revenue and gross profit from sales orders (same method as finance overview)
+    let totalRevenue = 0;
     let grossProfit = 0;
     let orderCount = 0;
     const uniqueCustomers = new Set();
@@ -149,6 +170,9 @@ export async function GET(request: Request) {
       if (order.customer_id) {
         uniqueCustomers.add(order.customer_id);
       }
+
+      // Add revenue using same calculation as sales tab: final_price || total
+      totalRevenue += (order.final_price || 0);
 
       // Calculate profit from order items
       order.sales_order_items?.forEach(item => {
@@ -173,28 +197,130 @@ export async function GET(request: Request) {
       });
     });
 
-    // Calculate total expenses (same as finance overview)
+    // Fetch expenses to calculate net profit (exclude vendor payment entries to avoid double counting)
+    const [
+      expenseResult,
+      liabilityPaymentResult,
+      withdrawalResult,
+      salesPaymentsResult,
+      vendorPaymentsResult
+    ] = await Promise.all([
+      // Regular expenses (EXCLUDE vendor payment entries to avoid double counting)
+      supabase
+        .from('expenses')
+        .select('amount, description, entity_type')
+        .gte('created_at', dateFilter.startDate)
+        .lte('created_at', dateFilter.endDate + 'T23:59:59.999Z')
+        .neq('entity_type', 'supplier'), // Exclude vendor/supplier payment entries
+
+      // Liability payment expenses
+      supabase
+        .from('liability_payments')
+        .select('amount')
+        .gte('payment_date', dateFilter.startDate)
+        .lte('payment_date', dateFilter.endDate),
+
+      // Withdrawal expenses
+      supabase
+        .from('withdrawals')
+        .select('amount')
+        .gte('created_at', dateFilter.startDate)
+        .lte('created_at', dateFilter.endDate + 'T23:59:59.999Z'),
+
+      // Sales payments to calculate collected amount
+      supabase
+        .from('payments')
+        .select('amount, payment_date, date')
+        .gte('date', dateFilter.startDate)
+        .lte('date', dateFilter.endDate),
+
+      // Vendor payments (treated as COGS, not expenses)
+      supabase
+        .from('vendor_payment_history')
+        .select('amount, payment_date')
+        .eq('status', 'completed')
+        .gte('payment_date', dateFilter.startDate)
+        .lte('payment_date', dateFilter.endDate)
+    ]);
+
+    // Calculate total expenses (exclude vendor payment entries to avoid double counting)
     const regularExpenses = expenseResult.data?.reduce((sum, expense) => sum + (expense.amount || 0), 0) || 0;
-    const vendorPaymentExpenses = vendorPaymentResult.data?.reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
+    const liabilityPaymentExpenses = liabilityPaymentResult.data?.reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
     const withdrawalExpenses = withdrawalResult.data?.reduce((sum, withdrawal) => sum + (withdrawal.amount || 0), 0) || 0;
     
-    const totalExpenses = regularExpenses + vendorPaymentExpenses + withdrawalExpenses;
+    // Total operating expenses (excluding vendor payments to avoid double counting)
+    const totalExpenses = regularExpenses + liabilityPaymentExpenses + withdrawalExpenses;
 
-    // Calculate net profit (gross profit - expenses) to match finance overview
-    const totalProfit = grossProfit - totalExpenses;
+    // Calculate vendor payments (treat as COGS, not expenses)
+    const vendorPayments = vendorPaymentsResult.data?.reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
+
+    // Debug: Count excluded vendor payment entries from expenses
+    const allExpensesResult = await supabase
+      .from('expenses')
+      .select('amount, description, entity_type')
+      .gte('created_at', dateFilter.startDate)
+      .lte('created_at', dateFilter.endDate + 'T23:59:59.999Z');
+    
+    const vendorPaymentEntriesInExpenses = allExpensesResult.data?.filter(expense => 
+      expense.entity_type === 'supplier'
+    ) || [];
+    
+    const vendorPaymentAmountInExpenses = vendorPaymentEntriesInExpenses.reduce(
+      (sum, expense) => sum + (expense.amount || 0), 0
+    );
+
+    console.log('💡 Vendor Payment Double-Count Prevention:', {
+      vendorPaymentsFromHistory: `₹${vendorPayments.toLocaleString()}`,
+      vendorPaymentEntriesInExpenses: vendorPaymentEntriesInExpenses.length,
+      vendorPaymentAmountInExpenses: `₹${vendorPaymentAmountInExpenses.toLocaleString()}`,
+      regularExpensesAfterFilter: `₹${regularExpenses.toLocaleString()}`,
+      note: 'Excluded vendor payment entries from expenses to avoid double counting'
+    });
+
+    // Calculate payment collection data
+    const totalCollected = salesPaymentsResult.data?.reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
+    const totalOutstanding = totalRevenue - totalCollected;
+    
+    // Collection rate calculation: if revenue is 0 but payments exist, show 100% collected
+    // This handles cases where payments are made for invoices from previous periods
+    let collectionRate = 0;
+    if (totalRevenue > 0) {
+      collectionRate = Math.round((totalCollected / totalRevenue) * 100);
+    } else if (totalCollected > 0) {
+      // If no revenue in current period but payments exist, show high collection rate
+      collectionRate = 100;
+    }
+
+    // Calculate profit: (Revenue - COGS including vendor payments) - Operating Expenses
+    // Updated accounting formula: Net Profit = (Gross Profit - Vendor Payments) - Expenses
+    const adjustedGrossProfit = grossProfit - vendorPayments; // Subtract vendor payments from gross profit (COGS)
+    const totalProfit = adjustedGrossProfit - totalExpenses; // Then subtract operating expenses
 
     // Calculate both gross and net profit margins
     const grossProfitMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
     const netProfitMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
-    // Log calculation for debugging (same format as finance overview)
-    console.log('📊 KPI Profit Calculation:', {
-      totalRevenue: `₹${totalRevenue.toLocaleString()}`,
+    // Log calculation for debugging (corrected to prevent vendor payment double-counting)
+    console.log('📊 KPI Profit Calculation (Fixed Double-Counting Issue):', {
+      dateRange: `${dateFilter.startDate} to ${dateFilter.endDate}`,
+      ordersFound: salesOrdersResult.data?.length || 0,
+      totalRevenue: `₹${totalRevenue.toLocaleString()} (using final_price || total)`,
       grossProfit: `₹${grossProfit.toLocaleString()}`,
       grossProfitMargin: `${grossProfitMargin.toFixed(1)}%`,
-      totalExpenses: `₹${totalExpenses.toLocaleString()}`,
+      vendorPayments: `₹${vendorPayments.toLocaleString()} (COGS)`,
+      adjustedGrossProfit: `₹${adjustedGrossProfit.toLocaleString()} (after vendor payments)`,
+      totalExpenses: `₹${totalExpenses.toLocaleString()} (excluding vendor payments)`,
+      regularExpenses: `₹${regularExpenses.toLocaleString()} (filtered out vendor entries)`,
+      liabilityPaymentExpenses: `₹${liabilityPaymentExpenses.toLocaleString()}`,
+      withdrawalExpenses: `₹${withdrawalExpenses.toLocaleString()}`,
       netProfit: `₹${totalProfit.toLocaleString()}`,
-      netProfitMargin: `${netProfitMargin.toFixed(1)}%`
+      netProfitMargin: `${netProfitMargin.toFixed(1)}%`,
+      paymentsFound: salesPaymentsResult.data?.length || 0,
+      totalCollected: `₹${totalCollected.toLocaleString()}`,
+      totalOutstanding: `₹${totalOutstanding.toLocaleString()}`,
+      collectionRate: `${collectionRate}%`,
+      vendorPaymentCount: vendorPaymentsResult.data?.length || 0,
+      note: 'Vendor payments treated as COGS (subtracted from gross profit), not operating expenses'
     });
 
     // Count new customers in date range
@@ -202,6 +328,13 @@ export async function GET(request: Request) {
 
     // Calculate customer acquisition from sales orders (customers who made their first order in this period)
     const customersWithFirstOrder = uniqueCustomers.size;
+
+    // Calculate customer conversion ratio: customers who made purchases vs total customers in MTD
+    const totalCustomersInPeriod = allCustomersResult.data?.length || 0;
+    const customersWithPurchases = uniqueCustomers.size;
+    const customerConversionRatio = totalCustomersInPeriod > 0 
+      ? Math.round((customersWithPurchases / totalCustomersInPeriod) * 100) 
+      : 0;
 
     const customPendingCount = customPendingResult.data?.custom_orders_pending || 0;
     const lowStockCount = lowStockResult.data?.low_stock_count || 0;
@@ -217,13 +350,19 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       data: {
-        mtdRevenue: totalRevenue, // Now filtered by date range
+        mtdRevenue: totalRevenue, // MTD revenue with all order statuses
         grossProfit: grossProfit,
+        totalExpenses: totalExpenses, // Total operating expenses (excluding vendor payments)
         totalProfit: totalProfit,
         grossProfitMargin: grossProfitMargin,
         profitMargin: netProfitMargin, // Net profit margin (current display)
+        totalCollected: totalCollected,
+        totalOutstanding: totalRevenue - totalCollected, // Outstanding = Revenue - Collected
+        collectionRate: collectionRate,
+        vendorPayments: vendorPayments, // New vendor payments metric
         newCustomers: newCustomers,
         activeCustomers: customersWithFirstOrder,
+        customerConversionRatio: customerConversionRatio, // New conversion ratio metric
         orderCount: orderCount,
         customOrdersPending: customPendingCount,
         lowStockItems: lowStockCount,
@@ -236,7 +375,8 @@ export async function GET(request: Request) {
         dateRange: {
           startDate: dateFilter.startDate,
           endDate: dateFilter.endDate
-        }
+        },
+        note: 'MTD revenue includes all order statuses, vendor payments treated as COGS, outstanding = revenue - collected'
       }
     });
 

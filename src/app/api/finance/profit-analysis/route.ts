@@ -9,19 +9,38 @@ const supabase = createClient(
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const period = searchParams.get('period') || '30';
+    const period = searchParams.get('period') || 'mtd';
     
-    // Calculate date range
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(endDate.getDate() - parseInt(period));
+    // Calculate date range - use exact same logic as KPIs API for consistency
+    let startDate: Date;
+    let endDate: Date;
+    
+    if (period === 'mtd') {
+      // Month-to-date (exact same calculation as main dashboard KPIs API)
+      const now = new Date();
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0); // Last day of current month
+    } else {
+      // Legacy: last N days
+      const days = parseInt(period) || 30;
+      endDate = new Date();
+      startDate = new Date();
+      startDate.setDate(endDate.getDate() - days);
+    }
 
-    // Get all sales data with items for profit analysis (ALL statuses for complete analysis)
+    console.log('📅 Profit Analysis Date Range:', {
+      period,
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: endDate.toISOString().split('T')[0],
+      note: 'Using same date calculation as KPIs API for consistency'
+    });
+
+    // Get all sales data with items for profit analysis (ALL statuses to match KPIs API)
     const { data: salesData, error: salesError } = await supabase
       .from('sales_orders')
       .select(`
         id,
-        grand_total,
+        final_price,
         created_at,
         status,
         sales_order_items (
@@ -44,14 +63,13 @@ export async function GET(request: NextRequest) {
           )
         )
       `)
-      .in('status', ['confirmed', 'delivered', 'ready_for_delivery'])
       .gte('created_at', startDate.toISOString())
       .lte('created_at', endDate.toISOString());
 
     // Get ALL sales orders for revenue analysis (including all statuses)
     const { data: allSalesData, error: allSalesError } = await supabase
       .from('sales_orders')
-      .select('id, grand_total, created_at, status')
+      .select('id, final_price, created_at, status')
       .gte('created_at', startDate.toISOString())
       .lte('created_at', endDate.toISOString());
 
@@ -65,29 +83,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch all sales data' }, { status: 500 });
     }
 
-    // Get expense data
+    // Get expense data (exclude vendor payment entries to avoid double counting)
     const { data: expenseData, error: expenseError } = await supabase
       .from('expenses')
-      .select('amount, created_at, category')
+      .select('amount, created_at, category, entity_type, description')
+      .neq('entity_type', 'supplier')
       .gte('created_at', startDate.toISOString())
       .lte('created_at', endDate.toISOString());
 
     if (expenseError) {
       console.error('Expense data error:', expenseError);
       return NextResponse.json({ error: 'Failed to fetch expense data' }, { status: 500 });
-    }
-
-    // Get vendor payment data (operational expenses)
-    const { data: vendorPaymentData, error: vendorPaymentError } = await supabase
-      .from('vendor_payment_history')
-      .select('amount, payment_date, created_at')
-      .eq('status', 'completed')
-      .gte('payment_date', startDate.toISOString().split('T')[0])
-      .lte('payment_date', endDate.toISOString().split('T')[0]);
-
-    if (vendorPaymentError) {
-      console.error('Vendor payment data error:', vendorPaymentError);
-      // Continue without vendor payments rather than failing completely
     }
 
     // Get liability payment data (loan/equipment payments)
@@ -114,9 +120,23 @@ export async function GET(request: NextRequest) {
       // Continue without withdrawals rather than failing completely
     }
 
-    // Process sales data for profit analysis
+    // Get vendor payment data (treat as COGS, not operating expenses)
+    const { data: vendorPaymentData, error: vendorPaymentError } = await supabase
+      .from('vendor_payment_history')
+      .select('amount, payment_date, created_at, status')
+      .eq('status', 'completed')
+      .gte('payment_date', startDate.toISOString().split('T')[0])
+      .lte('payment_date', endDate.toISOString().split('T')[0]);
+
+    if (vendorPaymentError) {
+      console.error('Vendor payment data error:', vendorPaymentError);
+      // Continue without vendor payments rather than failing completely
+    }
+
+    // Process sales data for profit analysis (updated to match KPIs API calculation method)
     let totalRevenue = 0;
-    let totalCost = 0;
+    let totalCost = 0; // Keep for backwards compatibility
+    let grossProfit = 0; // Calculate like KPIs API: sum of (itemRevenue - itemCost)
     let regularProductRevenue = 0;
     let customProductRevenue = 0;
     let unclassifiedProductRevenue = 0;
@@ -136,8 +156,8 @@ export async function GET(request: NextRequest) {
         profitByDay[saleDate] = { revenue: 0, cost: 0, profit: 0 };
       }
 
-      // Add the total bill value from sales_orders.grand_total to daily revenue
-      const billValue = sale.grand_total || 0;
+      // Add the total bill value from sales_orders.final_price to daily revenue
+      const billValue = sale.final_price || 0;
       profitByDay[saleDate].revenue += billValue;
       totalRevenue += billValue;
 
@@ -211,36 +231,75 @@ export async function GET(request: NextRequest) {
         }
 
         totalCost += itemCost;
+        grossProfit += (itemRevenue - itemCost); // Calculate like KPIs API
         profitByDay[saleDate].cost += itemCost;
         profitByDay[saleDate].profit += (itemRevenue - itemCost);
       });
     });
 
-    // Calculate total expenses including all operational costs
+    // Calculate total expenses (exclude vendor payment entries to avoid double counting)
     const regularExpenses = expenseData?.reduce((sum, expense) => sum + (expense.amount || 0), 0) || 0;
-    const vendorPaymentExpenses = vendorPaymentData?.reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
     const liabilityPaymentExpenses = liabilityPaymentData?.reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
     const withdrawalExpenses = withdrawalData?.reduce((sum, withdrawal) => sum + (withdrawal.amount || 0), 0) || 0;
     
-    const totalExpenses = regularExpenses + vendorPaymentExpenses + liabilityPaymentExpenses + withdrawalExpenses;
+    // Calculate vendor payments (treat as COGS, not operating expenses)
+    const vendorPayments = vendorPaymentData?.reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
+    
+    // Total operating expenses (excluding vendor payments to avoid double counting)
+    const totalExpenses = regularExpenses + liabilityPaymentExpenses + withdrawalExpenses;
 
-    // Log expense breakdown for analysis
-    console.log('📊 Enhanced Expense Analysis:', {
-      regularExpenses: `₹${regularExpenses.toLocaleString()}`,
-      vendorPaymentExpenses: `₹${vendorPaymentExpenses.toLocaleString()}`,
+    // Debug: Count excluded vendor payment entries from expenses
+    const allExpensesResult = await supabase
+      .from('expenses')
+      .select('amount, description, entity_type')
+      .gte('created_at', startDate.toISOString())
+      .lte('created_at', endDate.toISOString());
+    
+    const vendorPaymentEntriesInExpenses = allExpensesResult.data?.filter(expense => 
+      expense.entity_type === 'supplier'
+    ) || [];
+    
+    const vendorPaymentAmountInExpenses = vendorPaymentEntriesInExpenses.reduce(
+      (sum, expense) => sum + (expense.amount || 0), 0
+    );
+
+    // Log expense breakdown for analysis (updated to show vendor payment exclusion)
+    console.log('📊 Fixed Profit Analysis - Expense Breakdown:', {
+      regularExpenses: `₹${regularExpenses.toLocaleString()} (filtered out vendor entries)`,
       liabilityPaymentExpenses: `₹${liabilityPaymentExpenses.toLocaleString()}`,
       withdrawalExpenses: `₹${withdrawalExpenses.toLocaleString()}`,
-      totalExpenses: `₹${totalExpenses.toLocaleString()}`,
-      vendorPaymentCount: vendorPaymentData?.length || 0,
+      vendorPayments: `₹${vendorPayments.toLocaleString()} (COGS)`,
+      totalExpenses: `₹${totalExpenses.toLocaleString()} (excluding vendor payments)`,
+      vendorPaymentEntriesExcluded: vendorPaymentEntriesInExpenses.length,
+      vendorPaymentAmountExcluded: `₹${vendorPaymentAmountInExpenses.toLocaleString()}`,
+      note: 'All expenses included for comprehensive financial analysis',
       liabilityPaymentCount: liabilityPaymentData?.length || 0,
       withdrawalCount: withdrawalData?.length || 0
     });
 
-    // Calculate profit metrics
-    const grossProfit = totalRevenue - totalCost;
-    const netProfit = grossProfit - totalExpenses;
+    // Calculate profit metrics (updated to match KPIs API calculation method)
+    // grossProfit already calculated above by summing (itemRevenue - itemCost) like KPIs API
+    
+    // Net Profit = Gross Profit - Vendor Payments (COGS) - Operating Expenses
+    const adjustedGrossProfit = grossProfit - vendorPayments; // Subtract vendor payments as COGS
+    const netProfit = adjustedGrossProfit - totalExpenses; // Then subtract operating expenses
     const grossProfitMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
     const netProfitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+
+    // Log corrected profit calculation for verification
+    console.log('🔧 Fixed Profit Analysis Calculation:', {
+      dateRange: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`,
+      totalRevenue: `₹${totalRevenue.toLocaleString()}`,
+      grossProfit: `₹${grossProfit.toLocaleString()}`,
+      grossProfitMargin: `${grossProfitMargin.toFixed(1)}%`,
+      vendorPayments: `₹${vendorPayments.toLocaleString()} (COGS)`,
+      adjustedGrossProfit: `₹${adjustedGrossProfit.toLocaleString()} (after vendor payments)`,
+      operatingExpenses: `₹${totalExpenses.toLocaleString()} (excluding vendor payments)`,
+      netProfit: `₹${netProfit.toLocaleString()}`,
+      netProfitMargin: `${netProfitMargin.toFixed(1)}%`,
+      formula: 'Net Profit = (Gross Profit - Vendor Payments) - Operating Expenses',
+      note: 'Double-counting prevention applied - vendor payments excluded from expenses'
+    });
 
     // Regular vs Custom product analysis
     const regularProfitMargin = regularProductRevenue > 0 ? 
@@ -340,12 +399,13 @@ export async function GET(request: NextRequest) {
         netProfitMargin,
         expenseBreakdown: {
           regularExpenses,
-          vendorPaymentExpenses,
           liabilityPaymentExpenses,
           withdrawalExpenses,
-          vendorPaymentCount: vendorPaymentData?.length || 0,
+          vendorPayments, // Add vendor payments to the summary
           liabilityPaymentCount: liabilityPaymentData?.length || 0,
-          withdrawalCount: withdrawalData?.length || 0
+          withdrawalCount: withdrawalData?.length || 0,
+          vendorPaymentCount: vendorPaymentData?.length || 0,
+          note: 'Fixed double-counting issue - vendor payments excluded from expenses'
         }
       },
       regularProducts: {
@@ -374,16 +434,16 @@ export async function GET(request: NextRequest) {
       topProducts,
       monthlyTrends: dailyProfitData, // Use daily data as monthly for now
       revenueAnalysis: {
-        processedOrdersRevenue: totalRevenue, // Now includes confirmed, delivered, ready_for_delivery
-        totalAllOrdersRevenue: allSalesData?.reduce((sum, order) => sum + (order.grand_total || 0), 0) || 0,
+        processedOrdersRevenue: totalRevenue, // Now includes ALL order statuses to match KPIs API
+        totalAllOrdersRevenue: allSalesData?.reduce((sum, order) => sum + (order.final_price || 0), 0) || 0,
         processedOrdersCount: salesData?.length || 0,
         totalAllOrdersCount: allSalesData?.length || 0,
-        includedStatuses: ['confirmed', 'delivered', 'ready_for_delivery'],
+        includedStatuses: 'ALL_STATUSES', // Updated to match KPIs API - includes all order statuses
         statusBreakdown: allSalesData?.reduce((acc: { [key: string]: { count: number; revenue: number } }, order) => {
           const status = order.status || 'unknown';
           if (!acc[status]) acc[status] = { count: 0, revenue: 0 };
           acc[status].count += 1;
-          acc[status].revenue += order.grand_total || 0;
+          acc[status].revenue += order.final_price || 0;
           return acc;
         }, {}) || {}
       },

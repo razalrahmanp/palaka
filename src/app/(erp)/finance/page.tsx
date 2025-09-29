@@ -25,19 +25,6 @@ import GeneralLedger from '@/components/finance/GeneralLedger';
 import FinancialReportsManager from '@/components/finance/FinancialReportsManager';
 import { DetailedFinanceOverview } from '@/components/finance/DetailedFinanceOverview';
 
-interface FinancialSummary {
-  totalAssets: number;
-  totalLiabilities: number;
-  totalEquity: number;
-  totalRevenue: number;
-  totalExpenses: number;
-  netIncome: number;
-  cashBalance: number;
-  accountsReceivable: number;
-  accountsPayable: number;
-  currentRatio: number;
-}
-
 interface SalesMetrics {
   totalSalesRevenue: number;
   totalPaymentsReceived: number;
@@ -58,12 +45,11 @@ interface ProfitAnalysis {
   netProfitMargin: number;
   expenseBreakdown: {
     regularExpenses: number;
-    vendorPaymentExpenses: number;
     liabilityPaymentExpenses: number;
     withdrawalExpenses: number;
-    vendorPaymentCount: number;
     liabilityPaymentCount: number;
     withdrawalCount: number;
+    note?: string;
   };
   regularProducts?: {
     count: number;
@@ -84,18 +70,6 @@ interface ProfitAnalysis {
 export default function FinancePage() {
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
-  const [financialSummary, setFinancialSummary] = useState<FinancialSummary>({
-    totalAssets: 0,
-    totalLiabilities: 0,
-    totalEquity: 0,
-    totalRevenue: 0,
-    totalExpenses: 0,
-    netIncome: 0,
-    cashBalance: 0,
-    accountsReceivable: 0,
-    accountsPayable: 0,
-    currentRatio: 0,
-  });
   const [salesMetrics, setSalesMetrics] = useState<SalesMetrics>({
     totalSalesRevenue: 0,
     totalPaymentsReceived: 0,
@@ -115,10 +89,8 @@ export default function FinancePage() {
     netProfitMargin: 0,
     expenseBreakdown: {
       regularExpenses: 0,
-      vendorPaymentExpenses: 0,
       liabilityPaymentExpenses: 0,
       withdrawalExpenses: 0,
-      vendorPaymentCount: 0,
       liabilityPaymentCount: 0,
       withdrawalCount: 0,
     },
@@ -139,46 +111,46 @@ export default function FinancePage() {
     try {
       setLoading(true);
       
-      // Fetch financial summary data
-      const financialResponse = await fetch('/api/finance/financial-summary');
-      if (!financialResponse.ok) {
-        throw new Error('Failed to fetch financial data');
+      // Use the SAME KPIs API as the main dashboard for consistency
+      const kpiResponse = await fetch('/api/dashboard/kpis');
+      if (!kpiResponse.ok) {
+        throw new Error('Failed to fetch KPI data');
       }
-      const financialData = await financialResponse.json();
+      const kpiData = await kpiResponse.json();
       
-      // Fetch dedicated sales stats
-      const statsResponse = await fetch('/api/finance/stats');
-      if (!statsResponse.ok) {
-        throw new Error('Failed to fetch sales stats');
-      }
-      const statsData = await statsResponse.json();
+      console.log('🔍 Finance Page KPI Data:', kpiData);
       
-      // Fetch profit analysis data
-      const profitResponse = await fetch('/api/finance/profit-analysis?period=30');
-      if (!profitResponse.ok) {
-        throw new Error('Failed to fetch profit analysis');
-      }
-      const profitData = await profitResponse.json();
-      
-      console.log('🔍 Raw Profit Response Data:', profitData);
-      console.log('🔍 Profit Analysis Data:', profitData.summary);
-      
-      setFinancialSummary(financialData.financialSummary);
+      // Set profit analysis using KPI data for consistency
       setProfitAnalysis({
-        ...profitData.summary,
-        regularProducts: profitData.regularProducts,
-        customProducts: profitData.customProducts
+        totalRevenue: kpiData.data?.mtdRevenue || 0,
+        totalCost: 0, // Calculated internally in KPI
+        grossProfit: kpiData.data?.grossProfit || 0,
+        netProfit: kpiData.data?.totalProfit || 0,
+        totalExpenses: kpiData.data?.totalExpenses || 0,
+        grossProfitMargin: kpiData.data?.grossProfitMargin || 0,
+        netProfitMargin: kpiData.data?.profitMargin || 0,
+        expenseBreakdown: {
+          regularExpenses: kpiData.data?.totalExpenses || 0,
+          liabilityPaymentExpenses: 0,
+          withdrawalExpenses: 0,
+          liabilityPaymentCount: 0,
+          withdrawalCount: 0,
+          note: 'Using KPI API data for consistency with dashboard'
+        },
       });
-      console.log('📊 Profit Analysis State Set:', profitData.summary);
+      
+      // Set sales metrics using KPI data
       setSalesMetrics({
-        totalSalesRevenue: statsData.totalSalesRevenue || 0,
-        totalPaymentsReceived: statsData.totalPaymentsReceived || 0,
-        totalOutstanding: statsData.totalOutstanding || 0,
-        collectionRate: statsData.collectionRate || 0,
-        fullyPaidOrders: statsData.fullyPaidOrders || 0,
-        partialPaidOrders: statsData.partialPaidOrders || 0,
-        pendingPaymentOrders: statsData.pendingPaymentOrders || 0,
+        totalSalesRevenue: kpiData.data?.mtdRevenue || 0,
+        totalPaymentsReceived: kpiData.data?.totalCollected || 0,
+        totalOutstanding: kpiData.data?.totalOutstanding || 0,
+        collectionRate: kpiData.data?.collectionRate || 0,
+        fullyPaidOrders: 0, // Not available in KPI
+        partialPaidOrders: 0, // Not available in KPI
+        pendingPaymentOrders: 0, // Not available in KPI
       });
+      
+      console.log('✅ Finance page updated with KPI data for consistency');
     } catch (error) {
       console.error('Error fetching financial data:', error);
       // Set default values on error
@@ -230,17 +202,31 @@ export default function FinancePage() {
         </div>
       </div>
 
-      {/* Key Performance Indicators */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* Key Performance Indicators - Aligned with Dashboard */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 h-16">
+          <CardContent className="p-2 h-full">
+            <div className="flex items-center justify-between h-full">
+              <div>
+                <p className="text-xs font-medium text-blue-600">Revenue (MTD)</p>
+                <p className="text-sm font-bold text-blue-900">{formatCurrency(profitAnalysis.totalRevenue)}</p>
+              </div>
+              <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
+                <DollarSign className="h-4 w-4 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 h-16">
           <CardContent className="p-2 h-full">
             <div className="flex items-center justify-between h-full">
               <div>
-                <p className="text-xs font-medium text-green-600">Net Income</p>
-                <p className="text-sm font-bold text-green-900">{formatCurrency(financialSummary.netIncome)}</p>
+                <p className="text-xs font-medium text-green-600">Net Profit (MTD)</p>
+                <p className="text-sm font-bold text-green-900">{formatCurrency(profitAnalysis.netProfit)}</p>
               </div>
               <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
-                <DollarSign className="h-4 w-4 text-white" />
+                <TrendingUp className="h-4 w-4 text-white" />
               </div>
             </div>
           </CardContent>
@@ -250,11 +236,11 @@ export default function FinancePage() {
           <CardContent className="p-2 h-full">
             <div className="flex items-center justify-between h-full">
               <div>
-                <p className="text-xs font-medium text-purple-600">Cash Balance</p>
-                <p className="text-sm font-bold text-purple-900">{formatCurrency(financialSummary.cashBalance)}</p>
+                <p className="text-xs font-medium text-purple-600">Gross Profit (MTD)</p>
+                <p className="text-sm font-bold text-purple-900">{formatCurrency(profitAnalysis.grossProfit)}</p>
               </div>
               <div className="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center">
-                <CreditCard className="h-4 w-4 text-white" />
+                <BarChart3 className="h-4 w-4 text-white" />
               </div>
             </div>
           </CardContent>
@@ -264,8 +250,8 @@ export default function FinancePage() {
           <CardContent className="p-2 h-full">
             <div className="flex items-center justify-between h-full">
               <div>
-                <p className="text-xs font-medium text-red-600">Total Expenses</p>
-                <p className="text-sm font-bold text-red-900">{formatCurrency(profitAnalysis?.totalExpenses || financialSummary.totalExpenses)}</p>
+                <p className="text-xs font-medium text-red-600">Total Expenses (MTD)</p>
+                <p className="text-sm font-bold text-red-900">{formatCurrency(profitAnalysis.totalExpenses)}</p>
               </div>
               <div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center">
                 <Receipt className="h-4 w-4 text-white" />
@@ -275,33 +261,48 @@ export default function FinancePage() {
         </Card>
       </div>
 
-      {/* Sales Payment Analytics - Real Payment Data */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        {/* Total Collected */}
-        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 h-16">
+      {/* Sales Payment Analytics - Aligned with Dashboard KPIs */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Total Revenue */}
+        <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200 h-16">
           <CardContent className="p-2 h-full">
             <div className="flex items-center justify-between h-full">
               <div>
-                <p className="text-xs font-medium text-green-600">Payments Received</p>
-                <p className="text-sm font-bold text-green-900">Rs. {(salesMetrics.totalPaymentsReceived || 0).toLocaleString()}</p>
+                <p className="text-xs font-medium text-emerald-600">Sales Revenue (MTD)</p>
+                <p className="text-sm font-bold text-emerald-900">₹{(salesMetrics.totalSalesRevenue || 0).toLocaleString()}</p>
               </div>
-              <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center">
                 <DollarSign className="h-4 w-4 text-white" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Outstanding Amount */}
-        <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 h-16">
+        {/* Payments Received */}
+        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 h-16">
           <CardContent className="p-2 h-full">
             <div className="flex items-center justify-between h-full">
               <div>
-                <p className="text-xs font-medium text-red-600">Outstanding Balance</p>
-                <p className="text-sm font-bold text-red-900">Rs. {(salesMetrics.totalOutstanding || 0).toLocaleString()}</p>
+                <p className="text-xs font-medium text-green-600">Payments Received</p>
+                <p className="text-sm font-bold text-green-900">₹{(salesMetrics.totalPaymentsReceived || 0).toLocaleString()}</p>
               </div>
-              <div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
                 <CreditCard className="h-4 w-4 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Outstanding Amount */}
+        <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 h-16">
+          <CardContent className="p-2 h-full">
+            <div className="flex items-center justify-between h-full">
+              <div>
+                <p className="text-xs font-medium text-orange-600">Outstanding Balance</p>
+                <p className="text-sm font-bold text-orange-900">₹{(salesMetrics.totalOutstanding || 0).toLocaleString()}</p>
+              </div>
+              <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
+                <Receipt className="h-4 w-4 text-white" />
               </div>
             </div>
           </CardContent>
@@ -316,42 +317,12 @@ export default function FinancePage() {
                 <p className="text-sm font-bold text-blue-900">{(salesMetrics.collectionRate || 0).toFixed(1)}%</p>
               </div>
               <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-                <TrendingUp className="h-4 w-4 text-white" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Fully Paid Orders */}
-        <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200 h-16">
-          <CardContent className="p-2 h-full">
-            <div className="flex items-center justify-between h-full">
-              <div>
-                <p className="text-xs font-medium text-emerald-600">Fully Paid Orders</p>
-                <p className="text-sm font-bold text-emerald-900">{salesMetrics.fullyPaidOrders || 0}</p>
-              </div>
-              <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center">
-                <Receipt className="h-4 w-4 text-white" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Pending Payments */}
-        <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 h-16">
-          <CardContent className="p-2 h-full">
-            <div className="flex items-center justify-between h-full">
-              <div>
-                <p className="text-xs font-medium text-orange-600">Pending Payments</p>
-                <p className="text-sm font-bold text-orange-900">{salesMetrics.pendingPaymentOrders || 0}</p>
+                <PieChart className="h-4 w-4 text-white" />
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
-
-
-
 
       {/* Main Navigation Tabs */}
       <Card>

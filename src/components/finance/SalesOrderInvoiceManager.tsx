@@ -5500,7 +5500,7 @@ export function SalesOrderInvoiceManager() {
 
       {/* Add New Investor Modal */}
       <Dialog open={showAddInvestorModal} onOpenChange={setShowAddInvestorModal}>
-        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto mx-auto">
+        <DialogContent className="max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add New Partner/Investor</DialogTitle>
             <DialogDescription>

@@ -18,7 +18,11 @@ import {
   Calendar,
   Package,
   Wrench,
-  FileText
+  FileText,
+  Award,
+  Truck,
+  AlertTriangle,
+  Clock
 } from 'lucide-react';
 
 import {
@@ -123,6 +127,51 @@ interface ProfitAnalysisData {
   };
 }
 
+interface ProductAnalytics {
+  topSellingProducts: Array<{
+    id: string;
+    name: string;
+    vendor: string;
+    totalQuantity: number;
+    totalRevenue: number;
+    orders: number;
+  }>;
+  mostProfitableProducts: Array<{
+    id: string;
+    name: string;
+    vendor: string;
+    totalProfit: number;
+    totalRevenue: number;
+    totalQuantity: number;
+    avgProfitMargin: number;
+    orders: number;
+  }>;
+  fastMovingVendors: Array<{
+    vendorId: string;
+    vendorName: string;
+    totalQuantity: number;
+    totalRevenue: number;
+    productsCount: number;
+    avgOrderValue: number;
+    orders: number;
+  }>;
+  slowMovingProducts: Array<{
+    id: string;
+    name: string;
+    vendor: string;
+    stockQuantity: number;
+    costPrice: number;
+    sellingPrice: number;
+    daysInStock: number;
+  }>;
+  summary: {
+    totalProductsSold: number;
+    totalProfit: number;
+    activeVendors: number;
+    slowMovingCount: number;
+  };
+}
+
 interface CashFlowData {
   summary: {
     totalInflows: number;
@@ -163,6 +212,7 @@ export function DetailedFinanceOverview() {
   const [loading, setLoading] = useState(true);
   const [profitData, setProfitData] = useState<ProfitAnalysisData | null>(null);
   const [cashFlowData, setCashFlowData] = useState<CashFlowData | null>(null);
+  const [productAnalytics, setProductAnalytics] = useState<ProductAnalytics | null>(null);
   const [activeView, setActiveView] = useState<'overview' | 'cashflow' | 'profitability' | 'products'>('overview');
 
   useEffect(() => {
@@ -173,9 +223,10 @@ export function DetailedFinanceOverview() {
     try {
       setLoading(true);
       
-      const [profitResponse, cashFlowResponse] = await Promise.all([
-        fetch('/api/finance/profit-analysis'),
-        fetch('/api/finance/enhanced-cashflow')
+      const [profitResponse, cashFlowResponse, productAnalyticsResponse] = await Promise.all([
+        fetch('/api/finance/profit-analysis?period=mtd&t=' + Date.now()),
+        fetch('/api/finance/enhanced-cashflow'),
+        fetch('/api/finance/product-analytics?period=mtd&t=' + Date.now())
       ]);
 
       if (!profitResponse.ok) {
@@ -184,14 +235,24 @@ export function DetailedFinanceOverview() {
       if (!cashFlowResponse.ok) {
         throw new Error(`Cash flow API error: ${cashFlowResponse.status}`);
       }
+      if (!productAnalyticsResponse.ok) {
+        console.warn(`Product analytics API error: ${productAnalyticsResponse.status}`);
+      }
 
-      const [profitResult, cashFlowResult] = await Promise.all([
+      const [profitResult, cashFlowResult, productAnalyticsResult] = await Promise.all([
         profitResponse.json(),
-        cashFlowResponse.json()
+        cashFlowResponse.json(),
+        productAnalyticsResponse.ok ? productAnalyticsResponse.json() : null
       ]);
 
       // Validate data structure before setting state
       if (profitResult && typeof profitResult === 'object') {
+        console.log('🔍 DetailedFinanceOverview - Received Profit Data:', {
+          netProfitMargin: profitResult?.summary?.netProfitMargin,
+          netProfit: profitResult?.summary?.netProfit,
+          apiEndpoint: '/api/finance/profit-analysis?period=mtd',
+          timestamp: new Date().toISOString()
+        });
         setProfitData(profitResult);
       } else {
         console.error('Invalid profit data structure:', profitResult);
@@ -204,10 +265,24 @@ export function DetailedFinanceOverview() {
         console.error('Invalid cash flow data structure:', cashFlowResult);
         setCashFlowData(null);
       }
+
+      if (productAnalyticsResult?.success && productAnalyticsResult?.data) {
+        console.log('🔍 DetailedFinanceOverview - Received Product Analytics:', {
+          topSellingCount: productAnalyticsResult.data.topSellingProducts?.length,
+          profitableCount: productAnalyticsResult.data.mostProfitableProducts?.length,
+          vendorsCount: productAnalyticsResult.data.fastMovingVendors?.length,
+          slowMovingCount: productAnalyticsResult.data.slowMovingProducts?.length
+        });
+        setProductAnalytics(productAnalyticsResult.data);
+      } else {
+        console.warn('Product analytics data not available or invalid:', productAnalyticsResult);
+        setProductAnalytics(null);
+      }
     } catch (error) {
       console.error('Error fetching enhanced finance data:', error);
       setProfitData(null);
       setCashFlowData(null);
+      setProductAnalytics(null);
     } finally {
       setLoading(false);
     }
@@ -530,7 +605,9 @@ export function DetailedFinanceOverview() {
                     <div className="text-center p-3 bg-green-50 rounded-lg">
                       <p className="text-sm text-green-700">
                         <strong>Product Analysis:</strong> Now includes {profitData.revenueAnalysis.processedOrdersCount} orders 
-                        ({profitData.revenueAnalysis.includedStatuses?.join(', ')})
+                        ({typeof profitData.revenueAnalysis.includedStatuses === 'string' 
+                          ? profitData.revenueAnalysis.includedStatuses 
+                          : profitData.revenueAnalysis.includedStatuses?.join(', ')})
                       </p>
                     </div>
                   </div>
@@ -1326,6 +1403,177 @@ export function DetailedFinanceOverview() {
                 </div>
               </CardContent>
             </Card>
+          )}
+
+          {/* Enhanced Product Analytics Section */}
+          {productAnalytics && (
+            <>
+              {/* Top Selling Products */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Award className="h-5 w-5" />
+                    Top Selling Products (by Quantity)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {productAnalytics.topSellingProducts?.slice(0, 5).map((product, index) => (
+                      <div key={product.id} className="flex items-center justify-between p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                            <span className="text-sm font-bold text-white">{index + 1}</span>
+                          </div>
+                          <div>
+                            <p className="font-medium text-blue-900">{product.name}</p>
+                            <p className="text-sm text-blue-600">Vendor: {product.vendor}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-blue-800">{product.totalQuantity} units</p>
+                          <p className="text-sm text-blue-600">{formatCurrency(product.totalRevenue)}</p>
+                          <p className="text-xs text-blue-500">{product.orders} orders</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Most Profitable Products */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <DollarSign className="h-5 w-5" />
+                    Most Profitable Products
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {productAnalytics.mostProfitableProducts?.slice(0, 5).map((product, index) => (
+                      <div key={product.id} className="flex items-center justify-between p-3 bg-gradient-to-r from-green-50 to-green-100 rounded-lg border border-green-200">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                            <span className="text-sm font-bold text-white">{index + 1}</span>
+                          </div>
+                          <div>
+                            <p className="font-medium text-green-900">{product.name}</p>
+                            <p className="text-sm text-green-600">Vendor: {product.vendor}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-green-800">{formatCurrency(product.totalProfit)} profit</p>
+                          <p className="text-sm text-green-600">{product.avgProfitMargin.toFixed(1)}% margin</p>
+                          <p className="text-xs text-green-500">{product.totalQuantity} units sold</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Fast Moving Vendors */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Truck className="h-5 w-5" />
+                    Fast Moving Vendors
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {productAnalytics.fastMovingVendors?.slice(0, 5).map((vendor, index) => (
+                      <div key={vendor.vendorId} className="flex items-center justify-between p-3 bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg border border-purple-200">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center">
+                            <span className="text-sm font-bold text-white">{index + 1}</span>
+                          </div>
+                          <div>
+                            <p className="font-medium text-purple-900">{vendor.vendorName}</p>
+                            <p className="text-sm text-purple-600">{vendor.productsCount} different products</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-purple-800">{vendor.totalQuantity} units</p>
+                          <p className="text-sm text-purple-600">{formatCurrency(vendor.totalRevenue)}</p>
+                          <p className="text-xs text-purple-500">{vendor.orders} orders</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Slow Moving Products */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Clock className="h-5 w-5" />
+                    Slow Moving Inventory
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {productAnalytics.slowMovingProducts?.slice(0, 5).map((product) => (
+                      <div key={product.id} className="flex items-center justify-between p-3 bg-gradient-to-r from-orange-50 to-orange-100 rounded-lg border border-orange-200">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">
+                            <AlertTriangle className="h-4 w-4 text-white" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-orange-900">{product.name}</p>
+                            <p className="text-sm text-orange-600">Vendor: {product.vendor}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-orange-800">{product.stockQuantity} units</p>
+                          <p className="text-sm text-orange-600">{formatCurrency(product.sellingPrice)} price</p>
+                          <p className="text-xs text-orange-500">{product.daysInStock} days in stock</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Analytics Summary */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BarChart3 className="h-5 w-5" />
+                    Product Analytics Summary
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="p-4 bg-blue-50 rounded-lg">
+                      <p className="text-sm font-medium text-blue-600">Products Sold</p>
+                      <p className="text-2xl font-bold text-blue-800">
+                        {productAnalytics.summary?.totalProductsSold?.toLocaleString() || 0}
+                      </p>
+                    </div>
+                    <div className="p-4 bg-green-50 rounded-lg">
+                      <p className="text-sm font-medium text-green-600">Total Profit</p>
+                      <p className="text-2xl font-bold text-green-800">
+                        {formatCurrency(productAnalytics.summary?.totalProfit || 0)}
+                      </p>
+                    </div>
+                    <div className="p-4 bg-purple-50 rounded-lg">
+                      <p className="text-sm font-medium text-purple-600">Active Vendors</p>
+                      <p className="text-2xl font-bold text-purple-800">
+                        {productAnalytics.summary?.activeVendors || 0}
+                      </p>
+                    </div>
+                    <div className="p-4 bg-orange-50 rounded-lg">
+                      <p className="text-sm font-medium text-orange-600">Slow Moving</p>
+                      <p className="text-2xl font-bold text-orange-800">
+                        {productAnalytics.summary?.slowMovingCount || 0}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
           )}
         </div>
       )}

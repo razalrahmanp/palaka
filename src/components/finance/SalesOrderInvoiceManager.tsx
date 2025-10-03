@@ -258,14 +258,23 @@ export function SalesOrderInvoiceManager() {
   const [expensesSearchQuery, setExpensesSearchQuery] = useState('');
   const [cashflowSearchQuery, setCashflowSearchQuery] = useState('');
   
+  // Expense filter states
+  const [expenseDateFilter, setExpenseDateFilter] = useState<'all' | 'today' | 'weekly' | 'monthly' | 'last_month' | 'custom'>('all');
+  const [expenseCategoryFilter, setExpenseCategoryFilter] = useState<string>('all');
+  const [expenseFromDate, setExpenseFromDate] = useState('');
+  const [expenseToDate, setExpenseToDate] = useState('');
+  
   // Cashflow states
   const [cashflowTransactions, setCashflowTransactions] = useState<CashflowTransaction[]>([]);
   const [cashflowTypeFilter, setCashflowTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [cashflowCategoryFilter, setCashflowCategoryFilter] = useState<'all' | 'payment' | 'investment' | 'withdrawal' | 'expense' | 'vendor_payment' | 'liability_payment'>('all');
   const [cashflowDateRange, setCashflowDateRange] = useState<{from: string; to: string}>({
-    from: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0], // Start of current month
+    from: new Date().toISOString().split('T')[0], // Today
     to: new Date().toISOString().split('T')[0] // Today
   });
+  
+  // Date preset selection
+  const [datePreset, setDatePreset] = useState<'today' | 'last_week' | 'last_month' | 'custom'>('today');
   
   // Multiple filter selection for cashflow
   const [multipleCategoryFilters, setMultipleCategoryFilters] = useState<string[]>([]);
@@ -1248,21 +1257,97 @@ export function SalesOrderInvoiceManager() {
     });
   };
 
-  const filterExpenses = (expenses: Expense[], searchQuery: string): Expense[] => {
-    if (!searchQuery.trim()) return expenses;
+  const filterExpenses = (
+    expenses: Expense[], 
+    searchQuery: string,
+    dateFilter: 'all' | 'today' | 'weekly' | 'monthly' | 'last_month' | 'custom' = 'all',
+    categoryFilter: string = 'all',
+    fromDate: string = '',
+    toDate: string = ''
+  ): Expense[] => {
+    let filteredExpenses = expenses;
     
-    const query = searchQuery.toLowerCase();
-    return expenses.filter((expense) => {
-      return (
-        expense.id.toLowerCase().includes(query) ||
-        expense.description?.toLowerCase().includes(query) ||
-        expense.category?.toLowerCase().includes(query) ||
-        expense.type?.toLowerCase().includes(query) ||
-        expense.payment_method?.toLowerCase().includes(query) ||
-        expense.amount?.toString().includes(query) ||
-        formatDate(expense.date).toLowerCase().includes(query)
-      );
-    });
+    // Apply search query filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filteredExpenses = filteredExpenses.filter((expense) => {
+        return (
+          expense.id.toLowerCase().includes(query) ||
+          expense.description?.toLowerCase().includes(query) ||
+          expense.category?.toLowerCase().includes(query) ||
+          expense.type?.toLowerCase().includes(query) ||
+          expense.payment_method?.toLowerCase().includes(query) ||
+          expense.amount?.toString().includes(query) ||
+          formatDate(expense.date).toLowerCase().includes(query)
+        );
+      });
+    }
+    
+    // Apply date filter
+    if (dateFilter !== 'all') {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
+      filteredExpenses = filteredExpenses.filter((expense) => {
+        const expenseDate = new Date(expense.date);
+        const expenseDateOnly = new Date(expenseDate.getFullYear(), expenseDate.getMonth(), expenseDate.getDate());
+        
+        switch (dateFilter) {
+          case 'today':
+            return expenseDateOnly.getTime() === today.getTime();
+          
+          case 'weekly':
+            const weekStart = new Date(today);
+            weekStart.setDate(today.getDate() - today.getDay()); // Start of week (Sunday)
+            const weekEnd = new Date(weekStart);
+            weekEnd.setDate(weekStart.getDate() + 6); // End of week (Saturday)
+            return expenseDateOnly >= weekStart && expenseDateOnly <= weekEnd;
+          
+          case 'monthly':
+            const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+            const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            return expenseDateOnly >= monthStart && expenseDateOnly <= monthEnd;
+          
+          case 'last_month':
+            const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+            return expenseDateOnly >= lastMonthStart && expenseDateOnly <= lastMonthEnd;
+          
+          case 'custom':
+            if (fromDate && toDate) {
+              const from = new Date(fromDate);
+              const to = new Date(toDate);
+              return expenseDateOnly >= from && expenseDateOnly <= to;
+            }
+            return true;
+          
+          default:
+            return true;
+        }
+      });
+    }
+    
+    // Apply category filter
+    if (categoryFilter !== 'all') {
+      filteredExpenses = filteredExpenses.filter((expense) => {
+        return expense.category === categoryFilter;
+      });
+    }
+    
+    return filteredExpenses;
+  };
+
+  // Helper function to handle expense date preset changes
+  const handleExpenseDatePresetChange = (preset: 'all' | 'today' | 'weekly' | 'monthly' | 'last_month' | 'custom') => {
+    setExpenseDateFilter(preset);
+    setCurrentPage(1); // Reset pagination
+    
+    // Set default date ranges for custom preset
+    if (preset === 'custom' && !expenseFromDate && !expenseToDate) {
+      const today = new Date().toISOString().split('T')[0];
+      setExpenseFromDate(today);
+      setExpenseToDate(today);
+    }
   };
 
   const filterCashflowTransactions = (
@@ -1514,15 +1599,62 @@ export function SalesOrderInvoiceManager() {
     setCashflowCategoryFilter('all');
     setMultipleCategoryFilters([]);
     setUseMultipleFilters(false);
+    setDatePreset('today');
+    const todayStr = new Date().toISOString().split('T')[0];
     setCashflowDateRange({
-      from: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-      to: new Date().toISOString().split('T')[0]
+      from: todayStr,
+      to: todayStr
     });
+  };
+
+  const handleDatePresetChange = (preset: 'today' | 'last_week' | 'last_month' | 'custom') => {
+    setDatePreset(preset);
+    
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    
+    switch (preset) {
+      case 'today':
+        setCashflowDateRange({
+          from: todayStr,
+          to: todayStr
+        });
+        break;
+      case 'last_week':
+        const lastWeek = new Date(today);
+        lastWeek.setDate(today.getDate() - 7);
+        setCashflowDateRange({
+          from: lastWeek.toISOString().split('T')[0],
+          to: todayStr
+        });
+        break;
+      case 'last_month':
+        const lastMonth = new Date(today);
+        lastMonth.setMonth(today.getMonth() - 1);
+        setCashflowDateRange({
+          from: lastMonth.toISOString().split('T')[0],
+          to: todayStr
+        });
+        break;
+      case 'custom':
+        // Keep current date range for custom selection
+        break;
+    }
   };
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
     setCurrentPage(1); // Reset to first page when changing tabs
+    
+    // Reset to today when switching to cashflow tab
+    if (tab === 'cashflow') {
+      setDatePreset('today');
+      const todayStr = new Date().toISOString().split('T')[0];
+      setCashflowDateRange({
+        from: todayStr,
+        to: todayStr
+      });
+    }
   };
 
   const getCurrentDataLength = () => {
@@ -1534,7 +1666,7 @@ export function SalesOrderInvoiceManager() {
       case 'payments':
         return filterPayments(payments, paymentsSearchQuery).length;
       case 'expenses':
-        return filterExpenses(expenses, expensesSearchQuery).length;
+        return filterExpenses(expenses, expensesSearchQuery, expenseDateFilter, expenseCategoryFilter, expenseFromDate, expenseToDate).length;
       case 'cashflow':
         return filterCashflowTransactions(cashflowTransactions, cashflowSearchQuery, cashflowTypeFilter, cashflowCategoryFilter, multipleCategoryFilters, useMultipleFilters).length;
       default:
@@ -3413,71 +3545,218 @@ export function SalesOrderInvoiceManager() {
 
               {/* Expenses Summary Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 shadow-md">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-red-500 rounded-lg">
-                        <Minus className="h-5 w-5 text-white" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-red-600 font-medium">Total Expenses</p>
-                        <p className="text-xl font-bold text-red-900">
-                          {formatCurrency(expenses.reduce((sum, exp) => sum + exp.amount, 0))}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                {(() => {
+                  const filteredExpenses = filterExpenses(expenses, expensesSearchQuery, expenseDateFilter, expenseCategoryFilter, expenseFromDate, expenseToDate);
+                  const totalAmount = filteredExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+                  
+                  return (
+                    <>
+                      <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 shadow-md">
+                        <CardContent className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 bg-red-500 rounded-lg">
+                              <Minus className="h-5 w-5 text-white" />
+                            </div>
+                            <div>
+                              <p className="text-sm text-red-600 font-medium">
+                                {expenseDateFilter === 'all' && expenseCategoryFilter === 'all' ? 'Total Expenses' : 'Filtered Expenses'}
+                              </p>
+                              <p className="text-xl font-bold text-red-900">
+                                {formatCurrency(totalAmount)}
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
 
-                <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 shadow-md">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-orange-500 rounded-lg">
-                        <Calendar className="h-5 w-5 text-white" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-orange-600 font-medium">This Month</p>
-                        <p className="text-xl font-bold text-orange-900">
-                          {formatCurrency(expenses.filter(exp => {
-                            const expenseDate = new Date(exp.date);
-                            const now = new Date();
-                            return expenseDate.getMonth() === now.getMonth() && expenseDate.getFullYear() === now.getFullYear();
-                          }).reduce((sum, exp) => sum + exp.amount, 0))}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                      <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 shadow-md">
+                        <CardContent className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 bg-orange-500 rounded-lg">
+                              <Calendar className="h-5 w-5 text-white" />
+                            </div>
+                            <div>
+                              <p className="text-sm text-orange-600 font-medium">This Month</p>
+                              <p className="text-xl font-bold text-orange-900">
+                                {formatCurrency(filteredExpenses.filter(exp => {
+                                  const expenseDate = new Date(exp.date);
+                                  const now = new Date();
+                                  return expenseDate.getMonth() === now.getMonth() && expenseDate.getFullYear() === now.getFullYear();
+                                }).reduce((sum, exp) => sum + exp.amount, 0))}
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
 
-                <Card className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-yellow-200 shadow-md">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-yellow-500 rounded-lg">
-                        <AlertCircle className="h-5 w-5 text-white" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-yellow-600 font-medium">Avg Expense</p>
-                        <p className="text-xl font-bold text-yellow-900">
-                          {formatCurrency(expenses.length > 0 ? expenses.reduce((sum, exp) => sum + exp.amount, 0) / expenses.length : 0)}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                      <Card className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-yellow-200 shadow-md">
+                        <CardContent className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 bg-yellow-500 rounded-lg">
+                              <AlertCircle className="h-5 w-5 text-white" />
+                            </div>
+                            <div>
+                              <p className="text-sm text-yellow-600 font-medium">Avg Expense</p>
+                              <p className="text-xl font-bold text-yellow-900">
+                                {formatCurrency(filteredExpenses.length > 0 ? totalAmount / filteredExpenses.length : 0)}
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
 
-                <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200 shadow-md">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-purple-500 rounded-lg">
-                        <Receipt className="h-5 w-5 text-white" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-purple-600 font-medium">Expense Count</p>
-                        <p className="text-xl font-bold text-purple-900">{expenses.length}</p>
-                      </div>
+                      <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200 shadow-md">
+                        <CardContent className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 bg-purple-500 rounded-lg">
+                              <Receipt className="h-5 w-5 text-white" />
+                            </div>
+                            <div>
+                              <p className="text-sm text-purple-600 font-medium">
+                                {expenseDateFilter === 'all' && expenseCategoryFilter === 'all' ? 'Expense Count' : 'Filtered Count'}
+                              </p>
+                              <p className="text-xl font-bold text-purple-900">{filteredExpenses.length}</p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Expense Filters */}
+              <div className="bg-gray-50 p-4 rounded-lg mb-4 space-y-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Filter className="h-4 w-4 text-gray-600" />
+                  <h4 className="font-medium text-gray-900">Filter Expenses</h4>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Date Filter */}
+                  <div className="space-y-2">
+                    <Label htmlFor="date-filter" className="text-sm font-medium text-gray-700">
+                      Date Range
+                    </Label>
+                    <Select value={expenseDateFilter} onValueChange={handleExpenseDatePresetChange}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select date range" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Time</SelectItem>
+                        <SelectItem value="today">Today</SelectItem>
+                        <SelectItem value="weekly">This Week</SelectItem>
+                        <SelectItem value="monthly">This Month</SelectItem>
+                        <SelectItem value="last_month">Last Month</SelectItem>
+                        <SelectItem value="custom">Custom Range</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Category Filter */}
+                  <div className="space-y-2">
+                    <Label htmlFor="category-filter" className="text-sm font-medium text-gray-700">
+                      Category
+                    </Label>
+                    <Select value={expenseCategoryFilter} onValueChange={(value) => {
+                      setExpenseCategoryFilter(value);
+                      setCurrentPage(1);
+                    }}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        <SelectItem value="all">All Categories</SelectItem>
+                        {/* Get unique categories from expenses */}
+                        {Array.from(new Set(expenses.map(expense => expense.category).filter(Boolean))).sort().map((category) => (
+                          <SelectItem key={category} value={category}>
+                            {category}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Clear Filters */}
+                  <div className="flex items-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setExpenseDateFilter('all');
+                        setExpenseCategoryFilter('all');
+                        setExpenseFromDate('');
+                        setExpenseToDate('');
+                        setCurrentPage(1);
+                      }}
+                      className="w-full h-10"
+                    >
+                      <X className="h-4 w-4 mr-2" />
+                      Clear Filters
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Custom Date Range Inputs */}
+                {expenseDateFilter === 'custom' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-200">
+                    <div className="space-y-2">
+                      <Label htmlFor="from-date" className="text-sm font-medium text-gray-700">
+                        From Date
+                      </Label>
+                      <Input
+                        id="from-date"
+                        type="date"
+                        value={expenseFromDate}
+                        onChange={(e) => {
+                          setExpenseFromDate(e.target.value);
+                          setCurrentPage(1);
+                        }}
+                        className="w-full"
+                      />
                     </div>
-                  </CardContent>
-                </Card>
+                    <div className="space-y-2">
+                      <Label htmlFor="to-date" className="text-sm font-medium text-gray-700">
+                        To Date
+                      </Label>
+                      <Input
+                        id="to-date"
+                        type="date"
+                        value={expenseToDate}
+                        onChange={(e) => {
+                          setExpenseToDate(e.target.value);
+                          setCurrentPage(1);
+                        }}
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Active Filters Summary */}
+                {(expenseDateFilter !== 'all' || expenseCategoryFilter !== 'all') && (
+                  <div className="pt-3 border-t border-gray-200">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm text-gray-600">Active filters:</span>
+                      {expenseDateFilter !== 'all' && (
+                        <Badge variant="secondary" className="text-xs">
+                          Date: {expenseDateFilter === 'custom' ? `${expenseFromDate} to ${expenseToDate}` : expenseDateFilter.replace('_', ' ')}
+                        </Badge>
+                      )}
+                      {expenseCategoryFilter !== 'all' && (
+                        <Badge variant="secondary" className="text-xs">
+                          Category: {expenseCategoryFilter}
+                        </Badge>
+                      )}
+                      <span className="text-xs text-gray-500 ml-2">
+                        ({(() => {
+                          const filteredExpenses = filterExpenses(expenses, expensesSearchQuery, expenseDateFilter, expenseCategoryFilter, expenseFromDate, expenseToDate);
+                          return filteredExpenses.length;
+                        })()} results)
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Search Bar for Expenses */}
@@ -3507,6 +3786,14 @@ export function SalesOrderInvoiceManager() {
                     Clear
                   </Button>
                 )}
+                
+                {/* Results Counter */}
+                <div className="text-sm text-gray-600 whitespace-nowrap">
+                  {(() => {
+                    const filteredExpenses = filterExpenses(expenses, expensesSearchQuery, expenseDateFilter, expenseCategoryFilter, expenseFromDate, expenseToDate);
+                    return `${filteredExpenses.length} expense${filteredExpenses.length !== 1 ? 's' : ''} found`;
+                  })()}
+                </div>
               </div>
 
               {/* Expenses Table */}
@@ -3525,7 +3812,7 @@ export function SalesOrderInvoiceManager() {
                   </TableHeader>
                   <TableBody>
                     {(() => {
-                      const filteredExpenses = filterExpenses(expenses, expensesSearchQuery);
+                      const filteredExpenses = filterExpenses(expenses, expensesSearchQuery, expenseDateFilter, expenseCategoryFilter, expenseFromDate, expenseToDate);
                       const paginatedExpenses = getPaginatedData(filteredExpenses, currentPage, itemsPerPage);
                       
                       if (paginatedExpenses.length === 0) {
@@ -3716,7 +4003,8 @@ export function SalesOrderInvoiceManager() {
                   <Button 
                     variant="outline" 
                     onClick={() => {
-                      console.log('🔄 Show All clicked - rebuilding with no date filter...');
+                      console.log('🔄 Show All clicked - rebuilding with wide date range...');
+                      setDatePreset('custom');
                       setCashflowDateRange({
                         from: '2020-01-01', // Far past date
                         to: '2030-12-31'    // Far future date
@@ -3727,19 +4015,38 @@ export function SalesOrderInvoiceManager() {
                     All Dates
                   </Button>
                   
-                  {/* Date Range Filters */}
-                  <Input
-                    type="date"
-                    value={cashflowDateRange.from}
-                    onChange={(e) => setCashflowDateRange({...cashflowDateRange, from: e.target.value})}
-                    className="w-40"
-                  />
-                  <Input
-                    type="date"
-                    value={cashflowDateRange.to}
-                    onChange={(e) => setCashflowDateRange({...cashflowDateRange, to: e.target.value})}
-                    className="w-40"
-                  />
+                  {/* Date Preset Filters */}
+                  <Select value={datePreset} onValueChange={handleDatePresetChange}>
+                    <SelectTrigger className="w-36">
+                      <SelectValue placeholder="Date Range" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="today">Today</SelectItem>
+                      <SelectItem value="last_week">Last Week</SelectItem>
+                      <SelectItem value="last_month">Last Month</SelectItem>
+                      <SelectItem value="custom">Custom Range</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  
+                  {/* Custom Date Range - Only show when custom is selected */}
+                  {datePreset === 'custom' && (
+                    <>
+                      <Input
+                        type="date"
+                        value={cashflowDateRange.from}
+                        onChange={(e) => setCashflowDateRange({...cashflowDateRange, from: e.target.value})}
+                        className="w-40"
+                        placeholder="From Date"
+                      />
+                      <Input
+                        type="date"
+                        value={cashflowDateRange.to}
+                        onChange={(e) => setCashflowDateRange({...cashflowDateRange, to: e.target.value})}
+                        className="w-40"
+                        placeholder="To Date"
+                      />
+                    </>
+                  )}
                   
                   {/* Type Filter */}
                   <Select value={cashflowTypeFilter} onValueChange={(value: 'all' | 'income' | 'expense') => setCashflowTypeFilter(value)}>

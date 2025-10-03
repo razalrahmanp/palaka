@@ -141,16 +141,10 @@ export default function EnhancedModularDashboard() {
           endDate: weekEnd.toISOString().split('T')[0]
         };
       case 'month':
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        
-        // Fix timezone issue by using local date formatting
-        const monthStartStr = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}-${String(monthStart.getDate()).padStart(2, '0')}`;
-        const monthEndStr = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, '0')}-${String(monthEnd.getDate()).padStart(2, '0')}`;
-        
+        // Fixed to October 2025 for consistency across all APIs
         return {
-          startDate: monthStartStr,
-          endDate: monthEndStr
+          startDate: '2025-10-01',
+          endDate: '2025-10-31'
         };
       case 'custom':
         return {

@@ -482,7 +482,7 @@ export function DetailedFinanceOverview() {
                         {formatCurrency(profitData?.regularProducts.revenue || 0)}
                       </p>
                       <p className="text-xs text-blue-600">
-                        {profitData?.regularProducts.count || 0} orders • 
+                        {profitData?.regularProducts.count || 0} items • 
                         {formatPercentage(profitData?.regularProducts.grossMargin || 0)} margin
                       </p>
                       <p className="text-xs text-green-600 font-medium">
@@ -505,7 +505,7 @@ export function DetailedFinanceOverview() {
                         {formatCurrency(profitData?.customProducts.revenue || 0)}
                       </p>
                       <p className="text-xs text-purple-600">
-                        {profitData?.customProducts.count || 0} orders • 
+                        {profitData?.customProducts.count || 0} items • 
                         {formatPercentage(profitData?.customProducts.grossMargin || 0)} margin
                       </p>
                       <p className="text-xs text-green-600 font-medium">
@@ -758,119 +758,235 @@ export function DetailedFinanceOverview() {
             </Card>
           </div>
 
-          {/* Expense Breakdown */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5" />
-                Expense Categories Breakdown
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                {/* Horizontal Bar Chart */}
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart
-                    data={cashFlowData?.expenseBreakdown.slice(0, 8) || []}
-                    layout="horizontal"
-                    margin={{ top: 5, right: 30, left: 80, bottom: 5 }}
-                  >
-                    <XAxis type="number" />
-                    <YAxis dataKey="category" type="category" width={120} />
-                    <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                    <Bar dataKey="amount" fill="#ef4444" name="Amount" />
-                  </BarChart>
-                </ResponsiveContainer>
-                
-                {/* Summary Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="p-4 bg-red-50 rounded-lg">
-                    <h4 className="font-medium text-red-800 mb-2">Total Expenses</h4>
-                    <p className="text-2xl font-bold text-red-600">
-                      {formatCurrency(cashFlowData?.expenseBreakdown.reduce((sum, cat) => sum + cat.amount, 0) || 0)}
-                    </p>
-                  </div>
-                  <div className="p-4 bg-orange-50 rounded-lg">
-                    <h4 className="font-medium text-orange-800 mb-2">Top Category</h4>
-                    <p className="text-lg font-bold text-orange-600">
-                      {cashFlowData?.expenseBreakdown[0]?.category || 'N/A'}
-                    </p>
-                    <p className="text-sm text-orange-600">
-                      {formatCurrency(cashFlowData?.expenseBreakdown[0]?.amount || 0)}
-                    </p>
-                  </div>
-                  <div className="p-4 bg-yellow-50 rounded-lg">
-                    <h4 className="font-medium text-yellow-800 mb-2">Categories</h4>
-                    <p className="text-2xl font-bold text-yellow-600">
-                      {cashFlowData?.expenseBreakdown.length || 0}
-                    </p>
-                    <p className="text-sm text-yellow-600">Active expense types</p>
-                  </div>
-                </div>
-                
-                {/* Detailed List */}
-                <div className="space-y-2">
-                  <h4 className="font-medium text-gray-700 mb-3">Expense Details</h4>
-                  {cashFlowData?.expenseBreakdown.slice(0, 8).map((category, index) => (
-                    <div key={category.category} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-4 h-4 rounded-full bg-red-${Math.min(500 + index * 50, 800)}`} />
-                        <span className="font-medium">{category.category}</span>
+          {/* Enhanced Expense Analysis */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Category-wise Expense Breakdown */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5" />
+                  Expense Categories Analysis
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {cashFlowData?.expenseBreakdown.slice(0, 6).map((category, index) => {
+                    const totalExpenses = cashFlowData?.expenseBreakdown.reduce((sum, cat) => sum + cat.amount, 0) || 1;
+                    const percentage = (category.amount / totalExpenses * 100);
+                    return (
+                      <div key={category.category} className="p-4 bg-gray-50 rounded-lg">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-3">
+                            <div 
+                              className={`w-4 h-4 rounded-full ${
+                                index % 6 === 0 ? 'bg-red-500' :
+                                index % 6 === 1 ? 'bg-orange-500' :
+                                index % 6 === 2 ? 'bg-yellow-500' :
+                                index % 6 === 3 ? 'bg-green-500' :
+                                index % 6 === 4 ? 'bg-blue-500' :
+                                'bg-purple-500'
+                              }`}
+                            />
+                            <h4 className="font-semibold text-gray-800">{category.category}</h4>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-lg font-bold text-gray-900">
+                              {formatCurrency(category.amount)}
+                            </p>
+                            <p className="text-sm text-gray-600">{percentage.toFixed(1)}% of total</p>
+                          </div>
+                        </div>
+                        
+                        {/* Progress indicator */}
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="flex-1 bg-gray-200 rounded-full h-2">
+                            <div 
+                              className={`h-2 rounded-full ${
+                                index % 6 === 0 ? 'bg-red-500' :
+                                index % 6 === 1 ? 'bg-orange-500' :
+                                index % 6 === 2 ? 'bg-yellow-500' :
+                                index % 6 === 3 ? 'bg-green-500' :
+                                index % 6 === 4 ? 'bg-blue-500' :
+                                'bg-purple-500'
+                              } ${
+                                percentage > 50 ? 'w-full' :
+                                percentage > 30 ? 'w-3/4' :
+                                percentage > 15 ? 'w-1/2' :
+                                percentage > 5 ? 'w-1/4' :
+                                'w-1/6'
+                              }`}
+                            />
+                          </div>
+                          <span className="text-xs text-gray-500 font-medium min-w-[40px]">
+                            {percentage.toFixed(0)}%
+                          </span>
+                        </div>
+                        
+                        <div className="text-xs text-gray-600">
+                          {percentage > 30 ? 'Major expense category' : 
+                           percentage > 15 ? 'Significant category' : 
+                           percentage > 5 ? 'Regular category' : 
+                           'Minor category'}
+                        </div>
                       </div>
-                      <div className="text-right">
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Detailed Account Information */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Top Expense Accounts
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {cashFlowData?.accountsSummary?.slice(0, 8).map((account, index) => (
+                    <div key={account.code} className="p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-mono bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                            {account.code}
+                          </span>
+                          <h5 className="font-medium text-gray-800">{account.name}</h5>
+                        </div>
                         <span className="text-lg font-bold text-gray-900">
-                          {formatCurrency(category.amount)}
+                          {formatCurrency(Math.abs(account.balance))}
                         </span>
-                        <p className="text-xs text-gray-500">
-                          {((category.amount / (cashFlowData?.expenseBreakdown.reduce((sum, cat) => sum + cat.amount, 0) || 1)) * 100).toFixed(1)}%
-                        </p>
+                      </div>
+                      
+                      <div className="flex items-center justify-between">
+                        <span className={`text-xs px-2 py-1 rounded font-medium ${
+                          account.type === 'SUBCATEGORY EXPENSE' ? 'bg-red-100 text-red-800' :
+                          account.type === 'CATEGORY EXPENSE' ? 'bg-orange-100 text-orange-800' :
+                          account.type === 'Operating Expense' ? 'bg-red-100 text-red-800' :
+                          account.type === 'Cost Of Goods Sold' ? 'bg-orange-100 text-orange-800' :
+                          account.type === 'Other Expense' ? 'bg-yellow-100 text-yellow-800' :
+                          account.type === 'Depreciation' ? 'bg-purple-100 text-purple-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {account.type || 'Uncategorized'}
+                        </span>
+                        
+                        <div className="text-xs text-gray-500">
+                          Rank #{index + 1} by amount
+                        </div>
                       </div>
                     </div>
-                  ))}
+                  )) || []}
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
 
-          {/* Chart of Accounts Summary */}
+          {/* Comprehensive Expense Table */}
           {cashFlowData?.accountsSummary && cashFlowData.accountsSummary.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5" />
-                  Expense Accounts Overview
+                  Complete Expense Accounts Overview
                 </CardTitle>
+                <p className="text-sm text-gray-600 mt-1">
+                  Detailed breakdown of all expense accounts sorted by amount
+                </p>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b">
-                        <th className="text-left p-2">Account Code</th>
-                        <th className="text-left p-2">Account Name</th>
-                        <th className="text-left p-2">Type</th>
-                        <th className="text-right p-2">Current Balance</th>
+                      <tr className="border-b-2 border-gray-200">
+                        <th className="text-left p-3 font-semibold">Rank</th>
+                        <th className="text-left p-3 font-semibold">Account Code</th>
+                        <th className="text-left p-3 font-semibold">Account Name</th>
+                        <th className="text-left p-3 font-semibold">Category</th>
+                        <th className="text-right p-3 font-semibold">Amount</th>
+                        <th className="text-right p-3 font-semibold">% of Total</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {cashFlowData.accountsSummary.slice(0, 10).map((account, index) => (
-                        <tr key={account.code} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                          <td className="p-2 font-mono text-xs">{account.code}</td>
-                          <td className="p-2">{account.name}</td>
-                          <td className="p-2">
-                            <span className="text-xs bg-gray-200 px-2 py-1 rounded">
-                              {account.type || 'N/A'}
-                            </span>
-                          </td>
-                          <td className="p-2 text-right font-medium">
-                            <span className={account.balance < 0 ? 'text-red-600' : 'text-gray-900'}>
-                              {formatCurrency(Math.abs(account.balance))}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                      {(() => {
+                        const totalAmount = cashFlowData.accountsSummary.reduce((sum, acc) => sum + Math.abs(acc.balance), 0);
+                        return cashFlowData.accountsSummary.slice(0, 15).map((account, index) => {
+                          const percentage = (Math.abs(account.balance) / totalAmount * 100);
+                          return (
+                            <tr key={account.code} className={`${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'} hover:bg-blue-50 transition-colors`}>
+                              <td className="p-3">
+                                <span className="inline-flex items-center justify-center w-6 h-6 bg-blue-100 text-blue-800 text-xs font-bold rounded-full">
+                                  {index + 1}
+                                </span>
+                              </td>
+                              <td className="p-3">
+                                <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">
+                                  {account.code}
+                                </span>
+                              </td>
+                              <td className="p-3 font-medium">{account.name}</td>
+                              <td className="p-3">
+                                <span className={`text-xs px-2 py-1 rounded font-medium ${
+                                  account.type === 'SUBCATEGORY EXPENSE' ? 'bg-red-100 text-red-800' :
+                                  account.type === 'CATEGORY EXPENSE' ? 'bg-orange-100 text-orange-800' :
+                                  account.type === 'Operating Expense' ? 'bg-red-100 text-red-800' :
+                                  account.type === 'Cost Of Goods Sold' ? 'bg-orange-100 text-orange-800' :
+                                  account.type === 'Other Expense' ? 'bg-yellow-100 text-yellow-800' :
+                                  account.type === 'Depreciation' ? 'bg-purple-100 text-purple-800' :
+                                  'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {account.type || 'N/A'}
+                                </span>
+                              </td>
+                              <td className="p-3 text-right font-bold">
+                                <span className={account.balance < 0 ? 'text-red-600' : 'text-gray-900'}>
+                                  {formatCurrency(Math.abs(account.balance))}
+                                </span>
+                              </td>
+                              <td className="p-3 text-right">
+                                <span className="text-sm font-medium text-gray-600">
+                                  {percentage.toFixed(1)}%
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        });
+                      })()}
                     </tbody>
                   </table>
+                </div>
+                
+                {/* Summary Statistics */}
+                <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="p-3 bg-red-50 rounded-lg text-center">
+                    <p className="text-sm text-red-600 font-medium">Total Accounts</p>
+                    <p className="text-xl font-bold text-red-800">
+                      {cashFlowData.accountsSummary.length}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-orange-50 rounded-lg text-center">
+                    <p className="text-sm text-orange-600 font-medium">Total Amount</p>
+                    <p className="text-xl font-bold text-orange-800">
+                      {formatCurrency(cashFlowData.accountsSummary.reduce((sum, acc) => sum + Math.abs(acc.balance), 0))}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-yellow-50 rounded-lg text-center">
+                    <p className="text-sm text-yellow-600 font-medium">Avg per Account</p>
+                    <p className="text-xl font-bold text-yellow-800">
+                      {formatCurrency(cashFlowData.accountsSummary.reduce((sum, acc) => sum + Math.abs(acc.balance), 0) / cashFlowData.accountsSummary.length)}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-green-50 rounded-lg text-center">
+                    <p className="text-sm text-green-600 font-medium">Top 3 Share</p>
+                    <p className="text-xl font-bold text-green-800">
+                      {(() => {
+                        const total = cashFlowData.accountsSummary.reduce((sum, acc) => sum + Math.abs(acc.balance), 0);
+                        const top3 = cashFlowData.accountsSummary.slice(0, 3).reduce((sum, acc) => sum + Math.abs(acc.balance), 0);
+                        return ((top3 / total) * 100).toFixed(1);
+                      })()}%
+                    </p>
+                  </div>
                 </div>
               </CardContent>
             </Card>

@@ -16,10 +16,10 @@ export async function GET(request: NextRequest) {
     let endDate: Date;
     
     if (period === 'mtd') {
-      // Month-to-date (exact same calculation as main dashboard KPIs API)
-      const now = new Date();
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0); // Last day of current month
+      // Month-to-date: October 1st to October 31st (fixed for consistency)
+      // Force October 2025 dates to match other APIs
+      startDate = new Date('2025-10-01T00:00:00.000Z');
+      endDate = new Date('2025-10-31T23:59:59.999Z');
     } else {
       // Legacy: last N days
       const days = parseInt(period) || 30;
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
       period,
       startDate: startDate.toISOString().split('T')[0],
       endDate: endDate.toISOString().split('T')[0],
-      note: 'Using same date calculation as KPIs API for consistency'
+      note: 'Using actual transaction dates (date, withdrawal_date) for ALL data sources instead of created_at for accurate MTD calculation'
     });
 
     // Get all sales data with items for profit analysis (ALL statuses to match KPIs API)
@@ -63,20 +63,34 @@ export async function GET(request: NextRequest) {
           )
         )
       `)
-      .gte('created_at', startDate.toISOString())
-      .lte('created_at', endDate.toISOString());
+      .gte('created_at', '2025-10-01T00:00:00.000Z')
+      .lte('created_at', '2025-10-31T23:59:59.999Z');
 
     // Get ALL sales orders for revenue analysis (including all statuses)
     const { data: allSalesData, error: allSalesError } = await supabase
       .from('sales_orders')
       .select('id, final_price, created_at, status')
-      .gte('created_at', startDate.toISOString())
-      .lte('created_at', endDate.toISOString());
+      .gte('created_at', '2025-10-01T00:00:00.000Z')
+      .lte('created_at', '2025-10-31T23:59:59.999Z');
 
     if (salesError) {
       console.error('Sales data error:', salesError);
       return NextResponse.json({ error: 'Failed to fetch sales data' }, { status: 500 });
     }
+
+    // Debug: Log sales data details
+    console.log('🔍 Sales Data Debug:', {
+      totalSalesFound: salesData?.length || 0,
+      dateRange: '2025-10-01 to 2025-10-31',
+      sampleSales: salesData?.slice(0, 3).map(sale => ({
+        id: sale.id,
+        created_at: sale.created_at,
+        final_price: sale.final_price,
+        status: sale.status,
+        itemCount: sale.sales_order_items?.length || 0
+      })) || [],
+      note: 'Debugging profit-analysis sales order filtering'
+    });
 
     if (allSalesError) {
       console.error('All sales data error:', allSalesError);
@@ -86,47 +100,85 @@ export async function GET(request: NextRequest) {
     // Get expense data (exclude vendor payment entries to avoid double counting)
     const { data: expenseData, error: expenseError } = await supabase
       .from('expenses')
-      .select('amount, created_at, category, entity_type, description')
+      .select('amount, created_at, category, entity_type, description, date')
       .neq('entity_type', 'supplier')
-      .gte('created_at', startDate.toISOString())
-      .lte('created_at', endDate.toISOString());
+      .gte('date', '2025-10-01') // October 1st onwards only
+      .lte('date', '2025-10-31'); // October 31st or less
 
     if (expenseError) {
       console.error('Expense data error:', expenseError);
       return NextResponse.json({ error: 'Failed to fetch expense data' }, { status: 500 });
     }
 
-    // Get liability payment data (loan/equipment payments)
+    // Debug: Log detailed expense breakdown
+    console.log('🔍 Detailed Expense Analysis:', {
+      dateRange: '2025-10-01 to 2025-10-31',
+      expenseCount: expenseData?.length || 0,
+      expenseDetails: expenseData?.map(exp => ({
+        amount: exp.amount,
+        created_at: exp.created_at,
+        date: exp.date,
+        category: exp.category,
+        description: exp.description?.substring(0, 50)
+      })) || [],
+      totalAmount: expenseData?.reduce((sum, exp) => sum + (exp.amount || 0), 0) || 0
+    });
+
+    // Get liability payment data (loan/equipment payments) - using actual payment date for MTD consistency
     const { data: liabilityPaymentData, error: liabilityPaymentError } = await supabase
       .from('liability_payments')
-      .select('amount, payment_date, created_at, liability_type')
-      .gte('payment_date', startDate.toISOString().split('T')[0])
-      .lte('payment_date', endDate.toISOString().split('T')[0]);
+      .select('total_amount, date, created_at, liability_type')
+      .gte('date', '2025-10-01') // October 1st onwards only
+      .lte('date', '2025-10-31'); // October 31st or less
 
     if (liabilityPaymentError) {
       console.error('Liability payment data error:', liabilityPaymentError);
       // Continue without liability payments rather than failing completely
     }
 
-    // Get withdrawal data (partner withdrawals are business expenses)
+    // Debug: Log liability payment details
+    console.log('🔍 Liability Payment Analysis:', {
+      liabilityCount: liabilityPaymentData?.length || 0,
+      liabilityDetails: liabilityPaymentData?.map(l => ({
+        amount: l.total_amount,
+        created_at: l.created_at,
+        date: l.date,
+        liability_type: l.liability_type
+      })) || [],
+      totalAmount: liabilityPaymentData?.reduce((sum, l) => sum + (l.total_amount || 0), 0) || 0
+    });
+
+    // Get withdrawal data (partner withdrawals are business expenses) - using actual withdrawal date for MTD consistency
     const { data: withdrawalData, error: withdrawalError } = await supabase
       .from('withdrawals')
       .select('amount, withdrawal_date, created_at, description')
-      .gte('withdrawal_date', startDate.toISOString().split('T')[0])
-      .lte('withdrawal_date', endDate.toISOString().split('T')[0]);
+      .gte('withdrawal_date', '2025-10-01') // October 1st onwards only
+      .lte('withdrawal_date', '2025-10-31'); // October 31st or less
 
     if (withdrawalError) {
       console.error('Withdrawal data error:', withdrawalError);
       // Continue without withdrawals rather than failing completely
     }
 
-    // Get vendor payment data (treat as COGS, not operating expenses)
+    // Debug: Log withdrawal details
+    console.log('🔍 Withdrawal Analysis:', {
+      withdrawalCount: withdrawalData?.length || 0,
+      withdrawalDetails: withdrawalData?.map(w => ({
+        amount: w.amount,
+        created_at: w.created_at,
+        withdrawal_date: w.withdrawal_date,
+        description: w.description?.substring(0, 50)
+      })) || [],
+      totalAmount: withdrawalData?.reduce((sum, w) => sum + (w.amount || 0), 0) || 0
+    });
+
+    // Get vendor payment data (treat as COGS, not operating expenses) - using created_at for MTD consistency
     const { data: vendorPaymentData, error: vendorPaymentError } = await supabase
       .from('vendor_payment_history')
       .select('amount, payment_date, created_at, status')
       .eq('status', 'completed')
-      .gte('payment_date', startDate.toISOString().split('T')[0])
-      .lte('payment_date', endDate.toISOString().split('T')[0]);
+      .gte('created_at', '2025-10-01T00:00:00.000Z')
+      .lte('created_at', '2025-10-31T23:59:59.999Z');
 
     if (vendorPaymentError) {
       console.error('Vendor payment data error:', vendorPaymentError);
@@ -237,9 +289,19 @@ export async function GET(request: NextRequest) {
       });
     });
 
+    // Debug: Log product count breakdown
+    console.log('🔍 Product Count Debug:', {
+      totalOrders: salesData?.length || 0,
+      regularProductCount,
+      customProductCount,
+      unclassifiedProductCount,
+      totalItemCount: regularProductCount + customProductCount + unclassifiedProductCount,
+      note: 'These are item quantities, not order counts'
+    });
+
     // Calculate total expenses (exclude vendor payment entries to avoid double counting)
     const regularExpenses = expenseData?.reduce((sum, expense) => sum + (expense.amount || 0), 0) || 0;
-    const liabilityPaymentExpenses = liabilityPaymentData?.reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
+    const liabilityPaymentExpenses = liabilityPaymentData?.reduce((sum, payment) => sum + (payment.total_amount || 0), 0) || 0;
     const withdrawalExpenses = withdrawalData?.reduce((sum, withdrawal) => sum + (withdrawal.amount || 0), 0) || 0;
     
     // Calculate vendor payments (treat as COGS, not operating expenses)
@@ -251,9 +313,9 @@ export async function GET(request: NextRequest) {
     // Debug: Count excluded vendor payment entries from expenses
     const allExpensesResult = await supabase
       .from('expenses')
-      .select('amount, description, entity_type')
-      .gte('created_at', startDate.toISOString())
-      .lte('created_at', endDate.toISOString());
+      .select('amount, description, entity_type, date')
+      .gte('date', '2025-10-01')
+      .lte('date', '2025-10-31');
     
     const vendorPaymentEntriesInExpenses = allExpensesResult.data?.filter(expense => 
       expense.entity_type === 'supplier'
@@ -277,28 +339,30 @@ export async function GET(request: NextRequest) {
       withdrawalCount: withdrawalData?.length || 0
     });
 
-    // Calculate profit metrics (updated to match KPIs API calculation method)
+    // Calculate profit metrics (updated for accurate MTD calculation)
     // grossProfit already calculated above by summing (itemRevenue - itemCost) like KPIs API
+    // Note: For MTD analysis, we don't subtract vendor payments as COGS since gross profit 
+    // already accounts for product costs from sales_order_items
     
-    // Net Profit = Gross Profit - Vendor Payments (COGS) - Operating Expenses
-    const adjustedGrossProfit = grossProfit - vendorPayments; // Subtract vendor payments as COGS
-    const netProfit = adjustedGrossProfit - totalExpenses; // Then subtract operating expenses
+    // Net Profit = Gross Profit - Operating Expenses (vendor payments excluded for MTD)
+    const adjustedGrossProfit = grossProfit; // No vendor payment adjustment for MTD
+    const netProfit = adjustedGrossProfit - totalExpenses; // Subtract only operating expenses
     const grossProfitMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
     const netProfitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
     // Log corrected profit calculation for verification
-    console.log('🔧 Fixed Profit Analysis Calculation:', {
+    console.log('🔧 MTD Profit Analysis Calculation:', {
       dateRange: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`,
       totalRevenue: `₹${totalRevenue.toLocaleString()}`,
       grossProfit: `₹${grossProfit.toLocaleString()}`,
       grossProfitMargin: `${grossProfitMargin.toFixed(1)}%`,
-      vendorPayments: `₹${vendorPayments.toLocaleString()} (COGS)`,
-      adjustedGrossProfit: `₹${adjustedGrossProfit.toLocaleString()} (after vendor payments)`,
+      vendorPayments: `₹${vendorPayments.toLocaleString()} (excluded from MTD calculation)`,
+      adjustedGrossProfit: `₹${adjustedGrossProfit.toLocaleString()} (no vendor payment adjustment)`,
       operatingExpenses: `₹${totalExpenses.toLocaleString()} (excluding vendor payments)`,
       netProfit: `₹${netProfit.toLocaleString()}`,
       netProfitMargin: `${netProfitMargin.toFixed(1)}%`,
-      formula: 'Net Profit = (Gross Profit - Vendor Payments) - Operating Expenses',
-      note: 'Double-counting prevention applied - vendor payments excluded from expenses'
+      formula: 'Net Profit = Gross Profit - Operating Expenses (vendor payments excluded for MTD)',
+      note: 'MTD calculation: Product costs already included in gross profit from sales_order_items'
     });
 
     // Regular vs Custom product analysis

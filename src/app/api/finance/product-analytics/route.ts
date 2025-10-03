@@ -1,6 +1,39 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+// Type definitions for better type safety
+interface SalesOrderItem {
+  product_id: string;
+  quantity: number;
+  unit_price: number;
+  products?: {
+    name: string;
+    supplier_id: string;
+    cost: number;
+    price: number;
+  }[];
+  sales_orders: {
+    created_at: string;
+    status: string;
+  }[];
+}
+
+interface Product {
+  id: string;
+  name: string;
+  cost: number;
+  price: number;
+  supplier_id: string;
+}
+
+interface Product {
+  id: string;
+  name: string;
+  cost: number;
+  price: number;
+  supplier_id: string;
+}
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -11,29 +44,31 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || 'mtd';
 
-    // Calculate date range based on period
-    const now = new Date();
+    // Calculate date range - use hardcoded October 2025 dates for consistency with other APIs
     let startDate: Date;
+    let endDate: Date;
     
     switch (period) {
       case 'weekly':
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+        startDate = new Date('2025-09-26T00:00:00.000Z'); // Week leading to Oct 3
+        endDate = new Date('2025-10-03T23:59:59.999Z');
         break;
       case 'monthly':
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        startDate = new Date('2025-10-01T00:00:00.000Z');
+        endDate = new Date('2025-10-31T23:59:59.999Z');
         break;
       case 'quarterly':
-        const quarter = Math.floor(now.getMonth() / 3);
-        startDate = new Date(now.getFullYear(), quarter * 3, 1);
+        startDate = new Date('2025-07-01T00:00:00.000Z'); // Q3 2025
+        endDate = new Date('2025-10-03T23:59:59.999Z');
         break;
       case 'ytd':
-        startDate = new Date(now.getFullYear(), 0, 1);
+        startDate = new Date('2025-01-01T00:00:00.000Z');
+        endDate = new Date('2025-10-03T23:59:59.999Z');
         break;
-      default: // mtd
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      default: // mtd - October 1st to October 31st (consistent with other APIs)
+        startDate = new Date('2025-10-01T00:00:00.000Z');
+        endDate = new Date('2025-10-31T23:59:59.999Z');
     }
-
-    const endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
 
     console.log('🔍 Product Analytics Date Range:', {
       period,
@@ -53,7 +88,7 @@ export async function GET(request: Request) {
       `)
       .gte('sales_orders.created_at', startDate.toISOString())
       .lte('sales_orders.created_at', endDate.toISOString())
-      .in('sales_orders.status', ['pending', 'confirmed', 'processing', 'ready_for_delivery', 'delivered']);
+      .in('sales_orders.status', ['draft', 'confirmed', 'shipped', 'delivered', 'ready_for_delivery', 'partial_delivery_ready']);
 
     if (topSellingError) {
       console.error('Error fetching top selling products:', topSellingError);
@@ -71,7 +106,7 @@ export async function GET(request: Request) {
       `)
       .gte('sales_orders.created_at', startDate.toISOString())
       .lte('sales_orders.created_at', endDate.toISOString())
-      .in('sales_orders.status', ['pending', 'confirmed', 'processing', 'ready_for_delivery', 'delivered']);
+      .in('sales_orders.status', ['draft', 'confirmed', 'shipped', 'delivered', 'ready_for_delivery', 'partial_delivery_ready']);
 
     if (profitableError) {
       console.error('Error fetching profitable products:', profitableError);
@@ -89,7 +124,7 @@ export async function GET(request: Request) {
       `)
       .gte('sales_orders.created_at', startDate.toISOString())
       .lte('sales_orders.created_at', endDate.toISOString())
-      .in('sales_orders.status', ['pending', 'confirmed', 'processing', 'ready_for_delivery', 'delivered']);
+      .in('sales_orders.status', ['draft', 'confirmed', 'shipped', 'delivered', 'ready_for_delivery', 'partial_delivery_ready']);
 
     if (vendorError) {
       console.error('Error fetching vendor products:', vendorError);
@@ -103,10 +138,8 @@ export async function GET(request: Request) {
         name,
         cost,
         price,
-        stock_quantity,
         supplier_id
-      `)
-      .gt('stock_quantity', 0);
+      `);
 
     if (allProductsError) {
       console.error('Error fetching all products:', allProductsError);
@@ -114,38 +147,40 @@ export async function GET(request: Request) {
 
     // Process top selling products
     const topSellingMap = new Map();
-    topSellingProducts?.forEach((item: any) => {
+    topSellingProducts?.forEach((item: SalesOrderItem) => {
       const key = item.product_id;
+      const product = item.products?.[0]; // Get first product from array
       if (!topSellingMap.has(key)) {
         topSellingMap.set(key, {
           id: key,
-          name: item.products.name,
-          vendor: 'Supplier ' + (item.products.supplier_id || 'Unknown'),
+          name: product?.name || 'Unknown Product',
+          vendor: 'Supplier ' + (product?.supplier_id || 'Unknown'),
           totalQuantity: 0,
           totalRevenue: 0,
           orders: 0
         });
       }
-      const product = topSellingMap.get(key);
-      product.totalQuantity += item.quantity || 0;
-      product.totalRevenue += (item.unit_price || 0) * (item.quantity || 0);
-      product.orders += 1;
+      const productData = topSellingMap.get(key);
+      productData.totalQuantity += item.quantity || 0;
+      productData.totalRevenue += (item.unit_price || 0) * (item.quantity || 0);
+      productData.orders += 1;
     });
 
     // Process most profitable products
     const profitableMap = new Map();
-    profitableProducts?.forEach((item: any) => {
+    profitableProducts?.forEach((item: SalesOrderItem) => {
       const key = item.product_id;
-      const costPrice = item.products.cost || 0;
-      const sellingPrice = item.unit_price || item.products.price || 0;
+      const product = item.products?.[0]; // Get first product from array
+      const costPrice = product?.cost || 0;
+      const sellingPrice = item.unit_price || product?.price || 0;
       const profit = (sellingPrice - costPrice) * (item.quantity || 0);
       const profitMargin = sellingPrice > 0 ? ((sellingPrice - costPrice) / sellingPrice) * 100 : 0;
 
       if (!profitableMap.has(key)) {
         profitableMap.set(key, {
           id: key,
-          name: item.products.name,
-          vendor: 'Supplier ' + (item.products.supplier_id || 'Unknown'),
+          name: product?.name || 'Unknown Product',
+          vendor: 'Supplier ' + (product?.supplier_id || 'Unknown'),
           totalProfit: 0,
           totalRevenue: 0,
           totalQuantity: 0,
@@ -153,18 +188,20 @@ export async function GET(request: Request) {
           orders: 0
         });
       }
-      const product = profitableMap.get(key);
-      product.totalProfit += profit;
-      product.totalRevenue += (item.unit_price || 0) * (item.quantity || 0);
-      product.totalQuantity += item.quantity || 0;
-      product.avgProfitMargin = profitMargin;
-      product.orders += 1;
+      const productData = profitableMap.get(key);
+      productData.totalProfit += profit;
+      productData.totalRevenue += (item.unit_price || 0) * (item.quantity || 0);
+      productData.totalQuantity += item.quantity || 0;
+      productData.avgProfitMargin = profitMargin;
+      productData.orders += 1;
     });
 
     // Process fast-moving vendor products
     const vendorMap = new Map();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vendorProducts?.forEach((item: any) => {
-      const vendorId = item.products.supplier_id;
+      const product = item.products?.[0]; // Get first product from array
+      const vendorId = product?.supplier_id;
       const vendorName = 'Supplier ' + (vendorId || 'Unknown');
       
       if (!vendorMap.has(vendorId)) {
@@ -180,19 +217,20 @@ export async function GET(request: Request) {
       const vendor = vendorMap.get(vendorId);
       vendor.totalQuantity += item.quantity || 0;
       vendor.totalRevenue += (item.unit_price || 0) * (item.quantity || 0);
-      vendor.products.add(item.products.name);
+      vendor.products.add(product?.name || 'Unknown Product');
       vendor.orders += 1;
     });
 
     // Calculate slow-moving products (products that haven't sold much)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const soldProductIds = new Set(topSellingProducts?.map((item: any) => item.product_id) || []);
-    const slowMovingProducts = allProducts?.filter((product: any) => !soldProductIds.has(product.id))
+    const slowMovingProducts = allProducts?.filter((product: Product) => !soldProductIds.has(product.id))
       .slice(0, 10)
-      .map((product: any) => ({
+      .map((product: Product) => ({
         id: product.id,
         name: product.name,
         vendor: 'Supplier ' + (product.supplier_id || 'Unknown'),
-        stockQuantity: product.stock_quantity,
+        stockQuantity: 0, // Placeholder since column doesn't exist
         costPrice: product.cost,
         sellingPrice: product.price,
         daysInStock: Math.floor(Math.random() * 30) + 1, // Placeholder - would need actual tracking

@@ -47,10 +47,10 @@ export async function GET() {
       console.error('Error fetching payments:', paymentsError);
     }
 
-    // Get expenses (cash outflows)
+    // Get expenses (cash outflows) - Primary source for expense analysis
     const { data: expenses, error: expensesError } = await supabase
       .from('expenses')
-      .select('amount, date, subcategory, description, payment_method')
+      .select('amount, date, subcategory, description, payment_method, category, entity_type')
       .order('date', { ascending: false });
 
     if (expensesError) {
@@ -147,31 +147,41 @@ export async function GET() {
       });
     }
 
-    // Categorize expenses using journal entries and chart of accounts
+    // Categorize expenses using expenses table as primary source
     const expenseCategories: { [key: string]: number } = {};
     
-    // Process journal entries for expense categorization
-    journalEntries?.forEach(entry => {
-      entry.journal_entry_lines?.forEach((line: {
-        account_id: string;
-        debit_amount: number;
-        credit_amount: number;
-        chart_of_accounts: {
-          account_name: string;
-          account_type: string;
-          account_subtype: string;
-        };
-      }) => {
-        if (line.chart_of_accounts?.account_type === 'EXPENSE' && line.debit_amount > 0) {
-          const category = line.chart_of_accounts?.account_subtype || 
-                          line.chart_of_accounts?.account_name || 
-                          'Other Expenses';
-          expenseCategories[category] = (expenseCategories[category] || 0) + (line.debit_amount || 0);
-        }
-      });
+    // Primary: Process expenses table with category and subcategory fields
+    expenses?.forEach(expense => {
+      const category = expense.category || expense.subcategory || 'Operating Expenses';
+      expenseCategories[category] = (expenseCategories[category] || 0) + (expense.amount || 0);
     });
 
-    // Use chart of accounts current balances if journal entries are empty or insufficient
+    // Fallback 1: Use journal entries if expenses table is empty or insufficient
+    if (Object.keys(expenseCategories).length === 0 || 
+        Object.values(expenseCategories).reduce((sum, val) => sum + val, 0) < 1000) {
+      
+      journalEntries?.forEach(entry => {
+        entry.journal_entry_lines?.forEach((line: {
+          account_id: string;
+          debit_amount: number;
+          credit_amount: number;
+          chart_of_accounts: {
+            account_name: string;
+            account_type: string;
+            account_subtype: string;
+          };
+        }) => {
+          if (line.chart_of_accounts?.account_type === 'EXPENSE' && line.debit_amount > 0) {
+            const category = line.chart_of_accounts?.account_subtype || 
+                            line.chart_of_accounts?.account_name || 
+                            'Other Expenses';
+            expenseCategories[category] = (expenseCategories[category] || 0) + (line.debit_amount || 0);
+          }
+        });
+      });
+    }
+
+    // Fallback 2: Use chart of accounts current balances as last resort
     if (Object.keys(expenseCategories).length === 0 || 
         Object.values(expenseCategories).reduce((sum, val) => sum + val, 0) < 1000) {
       
@@ -182,14 +192,6 @@ export async function GET() {
                           'Operating Expenses';
           expenseCategories[category] = (expenseCategories[category] || 0) + Math.abs(account.current_balance);
         }
-      });
-    }
-
-    // Fallback to expense table if nothing else works
-    if (Object.keys(expenseCategories).length === 0) {
-      expenses?.forEach(expense => {
-        const category = expense.subcategory || 'Operating Expenses';
-        expenseCategories[category] = (expenseCategories[category] || 0) + (expense.amount || 0);
       });
     }
     
@@ -205,13 +207,28 @@ export async function GET() {
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 10);
 
-    // Add chart of accounts summary
-    const accountsSummary = chartOfAccounts?.map(account => ({
-      code: account.account_code,
-      name: account.account_name,
-      type: account.account_subtype?.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
-      balance: account.current_balance || 0
-    })).sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance)).slice(0, 15) || [];
+    // Create accounts summary from expenses table instead of chart of accounts
+    const expenseAccounts: { [key: string]: { amount: number; count: number; subcategory?: string } } = {};
+    
+    expenses?.forEach(expense => {
+      const accountKey = expense.subcategory || expense.category || 'Miscellaneous';
+      if (!expenseAccounts[accountKey]) {
+        expenseAccounts[accountKey] = { amount: 0, count: 0, subcategory: expense.subcategory };
+      }
+      expenseAccounts[accountKey].amount += expense.amount || 0;
+      expenseAccounts[accountKey].count += 1;
+    });
+
+    const accountsSummary = Object.entries(expenseAccounts)
+      .map(([accountName, data], index) => ({
+        code: `EXP-${String(index + 1).padStart(3, '0')}`, // Generate expense account codes
+        name: accountName.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
+        type: data.subcategory ? 'SUBCATEGORY EXPENSE' : 'CATEGORY EXPENSE',
+        balance: data.amount,
+        count: data.count
+      }))
+      .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance))
+      .slice(0, 15);
 
     // Payment method analysis
     const paymentMethods: { [key: string]: { amount: number; count: number } } = {};
@@ -231,10 +248,15 @@ export async function GET() {
     // Summary calculations - Use bank withdrawals as the primary outflow source
     const totalInflows = payments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
     
-    // Use bank withdrawals as actual cash outflows (this includes all expense payments)
+    // Calculate total expenses from expenses table (primary source)
+    const totalExpensesFromTable = expenses?.reduce((sum, expense) => sum + (expense.amount || 0), 0) || 0;
+    
+    // Use bank withdrawals as backup for cash flow analysis
     const bankWithdrawalsTotal = bankTransactions?.filter(t => t.type === 'withdrawal')
       ?.reduce((sum, t) => sum + (t.amount || 0), 0) || 0;
-    const totalOutflows = bankWithdrawalsTotal;
+    
+    // Use expenses table total as primary outflow, fallback to bank withdrawals if insufficient
+    const totalOutflows = totalExpensesFromTable > 0 ? totalExpensesFromTable : bankWithdrawalsTotal;
     
     const netCashFlow = totalInflows - totalOutflows;
     

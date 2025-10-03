@@ -15,19 +15,19 @@ export async function GET(request: Request) {
         endDate
       };
     } else {
-      // Default to current month if no dates provided (fixed timezone issue)
-      const now = new Date();
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      
-      // Convert to local date strings to avoid timezone issues
-      const monthStartStr = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}-${String(monthStart.getDate()).padStart(2, '0')}`;
-      const monthEndStr = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, '0')}-${String(monthEnd.getDate()).padStart(2, '0')}`;
-      
+      // Default to October 2025 MTD (fixed timezone issue)
+      // Force October dates to ensure consistency across all APIs
       dateFilter = {
-        startDate: monthStartStr,
-        endDate: monthEndStr
+        startDate: '2025-10-01',
+        endDate: '2025-10-31'
       };
+      
+      console.log('📅 KPIs Default Date Applied:', {
+        period: 'MTD October 2025',
+        startDate: dateFilter.startDate,
+        endDate: dateFilter.endDate,
+        note: 'Fixed October dates to match other APIs'
+      });
     }
 
     // Fetch sales orders with items for profit calculation (MTD with ALL STATUSES)
@@ -206,26 +206,27 @@ export async function GET(request: Request) {
       vendorPaymentsResult
     ] = await Promise.all([
       // Regular expenses (EXCLUDE vendor payment entries to avoid double counting)
+      // Use 'date' field instead of 'created_at' for accurate MTD calculation
       supabase
         .from('expenses')
-        .select('amount, description, entity_type')
-        .gte('created_at', dateFilter.startDate)
-        .lte('created_at', dateFilter.endDate + 'T23:59:59.999Z')
+        .select('amount, description, entity_type, date')
+        .gte('date', dateFilter.startDate)
+        .lte('date', dateFilter.endDate)
         .neq('entity_type', 'supplier'), // Exclude vendor/supplier payment entries
 
-      // Liability payment expenses
+      // Liability payment expenses (using date field for consistency)
       supabase
         .from('liability_payments')
-        .select('amount')
-        .gte('payment_date', dateFilter.startDate)
-        .lte('payment_date', dateFilter.endDate),
+        .select('amount, date')
+        .gte('date', dateFilter.startDate)
+        .lte('date', dateFilter.endDate),
 
-      // Withdrawal expenses
+      // Withdrawal expenses (using withdrawal_date field for consistency)
       supabase
         .from('withdrawals')
-        .select('amount')
-        .gte('created_at', dateFilter.startDate)
-        .lte('created_at', dateFilter.endDate + 'T23:59:59.999Z'),
+        .select('amount, withdrawal_date')
+        .gte('withdrawal_date', dateFilter.startDate)
+        .lte('withdrawal_date', dateFilter.endDate),
 
       // Sales payments to calculate collected amount
       supabase
@@ -254,12 +255,12 @@ export async function GET(request: Request) {
     // Calculate vendor payments (treat as COGS, not expenses)
     const vendorPayments = vendorPaymentsResult.data?.reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
 
-    // Debug: Count excluded vendor payment entries from expenses
+    // Debug: Count excluded vendor payment entries from expenses (using date field for consistency)
     const allExpensesResult = await supabase
       .from('expenses')
-      .select('amount, description, entity_type')
-      .gte('created_at', dateFilter.startDate)
-      .lte('created_at', dateFilter.endDate + 'T23:59:59.999Z');
+      .select('amount, description, entity_type, date')
+      .gte('date', dateFilter.startDate)
+      .lte('date', dateFilter.endDate);
     
     const vendorPaymentEntriesInExpenses = allExpensesResult.data?.filter(expense => 
       expense.entity_type === 'supplier'

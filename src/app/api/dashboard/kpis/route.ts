@@ -85,17 +85,17 @@ export async function GET(request: Request) {
       .gte('created_at', dateFilter.startDate)
       .lte('created_at', dateFilter.endDate + 'T23:59:59.999Z');
 
-    // Fetch all customers for MTD to calculate conversion ratio
-    const allCustomersQuery = supabase
-      .from('customers')
-      .select('id, created_at')
-      .gte('created_at', dateFilter.startDate)
-      .lte('created_at', dateFilter.endDate + 'T23:59:59.999Z');
+    // Fetch withdrawals for MTD calculation
+    const withdrawalsQuery = supabase
+      .from('withdrawals')
+      .select('amount, withdrawal_date, withdrawal_type')
+      .gte('withdrawal_date', dateFilter.startDate)
+      .lte('withdrawal_date', dateFilter.endDate);
 
     const [
       salesOrdersResult,
       customersResult,
-      allCustomersResult,
+      withdrawalsResult,
       customPendingResult,
       lowStockResult,
       openPOsResult,
@@ -107,8 +107,8 @@ export async function GET(request: Request) {
       // New customers for customer metrics
       customersQuery,
 
-      // All customers in MTD period for conversion calculation
-      allCustomersQuery,
+      // Withdrawals for MTD calculation
+      withdrawalsQuery,
 
       // Custom Orders Pending from view (not date-dependent)
       supabase
@@ -292,36 +292,28 @@ export async function GET(request: Request) {
       collectionRate = 100;
     }
 
-    // Calculate profit: (Revenue - COGS including vendor payments) - Operating Expenses
-    // Updated accounting formula: Net Profit = (Gross Profit - Vendor Payments) - Expenses
-    const adjustedGrossProfit = grossProfit - vendorPayments; // Subtract vendor payments from gross profit (COGS)
-    const totalProfit = adjustedGrossProfit - totalExpenses; // Then subtract operating expenses
+    // Calculate profit: Gross Profit - Operating Expenses
+    // FIXED: Vendor payments should NOT be subtracted from gross profit
+    // Gross profit already accounts for COGS through product.cost fields
+    // Net Profit = Gross Profit - Operating Expenses (vendor payments can be treated as operational expenses if needed)
+    const totalProfit = grossProfit - totalExpenses; // Direct calculation without vendor payment adjustment
 
     // Calculate both gross and net profit margins
     const grossProfitMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
     const netProfitMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
-    // Log calculation for debugging (corrected to prevent vendor payment double-counting)
-    console.log('📊 KPI Profit Calculation (Fixed Double-Counting Issue):', {
+    // Log calculation for debugging (FIXED: Removed incorrect vendor payment subtraction)
+    console.log('📊 KPI Profit Calculation (FIXED - Removed Vendor Payment from Gross Profit):', {
       dateRange: `${dateFilter.startDate} to ${dateFilter.endDate}`,
       ordersFound: salesOrdersResult.data?.length || 0,
       totalRevenue: `₹${totalRevenue.toLocaleString()} (using final_price || total)`,
-      grossProfit: `₹${grossProfit.toLocaleString()}`,
+      grossProfit: `₹${grossProfit.toLocaleString()} (Revenue - COGS from product costs)`,
       grossProfitMargin: `${grossProfitMargin.toFixed(1)}%`,
-      vendorPayments: `₹${vendorPayments.toLocaleString()} (COGS)`,
-      adjustedGrossProfit: `₹${adjustedGrossProfit.toLocaleString()} (after vendor payments)`,
-      totalExpenses: `₹${totalExpenses.toLocaleString()} (excluding vendor payments)`,
-      regularExpenses: `₹${regularExpenses.toLocaleString()} (filtered out vendor entries)`,
-      liabilityPaymentExpenses: `₹${liabilityPaymentExpenses.toLocaleString()}`,
-      withdrawalExpenses: `₹${withdrawalExpenses.toLocaleString()}`,
-      netProfit: `₹${totalProfit.toLocaleString()}`,
+      totalExpenses: `₹${totalExpenses.toLocaleString()} (operating expenses only)`,
+      vendorPayments: `₹${vendorPayments.toLocaleString()} (tracked separately, not deducted from gross profit)`,
+      netProfit: `₹${totalProfit.toLocaleString()} (Gross Profit - Operating Expenses)`,
       netProfitMargin: `${netProfitMargin.toFixed(1)}%`,
-      paymentsFound: salesPaymentsResult.data?.length || 0,
-      totalCollected: `₹${totalCollected.toLocaleString()}`,
-      totalOutstanding: `₹${totalOutstanding.toLocaleString()}`,
-      collectionRate: `${collectionRate}%`,
-      vendorPaymentCount: vendorPaymentsResult.data?.length || 0,
-      note: 'Vendor payments treated as COGS (subtracted from gross profit), not operating expenses'
+      note: 'Vendor payments are now correctly excluded from profit calculation'
     });
 
     // Count new customers in date range
@@ -330,12 +322,22 @@ export async function GET(request: Request) {
     // Calculate customer acquisition from sales orders (customers who made their first order in this period)
     const customersWithFirstOrder = uniqueCustomers.size;
 
-    // Calculate customer conversion ratio: customers who made purchases vs total customers in MTD
-    const totalCustomersInPeriod = allCustomersResult.data?.length || 0;
-    const customersWithPurchases = uniqueCustomers.size;
-    const customerConversionRatio = totalCustomersInPeriod > 0 
-      ? Math.round((customersWithPurchases / totalCustomersInPeriod) * 100) 
-      : 0;
+    // Calculate withdrawals metrics instead of customer conversion
+    const totalWithdrawals = withdrawalsResult.data?.reduce((sum, withdrawal) => sum + (withdrawal.amount || 0), 0) || 0;
+    const withdrawalCount = withdrawalsResult.data?.length || 0;
+    const withdrawalsByType = withdrawalsResult.data?.reduce((acc, withdrawal) => {
+      const type = withdrawal.withdrawal_type || 'unknown';
+      acc[type] = (acc[type] || 0) + (withdrawal.amount || 0);
+      return acc;
+    }, {} as Record<string, number>) || {};
+
+    console.log('📊 Withdrawals Calculation:', {
+      dateRange: `${dateFilter.startDate} to ${dateFilter.endDate}`,
+      totalWithdrawals: `₹${totalWithdrawals.toLocaleString()}`,
+      withdrawalCount,
+      withdrawalsByType,
+      note: 'Replaced customer conversion with withdrawals metrics'
+    });
 
     const customPendingCount = customPendingResult.data?.custom_orders_pending || 0;
     const lowStockCount = lowStockResult.data?.low_stock_count || 0;
@@ -358,12 +360,14 @@ export async function GET(request: Request) {
         grossProfitMargin: grossProfitMargin,
         profitMargin: netProfitMargin, // Net profit margin (current display)
         totalCollected: totalCollected,
-        totalOutstanding: totalRevenue - totalCollected, // Outstanding = Revenue - Collected
+        totalOutstanding: totalOutstanding, // Outstanding = Revenue - Collected
         collectionRate: collectionRate,
         vendorPayments: vendorPayments, // New vendor payments metric
         newCustomers: newCustomers,
         activeCustomers: customersWithFirstOrder,
-        customerConversionRatio: customerConversionRatio, // New conversion ratio metric
+        withdrawalsTotal: totalWithdrawals, // Replaced customer conversion with withdrawals
+        withdrawalsCount: withdrawalCount,
+        withdrawalsByType: withdrawalsByType,
         orderCount: orderCount,
         customOrdersPending: customPendingCount,
         lowStockItems: lowStockCount,

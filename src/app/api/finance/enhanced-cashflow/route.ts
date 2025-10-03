@@ -30,7 +30,7 @@ export async function GET() {
           )
         )
       `)
-      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
       .limit(1000);
 
     if (journalError) {

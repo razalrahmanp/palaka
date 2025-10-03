@@ -85,11 +85,27 @@ export async function POST(request: NextRequest) {
     let createdAt = new Date().toISOString();
     if (invoiceDate) {
       try {
-        // Parse the invoice date and set time to current time
-        const invoiceDateObj = new Date(invoiceDate);
-        const currentTime = new Date();
-        invoiceDateObj.setHours(currentTime.getHours(), currentTime.getMinutes(), currentTime.getSeconds(), currentTime.getMilliseconds());
-        createdAt = invoiceDateObj.toISOString();
+        // Parse the invoice date properly to preserve the exact date
+        const dateMatch = invoiceDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (dateMatch) {
+          const [, year, month, day] = dateMatch;
+          // Create date using local timezone to avoid UTC shifts
+          const invoiceDateObj = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+          const currentTime = new Date();
+          invoiceDateObj.setHours(currentTime.getHours(), currentTime.getMinutes(), currentTime.getSeconds(), currentTime.getMilliseconds());
+          createdAt = invoiceDateObj.toISOString();
+          console.log('Fixed invoice date logic:', {
+            originalInvoiceDate: invoiceDate,
+            parsedDate: invoiceDateObj.toISOString(),
+            dateOnly: invoiceDateObj.toISOString().split('T')[0]
+          });
+        } else {
+          // Fallback to original logic for non-standard date formats
+          const invoiceDateObj = new Date(invoiceDate);
+          const currentTime = new Date();
+          invoiceDateObj.setHours(currentTime.getHours(), currentTime.getMinutes(), currentTime.getSeconds(), currentTime.getMilliseconds());
+          createdAt = invoiceDateObj.toISOString();
+        }
       } catch (error) {
         console.warn('Invalid invoice date provided, using current timestamp:', error);
       }

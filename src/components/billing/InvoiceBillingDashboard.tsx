@@ -515,11 +515,19 @@ export function InvoiceBillingDashboard({
         }
         if (data.created_at) {
           const createdDate = new Date(String(data.created_at));
-          setInvoiceDate(createdDate.toISOString().split('T')[0]);
+          // Use local date to avoid timezone shifts
+          const year = createdDate.getFullYear();
+          const month = String(createdDate.getMonth() + 1).padStart(2, '0');
+          const day = String(createdDate.getDate()).padStart(2, '0');
+          setInvoiceDate(`${year}-${month}-${day}`);
         }
         if (data.delivery_date) {
           const deliveryDateValue = new Date(String(data.delivery_date));
-          setDeliveryDate(deliveryDateValue.toISOString().split('T')[0]);
+          // Use local date to avoid timezone shifts
+          const year = deliveryDateValue.getFullYear();
+          const month = String(deliveryDateValue.getMonth() + 1).padStart(2, '0');
+          const day = String(deliveryDateValue.getDate()).padStart(2, '0');
+          setDeliveryDate(`${year}-${month}-${day}`);
         }
 
         // Populate items if available

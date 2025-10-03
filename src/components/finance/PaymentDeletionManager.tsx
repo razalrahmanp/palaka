@@ -356,7 +356,7 @@ export function PaymentDeletionManager() {
 
   const handleDeleteWithdrawal = async (withdrawal: Withdrawal) => {
     try {
-      const response = await fetch(`/api/finance/withdrawals/${withdrawal.id}`, {
+      const response = await fetch(`/api/finance/withdrawals?id=${withdrawal.id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -403,7 +403,7 @@ export function PaymentDeletionManager() {
 
   const handleDeleteInvestment = async (investment: Investment) => {
     try {
-      const response = await fetch(`/api/finance/investments/${investment.id}`, {
+      const response = await fetch(`/api/finance/investments?id=${investment.id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' }
       });

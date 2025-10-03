@@ -311,6 +311,7 @@ export interface Invoice {
   amount: number;
   waived_amount?: number;
   balance_due?: number;
+  total_refunded?: number;
   date?: string;
   created_at: string;
   due_date: string;

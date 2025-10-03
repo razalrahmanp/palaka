@@ -44,7 +44,11 @@ import {
   TrendingDown,
   Building2,
   Loader2,
-  BookOpen
+  BookOpen,
+  RotateCcw,
+  Download,
+  Filter,
+  X
 } from 'lucide-react';
 import { SalesOrder, Invoice, subcategoryMap } from '@/types';
 import { PaymentTrackingDialog } from './PaymentTrackingDialog';
@@ -54,6 +58,7 @@ import { WaiveOffDialog } from './WaiveOffDialog';
 import { PaymentDeletionManager } from './PaymentDeletionManager';
 import { getCurrentUser } from '@/lib/auth';
 import OptimizedLedgerManager from './OptimizedLedgerManager';
+import { RefundDialog } from './RefundDialog';
 
 // Component interfaces and types
 
@@ -164,6 +169,7 @@ interface Expense {
   payment_method: string;
   created_by?: string;
   created_at: string;
+  entity_type?: string; // 'truck', 'employee', 'supplier'
 }
 
 interface VendorBill {
@@ -220,6 +226,8 @@ export function SalesOrderInvoiceManager() {
   const [loading, setLoading] = useState(true);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [paymentTrackingOpen, setPaymentTrackingOpen] = useState(false);
+  const [refundDialogOpen, setRefundDialogOpen] = useState(false);
+  const [selectedInvoiceForRefund, setSelectedInvoiceForRefund] = useState<Invoice | null>(null);
   const [createExpenseOpen, setCreateExpenseOpen] = useState(false);
   const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
   const [createInvestmentOpen, setCreateInvestmentOpen] = useState(false);
@@ -258,6 +266,13 @@ export function SalesOrderInvoiceManager() {
     from: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0], // Start of current month
     to: new Date().toISOString().split('T')[0] // Today
   });
+  
+  // Multiple filter selection for cashflow
+  const [multipleCategoryFilters, setMultipleCategoryFilters] = useState<string[]>([]);
+  const [useMultipleFilters, setUseMultipleFilters] = useState(false);
+  
+  // Export/Print states
+  const [isExporting, setIsExporting] = useState(false);
   
   // Payment status filter for sales orders
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<'all' | 'paid' | 'unpaid' | 'partial'>('all');
@@ -558,8 +573,14 @@ export function SalesOrderInvoiceManager() {
     
     console.log('➕ Added payments to transactions:', transactions.filter(t => t.type === 'income').length);
     
-    // Add expenses as outflow
+    // Add expenses as outflow (excluding vendor payments which are handled separately)
     expenses.forEach(expense => {
+      // Skip expenses that are vendor payments (entity_type === 'supplier')
+      // These are handled separately in the vendor payments section
+      if (expense.entity_type === 'supplier') {
+        return; // Skip vendor payment expenses to avoid duplication
+      }
+      
       transactions.push({
         id: `expense-${expense.id}`,
         date: expense.date,
@@ -1248,7 +1269,9 @@ export function SalesOrderInvoiceManager() {
     transactions: CashflowTransaction[], 
     searchQuery: string, 
     typeFilter: 'all' | 'income' | 'expense' = 'all',
-    categoryFilter: 'all' | 'payment' | 'investment' | 'withdrawal' | 'expense' | 'vendor_payment' | 'liability_payment' = 'all'
+    categoryFilter: 'all' | 'payment' | 'investment' | 'withdrawal' | 'expense' | 'vendor_payment' | 'liability_payment' = 'all',
+    multipleCategories: string[] = [],
+    useMultiple: boolean = false
   ): CashflowTransaction[] => {
     let filteredTransactions = transactions;
 
@@ -1257,9 +1280,23 @@ export function SalesOrderInvoiceManager() {
       filteredTransactions = filteredTransactions.filter(transaction => transaction.type === typeFilter);
     }
 
-    // Filter by category
-    if (categoryFilter !== 'all') {
-      filteredTransactions = filteredTransactions.filter(transaction => transaction.category === categoryFilter);
+    // Filter by category (single or multiple)
+    if (useMultiple && multipleCategories.length > 0) {
+      // Multiple category filter mode
+      filteredTransactions = filteredTransactions.filter(transaction => 
+        multipleCategories.includes(transaction.category)
+      );
+    } else if (categoryFilter !== 'all') {
+      // Single category filter mode
+      if (categoryFilter === 'expense') {
+        // When filtering by 'expense', only show transactions categorized as 'expense'
+        // (vendor payments are already separate with category 'vendor_payment')
+        filteredTransactions = filteredTransactions.filter(transaction => 
+          transaction.category === 'expense'
+        );
+      } else {
+        filteredTransactions = filteredTransactions.filter(transaction => transaction.category === categoryFilter);
+      }
     }
 
     // Filter by search query
@@ -1282,6 +1319,207 @@ export function SalesOrderInvoiceManager() {
     });
   };
 
+  // Export/Print Functions
+  const generateCashflowReport = () => {
+    const filteredTransactions = filterCashflowTransactions(
+      cashflowTransactions, 
+      cashflowSearchQuery, 
+      cashflowTypeFilter, 
+      cashflowCategoryFilter,
+      multipleCategoryFilters,
+      useMultipleFilters
+    );
+    
+    const totalInflow = filteredTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+    const totalOutflow = filteredTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+    const netCashflow = totalInflow - totalOutflow;
+    
+    return {
+      transactions: filteredTransactions,
+      summary: {
+        totalInflow,
+        totalOutflow,
+        netCashflow,
+        transactionCount: filteredTransactions.length
+      },
+      filters: {
+        dateRange: cashflowDateRange,
+        typeFilter: cashflowTypeFilter,
+        categoryFilter: useMultipleFilters ? multipleCategoryFilters.join(', ') : cashflowCategoryFilter,
+        searchQuery: cashflowSearchQuery
+      },
+      generatedAt: new Date().toISOString()
+    };
+  };
+
+  const printCashflowReport = () => {
+    setIsExporting(true);
+    const report = generateCashflowReport();
+    
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Please allow popups to print the report');
+      setIsExporting(false);
+      return;
+    }
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Cashflow Report - ${formatDate(report.generatedAt)}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            .header { text-align: center; margin-bottom: 30px; }
+            .filters { background: #f5f5f5; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
+            .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 30px; }
+            .summary-card { background: white; padding: 15px; border: 1px solid #ddd; border-radius: 5px; text-align: center; }
+            .summary-card h3 { margin: 0 0 10px 0; color: #666; font-size: 14px; }
+            .summary-card .amount { font-size: 20px; font-weight: bold; }
+            .income { color: #16a34a; }
+            .expense { color: #dc2626; }
+            .net-positive { color: #16a34a; }
+            .net-negative { color: #dc2626; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f5f5f5; font-weight: bold; }
+            .amount-income { color: #16a34a; font-weight: bold; }
+            .amount-expense { color: #dc2626; font-weight: bold; }
+            .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+            .badge-income { background: #dcfce7; color: #166534; }
+            .badge-expense { background: #fee2e2; color: #991b1b; }
+            @media print {
+              body { margin: 0; }
+              .no-print { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>Cashflow Report</h1>
+            <p>Generated on: ${formatDate(report.generatedAt)}</p>
+          </div>
+          
+          <div class="filters">
+            <h3>Applied Filters:</h3>
+            <p><strong>Date Range:</strong> ${formatDate(report.filters.dateRange.from)} to ${formatDate(report.filters.dateRange.to)}</p>
+            <p><strong>Type:</strong> ${report.filters.typeFilter === 'all' ? 'All Types' : report.filters.typeFilter}</p>
+            <p><strong>Category:</strong> ${report.filters.categoryFilter === 'all' ? 'All Categories' : report.filters.categoryFilter}</p>
+            ${report.filters.searchQuery ? `<p><strong>Search:</strong> ${report.filters.searchQuery}</p>` : ''}
+          </div>
+
+          <div class="summary">
+            <div class="summary-card">
+              <h3>Total Inflow</h3>
+              <div class="amount income">${formatCurrency(report.summary.totalInflow)}</div>
+            </div>
+            <div class="summary-card">
+              <h3>Total Outflow</h3>
+              <div class="amount expense">${formatCurrency(report.summary.totalOutflow)}</div>
+            </div>
+            <div class="summary-card">
+              <h3>Net Cashflow</h3>
+              <div class="amount ${report.summary.netCashflow >= 0 ? 'net-positive' : 'net-negative'}">${formatCurrency(report.summary.netCashflow)}</div>
+            </div>
+            <div class="summary-card">
+              <h3>Transactions</h3>
+              <div class="amount">${report.summary.transactionCount}</div>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Description</th>
+                <th>Type</th>
+                <th>Category</th>
+                <th>Payment Method</th>
+                <th>Amount</th>
+                <th>Reference</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${report.transactions.map(transaction => `
+                <tr>
+                  <td>${formatDate(transaction.date)}</td>
+                  <td>${transaction.description}${transaction.customer_name ? `<br><small>${transaction.customer_name}</small>` : ''}${transaction.partner_name ? `<br><small>${transaction.partner_name}</small>` : ''}</td>
+                  <td><span class="badge badge-${transaction.type}">${transaction.type.toUpperCase()}</span></td>
+                  <td>${transaction.category.replace('_', ' ').toUpperCase()}</td>
+                  <td>${transaction.payment_method.replace('_', ' ').toUpperCase()}</td>
+                  <td class="amount-${transaction.type}">${transaction.type === 'income' ? '+' : '-'}${formatCurrency(transaction.amount)}</td>
+                  <td>${transaction.reference || '-'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+
+          <div class="no-print" style="margin-top: 30px; text-align: center;">
+            <button onclick="window.print()" style="padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 5px; cursor: pointer;">Print Report</button>
+            <button onclick="window.close()" style="padding: 10px 20px; background: #6b7280; color: white; border: none; border-radius: 5px; cursor: pointer; margin-left: 10px;">Close</button>
+          </div>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+    setIsExporting(false);
+  };
+
+  const downloadCashflowCSV = () => {
+    setIsExporting(true);
+    const report = generateCashflowReport();
+    
+    const headers = ['Date', 'Description', 'Type', 'Category', 'Payment Method', 'Amount', 'Reference', 'Customer/Partner'];
+    const csvContent = [
+      headers.join(','),
+      ...report.transactions.map(transaction => [
+        `"${formatDate(transaction.date)}"`,
+        `"${transaction.description.replace(/"/g, '""')}"`,
+        `"${transaction.type}"`,
+        `"${transaction.category}"`,
+        `"${transaction.payment_method}"`,
+        transaction.amount,
+        `"${transaction.reference || ''}"`,
+        `"${transaction.customer_name || transaction.partner_name || ''}"`
+      ].join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `cashflow_report_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setIsExporting(false);
+  };
+
+  const toggleMultipleCategory = (category: string) => {
+    setMultipleCategoryFilters(prev => {
+      if (prev.includes(category)) {
+        return prev.filter(c => c !== category);
+      } else {
+        return [...prev, category];
+      }
+    });
+  };
+
+  const clearAllFilters = () => {
+    setCashflowSearchQuery('');
+    setCashflowTypeFilter('all');
+    setCashflowCategoryFilter('all');
+    setMultipleCategoryFilters([]);
+    setUseMultipleFilters(false);
+    setCashflowDateRange({
+      from: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+      to: new Date().toISOString().split('T')[0]
+    });
+  };
+
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
     setCurrentPage(1); // Reset to first page when changing tabs
@@ -1298,7 +1536,7 @@ export function SalesOrderInvoiceManager() {
       case 'expenses':
         return filterExpenses(expenses, expensesSearchQuery).length;
       case 'cashflow':
-        return filterCashflowTransactions(cashflowTransactions, cashflowSearchQuery, cashflowTypeFilter, cashflowCategoryFilter).length;
+        return filterCashflowTransactions(cashflowTransactions, cashflowSearchQuery, cashflowTypeFilter, cashflowCategoryFilter, multipleCategoryFilters, useMultipleFilters).length;
       default:
         return 0;
     }
@@ -2969,6 +3207,23 @@ export function SalesOrderInvoiceManager() {
                                 Waive
                               </Button>
                             )}
+
+                            {/* Refund Button - Only show if there's paid amount and it's greater than any existing refunds */}
+                            {(invoice.paid_amount || 0) > 0 && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
+                                onClick={() => {
+                                  setSelectedInvoiceForRefund(invoice);
+                                  setRefundDialogOpen(true);
+                                }}
+                                title="Process Refund"
+                              >
+                                <RotateCcw className="h-4 w-4 mr-1" />
+                                Refund
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -3354,7 +3609,7 @@ export function SalesOrderInvoiceManager() {
               {/* Cashflow Summary Cards */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 {(() => {
-                  const filteredTransactions = filterCashflowTransactions(cashflowTransactions, cashflowSearchQuery, cashflowTypeFilter, cashflowCategoryFilter);
+                  const filteredTransactions = filterCashflowTransactions(cashflowTransactions, cashflowSearchQuery, cashflowTypeFilter, cashflowCategoryFilter, multipleCategoryFilters, useMultipleFilters);
                   const totalInflow = filteredTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
                   const totalOutflow = filteredTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
                   const netCashflow = totalInflow - totalOutflow;
@@ -3516,6 +3771,93 @@ export function SalesOrderInvoiceManager() {
                 </div>
               </div>
 
+              {/* Enhanced Filter Options */}
+              <div className="flex flex-col gap-4 mb-4 p-4 bg-gray-50 rounded-lg">
+                {/* Multiple Filter Toggle */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <Button
+                      variant={useMultipleFilters ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setUseMultipleFilters(!useMultipleFilters)}
+                      className="flex items-center gap-2"
+                    >
+                      <Filter className="h-4 w-4" />
+                      {useMultipleFilters ? 'Multiple Filters ON' : 'Single Filter Mode'}
+                    </Button>
+                    
+                    {(cashflowSearchQuery || cashflowTypeFilter !== 'all' || cashflowCategoryFilter !== 'all' || multipleCategoryFilters.length > 0) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={clearAllFilters}
+                        className="flex items-center gap-2 text-red-600"
+                      >
+                        <X className="h-4 w-4" />
+                        Clear All Filters
+                      </Button>
+                    )}
+                  </div>
+                  
+                  {/* Export/Print Actions */}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={downloadCashflowCSV}
+                      disabled={isExporting}
+                      className="flex items-center gap-2"
+                    >
+                      {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                      Export CSV
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={printCashflowReport}
+                      disabled={isExporting}
+                      className="flex items-center gap-2"
+                    >
+                      {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                      Print Report
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Multiple Category Selection */}
+                {useMultipleFilters && (
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">Select Multiple Categories:</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { value: 'payment', label: 'Payments' },
+                        { value: 'investment', label: 'Investments' },
+                        { value: 'withdrawal', label: 'Withdrawals' },
+                        { value: 'expense', label: 'Expenses' },
+                        { value: 'vendor_payment', label: 'Vendor Payments' },
+                        { value: 'liability_payment', label: 'Liability Payments' }
+                      ].map(category => (
+                        <Button
+                          key={category.value}
+                          variant={multipleCategoryFilters.includes(category.value) ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => toggleMultipleCategory(category.value)}
+                          className="flex items-center gap-2"
+                        >
+                          {multipleCategoryFilters.includes(category.value) && <X className="h-3 w-3" />}
+                          {category.label}
+                        </Button>
+                      ))}
+                    </div>
+                    {multipleCategoryFilters.length > 0 && (
+                      <p className="text-sm text-gray-600 mt-2">
+                        Selected: {multipleCategoryFilters.map(cat => cat.replace('_', ' ')).join(', ')}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Cashflow Table */}
               <div className="border rounded-lg overflow-hidden">
                 <Table>
@@ -3537,7 +3879,7 @@ export function SalesOrderInvoiceManager() {
                   </TableHeader>
                   <TableBody>
                     {(() => {
-                      const filteredTransactions = filterCashflowTransactions(cashflowTransactions, cashflowSearchQuery, cashflowTypeFilter, cashflowCategoryFilter);
+                      const filteredTransactions = filterCashflowTransactions(cashflowTransactions, cashflowSearchQuery, cashflowTypeFilter, cashflowCategoryFilter, multipleCategoryFilters, useMultipleFilters);
                       const displayTransactions = showPagination 
                         ? getPaginatedData(filteredTransactions, currentPage, itemsPerPage)
                         : filteredTransactions;
@@ -3615,7 +3957,7 @@ export function SalesOrderInvoiceManager() {
                 <div className="flex justify-center py-4">
                   <div className="text-sm text-gray-600 bg-gray-50 px-4 py-2 rounded-lg">
                     Showing all {(() => {
-                      const filteredTransactions = filterCashflowTransactions(cashflowTransactions, cashflowSearchQuery, cashflowTypeFilter, cashflowCategoryFilter);
+                      const filteredTransactions = filterCashflowTransactions(cashflowTransactions, cashflowSearchQuery, cashflowTypeFilter, cashflowCategoryFilter, multipleCategoryFilters, useMultipleFilters);
                       return filteredTransactions.length;
                     })()} transactions
                   </div>
@@ -3650,6 +3992,14 @@ export function SalesOrderInvoiceManager() {
         onOpenChange={setPaymentTrackingOpen}
         invoice={selectedInvoice}
         onSuccess={fetchData}
+      />
+
+      {/* Refund Dialog */}
+      <RefundDialog
+        isOpen={refundDialogOpen}
+        onClose={() => setRefundDialogOpen(false)}
+        invoice={selectedInvoiceForRefund}
+        onRefundCreated={fetchData}
       />
 
       {/* Create Expense Dialog */}

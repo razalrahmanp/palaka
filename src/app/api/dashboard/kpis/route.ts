@@ -15,18 +15,26 @@ export async function GET(request: Request) {
         endDate
       };
     } else {
-      // Default to October 2025 MTD (fixed timezone issue)
-      // Force October dates to ensure consistency across all APIs
+      // Default to current month MTD (dynamic based on current date)
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth(); // 0-based month
+      
+      // Create start and end dates for current month
+      const currentMonthStart = new Date(Date.UTC(year, month, 1));
+      const currentMonthEnd = new Date(Date.UTC(year, month + 1, 0));
+      
       dateFilter = {
-        startDate: '2025-10-01',
-        endDate: '2025-10-31'
+        startDate: currentMonthStart.toISOString().split('T')[0],
+        endDate: currentMonthEnd.toISOString().split('T')[0]
       };
       
       console.log('📅 KPIs Default Date Applied:', {
-        period: 'MTD October 2025',
+        period: `Current Month (${now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })})`,
         startDate: dateFilter.startDate,
         endDate: dateFilter.endDate,
-        note: 'Fixed October dates to match other APIs'
+        currentDate: now.toISOString().split('T')[0],
+        note: 'Dynamic current month dates - will adjust automatically each month'
       });
     }
 

@@ -116,41 +116,54 @@ export default function EnhancedModularDashboard() {
   // Finance State
   const [financeLoading, setFinanceLoading] = useState(false);
 
-  // Date Filtering State
-  const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'month' | 'custom'>('month');
+  // Date Filtering State - Updated to default to Last 30 Days
+  const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'month' | 'last30' | 'custom'>('last30');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
 
   // Utility function to get date range based on filter
   const getDateRange = useCallback(() => {
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    // Use local date to avoid timezone issues
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const date = now.getDate();
+    const today = new Date(year, month, date);
     
     switch (dateFilter) {
       case 'today':
+        const todayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`;
         return {
-          startDate: today.toISOString().split('T')[0],
-          endDate: today.toISOString().split('T')[0]
+          startDate: todayStr,
+          endDate: todayStr
         };
       case 'week':
         const weekStart = new Date(today);
-        weekStart.setDate(today.getDate() - today.getDay());
+        weekStart.setDate(date - today.getDay());
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekStart.getDate() + 6);
         return {
-          startDate: weekStart.toISOString().split('T')[0],
-          endDate: weekEnd.toISOString().split('T')[0]
+          startDate: `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`,
+          endDate: `${weekEnd.getFullYear()}-${String(weekEnd.getMonth() + 1).padStart(2, '0')}-${String(weekEnd.getDate()).padStart(2, '0')}`
         };
       case 'month':
-        // Fixed to October 2025 for consistency across all APIs
+        // Dynamic month calculation based on current date
+        const monthEnd = new Date(year, month + 1, 0);
         return {
-          startDate: '2025-10-01',
-          endDate: '2025-10-31'
+          startDate: `${year}-${String(month + 1).padStart(2, '0')}-01`,
+          endDate: `${year}-${String(month + 1).padStart(2, '0')}-${String(monthEnd.getDate()).padStart(2, '0')}`
+        };
+      case 'last30':
+        // Last 30 days to include historical walk-ins data
+        const last30Start = new Date(year, month, date - 30);
+        return {
+          startDate: `${last30Start.getFullYear()}-${String(last30Start.getMonth() + 1).padStart(2, '0')}-${String(last30Start.getDate()).padStart(2, '0')}`,
+          endDate: `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`
         };
       case 'custom':
         return {
-          startDate: customStartDate || today.toISOString().split('T')[0],
-          endDate: customEndDate || today.toISOString().split('T')[0]
+          startDate: customStartDate || `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`,
+          endDate: customEndDate || `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`
         };
       default:
         return {
@@ -162,6 +175,15 @@ export default function EnhancedModularDashboard() {
 
   // Data hooks
   const dateRange = getDateRange();
+  
+  // Debug logging to show exact dates being used
+  console.log('🗓️ Dashboard Date Filter Debug:', {
+    selectedFilter: dateFilter,
+    calculatedDateRange: dateRange,
+    currentDate: new Date().toISOString().split('T')[0],
+    apiUrl: `/api/dashboard/kpis?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
+  });
+  
   const { data: kpiData, isLoading: kpiLoading, refetch: refetchKPI } = useKPIData(dateRange);
   // Operational data hook (keeping for potential future use)
   const { isLoading: operationalLoading } = useOperationalData();
@@ -315,6 +337,7 @@ export default function EnhancedModularDashboard() {
                     {dateFilter === 'today' ? 'Today' :
                      dateFilter === 'week' ? 'This Week' :
                      dateFilter === 'month' ? 'This Month' :
+                     dateFilter === 'last30' ? 'Last 30 Days' :
                      `${dateRange.startDate} to ${dateRange.endDate}`}
                   </span>
                 )}
@@ -348,6 +371,14 @@ export default function EnhancedModularDashboard() {
                 className="text-xs h-7"
               >
                 Month
+              </Button>
+              <Button 
+                variant={dateFilter === 'last30' ? "default" : "ghost"} 
+                size="sm"
+                onClick={() => setDateFilter('last30')}
+                className="text-xs h-7"
+              >
+                Last 30 Days
               </Button>
               <Popover>
                 <PopoverTrigger asChild>

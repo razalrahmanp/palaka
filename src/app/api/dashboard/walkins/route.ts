@@ -102,27 +102,23 @@ export async function GET(request: Request) {
       debug: {
         interactions_count: interactions?.length || 0,
         genuine_new_customers_count: newCustomers?.length || 0,
-        raw_sales_orders_count: salesOrders?.length || 0,
+        walk_in_source_sales_count: salesOrders?.length || 0,
         corrected_conversions: actualConverted,
         sample_interactions: interactions?.slice(0, 3) || [],
         sample_new_customers: newCustomers?.slice(0, 3) || [],
         sample_conversions: salesOrders?.slice(0, 3) || [],
         excluded_customer_sources: ['billing_system', 'quote_creation', 'sales_order'],
         included_customer_sources: ['Walk-in', 'Website', 'Referral', 'Trade Show'],
-        calculation_notes: 'Conversions capped at total walk-ins to prevent impossible rates'
+        calculation_notes: 'Conversions only count sales from customers with genuine walk-in sources, excluding billing system created customers'
       }
     };
 
     console.log('🚶 Walk-ins Analysis:', {
       dateRange: `${targetDate} to ${targetEndDate}`,
-      totalInteractions: interactions?.length || 0,
-      newCustomersAfterFiltering: newCustomers?.length || 0,
-      rawConversions: salesOrders?.length || 0,
+      totalWalkIns: newCustomers?.length || 0,
+      walkInSourceSales: salesOrders?.length || 0,
       correctedConversions: actualConverted,
-      conversionRate: `${Math.round(conversionRate * 10) / 10}%`,
-      newCustomerSources: newCustomers?.map(c => ({ name: c.name, source: c.source })) || [],
-      includedSources: ['Walk-in', 'Website', 'Referral', 'Trade Show'],
-      excludedSources: ['billing_system', 'quote_creation', 'sales_order']
+      conversionRate: `${Math.round(conversionRate * 10) / 10}%`
     });
 
     return NextResponse.json({

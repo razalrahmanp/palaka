@@ -20,7 +20,8 @@ import {
   Building2,
   Smartphone,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  Info
 } from 'lucide-react';
 
 // Types for our data structures
@@ -222,6 +223,22 @@ export function DailyWalkInsComponent({ startDate, endDate, isLoading = false }:
               )}
             </div>
           </div>
+
+          {/* Info Note about Walk-ins vs Sales */}
+          {walkInData && walkInData.total_walkins > 0 && walkInData.converted === 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="flex items-start gap-2">
+                <Info className="h-4 w-4 text-blue-600 mt-0.5" />
+                <div className="text-sm text-blue-800">
+                  <div className="font-medium">Understanding Walk-in Conversions</div>
+                  <div className="mt-1">
+                    Walk-in conversions only count purchases made by <strong>new customers</strong> who visited today.
+                    Sales from existing customers (shown in Sales tab) are tracked separately to maintain accurate lead conversion metrics.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

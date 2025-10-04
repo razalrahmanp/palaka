@@ -94,18 +94,10 @@ export async function POST(request: Request) {
 
     // Create bank transaction and update bank balance if bank account is used
     if (bank_account_id && payment_method !== 'cash') {
-      // Create bank transaction
-      await supabase
-        .from("bank_transactions")
-        .insert([{
-          bank_account_id,
-          date,
-          type: "withdrawal",
-          amount: total_amount,
-          description: `Liability Payment: ${description}`,
-        }]);
-
-      // Update bank account balance
+      // NOTE: We do NOT create a bank_transaction here to avoid double-entry
+      // The liability_payment record itself will be picked up by the bank-transactions API
+      
+      // Only update bank account balance directly
       const { data: bankAccount, error: bankError } = await supabase
         .from("bank_accounts")
         .select("current_balance")
@@ -118,6 +110,13 @@ export async function POST(request: Request) {
           .from("bank_accounts")
           .update({ current_balance: newBalance })
           .eq("id", bank_account_id);
+        
+        console.log('💰 Updated bank balance without creating duplicate transaction:', {
+          bankAccountId: bank_account_id,
+          oldBalance: bankAccount.current_balance,
+          newBalance,
+          deductedAmount: total_amount
+        });
       }
     }
 

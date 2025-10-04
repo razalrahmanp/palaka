@@ -10,7 +10,6 @@ export async function POST(req: Request) {
       customer_email, 
       amount, 
       description, 
-      notes, 
       date 
     } = body;
 
@@ -85,18 +84,11 @@ export async function POST(req: Request) {
       .insert([{
         sales_order_id: null, // This is a standalone invoice
         customer_id: customerId,
-        customer_name,
+        customer_name: `${customer_name} - ${description}`, // Include description in customer_name for now
         total: Number(amount),
         status: 'unpaid',
         paid_amount: 0,
-        created_at: createdAt,
-        notes: notes || null,
-        // Store additional details in description or a separate field
-        invoice_items: JSON.stringify([{
-          description,
-          amount: Number(amount),
-          quantity: 1
-        }])
+        created_at: createdAt
       }])
       .select()
       .single();

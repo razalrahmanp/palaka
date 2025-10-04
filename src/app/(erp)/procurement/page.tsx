@@ -422,17 +422,13 @@ export default function ProcurementPage() {
         </div>
 
         {/* Filters */}
-        <Card className="border-0 shadow-lg bg-white/70 backdrop-blur-sm">
-          <CardContent className="p-6">
-            <PurchaseOrderFilters 
-              filters={filters}
-              onFiltersChange={handleFilterChange}
-              onReset={handleFilterReset}
-              suppliers={suppliers.map(s => ({ id: s.id, name: s.name }))}
-              salesReps={Array.from(new Set((Array.isArray(orders) ? orders : []).map(o => o.sales_order?.sales_rep?.[0]?.name || o.creator?.name).filter(Boolean))).map(rep => ({ id: rep!, name: rep! }))}
-            />
-          </CardContent>
-        </Card>
+        <PurchaseOrderFilters 
+          filters={filters}
+          onFiltersChange={handleFilterChange}
+          onReset={handleFilterReset}
+          suppliers={suppliers.map(s => ({ id: s.id, name: s.name }))}
+          salesReps={Array.from(new Set((Array.isArray(orders) ? orders : []).map(o => o.sales_order?.sales_rep?.[0]?.name || o.creator?.name).filter(Boolean))).map(rep => ({ id: rep!, name: rep! }))}
+        />
 
         {/* Purchase Orders List */}
         <Card className="border-0 shadow-lg bg-white/70 backdrop-blur-sm">

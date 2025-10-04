@@ -65,7 +65,8 @@ import {
   Users,
   CreditCard,
   Building,
-  Receipt
+  Receipt,
+  ArrowDownLeft
 } from "lucide-react";
 
 // Data fetching hooks
@@ -514,7 +515,7 @@ export default function EnhancedModularDashboard() {
             </Card>
           </div>
 
-          {/* Second Row: Total Expenses, Outstanding, Vendor Payments, Customer Conversion */}
+          {/* Second Row: Total Expenses, Outstanding, Vendor Payments, Withdrawals */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
             {/* Total Expenses (MTD) Card */}
             <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200 h-20 sm:h-24">
@@ -587,27 +588,31 @@ export default function EnhancedModularDashboard() {
               </CardContent>
             </Card>
 
-            {/* Customer Conversion Card */}
+            {/* Withdrawals (MTD) Card */}
             <Card className="bg-gradient-to-br from-violet-50 to-violet-100 border-violet-200 h-20 sm:h-24">
               <CardContent className="p-2 sm:p-3 h-full">
                 <div className="flex items-center justify-between h-full">
                   <div className="flex-1 min-w-0">
                     <p className="text-xs sm:text-sm font-medium text-violet-600 truncate">
-                      Customer Conversion
+                      Withdrawals (MTD)
                     </p>
                     <div className="text-sm sm:text-lg font-bold text-violet-900 truncate">
                       {isLoading ? (
                         <div className="h-4 sm:h-6 w-12 sm:w-16 bg-violet-200 rounded animate-pulse"></div>
                       ) : (
-                        `${kpiData?.data?.customerConversionRatio || 0}%`
+                        `₹${(kpiData?.data?.withdrawalsTotal || 0).toLocaleString()}`
                       )}
                     </div>
                     <p className="text-xs text-violet-600 truncate">
-                      Purchased / Total
+                      {isLoading ? (
+                        <div className="h-3 w-12 bg-violet-200 rounded animate-pulse"></div>
+                      ) : (
+                        `${kpiData?.data?.withdrawalsCount || 0} transactions`
+                      )}
                     </p>
                   </div>
                   <div className="w-8 h-8 sm:w-10 sm:h-10 bg-violet-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
-                    <Percent className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                    <ArrowDownLeft className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                   </div>
                 </div>
               </CardContent>

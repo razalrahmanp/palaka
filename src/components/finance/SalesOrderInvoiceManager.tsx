@@ -289,6 +289,11 @@ export function SalesOrderInvoiceManager() {
   // Invoice status filter for invoices tab
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<'all' | 'paid' | 'unpaid' | 'partial'>('all');
   
+  // Invoice date filter states
+  const [invoiceDateFilter, setInvoiceDateFilter] = useState<'all' | 'today' | 'weekly' | 'monthly' | 'last_month' | 'custom'>('all');
+  const [invoiceFromDate, setInvoiceFromDate] = useState('');
+  const [invoiceToDate, setInvoiceToDate] = useState('');
+  
   // Delete expense states
   const [deleteExpenseOpen, setDeleteExpenseOpen] = useState(false);
   const [selectedExpenseForDelete, setSelectedExpenseForDelete] = useState<Expense | null>(null);
@@ -1164,7 +1169,14 @@ export function SalesOrderInvoiceManager() {
   };
 
   // Filter functions for search
-  const filterInvoices = (invoices: Invoice[], searchQuery: string, statusFilter: 'all' | 'paid' | 'unpaid' | 'partial' = 'all'): Invoice[] => {
+  const filterInvoices = (
+    invoices: Invoice[], 
+    searchQuery: string, 
+    statusFilter: 'all' | 'paid' | 'unpaid' | 'partial' = 'all',
+    dateFilter: 'all' | 'today' | 'weekly' | 'monthly' | 'last_month' | 'custom' = 'all',
+    fromDate: string = '',
+    toDate: string = ''
+  ): Invoice[] => {
     let filteredInvoices = invoices;
 
     // Filter by payment status
@@ -1183,6 +1195,50 @@ export function SalesOrderInvoiceManager() {
           return (totalPaid > 0 || waivedAmount > 0) && effectivePaid < invoiceTotal;
         }
         return true;
+      });
+    }
+
+    // Filter by date range
+    if (dateFilter !== 'all') {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
+      filteredInvoices = filteredInvoices.filter((invoice) => {
+        const invoiceDate = new Date(invoice.created_at);
+        const invoiceDateOnly = new Date(invoiceDate.getFullYear(), invoiceDate.getMonth(), invoiceDate.getDate());
+        
+        switch (dateFilter) {
+          case 'today':
+            return invoiceDateOnly.getTime() === today.getTime();
+          
+          case 'weekly':
+            const weekStart = new Date(today);
+            weekStart.setDate(today.getDate() - today.getDay()); // Start of week (Sunday)
+            const weekEnd = new Date(weekStart);
+            weekEnd.setDate(weekStart.getDate() + 6); // End of week (Saturday)
+            return invoiceDateOnly >= weekStart && invoiceDateOnly <= weekEnd;
+          
+          case 'monthly':
+            const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+            const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            return invoiceDateOnly >= monthStart && invoiceDateOnly <= monthEnd;
+          
+          case 'last_month':
+            const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+            return invoiceDateOnly >= lastMonthStart && invoiceDateOnly <= lastMonthEnd;
+          
+          case 'custom':
+            if (fromDate && toDate) {
+              const from = new Date(fromDate);
+              const to = new Date(toDate);
+              return invoiceDateOnly >= from && invoiceDateOnly <= to;
+            }
+            return true;
+          
+          default:
+            return true;
+        }
       });
     }
 
@@ -1347,6 +1403,155 @@ export function SalesOrderInvoiceManager() {
       const today = new Date().toISOString().split('T')[0];
       setExpenseFromDate(today);
       setExpenseToDate(today);
+    }
+  };
+
+  // Helper function to handle invoice date preset changes
+  const handleInvoiceDatePresetChange = (preset: 'all' | 'today' | 'weekly' | 'monthly' | 'last_month' | 'custom') => {
+    setInvoiceDateFilter(preset);
+    setCurrentPage(1); // Reset pagination
+    
+    // Set default date ranges for custom preset
+    if (preset === 'custom' && !invoiceFromDate && !invoiceToDate) {
+      const today = new Date().toISOString().split('T')[0];
+      setInvoiceFromDate(today);
+      setInvoiceToDate(today);
+    }
+  };
+
+  // Print invoices functionality
+  const handlePrintInvoices = () => {
+    const filteredInvoices = filterInvoices(
+      invoices, 
+      invoicesSearchQuery, 
+      invoiceStatusFilter, 
+      invoiceDateFilter, 
+      invoiceFromDate, 
+      invoiceToDate
+    );
+
+    if (filteredInvoices.length === 0) {
+      alert('No invoices to print with current filters.');
+      return;
+    }
+
+    // Create print content
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Invoices Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            h1 { color: #333; text-align: center; margin-bottom: 30px; }
+            .filters { margin-bottom: 20px; padding: 10px; background: #f5f5f5; border-radius: 5px; }
+            .filters p { margin: 5px 0; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f2f2f2; font-weight: bold; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+            .text-right { text-align: right; }
+            .status-paid { color: #16a34a; font-weight: bold; }
+            .status-unpaid { color: #dc2626; font-weight: bold; }
+            .status-partial { color: #ea580c; font-weight: bold; }
+            .summary { margin-top: 30px; padding: 15px; background: #f8f9fa; border-radius: 5px; }
+            .summary h3 { margin-top: 0; }
+            @media print {
+              body { margin: 0; }
+              .no-print { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>Invoices Report</h1>
+          
+          <div class="filters">
+            <h3>Filter Applied:</h3>
+            <p><strong>Date Filter:</strong> ${invoiceDateFilter === 'all' ? 'All Dates' : 
+              invoiceDateFilter === 'custom' ? `${invoiceFromDate} to ${invoiceToDate}` : 
+              invoiceDateFilter.charAt(0).toUpperCase() + invoiceDateFilter.slice(1)}</p>
+            <p><strong>Status Filter:</strong> ${invoiceStatusFilter === 'all' ? 'All Status' : invoiceStatusFilter.charAt(0).toUpperCase() + invoiceStatusFilter.slice(1)}</p>
+            ${invoicesSearchQuery ? `<p><strong>Search Query:</strong> ${invoicesSearchQuery}</p>` : ''}
+            <p><strong>Total Invoices:</strong> ${filteredInvoices.length}</p>
+            <p><strong>Report Generated:</strong> ${new Date().toLocaleString()}</p>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Invoice ID</th>
+                <th>Sales Order</th>
+                <th>Customer</th>
+                <th>Date</th>
+                <th class="text-right">Amount</th>
+                <th class="text-right">Paid</th>
+                <th class="text-right">Waived</th>
+                <th class="text-right">Balance</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filteredInvoices.map(invoice => {
+                const totalPaid = invoice.paid_amount || 0;
+                const invoiceTotal = invoice.total || 0;
+                const waivedAmount = invoice.waived_amount || 0;
+                const effectivePaid = totalPaid + waivedAmount;
+                const balanceDue = Math.max(0, invoiceTotal - effectivePaid);
+                
+                let statusClass = 'status-unpaid';
+                let statusText = 'Unpaid';
+                
+                if (effectivePaid >= invoiceTotal && invoiceTotal > 0) {
+                  statusClass = 'status-paid';
+                  statusText = 'Paid';
+                } else if (totalPaid > 0 || waivedAmount > 0) {
+                  statusClass = 'status-partial';
+                  statusText = 'Partially Paid';
+                }
+
+                return `
+                  <tr>
+                    <td>${invoice.id.slice(0, 8)}</td>
+                    <td>${invoice.sales_order_id?.slice(0, 8) || 'N/A'}</td>
+                    <td>${invoice.customer_name || 'N/A'}</td>
+                    <td>${formatDate(invoice.created_at)}</td>
+                    <td class="text-right">₹${invoice.total?.toLocaleString() || '0'}</td>
+                    <td class="text-right">₹${totalPaid.toLocaleString()}</td>
+                    <td class="text-right">₹${waivedAmount.toLocaleString()}</td>
+                    <td class="text-right">₹${balanceDue.toLocaleString()}</td>
+                    <td class="${statusClass}">${statusText}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+
+          <div class="summary">
+            <h3>Summary</h3>
+            <p><strong>Total Amount:</strong> ₹${filteredInvoices.reduce((sum, inv) => sum + (inv.total || 0), 0).toLocaleString()}</p>
+            <p><strong>Total Paid:</strong> ₹${filteredInvoices.reduce((sum, inv) => sum + (inv.paid_amount || 0), 0).toLocaleString()}</p>
+            <p><strong>Total Waived:</strong> ₹${filteredInvoices.reduce((sum, inv) => sum + (inv.waived_amount || 0), 0).toLocaleString()}</p>
+            <p><strong>Total Outstanding:</strong> ₹${filteredInvoices.reduce((sum, inv) => {
+              const totalPaid = inv.paid_amount || 0;
+              const invoiceTotal = inv.total || 0;
+              const waivedAmount = inv.waived_amount || 0;
+              const effectivePaid = totalPaid + waivedAmount;
+              return sum + Math.max(0, invoiceTotal - effectivePaid);
+            }, 0).toLocaleString()}</p>
+          </div>
+        </body>
+      </html>
+    `;
+
+    // Open print window
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+    } else {
+      alert('Please allow popup windows to enable printing.');
     }
   };
 
@@ -1662,7 +1867,7 @@ export function SalesOrderInvoiceManager() {
       case 'orders':
         return filterSalesOrders(salesOrders, ordersSearchQuery, paymentStatusFilter).length;
       case 'invoices':
-        return filterInvoices(invoices, invoicesSearchQuery, invoiceStatusFilter).length;
+        return filterInvoices(invoices, invoicesSearchQuery, invoiceStatusFilter, invoiceDateFilter, invoiceFromDate, invoiceToDate).length;
       case 'payments':
         return filterPayments(payments, paymentsSearchQuery).length;
       case 'expenses':
@@ -3119,47 +3324,173 @@ export function SalesOrderInvoiceManager() {
             </TabsContent>
 
             {/* Invoices Tab */}
-            <TabsContent value="invoices" className="space-y-4 p-4">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-base font-semibold text-gray-900">Invoices</h3>
-                <div className="flex gap-2">
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={() => setCreateInvoiceOpen(true)}
-                    className="bg-green-600 hover:bg-green-700"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    New Invoice
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fetchData()}
-                  >
-                    <FileText className="h-4 w-4 mr-2" />
-                    Refresh
-                  </Button>
-                </div>
-              </div>
-
-              {/* Search Bar and Filters */}
-              <div className="flex flex-col gap-2 mb-3">
-                <div className="flex items-center gap-3">
-                  <div className="relative flex-1 max-w-md">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                    <Input
-                      type="text"
-                      placeholder="Search invoices by ID, customer, status, amount..."
-                      value={invoicesSearchQuery}
-                      onChange={(e) => {
-                        setInvoicesSearchQuery(e.target.value);
-                        setCurrentPage(1); // Reset to first page when searching
-                      }}
-                      className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
+            <TabsContent value="invoices" className="space-y-3 p-4">
+              {/* Compact Header and Filters - All in one line */}
+              <div className="bg-gray-50 p-3 rounded-lg border">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  {/* Left side: Title and Search */}
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <h3 className="text-base font-semibold text-gray-900 whitespace-nowrap">Invoices</h3>
+                    <div className="relative max-w-xs">
+                      <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 h-3 w-3" />
+                      <Input
+                        type="text"
+                        placeholder="Search..."
+                        value={invoicesSearchQuery}
+                        onChange={(e) => {
+                          setInvoicesSearchQuery(e.target.value);
+                          setCurrentPage(1);
+                        }}
+                        className="pl-7 pr-2 py-1 text-sm h-8 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
                   </div>
-                  {invoicesSearchQuery && (
+
+                  {/* Center: Status Filters */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-gray-700 whitespace-nowrap">Status:</span>
+                    <div className="flex gap-1">
+                      <Button
+                        variant={invoiceStatusFilter === 'all' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => {
+                          setInvoiceStatusFilter('all');
+                          setCurrentPage(1);
+                        }}
+                        className="h-7 px-2 text-xs"
+                      >
+                        All
+                      </Button>
+                      <Button
+                        variant={invoiceStatusFilter === 'paid' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => {
+                          setInvoiceStatusFilter('paid');
+                          setCurrentPage(1);
+                        }}
+                        className={`h-7 px-2 text-xs ${invoiceStatusFilter === 'paid' ? 'bg-green-600 hover:bg-green-700' : 'border-green-600 text-green-600 hover:bg-green-50'}`}
+                      >
+                        Paid
+                      </Button>
+                      <Button
+                        variant={invoiceStatusFilter === 'unpaid' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => {
+                          setInvoiceStatusFilter('unpaid');
+                          setCurrentPage(1);
+                        }}
+                        className={`h-7 px-2 text-xs ${invoiceStatusFilter === 'unpaid' ? 'bg-red-600 hover:bg-red-700' : 'border-red-600 text-red-600 hover:bg-red-50'}`}
+                      >
+                        Unpaid
+                      </Button>
+                      <Button
+                        variant={invoiceStatusFilter === 'partial' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => {
+                          setInvoiceStatusFilter('partial');
+                          setCurrentPage(1);
+                        }}
+                        className={`h-7 px-2 text-xs ${invoiceStatusFilter === 'partial' ? 'bg-yellow-600 hover:bg-yellow-700' : 'border-yellow-600 text-yellow-600 hover:bg-yellow-50'}`}
+                      >
+                        Partial
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Center-Right: Date Filters */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-gray-700 whitespace-nowrap">Date:</span>
+                    <Select value={invoiceDateFilter} onValueChange={handleInvoiceDatePresetChange}>
+                      <SelectTrigger className="w-24 h-7 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        <SelectItem value="today">Today</SelectItem>
+                        <SelectItem value="weekly">Week</SelectItem>
+                        <SelectItem value="monthly">Month</SelectItem>
+                        <SelectItem value="last_month">Last Month</SelectItem>
+                        <SelectItem value="custom">Custom</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    
+                    {invoiceDateFilter === 'custom' && (
+                      <>
+                        <Input
+                          type="date"
+                          value={invoiceFromDate}
+                          onChange={(e) => {
+                            setInvoiceFromDate(e.target.value);
+                            setCurrentPage(1);
+                          }}
+                          className="w-28 h-7 text-xs"
+                        />
+                        <span className="text-xs text-gray-500">to</span>
+                        <Input
+                          type="date"
+                          value={invoiceToDate}
+                          onChange={(e) => {
+                            setInvoiceToDate(e.target.value);
+                            setCurrentPage(1);
+                          }}
+                          className="w-28 h-7 text-xs"
+                        />
+                      </>
+                    )}
+                    
+                    {invoiceDateFilter !== 'all' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setInvoiceDateFilter('all');
+                          setInvoiceFromDate('');
+                          setInvoiceToDate('');
+                          setCurrentPage(1);
+                        }}
+                        className="h-7 px-1 text-xs"
+                        title="Clear Date Filter"
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Right side: Action Buttons */}
+                  <div className="flex gap-1">
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => setCreateInvoiceOpen(true)}
+                      className="bg-green-600 hover:bg-green-700 h-7 px-2 text-xs"
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      New
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handlePrintInvoices}
+                      className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200 h-7 px-2 text-xs"
+                    >
+                      <Printer className="h-3 w-3 mr-1" />
+                      Print
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fetchData()}
+                      className="h-7 px-2 text-xs"
+                    >
+                      <RotateCcw className="h-3 w-3 mr-1" />
+                      Refresh
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Clear Search Button */}
+                {invoicesSearchQuery && (
+                  <div className="mt-2 flex justify-start">
                     <Button
                       variant="outline"
                       size="sm"
@@ -3167,61 +3498,13 @@ export function SalesOrderInvoiceManager() {
                         setInvoicesSearchQuery('');
                         setCurrentPage(1);
                       }}
+                      className="h-6 px-2 text-xs"
                     >
-                      Clear
-                    </Button>
-                  )}
-                </div>
-
-                {/* Payment Status Filters */}
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-700">Filter by status:</span>
-                  <div className="flex gap-2">
-                    <Button
-                      variant={invoiceStatusFilter === 'all' ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => {
-                        setInvoiceStatusFilter('all');
-                        setCurrentPage(1);
-                      }}
-                    >
-                      All
-                    </Button>
-                    <Button
-                      variant={invoiceStatusFilter === 'paid' ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => {
-                        setInvoiceStatusFilter('paid');
-                        setCurrentPage(1);
-                      }}
-                      className={invoiceStatusFilter === 'paid' ? 'bg-green-600 hover:bg-green-700' : 'border-green-600 text-green-600 hover:bg-green-50'}
-                    >
-                      Paid
-                    </Button>
-                    <Button
-                      variant={invoiceStatusFilter === 'unpaid' ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => {
-                        setInvoiceStatusFilter('unpaid');
-                        setCurrentPage(1);
-                      }}
-                      className={invoiceStatusFilter === 'unpaid' ? 'bg-red-600 hover:bg-red-700' : 'border-red-600 text-red-600 hover:bg-red-50'}
-                    >
-                      Unpaid
-                    </Button>
-                    <Button
-                      variant={invoiceStatusFilter === 'partial' ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => {
-                        setInvoiceStatusFilter('partial');
-                        setCurrentPage(1);
-                      }}
-                      className={invoiceStatusFilter === 'partial' ? 'bg-yellow-600 hover:bg-yellow-700' : 'border-yellow-600 text-yellow-600 hover:bg-yellow-50'}
-                    >
-                      Partially Paid
+                      <X className="h-3 w-3 mr-1" />
+                      Clear Search
                     </Button>
                   </div>
-                </div>
+                )}
               </div>
               
               <div className="rounded-lg border border-gray-200 overflow-hidden">
@@ -3242,7 +3525,7 @@ export function SalesOrderInvoiceManager() {
                   </TableHeader>
                   <TableBody>
                     {(() => {
-                      const filteredInvoices = filterInvoices(invoices, invoicesSearchQuery, invoiceStatusFilter);
+                      const filteredInvoices = filterInvoices(invoices, invoicesSearchQuery, invoiceStatusFilter, invoiceDateFilter, invoiceFromDate, invoiceToDate);
                       const paginatedInvoices = getPaginatedData(filteredInvoices, currentPage, itemsPerPage);
                       
                       if (paginatedInvoices.length === 0) {

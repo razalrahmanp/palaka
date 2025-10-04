@@ -5,7 +5,7 @@ delivery_status	pending, in_transit, delivered, ready_for_assignment
 
 public
 
-purchase_order_status	pending, approved, received	
+purchase_order_status	pending, approved, received, damaged, returned	
 
 public
 

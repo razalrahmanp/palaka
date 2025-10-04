@@ -294,18 +294,23 @@ export default function ProcurementPage() {
     setSelectedOrder(order);
   };
 
-  const handleUpdateStatus = async (order: PurchaseOrder) => {
-    const next: PurchaseOrder['status'] =
-      order.status === 'pending' ? 'approved'
-      : order.status === 'approved' ? 'received'
-      : 'pending';
+  const handleStatusChange = async (orderId: string, newStatus: string) => {
+    try {
+      const response = await fetch('/api/procurement/purchase_orders', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: orderId, status: newStatus }),
+      });
 
-    await fetch('/api/procurement/purchase_orders', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: order.id, status: next }),
-    });
-    fetchAll();
+      if (response.ok) {
+        // Refresh the data to reflect the changes
+        await fetchAll();
+      } else {
+        console.error('Failed to update status');
+      }
+    } catch (error) {
+      console.error('Error updating status:', error);
+    }
   };
 
   const handleCreateNew = () => {
@@ -442,7 +447,7 @@ export default function ProcurementPage() {
             <PurchaseOrderList 
               orders={Array.isArray(paginatedOrders) ? paginatedOrders : []}
               onViewDetails={handleViewDetails}
-              onUpdateStatus={handleUpdateStatus}
+              onStatusChange={handleStatusChange}
               onDelete={handleDelete}
               loading={loading}
             />

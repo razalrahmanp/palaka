@@ -69,12 +69,10 @@ type PurchaseOrderPayload = {
   supplier_id: string;
   product_id?: string;
   quantity: number;
-  status: 'pending' | 'approved' | 'received';
+  status: 'pending' | 'approved' | 'received' | 'damaged' | 'returned';
   is_custom: boolean;
   custom_type: string | null;
-  materials: string[] | null;
   description: string | null;
-  images: string[] | null;
   created_by: string | null;
   total: number | null;
 };
@@ -268,9 +266,7 @@ export async function POST(req: NextRequest) {
     status: body.status,
     is_custom: Boolean(body.is_custom),
     custom_type: body.custom_type ?? null,
-    materials: body.materials ?? null,
     description: body.description ?? null,
-    images: body.images ?? null,
     created_by: body.created_by ?? null,
     total, // <-- Save computed total
   };
@@ -313,41 +309,52 @@ export async function PUT(req: NextRequest) {
   }
 
   const updatePayload: Partial<PurchaseOrderPayload> = {
-    quantity: updates.quantity,
     status: updates.status,
-    is_custom: updates.is_custom ?? false,
-    custom_type: updates.custom_type ?? null,
-    materials: updates.materials ?? null,
-    description: updates.description ?? null,
-    images: updates.images ?? null,
   };
+
+  // Only include fields that are actually being updated
+  if (updates.quantity !== undefined) {
+    updatePayload.quantity = updates.quantity;
+  }
+  if (updates.is_custom !== undefined) {
+    updatePayload.is_custom = updates.is_custom;
+  }
+  if (updates.custom_type !== undefined) {
+    updatePayload.custom_type = updates.custom_type;
+  }
+  if (updates.description !== undefined) {
+    updatePayload.description = updates.description;
+  }
 
   if (updates.product_id) {
     updatePayload.product_id = updates.product_id;
   }
 
-  // If not custom and product_id exists, recompute total
-  let total: number | null = null;
-  if (!updates.is_custom && updates.product_id && updates.quantity) {
-    const { data: product, error: productError } = await supabase
-      .from("products")
-      .select("price")
-      .eq("id", updates.product_id)
-      .single();
+  // Only recalculate total if relevant fields are being updated
+  if (updates.quantity !== undefined || updates.product_id !== undefined || updates.is_custom !== undefined) {
+    // If not custom and product_id exists, recompute total
+    if (!updates.is_custom && updates.product_id && updates.quantity) {
+      const { data: product, error: productError } = await supabase
+        .from("products")
+        .select("price")
+        .eq("id", updates.product_id)
+        .single();
 
-    if (productError) {
-      console.error(productError);
-      return NextResponse.json({ error: "Error fetching product price" }, { status: 500 });
-    }
+      if (productError) {
+        console.error(productError);
+        return NextResponse.json({ error: "Error fetching product price" }, { status: 500 });
+      }
 
-    if (product?.price) {
-      total = Number(product.price) * Number(updates.quantity);
-      updatePayload.total = total;
+      if (product?.price) {
+        const total = Number(product.price) * Number(updates.quantity);
+        updatePayload.total = total;
+      }
+    } else if (updates.is_custom && updates.total !== undefined) {
+      // For custom products, use the provided total
+      updatePayload.total = updates.total;
     }
-  } else {
-    // If custom or missing info, reset total to null
-    updatePayload.total = null;
   }
+  // If only status is being updated, don't touch the total field
 
   const { data, error } = await supabase
     .from("purchase_orders")
@@ -364,7 +371,7 @@ export async function PUT(req: NextRequest) {
   // Create vendor bill when PO is approved
   if (updates.status && updates.status === 'approved' && existingPO?.status !== 'approved') {
     try {
-      const vendorBillTotal = total || existingPO.total || 0;
+      const vendorBillTotal = updatePayload.total || existingPO.total || 0;
       if (vendorBillTotal > 0) {
         await createVendorBillFromPO({
           purchase_order_id: id,

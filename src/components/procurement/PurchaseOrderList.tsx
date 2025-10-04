@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { Calendar, User, Building2, DollarSign, Package, Truck, Trash2 } from 'lucide-react';
 import { PurchaseOrder } from '@/types';
 import { formatDate } from '@/lib/utils';
@@ -12,7 +13,7 @@ import { formatDate } from '@/lib/utils';
 interface PurchaseOrderListProps {
   orders: PurchaseOrder[];
   onViewDetails: (order: PurchaseOrder) => void;
-  onUpdateStatus: (order: PurchaseOrder) => void;
+  onStatusChange: (orderId: string, newStatus: string) => void;
   onDelete: (order: PurchaseOrder) => void;
   loading?: boolean;
 }
@@ -20,7 +21,7 @@ interface PurchaseOrderListProps {
 export function PurchaseOrderList({ 
   orders, 
   onViewDetails, 
-  onUpdateStatus,
+  onStatusChange,
   onDelete,
   loading = false 
 }: PurchaseOrderListProps) {
@@ -44,8 +45,36 @@ export function PurchaseOrderList({
         return 'bg-green-100 text-green-700 hover:bg-green-200';
       case 'pending':
         return 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200';
+      case 'damaged':
+        return 'bg-red-100 text-red-700 hover:bg-red-200';
+      case 'returned':
+        return 'bg-purple-100 text-purple-700 hover:bg-purple-200';
       default:
         return 'bg-gray-100 text-gray-700 hover:bg-gray-200';
+    }
+  };
+
+  const handleStatusChange = async (orderId: string, newStatus: string) => {
+    try {
+      const response = await fetch('/api/procurement/purchase_orders', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: orderId,
+          status: newStatus,
+        }),
+      });
+
+      if (response.ok) {
+        // Notify parent component to refresh data
+        onStatusChange(orderId, newStatus);
+      } else {
+        console.error('Failed to update status');
+      }
+    } catch (error) {
+      console.error('Error updating status:', error);
     }
   };
 
@@ -189,24 +218,53 @@ export function PurchaseOrderList({
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <Badge 
-                          className={getStatusBadgeClass(order.status)}
-                          variant="secondary"
+                        <Select
+                          value={order.status}
+                          onValueChange={(newStatus) => handleStatusChange(order.id, newStatus)}
                         >
-                          {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                        </Badge>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onUpdateStatus(order);
-                          }}
-                          className="h-6 w-6 p-0 hover:bg-blue-100 opacity-0 group-hover:opacity-100 transition-opacity"
-                          title="Update status"
-                        >
-                          ↻
-                        </Button>
+                          <SelectTrigger className="w-32 h-8">
+                            <div className="flex items-center gap-2">
+                              <Badge 
+                                className={getStatusBadgeClass(order.status)}
+                                variant="secondary"
+                              >
+                                {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                              </Badge>
+                            </div>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pending">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
+                                Pending
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="approved">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                                Approved
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="received">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                                Received
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="damaged">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                                Damaged
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="returned">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-purple-500"></div>
+                                Returned
+                              </div>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </TableCell>
                     <TableCell>

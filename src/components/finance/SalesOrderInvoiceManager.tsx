@@ -1086,10 +1086,10 @@ export function SalesOrderInvoiceManager() {
       console.log('Raw Bank Accounts Data:', bankAccountsData); // Enhanced debugging
 
       // Handle different API response structures
-      const invoices = Array.isArray(invoicesData) ? invoicesData : (invoicesData.data || []);
-      const payments = Array.isArray(paymentsData) ? paymentsData : (paymentsData.data || []);
-      const expenses = Array.isArray(expensesData) ? expensesData : (expensesData.data || []);
-      const bankAccounts = Array.isArray(bankAccountsData) ? bankAccountsData : (bankAccountsData.data || []);
+      const invoices = Array.isArray(invoicesData) ? invoicesData : (invoicesData?.data || []);
+      const payments = Array.isArray(paymentsData) ? paymentsData : (paymentsData?.data || []);
+      const expenses = Array.isArray(expensesData) ? expensesData : (expensesData?.data || []);
+      const bankAccounts = Array.isArray(bankAccountsData) ? bankAccountsData : (bankAccountsData?.data || []);
 
       // console.log('📊 PROCESSED DATA SUMMARY:');
       // console.log('Processed Invoices:', invoices.length, 'invoices');

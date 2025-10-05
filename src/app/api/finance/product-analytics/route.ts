@@ -22,32 +22,45 @@ const supabase = createClient(
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const period = searchParams.get('period') || 'mtd';
+    const period = searchParams.get('period');
+    const startDateParam = searchParams.get('startDate');
+    const endDateParam = searchParams.get('endDate');
 
-    // Calculate date range - use hardcoded October 2025 dates for consistency with other APIs
+    // Calculate date range - prioritize explicit date params over period
     let startDate: Date;
     let endDate: Date;
     
-    switch (period) {
-      case 'weekly':
-        startDate = new Date('2025-09-26T00:00:00.000Z'); // Week leading to Oct 3
-        endDate = new Date('2025-10-03T23:59:59.999Z');
-        break;
-      case 'monthly':
-        startDate = new Date('2025-10-01T00:00:00.000Z');
-        endDate = new Date('2025-10-31T23:59:59.999Z');
-        break;
-      case 'quarterly':
-        startDate = new Date('2025-07-01T00:00:00.000Z'); // Q3 2025
-        endDate = new Date('2025-10-03T23:59:59.999Z');
-        break;
-      case 'ytd':
-        startDate = new Date('2025-01-01T00:00:00.000Z');
-        endDate = new Date('2025-10-03T23:59:59.999Z');
-        break;
-      default: // mtd - October 1st to October 31st (consistent with other APIs)
-        startDate = new Date('2025-10-01T00:00:00.000Z');
-        endDate = new Date('2025-10-31T23:59:59.999Z');
+    if (startDateParam && endDateParam) {
+      // Use explicit start and end dates from URL parameters
+      startDate = new Date(`${startDateParam}T00:00:00.000Z`);
+      endDate = new Date(`${endDateParam}T23:59:59.999Z`);
+    } else if (period === 'all_time') {
+      // All time - use a very wide date range
+      startDate = new Date('2020-01-01T00:00:00.000Z');
+      endDate = new Date('2030-12-31T23:59:59.999Z');
+    } else {
+      // Default to MTD for backwards compatibility
+      switch (period) {
+        case 'weekly':
+          startDate = new Date('2025-09-26T00:00:00.000Z'); // Week leading to Oct 3
+          endDate = new Date('2025-10-03T23:59:59.999Z');
+          break;
+        case 'monthly':
+          startDate = new Date('2025-10-01T00:00:00.000Z');
+          endDate = new Date('2025-10-31T23:59:59.999Z');
+          break;
+        case 'quarterly':
+          startDate = new Date('2025-07-01T00:00:00.000Z'); // Q3 2025
+          endDate = new Date('2025-10-03T23:59:59.999Z');
+          break;
+        case 'ytd':
+          startDate = new Date('2025-01-01T00:00:00.000Z');
+          endDate = new Date('2025-10-03T23:59:59.999Z');
+          break;
+        default: // mtd - October 1st to October 31st (consistent with other APIs)
+          startDate = new Date('2025-10-01T00:00:00.000Z');
+          endDate = new Date('2025-10-31T23:59:59.999Z');
+      }
     }
 
     console.log('🔍 Product Analytics Date Range:', {

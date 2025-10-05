@@ -9,20 +9,30 @@ const supabase = createClient(
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const period = searchParams.get('period') || 'mtd';
+    const period = searchParams.get('period');
+    const startDateParam = searchParams.get('startDate');
+    const endDateParam = searchParams.get('endDate');
     
-    // Calculate date range - use exact same logic as KPIs API for consistency
+    // Calculate date range - prioritize explicit date params over period
     let startDate: Date;
     let endDate: Date;
     
-    if (period === 'mtd') {
+    if (startDateParam && endDateParam) {
+      // Use explicit start and end dates from URL parameters
+      startDate = new Date(`${startDateParam}T00:00:00.000Z`);
+      endDate = new Date(`${endDateParam}T23:59:59.999Z`);
+    } else if (period === 'all_time') {
+      // All time - use a very wide date range
+      startDate = new Date('2020-01-01T00:00:00.000Z');
+      endDate = new Date('2030-12-31T23:59:59.999Z');
+    } else if (period === 'mtd') {
       // Month-to-date: October 1st to October 31st (fixed for consistency)
       // Force October 2025 dates to match other APIs
       startDate = new Date('2025-10-01T00:00:00.000Z');
       endDate = new Date('2025-10-31T23:59:59.999Z');
     } else {
       // Legacy: last N days
-      const days = parseInt(period) || 30;
+      const days = parseInt(period || '30') || 30;
       endDate = new Date();
       startDate = new Date();
       startDate.setDate(endDate.getDate() - days);
@@ -63,15 +73,15 @@ export async function GET(request: NextRequest) {
           )
         )
       `)
-      .gte('created_at', '2025-10-01T00:00:00.000Z')
-      .lte('created_at', '2025-10-31T23:59:59.999Z');
+      .gte('created_at', startDate.toISOString())
+      .lte('created_at', endDate.toISOString());
 
     // Get ALL sales orders for revenue analysis (including all statuses)
     const { data: allSalesData, error: allSalesError } = await supabase
       .from('sales_orders')
       .select('id, final_price, created_at, status')
-      .gte('created_at', '2025-10-01T00:00:00.000Z')
-      .lte('created_at', '2025-10-31T23:59:59.999Z');
+      .gte('created_at', startDate.toISOString())
+      .lte('created_at', endDate.toISOString());
 
     if (salesError) {
       console.error('Sales data error:', salesError);
@@ -81,7 +91,7 @@ export async function GET(request: NextRequest) {
     // Debug: Log sales data details
     console.log('🔍 Sales Data Debug:', {
       totalSalesFound: salesData?.length || 0,
-      dateRange: '2025-10-01 to 2025-10-31',
+      dateRange: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`,
       sampleSales: salesData?.slice(0, 3).map(sale => ({
         id: sale.id,
         created_at: sale.created_at,
@@ -102,8 +112,8 @@ export async function GET(request: NextRequest) {
       .from('expenses')
       .select('amount, created_at, category, entity_type, description, date')
       .neq('entity_type', 'supplier')
-      .gte('date', '2025-10-01') // October 1st onwards only
-      .lte('date', '2025-10-31'); // October 31st or less
+      .gte('date', startDate.toISOString().split('T')[0])
+      .lte('date', endDate.toISOString().split('T')[0]);
 
     if (expenseError) {
       console.error('Expense data error:', expenseError);
@@ -112,7 +122,7 @@ export async function GET(request: NextRequest) {
 
     // Debug: Log detailed expense breakdown
     console.log('🔍 Detailed Expense Analysis:', {
-      dateRange: '2025-10-01 to 2025-10-31',
+      dateRange: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`,
       expenseCount: expenseData?.length || 0,
       expenseDetails: expenseData?.map(exp => ({
         amount: exp.amount,
@@ -128,8 +138,8 @@ export async function GET(request: NextRequest) {
     const { data: liabilityPaymentData, error: liabilityPaymentError } = await supabase
       .from('liability_payments')
       .select('total_amount, date, created_at, liability_type')
-      .gte('date', '2025-10-01') // October 1st onwards only
-      .lte('date', '2025-10-31'); // October 31st or less
+      .gte('date', startDate.toISOString().split('T')[0])
+      .lte('date', endDate.toISOString().split('T')[0]);
 
     if (liabilityPaymentError) {
       console.error('Liability payment data error:', liabilityPaymentError);
@@ -152,8 +162,8 @@ export async function GET(request: NextRequest) {
     const { data: withdrawalData, error: withdrawalError } = await supabase
       .from('withdrawals')
       .select('amount, withdrawal_date, created_at, description')
-      .gte('withdrawal_date', '2025-10-01') // October 1st onwards only
-      .lte('withdrawal_date', '2025-10-31'); // October 31st or less
+      .gte('withdrawal_date', startDate.toISOString().split('T')[0])
+      .lte('withdrawal_date', endDate.toISOString().split('T')[0]);
 
     if (withdrawalError) {
       console.error('Withdrawal data error:', withdrawalError);
@@ -177,8 +187,8 @@ export async function GET(request: NextRequest) {
       .from('vendor_payment_history')
       .select('amount, payment_date, created_at, status')
       .eq('status', 'completed')
-      .gte('created_at', '2025-10-01T00:00:00.000Z')
-      .lte('created_at', '2025-10-31T23:59:59.999Z');
+      .gte('created_at', startDate.toISOString())
+      .lte('created_at', endDate.toISOString());
 
     if (vendorPaymentError) {
       console.error('Vendor payment data error:', vendorPaymentError);
@@ -314,8 +324,8 @@ export async function GET(request: NextRequest) {
     const allExpensesResult = await supabase
       .from('expenses')
       .select('amount, description, entity_type, date')
-      .gte('date', '2025-10-01')
-      .lte('date', '2025-10-31');
+      .gte('date', startDate.toISOString().split('T')[0])
+      .lte('date', endDate.toISOString().split('T')[0]);
     
     const vendorPaymentEntriesInExpenses = allExpensesResult.data?.filter(expense => 
       expense.entity_type === 'supplier'
@@ -519,7 +529,9 @@ export async function GET(request: NextRequest) {
         unclassifiedProductRatio: totalRevenue > 0 ? (unclassifiedProductRevenue / totalRevenue) * 100 : 0,
         discountRate: 0 // Can be calculated later
       },
-      period: parseInt(period)
+      period: period || 'custom',
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: endDate.toISOString().split('T')[0]
     });
 
   } catch (error) {

@@ -1,8 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   TrendingUp, 
   DollarSign, 
@@ -214,19 +216,83 @@ export function DetailedFinanceOverview() {
   const [cashFlowData, setCashFlowData] = useState<CashFlowData | null>(null);
   const [productAnalytics, setProductAnalytics] = useState<ProductAnalytics | null>(null);
   const [activeView, setActiveView] = useState<'overview' | 'cashflow' | 'profitability' | 'products'>('overview');
+  
+  // Date filter state
+  const [dateFilter, setDateFilter] = useState<'all_time' | 'today' | 'this_week' | 'last_month' | 'this_month' | 'custom'>('all_time');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
 
-  useEffect(() => {
-    fetchAllData();
-  }, []);
+  // Utility function to get date range based on filter
+  const getDateRange = useCallback(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const date = now.getDate();
 
-  const fetchAllData = async () => {
+    switch (dateFilter) {
+      case 'today':
+        const todayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`;
+        return { startDate: todayStr, endDate: todayStr };
+      
+      case 'this_week':
+        const startOfWeek = new Date(year, month, date - now.getDay());
+        const endOfWeek = new Date(year, month, date + (6 - now.getDay()));
+        return {
+          startDate: `${startOfWeek.getFullYear()}-${String(startOfWeek.getMonth() + 1).padStart(2, '0')}-${String(startOfWeek.getDate()).padStart(2, '0')}`,
+          endDate: `${endOfWeek.getFullYear()}-${String(endOfWeek.getMonth() + 1).padStart(2, '0')}-${String(endOfWeek.getDate()).padStart(2, '0')}`
+        };
+      
+      case 'this_month':
+        const monthEnd = new Date(year, month + 1, 0);
+        return {
+          startDate: `${year}-${String(month + 1).padStart(2, '0')}-01`,
+          endDate: `${year}-${String(month + 1).padStart(2, '0')}-${String(monthEnd.getDate()).padStart(2, '0')}`
+        };
+      
+      case 'last_month':
+        const prevMonth = month - 1;
+        const prevYear = prevMonth < 0 ? year - 1 : year;
+        const actualPrevMonth = prevMonth < 0 ? 11 : prevMonth;
+        const lastDayOfPrevMonth = new Date(prevYear, actualPrevMonth + 1, 0);
+        return {
+          startDate: `${prevYear}-${String(actualPrevMonth + 1).padStart(2, '0')}-01`,
+          endDate: `${prevYear}-${String(actualPrevMonth + 1).padStart(2, '0')}-${String(lastDayOfPrevMonth.getDate()).padStart(2, '0')}`
+        };
+      
+      case 'custom':
+        return { startDate: customStartDate, endDate: customEndDate };
+      
+      case 'all_time':
+      default:
+        return { startDate: '', endDate: '' };
+    }
+  }, [dateFilter, customStartDate, customEndDate]);
+
+  const fetchAllData = useCallback(async () => {
     try {
       setLoading(true);
       
+      const dateRange = getDateRange();
+      
+      // Build API URLs with date parameters
+      const buildApiUrl = (baseUrl: string) => {
+        const url = new URL(baseUrl, window.location.origin);
+        if (dateFilter === 'all_time') {
+          url.searchParams.set('period', 'all_time');
+        } else if (dateRange.startDate && dateRange.endDate) {
+          url.searchParams.set('startDate', dateRange.startDate);
+          url.searchParams.set('endDate', dateRange.endDate);
+        } else {
+          url.searchParams.set('period', 'mtd'); // fallback
+        }
+        url.searchParams.set('t', Date.now().toString());
+        return url.toString();
+      };
+      
       const [profitResponse, cashFlowResponse, productAnalyticsResponse] = await Promise.all([
-        fetch('/api/finance/profit-analysis?period=mtd&t=' + Date.now()),
-        fetch('/api/finance/enhanced-cashflow'),
-        fetch('/api/finance/product-analytics?period=mtd&t=' + Date.now())
+        fetch(buildApiUrl('/api/finance/profit-analysis')),
+        fetch(buildApiUrl('/api/finance/enhanced-cashflow')),
+        fetch(buildApiUrl('/api/finance/product-analytics'))
       ]);
 
       if (!profitResponse.ok) {
@@ -247,12 +313,6 @@ export function DetailedFinanceOverview() {
 
       // Validate data structure before setting state
       if (profitResult && typeof profitResult === 'object') {
-        console.log('🔍 DetailedFinanceOverview - Received Profit Data:', {
-          netProfitMargin: profitResult?.summary?.netProfitMargin,
-          netProfit: profitResult?.summary?.netProfit,
-          apiEndpoint: '/api/finance/profit-analysis?period=mtd',
-          timestamp: new Date().toISOString()
-        });
         setProfitData(profitResult);
       } else {
         console.error('Invalid profit data structure:', profitResult);
@@ -286,7 +346,11 @@ export function DetailedFinanceOverview() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [dateFilter, getDateRange]);
+
+  useEffect(() => {
+    fetchAllData();
+  }, [fetchAllData]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -313,12 +377,64 @@ export function DetailedFinanceOverview() {
   return (
     <div className="space-y-6">
       {/* Header with Navigation */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div>
           <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
             Detailed Financial Overview
           </h2>
-          <p className="text-gray-600 mt-1">Comprehensive insights into your business performance</p>
+          <p className="text-gray-600 mt-1">
+            Comprehensive insights into your business performance
+            {dateFilter !== 'all_time' && (
+              <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                {dateFilter === 'today' ? 'Today' :
+                 dateFilter === 'this_week' ? 'This Week' :
+                 dateFilter === 'this_month' ? 'This Month' :
+                 dateFilter === 'last_month' ? 'Last Month' :
+                 dateFilter === 'custom' ? 'Custom Range' : 'All Time'}
+              </span>
+            )}
+          </p>
+        </div>
+        
+        {/* Date Filter Dropdown */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-gray-500" />
+            <Select value={dateFilter} onValueChange={(value) => setDateFilter(value as typeof dateFilter)}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Select period" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all_time">All Time</SelectItem>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="this_week">This Week</SelectItem>
+                <SelectItem value="this_month">This Month</SelectItem>
+                <SelectItem value="last_month">Last Month</SelectItem>
+                <SelectItem value="custom">Custom Range</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          
+          {/* Custom Date Range Inputs */}
+          {dateFilter === 'custom' && (
+            <div className="flex items-center gap-2">
+              <Input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="w-36"
+                placeholder="Start date"
+              />
+              <span className="text-gray-400">to</span>
+              <Input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="w-36"
+                placeholder="End date"
+              />
+            </div>
+          )}
         </div>
         
         <div className="flex gap-2">

@@ -1,8 +1,37 @@
 import { supabase } from '@/lib/supabaseClient';
 import { NextResponse } from 'next/server';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const period = searchParams.get('period');
+    const startDateParam = searchParams.get('startDate');
+    const endDateParam = searchParams.get('endDate');
+
+    // Calculate date range - prioritize explicit date params over period
+    let startDate: Date;
+    let endDate: Date;
+    
+    if (startDateParam && endDateParam) {
+      // Use explicit start and end dates from URL parameters
+      startDate = new Date(`${startDateParam}T00:00:00.000Z`);
+      endDate = new Date(`${endDateParam}T23:59:59.999Z`);
+    } else if (period === 'all_time') {
+      // All time - use a very wide date range
+      startDate = new Date('2020-01-01T00:00:00.000Z');
+      endDate = new Date('2030-12-31T23:59:59.999Z');
+    } else {
+      // Default to current month for backwards compatibility
+      const now = new Date();
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    }
+
+    console.log('🔍 Enhanced Cashflow Date Range:', {
+      period,
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString()
+    });
     // Get chart of accounts for expense categorization
     const { data: chartOfAccounts, error: chartError } = await supabase
       .from('chart_of_accounts')
@@ -37,30 +66,36 @@ export async function GET() {
       console.error('Error fetching journal entries:', journalError);
     }
 
-    // Get payments (cash inflows)
+    // Get payments (cash inflows) - filtered by date range
     const { data: payments, error: paymentsError } = await supabase
       .from('payments')
       .select('amount, date, payment_date, method, description')
+      .gte('date', startDate.toISOString().split('T')[0])
+      .lte('date', endDate.toISOString().split('T')[0])
       .order('date', { ascending: false });
 
     if (paymentsError) {
       console.error('Error fetching payments:', paymentsError);
     }
 
-    // Get expenses (cash outflows) - Primary source for expense analysis
+    // Get expenses (cash outflows) - Primary source for expense analysis, filtered by date range
     const { data: expenses, error: expensesError } = await supabase
       .from('expenses')
       .select('amount, date, subcategory, description, payment_method, category, entity_type')
+      .gte('date', startDate.toISOString().split('T')[0])
+      .lte('date', endDate.toISOString().split('T')[0])
       .order('date', { ascending: false });
 
     if (expensesError) {
       console.error('Error fetching expenses:', expensesError);
     }
 
-    // Get bank account transactions for additional cash flow insights
+    // Get bank account transactions for additional cash flow insights, filtered by date range
     const { data: bankTransactions, error: bankError } = await supabase
       .from('bank_transactions')
       .select('amount, type, date, description')
+      .gte('date', startDate.toISOString().split('T')[0])
+      .lte('date', endDate.toISOString().split('T')[0])
       .order('date', { ascending: false });
 
     if (bankError) {

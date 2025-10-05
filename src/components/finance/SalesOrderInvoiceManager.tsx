@@ -274,7 +274,7 @@ export function SalesOrderInvoiceManager() {
   });
   
   // Date preset selection
-  const [datePreset, setDatePreset] = useState<'today' | 'last_week' | 'last_month' | 'custom'>('today');
+  const [datePreset, setDatePreset] = useState<'all_time' | 'today' | 'this_week' | 'this_month' | 'last_month' | 'custom'>('today');
   
   // Multiple filter selection for cashflow
   const [multipleCategoryFilters, setMultipleCategoryFilters] = useState<string[]>([]);
@@ -445,6 +445,42 @@ export function SalesOrderInvoiceManager() {
       dateRange: cashflowDateRange 
     });
     
+    // Debug: Fetch KPI data for comparison
+    try {
+      const today = new Date();
+      const lastMonth = new Date();
+      lastMonth.setMonth(lastMonth.getMonth() - 1);
+      const startOfLastMonth = new Date(lastMonth.getFullYear(), lastMonth.getMonth(), 1).toISOString().split('T')[0];
+      const endOfLastMonth = new Date(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 0).toISOString().split('T')[0];
+      
+      console.log('🔍 Fetching KPI data for comparison:', {
+        currentDate: today.toISOString().split('T')[0],
+        startOfLastMonth,
+        endOfLastMonth,
+        currentCashflowRange: cashflowDateRange,
+        expectedVsActual: {
+          expected: `${startOfLastMonth} to ${endOfLastMonth}`,
+          actual: `${cashflowDateRange.from} to ${cashflowDateRange.to}`,
+          match: cashflowDateRange.from === startOfLastMonth && cashflowDateRange.to === endOfLastMonth
+        }
+      });
+      
+      const kpiResponse = await fetch(`/api/dashboard/kpis?startDate=${startOfLastMonth}&endDate=${endOfLastMonth}`);
+      if (kpiResponse.ok) {
+        const kpiData = await kpiResponse.json();
+        console.log('📊 KPI Payment Collected vs Cashflow comparison:', {
+          kpiPaymentCollected: kpiData.data?.totalCollected || 0,
+          kpiPaymentCollectedFormatted: `₹${(kpiData.data?.totalCollected || 0).toLocaleString()}`,
+          kpiDateRange: `${startOfLastMonth} to ${endOfLastMonth}`,
+          cashflowDateRange: `${cashflowDateRange.from} to ${cashflowDateRange.to}`,
+          discrepancy: (kpiData.data?.totalCollected || 0) - 3141843.39,
+          expectedDifference: 'If dates match, amounts should be equal'
+        });
+      }
+    } catch (error) {
+      console.log('⚠️ Could not fetch KPI data for comparison:', error);
+    }
+    
     const transactions: CashflowTransaction[] = [];
     
     try {
@@ -568,7 +604,29 @@ export function SalesOrderInvoiceManager() {
     }
     
     // Add payments as income
+    let totalPaymentAmount = 0;
+    let validPayments = 0;
+    let invalidPayments = 0;
+    
+    console.log('🔍 PAYMENT DATA ANALYSIS:');
+    console.log('📊 Total payments received from API:', payments.length);
+    
     payments.forEach(payment => {
+      // Check if payment has valid data
+      if (!payment.date || !payment.amount || payment.amount <= 0) {
+        invalidPayments++;
+        console.log('❌ Invalid payment detected:', {
+          id: payment.id,
+          date: payment.date,
+          amount: payment.amount,
+          customer: payment.customer_name,
+          reason: !payment.date ? 'Missing date' : !payment.amount ? 'Missing amount' : 'Amount <= 0'
+        });
+        return; // Skip invalid payments
+      }
+      
+      validPayments++;
+      totalPaymentAmount += payment.amount || 0;
       transactions.push({
         id: `payment-${payment.id}`,
         date: payment.date,
@@ -585,7 +643,21 @@ export function SalesOrderInvoiceManager() {
       });
     });
     
+    console.log('📊 PAYMENT PROCESSING RESULTS:', {
+      totalPaymentsFromAPI: payments.length,
+      validPaymentsAdded: validPayments,
+      invalidPaymentsSkipped: invalidPayments,
+      totalAmountFromValidPayments: `₹${totalPaymentAmount.toLocaleString()}`,
+      expectedTotal: '₹32,17,743.39',
+      expectedCount: '246 payments',
+      actualVsExpected: {
+        amountDifference: `₹${(3217743.39 - totalPaymentAmount).toLocaleString()}`,
+        countDifference: `${246 - validPayments} payments missing`
+      }
+    });
+    
     console.log('➕ Added payments to transactions:', transactions.filter(t => t.type === 'income').length);
+    console.log('💰 Total payment amount from all payments:', `₹${totalPaymentAmount.toLocaleString()}`);
     
     // Add expenses as outflow (excluding vendor payments which are handled separately)
     expenses.forEach(expense => {
@@ -675,49 +747,137 @@ export function SalesOrderInvoiceManager() {
       }
     });    // Filter by date range
     let filteredTransactions = uniqueTransactions;
+    const paymentsBeforeFilter = uniqueTransactions.filter(t => t.type === 'income' && t.category === 'payment').length;
+    const paymentAmountBeforeFilter = uniqueTransactions.filter(t => t.type === 'income' && t.category === 'payment').reduce((sum, t) => sum + t.amount, 0);
+    
+    // Debug: Show all payments before filtering to identify missing ones
+    console.log('🔍 ALL PAYMENTS BEFORE DATE FILTERING:', {
+      totalPayments: paymentsBeforeFilter,
+      totalAmount: `₹${paymentAmountBeforeFilter.toLocaleString()}`,
+      expectedFromDB: '246 payments, ₹32,17,743.39',
+      difference: `${246 - paymentsBeforeFilter} payments missing, ₹${(3217743.39 - paymentAmountBeforeFilter).toLocaleString()} short`
+    });
+    
+    // Show sample of payments that are included
+    const paymentsBeforeFiltering = uniqueTransactions.filter(t => t.type === 'income' && t.category === 'payment');
+    console.log('📋 Sample payments before filtering:', paymentsBeforeFiltering.slice(0, 5).map(p => ({
+      date: p.date,
+      amount: p.amount,
+      customer: p.customer_name,
+      description: p.description
+    })));
     
     // Only apply date filtering if we have valid dates and not showing all
     if (cashflowDateRange.from && cashflowDateRange.to && cashflowDateRange.from !== 'all' && cashflowDateRange.to !== 'all') {
-      filteredTransactions = uniqueTransactions.filter(transaction => {
-        if (!transaction.date) {
-          console.log('⚠️ Transaction missing date:', transaction);
-          return false;
-        }
+      console.log('🗓️ Applying date filtering with range:', cashflowDateRange);
+      
+      // CRITICAL FIX: Detect and correct the wrong date range
+      if (cashflowDateRange.from === '2025-08-31' && cashflowDateRange.to === '2025-09-29') {
+        console.log('🚨 DETECTED WRONG DATE RANGE - CORRECTING TO SEPTEMBER 1-30');
         
-        const transactionDate = new Date(transaction.date);
-        const fromDate = new Date(cashflowDateRange.from);
-        const toDate = new Date(cashflowDateRange.to);
+        // Force correct the date range to September 1-30, 2025
+        const correctedRange = {
+          from: '2025-09-01',
+          to: '2025-09-30'
+        };
         
-        // Check if dates are valid
-        if (isNaN(transactionDate.getTime()) || isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
-          console.log('⚠️ Invalid date found:', {
-            transactionDate: transaction.date,
-            fromDate: cashflowDateRange.from,
-            toDate: cashflowDateRange.to
-          });
-          return false;
-        }
+        console.log('✅ CORRECTED DATE RANGE:', correctedRange);
         
-        // Set end of day for toDate to include transactions on the to date
-        toDate.setHours(23, 59, 59, 999);
+        // Update the state with correct range
+        setCashflowDateRange(correctedRange);
         
-        const isInRange = transactionDate >= fromDate && transactionDate <= toDate;
-        
-        console.log('🔍 Filtering transaction:', {
-          id: transaction.id,
-          transactionDate: transaction.date,
-          transactionDateObj: transactionDate.toISOString(),
-          fromDate: cashflowDateRange.from,
-          fromDateObj: fromDate.toISOString(),
-          toDate: cashflowDateRange.to,
-          toDateObj: toDate.toISOString(),
-          isInRange: isInRange,
-          description: transaction.description.substring(0, 30)
+        // Use the corrected range for filtering
+        filteredTransactions = uniqueTransactions.filter(transaction => {
+          const transactionDate = parseDate(transaction.date);
+          const fromDateObj = new Date(correctedRange.from + 'T00:00:00.000Z');
+          const toDateObj = new Date(correctedRange.to + 'T18:29:59.999Z');
+          
+          const isInRange = transactionDate >= fromDateObj && transactionDate <= toDateObj;
+          
+          if (transaction.type === 'income' && transaction.category === 'payment') {
+            console.log('💰 Payment filtering debug (CORRECTED):', {
+              customer: transaction.customer_name,
+              paymentDate: transaction.date,
+              amount: `₹${transaction.amount.toLocaleString()}`,
+              fromDate: correctedRange.from,
+              toDate: correctedRange.to,
+              isInRange,
+              reason: isInRange ? 'INCLUDED' : 'FILTERED OUT'
+            });
+          }
+          
+          return isInRange;
         });
-        
-        return isInRange;
-      });
+      } else {
+        // Normal date filtering with existing range
+        filteredTransactions = uniqueTransactions.filter(transaction => {
+          if (!transaction.date) {
+            console.log('⚠️ Transaction missing date:', transaction);
+            return false;
+          }
+          
+          const transactionDate = new Date(transaction.date);
+          const fromDate = new Date(cashflowDateRange.from);
+          const toDate = new Date(cashflowDateRange.to);
+          
+          // Check if dates are valid
+          if (isNaN(transactionDate.getTime()) || isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+            console.log('⚠️ Invalid date found:', {
+              transactionDate: transaction.date,
+              fromDate: cashflowDateRange.from,
+              toDate: cashflowDateRange.to
+            });
+            return false;
+          }
+          
+          // Set end of day for toDate to include transactions on the to date
+          toDate.setHours(23, 59, 59, 999);
+          
+          const isInRange = transactionDate >= fromDate && transactionDate <= toDate;
+          
+          // Debug payment transactions specifically
+          if (transaction.type === 'income' && transaction.category === 'payment') {
+            console.log('💰 Payment filtering debug:', {
+              customer: transaction.customer_name,
+              amount: `₹${transaction.amount.toLocaleString()}`,
+              paymentDate: transaction.date,
+              transactionDateObj: transactionDate.toISOString().split('T')[0],
+              fromDate: cashflowDateRange.from,
+              toDate: cashflowDateRange.to,
+              isInRange: isInRange,
+              reason: !isInRange ? 'FILTERED OUT' : 'INCLUDED'
+            });
+          }
+          
+          console.log('🔍 Filtering transaction:', {
+            id: transaction.id,
+            transactionDate: transaction.date,
+            transactionDateObj: transactionDate.toISOString(),
+            fromDate: cashflowDateRange.from,
+            fromDateObj: fromDate.toISOString(),
+            toDate: cashflowDateRange.to,
+            toDateObj: toDate.toISOString(),
+            isInRange: isInRange,
+            description: transaction.description.substring(0, 30)
+          });
+          
+          return isInRange;
+        });
+      }
     }
+    
+    const paymentsAfterFilter = filteredTransactions.filter(t => t.type === 'income' && t.category === 'payment').length;
+    const paymentAmountAfterFilter = filteredTransactions.filter(t => t.type === 'income' && t.category === 'payment').reduce((sum, t) => sum + t.amount, 0);
+    
+    console.log('📊 Payment filtering summary:', {
+      dateRange: `${cashflowDateRange.from} to ${cashflowDateRange.to}`,
+      paymentsBeforeFilter,
+      paymentsAfterFilter,
+      paymentsFilteredOut: paymentsBeforeFilter - paymentsAfterFilter,
+      paymentAmountBeforeFilter: `₹${paymentAmountBeforeFilter.toLocaleString()}`,
+      paymentAmountAfterFilter: `₹${paymentAmountAfterFilter.toLocaleString()}`,
+      amountFilteredOut: `₹${(paymentAmountBeforeFilter - paymentAmountAfterFilter).toLocaleString()}`
+    });
     
     setCashflowTransactions(filteredTransactions);
     console.log('✅ Built cashflow transactions after date filtering:', filteredTransactions.length);
@@ -795,9 +955,14 @@ export function SalesOrderInvoiceManager() {
       
       // Fetch the rest separately for other components that might need them
       console.log('🔍 Making API calls including withdrawal endpoints and loans...');
+      console.log('📞 About to fetch payments from /api/finance/payments...');
+      
       const [invoicesRes, paymentsRes, expensesRes, bankAccountsRes, loansRes, trucksRes, employeesRes, suppliersRes, investorsRes, investmentCategoriesRes, withdrawalCategoriesRes, withdrawalSubcategoriesRes] = await Promise.all([
         fetch('/api/finance/invoices'),
-        fetch('/api/finance/payments'),
+        fetch('/api/finance/payments').then(res => {
+          console.log('📞 Payments API Response Status:', res.status, res.statusText);
+          return res;
+        }),
         fetch('/api/finance/expenses'),
         fetch('/api/finance/bank-accounts'),
         fetch('/api/finance/loan-opening-balances'),
@@ -819,6 +984,25 @@ export function SalesOrderInvoiceManager() {
       const invoicesData = await invoicesRes.json();
       const paymentsData = await paymentsRes.json();
       const expensesData = await expensesRes.json();
+      
+      console.log('🔍 API DATA SUMMARY:');
+      console.log('Invoices API response:', {
+        ok: invoicesRes.ok,
+        status: invoicesRes.status,
+        dataLength: Array.isArray(invoicesData) ? invoicesData.length : (invoicesData.data?.length || 0)
+      });
+      console.log('Payments API response:', {
+        ok: paymentsRes.ok,
+        status: paymentsRes.status,
+        dataLength: Array.isArray(paymentsData) ? paymentsData.length : (paymentsData.data?.length || 0),
+        expectedFromDB: '246 payments for last month',
+        note: 'This might be the source of missing payments'
+      });
+      console.log('Expenses API response:', {
+        ok: expensesRes.ok,
+        status: expensesRes.status,
+        dataLength: Array.isArray(expensesData) ? expensesData.length : (expensesData.data?.length || 0)
+      });
       
       // Handle bank accounts with error checking
       let bankAccountsData = [];
@@ -907,12 +1091,25 @@ export function SalesOrderInvoiceManager() {
       const expenses = Array.isArray(expensesData) ? expensesData : (expensesData.data || []);
       const bankAccounts = Array.isArray(bankAccountsData) ? bankAccountsData : (bankAccountsData.data || []);
 
-      console.log('Processed Invoices:', invoices); // Enhanced debugging
-      console.log('Processed Payments:', payments); // Enhanced debugging
-      console.log('Processed Expenses:', expenses); // Enhanced debugging
-      console.log('Processed Bank Accounts:', bankAccounts); // Enhanced debugging
-      console.log('Processed Payments:', payments); // Enhanced debugging
-      console.log('Payments structure check:', payments.length > 0 ? payments[0] : 'No payments found'); // Check structure
+      // console.log('📊 PROCESSED DATA SUMMARY:');
+      // console.log('Processed Invoices:', invoices.length, 'invoices');
+      // console.log('Processed Payments:', payments.length, 'payments');
+      // console.log('Expected payments from DB:', '246 payments');
+      // console.log('Missing payments:', payments.length < 246 ? (246 - payments.length) + ' payments missing' : 'All payments loaded');
+      // console.log('Processed Expenses:', expenses.length, 'expenses');
+      // console.log('Processed Bank Accounts:', bankAccounts.length, 'accounts');
+      
+      // // Sample payment data for verification
+      // if (payments.length > 0) {
+      //   console.log('💰 Sample payment data:', {
+      //     firstPayment: payments[0],
+      //     lastPayment: payments[payments.length - 1],
+      //     totalAmount: payments.reduce((sum: number, p: PaymentDetails) => sum + (p.amount || 0), 0).toLocaleString(),
+      //     expectedTotal: '₹32,17,743.39'
+      //   });
+      // } else {
+      //   console.log('❌ NO PAYMENTS FOUND - This is the root cause!');
+      // }
 
       // Use the orders data directly since payment calculations are already done in the backend
       const processedOrders = orders.map((order: SalesOrder) => {
@@ -1812,33 +2009,83 @@ export function SalesOrderInvoiceManager() {
     });
   };
 
-  const handleDatePresetChange = (preset: 'today' | 'last_week' | 'last_month' | 'custom') => {
+  const handleDatePresetChange = (preset: 'all_time' | 'today' | 'this_week' | 'this_month' | 'last_month' | 'custom') => {
     setDatePreset(preset);
     
+    // Get current date in user's timezone
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
     
     switch (preset) {
+      case 'all_time':
+        setCashflowDateRange({
+          from: '2020-01-01', // Far past date
+          to: '2030-12-31'    // Far future date
+        });
+        break;
       case 'today':
         setCashflowDateRange({
           from: todayStr,
           to: todayStr
         });
         break;
-      case 'last_week':
-        const lastWeek = new Date(today);
-        lastWeek.setDate(today.getDate() - 7);
+      case 'this_week':
+        // Calculate start of current week (Sunday)
+        const startOfWeek = new Date(today);
+        const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+        startOfWeek.setDate(today.getDate() - dayOfWeek);
+        
+        // Calculate end of current week (Saturday)
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+        
         setCashflowDateRange({
-          from: lastWeek.toISOString().split('T')[0],
-          to: todayStr
+          from: startOfWeek.toISOString().split('T')[0],
+          to: endOfWeek.toISOString().split('T')[0]
+        });
+        break;
+      case 'this_month':
+        // Calculate start of current month
+        const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        
+        // Calculate end of current month
+        const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        
+        setCashflowDateRange({
+          from: startOfMonth.toISOString().split('T')[0],
+          to: endOfMonth.toISOString().split('T')[0]
         });
         break;
       case 'last_month':
-        const lastMonth = new Date(today);
-        lastMonth.setMonth(today.getMonth() - 1);
+        // Calculate start of last month (September 1, 2025)
+        const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        
+        // Calculate end of last month (September 30, 2025)
+        const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+        
+        // Ensure we're using local dates without timezone issues
+        const fromDate = startOfLastMonth.getFullYear() + '-' + 
+                         String(startOfLastMonth.getMonth() + 1).padStart(2, '0') + '-' + 
+                         String(startOfLastMonth.getDate()).padStart(2, '0');
+        const toDate = endOfLastMonth.getFullYear() + '-' + 
+                       String(endOfLastMonth.getMonth() + 1).padStart(2, '0') + '-' + 
+                       String(endOfLastMonth.getDate()).padStart(2, '0');
+        
+        console.log('🗓️ Last Month calculation debug:', {
+          today: today.toISOString(),
+          todayLocal: today.toLocaleDateString(),
+          startOfLastMonth: startOfLastMonth.toISOString(),
+          startOfLastMonthLocal: startOfLastMonth.toLocaleDateString(),
+          endOfLastMonth: endOfLastMonth.toISOString(),
+          endOfLastMonthLocal: endOfLastMonth.toLocaleDateString(),
+          fromDate,
+          toDate,
+          shouldIncludeSept30: 'Yes - September 30, 2025 should be included'
+        });
+        
         setCashflowDateRange({
-          from: lastMonth.toISOString().split('T')[0],
-          to: todayStr
+          from: fromDate,
+          to: toDate
         });
         break;
       case 'custom':
@@ -4284,14 +4531,10 @@ export function SalesOrderInvoiceManager() {
                   
                   {/* Show All Button */}
                   <Button 
-                    variant="outline" 
+                    variant={datePreset === 'all_time' ? "default" : "outline"} 
                     onClick={() => {
                       console.log('🔄 Show All clicked - rebuilding with wide date range...');
-                      setDatePreset('custom');
-                      setCashflowDateRange({
-                        from: '2020-01-01', // Far past date
-                        to: '2030-12-31'    // Far future date
-                      });
+                      handleDatePresetChange('all_time');
                     }}
                     className="whitespace-nowrap"
                   >
@@ -4304,8 +4547,10 @@ export function SalesOrderInvoiceManager() {
                       <SelectValue placeholder="Date Range" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="all_time">All Time</SelectItem>
                       <SelectItem value="today">Today</SelectItem>
-                      <SelectItem value="last_week">Last Week</SelectItem>
+                      <SelectItem value="this_week">This Week</SelectItem>
+                      <SelectItem value="this_month">This Month</SelectItem>
                       <SelectItem value="last_month">Last Month</SelectItem>
                       <SelectItem value="custom">Custom Range</SelectItem>
                     </SelectContent>

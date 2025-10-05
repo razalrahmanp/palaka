@@ -116,7 +116,7 @@ export default function EnhancedModularDashboard() {
   // Finance State
   const [financeLoading, setFinanceLoading] = useState(false);
 
-  // Date Filtering State - Updated to default to Last 30 Days
+  // Date Filtering State - Updated to default to Last Month
   const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'month' | 'last30' | 'custom'>('last30');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
@@ -154,11 +154,17 @@ export default function EnhancedModularDashboard() {
           endDate: `${year}-${String(month + 1).padStart(2, '0')}-${String(monthEnd.getDate()).padStart(2, '0')}`
         };
       case 'last30':
-        // Last 30 days to include historical walk-ins data
-        const last30Start = new Date(year, month, date - 30);
+        // Previous month - from 1st day to last day of previous month
+        const prevMonth = month - 1;
+        const prevYear = prevMonth < 0 ? year - 1 : year;
+        const actualPrevMonth = prevMonth < 0 ? 11 : prevMonth;
+        
+        // Get the last day of the previous month (handles 28, 29, 30, 31 days automatically)
+        const lastDayOfPrevMonth = new Date(prevYear, actualPrevMonth + 1, 0);
+        
         return {
-          startDate: `${last30Start.getFullYear()}-${String(last30Start.getMonth() + 1).padStart(2, '0')}-${String(last30Start.getDate()).padStart(2, '0')}`,
-          endDate: `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`
+          startDate: `${prevYear}-${String(actualPrevMonth + 1).padStart(2, '0')}-01`,
+          endDate: `${prevYear}-${String(actualPrevMonth + 1).padStart(2, '0')}-${String(lastDayOfPrevMonth.getDate()).padStart(2, '0')}`
         };
       case 'custom':
         return {
@@ -337,7 +343,7 @@ export default function EnhancedModularDashboard() {
                     {dateFilter === 'today' ? 'Today' :
                      dateFilter === 'week' ? 'This Week' :
                      dateFilter === 'month' ? 'This Month' :
-                     dateFilter === 'last30' ? 'Last 30 Days' :
+                     dateFilter === 'last30' ? 'Last Month' :
                      `${dateRange.startDate} to ${dateRange.endDate}`}
                   </span>
                 )}
@@ -378,7 +384,7 @@ export default function EnhancedModularDashboard() {
                 onClick={() => setDateFilter('last30')}
                 className="text-xs h-7"
               >
-                Last 30 Days
+                Last Month
               </Button>
               <Popover>
                 <PopoverTrigger asChild>

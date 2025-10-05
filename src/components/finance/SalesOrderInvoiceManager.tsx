@@ -4463,7 +4463,9 @@ export function SalesOrderInvoiceManager() {
                       <TableHead>Type</TableHead>
                       <TableHead>Category</TableHead>
                       <TableHead>Payment Method</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead className="text-right text-green-600">Debit</TableHead>
+                      <TableHead className="text-right text-red-600">Credit</TableHead>
+                      <TableHead className="text-right text-blue-600">Balance</TableHead>
                       <TableHead>Reference</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -4477,63 +4479,188 @@ export function SalesOrderInvoiceManager() {
                       if (displayTransactions.length === 0) {
                         return (
                           <TableRow>
-                            <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                            <TableCell colSpan={9} className="text-center py-8 text-gray-500">
                               No cashflow transactions found for the selected criteria.
                             </TableCell>
                           </TableRow>
                         );
                       }
 
-                      return displayTransactions.map((transaction) => (
-                        <TableRow key={transaction.id} className="hover:bg-gray-50">
-                          <TableCell>{formatDate(transaction.date)}</TableCell>
-                          <TableCell className="max-w-xs">
-                            <div className="truncate" title={transaction.description}>
-                              {transaction.description}
-                            </div>
-                            {transaction.customer_name && (
-                              <div className="text-xs text-gray-500">{transaction.customer_name}</div>
-                            )}
-                            {transaction.partner_name && (
-                              <div className="text-xs text-gray-500">{transaction.partner_name}</div>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={transaction.type === 'income' ? 'default' : 'destructive'}>
-                              {transaction.type === 'income' ? (
-                                <span className="flex items-center gap-1">
-                                  <TrendingUp className="h-3 w-3" />
-                                  Income
-                                </span>
-                              ) : (
-                                <span className="flex items-center gap-1">
-                                  <TrendingDown className="h-3 w-3" />
-                                  Expense
-                                </span>
+                      return displayTransactions.map((transaction, index) => {
+                        // Calculate running balance - Income increases balance, Expense decreases balance
+                        let runningBalance = 0;
+                        for (let i = 0; i <= index; i++) {
+                          const t = displayTransactions[i];
+                          if (t.type === 'income') {
+                            // Income increases business balance (money coming in)
+                            runningBalance += t.amount;
+                          } else {
+                            // Expense decreases business balance (money going out)
+                            runningBalance -= t.amount;
+                          }
+                        }
+
+                        return (
+                          <TableRow key={transaction.id} className="hover:bg-gray-50">
+                            <TableCell>{formatDate(transaction.date)}</TableCell>
+                            <TableCell className="max-w-xs">
+                              <div className="truncate" title={transaction.description}>
+                                {transaction.description}
+                              </div>
+                              {transaction.customer_name && (
+                                <div className="text-xs text-gray-500">{transaction.customer_name}</div>
                               )}
-                            </Badge>
+                              {transaction.partner_name && (
+                                <div className="text-xs text-gray-500">{transaction.partner_name}</div>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={transaction.type === 'income' ? 'default' : 'destructive'}>
+                                {transaction.type === 'income' ? (
+                                  <span className="flex items-center gap-1">
+                                    <TrendingUp className="h-3 w-3" />
+                                    Income
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center gap-1">
+                                    <TrendingDown className="h-3 w-3" />
+                                    Expense
+                                  </span>
+                                )}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">
+                                {transaction.category.replace('_', ' ').toUpperCase()}
+                              </Badge>
+                              {transaction.subcategory && (
+                                <div className="text-xs text-gray-500 mt-1">{transaction.subcategory}</div>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary">
+                                {transaction.payment_method.replace('_', ' ').toUpperCase()}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right font-medium text-green-600">
+                              {transaction.type === 'income' ? formatCurrency(transaction.amount) : '-'}
+                            </TableCell>
+                            <TableCell className="text-right font-medium text-red-600">
+                              {transaction.type === 'expense' ? formatCurrency(transaction.amount) : '-'}
+                            </TableCell>
+                            <TableCell className={`text-right font-bold ${runningBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {formatCurrency(Math.abs(runningBalance))}
+                              {runningBalance < 0 ? ' Dr' : ''}
+                            </TableCell>
+                            <TableCell className="text-sm text-gray-500">
+                              {transaction.reference || '-'}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      });
+
+                      // Add totals row after all transactions
+                      const allTransactions = filteredTransactions;
+                      const totalDebits = allTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+                      const totalCredits = allTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+                      const finalBalance = totalDebits - totalCredits;
+
+                      const transactionRows = displayTransactions.map((transaction, index) => {
+                        // Calculate running balance - Income increases balance, Expense decreases balance
+                        let runningBalance = 0;
+                        for (let i = 0; i <= index; i++) {
+                          const t = displayTransactions[i];
+                          if (t.type === 'income') {
+                            // Income increases business balance (money coming in)
+                            runningBalance += t.amount;
+                          } else {
+                            // Expense decreases business balance (money going out)
+                            runningBalance -= t.amount;
+                          }
+                        }
+
+                        return (
+                          <TableRow key={transaction.id} className="hover:bg-gray-50">
+                            <TableCell>{formatDate(transaction.date)}</TableCell>
+                            <TableCell className="max-w-xs">
+                              <div className="truncate" title={transaction.description}>
+                                {transaction.description}
+                              </div>
+                              {transaction.customer_name && (
+                                <div className="text-xs text-gray-500">{transaction.customer_name}</div>
+                              )}
+                              {transaction.partner_name && (
+                                <div className="text-xs text-gray-500">{transaction.partner_name}</div>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={transaction.type === 'income' ? 'default' : 'destructive'}>
+                                {transaction.type === 'income' ? (
+                                  <span className="flex items-center gap-1">
+                                    <TrendingUp className="h-3 w-3" />
+                                    Income
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center gap-1">
+                                    <TrendingDown className="h-3 w-3" />
+                                    Expense
+                                  </span>
+                                )}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">
+                                {transaction.category.replace('_', ' ').toUpperCase()}
+                              </Badge>
+                              {transaction.subcategory && (
+                                <div className="text-xs text-gray-500 mt-1">{transaction.subcategory}</div>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary">
+                                {transaction.payment_method.replace('_', ' ').toUpperCase()}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right font-medium text-green-600">
+                              {transaction.type === 'income' ? formatCurrency(transaction.amount) : '-'}
+                            </TableCell>
+                            <TableCell className="text-right font-medium text-red-600">
+                              {transaction.type === 'expense' ? formatCurrency(transaction.amount) : '-'}
+                            </TableCell>
+                            <TableCell className={`text-right font-bold ${runningBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {formatCurrency(Math.abs(runningBalance))}
+                              {runningBalance < 0 ? ' Dr' : ''}
+                            </TableCell>
+                            <TableCell className="text-sm text-gray-500">
+                              {transaction.reference || '-'}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      });
+
+                      // Add the totals row
+                      const totalsRow = (
+                        <TableRow key="totals" className="bg-gray-100 border-t-2 border-gray-300 font-bold">
+                          <TableCell className="font-bold text-gray-800">TOTALS</TableCell>
+                          <TableCell></TableCell>
+                          <TableCell></TableCell>
+                          <TableCell></TableCell>
+                          <TableCell></TableCell>
+                          <TableCell className="text-right font-bold text-green-700 text-lg">
+                            {formatCurrency(totalDebits)}
                           </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">
-                              {transaction.category.replace('_', ' ').toUpperCase()}
-                            </Badge>
-                            {transaction.subcategory && (
-                              <div className="text-xs text-gray-500 mt-1">{transaction.subcategory}</div>
-                            )}
+                          <TableCell className="text-right font-bold text-red-700 text-lg">
+                            {formatCurrency(totalCredits)}
                           </TableCell>
-                          <TableCell>
-                            <Badge variant="secondary">
-                              {transaction.payment_method.replace('_', ' ').toUpperCase()}
-                            </Badge>
+                          <TableCell className={`text-right font-bold text-lg ${finalBalance >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                            {formatCurrency(Math.abs(finalBalance))}
+                            {finalBalance < 0 ? ' Dr' : ''}
                           </TableCell>
-                          <TableCell className={`text-right font-medium ${transaction.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                            {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
-                          </TableCell>
-                          <TableCell className="text-sm text-gray-500">
-                            {transaction.reference || '-'}
-                          </TableCell>
+                          <TableCell></TableCell>
                         </TableRow>
-                      ));
+                      );
+
+                      return [...transactionRows, totalsRow];
                     })()}
                   </TableBody>
                 </Table>

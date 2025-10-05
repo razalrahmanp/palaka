@@ -97,8 +97,10 @@ export async function POST(req: Request) {
 
     if (expErr) return NextResponse.json({ error: expErr.message }, { status: 500 });
 
-    // 2. Create bank transaction (if bank_account_id provided)
-    if (bank_account_id) {
+    // 2. Create bank transaction (only for non-cash payments)
+    if (bank_account_id && payment_method !== 'cash') {
+      console.log(`Creating bank transaction for ${payment_method} payment of ₹${amount}`);
+      
       await supabase
         .from("bank_transactions")
         .insert([{
@@ -106,7 +108,11 @@ export async function POST(req: Request) {
           date,
           type: "withdrawal",
           amount,
-          description: `Expense: ${description}`,
+          description: `Expense: ${description} (via ${exp.entity_type || 'Al rams Furniture'})`,
+          reference: receipt_number || `EXP-${exp.id.slice(-8)}`,
+          source_type: 'expense',
+          payment_method: payment_method,
+          source_id: exp.id
         }]);
 
       // 3. Update bank account balance
@@ -123,6 +129,8 @@ export async function POST(req: Request) {
           .update({ current_balance: newBalance })
           .eq("id", bank_account_id);
       }
+    } else if (payment_method === 'cash') {
+      console.log(`Cash expense of ₹${amount} - no bank transaction created`);
     }
 
     // 4. Update cashflow

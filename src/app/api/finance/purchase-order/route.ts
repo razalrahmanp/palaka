@@ -234,7 +234,7 @@ export async function POST(req: Request) {
           category: "Manufacturing",
           description: `PO Payment to Supplier ID: ${supplier_id}`,
           amount: paid_amount,
-          payment_method: "Bank",
+          payment_method: "bank_transfer", // Standardized payment method
           type: "Direct",
         },
       ]);
@@ -350,7 +350,7 @@ export async function PUT(req: Request) {
         category: "Manufacturing",
         description: `PO Payment for PO ID: ${id}`,
         amount: paid_amount,
-        payment_method: "Bank",
+        payment_method: "bank_transfer", // Standardized payment method
         type: "Direct",
         created_by: getCurrentUser(), // Replace with actual user ID if available
       },

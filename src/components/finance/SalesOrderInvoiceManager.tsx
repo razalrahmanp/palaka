@@ -2322,30 +2322,56 @@ export function SalesOrderInvoiceManager() {
 
     setIsCreatingExpense(true);
     try {
+      // Prepare the expense data
+      const expenseData: {
+        date: string;
+        subcategory: string;
+        description: string;
+        amount: number;
+        payment_method: string;
+        entity_id: string | null;
+        entity_type: string | null;
+        created_by: string | undefined;
+        vendor_bill_id: string | null;
+        payroll_record_id: string | null;
+        odometer: null;
+        quantity: null;
+        location: null;
+        vendor_name: null;
+        receipt_number: null;
+        bank_account_id?: string;
+      } = {
+        date: expenseForm.date,
+        subcategory: expenseForm.category,
+        description: expenseForm.description + (getSelectedEntityDetails() ? ` [${getSelectedEntityDetails()?.name}]` : ''),
+        amount: parseFloat(expenseForm.amount),
+        payment_method: expenseForm.payment_method,
+        entity_id: expenseForm.entity_id || null,
+        entity_type: expenseForm.entity_type || null,
+        created_by: getCurrentUser()?.id, // Get current user from auth context
+        // Additional fields for entity integrations
+        vendor_bill_id: expenseForm.vendor_bill_id || null,
+        payroll_record_id: expenseForm.payroll_record_id || null,
+        odometer: null, // Could be added to form for vehicle expenses
+        quantity: null, // Could be added to form for fuel/parts
+        location: null, // Could be added to form for fuel stations, etc.
+        vendor_name: null, // Could be extracted from supplier name
+        receipt_number: null // Could be added to form
+      };
+
+      // Only include bank_account_id for non-cash payments
+      if (expenseForm.payment_method !== 'cash' && expenseForm.bank_account_id) {
+        expenseData.bank_account_id = expenseForm.bank_account_id;
+      }
+
+      console.log('Creating expense with data:', expenseData);
+
       const response = await fetch('/api/finance/expenses', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          date: expenseForm.date,
-          subcategory: expenseForm.category,
-          description: expenseForm.description + (getSelectedEntityDetails() ? ` [${getSelectedEntityDetails()?.name}]` : ''),
-          amount: parseFloat(expenseForm.amount),
-          payment_method: expenseForm.payment_method,
-          bank_account_id: expenseForm.bank_account_id || (bankAccounts.length > 0 ? bankAccounts[0].id : 1), // Use selected bank account or first available
-          entity_id: expenseForm.entity_id || null,
-          entity_type: expenseForm.entity_type || null,
-          created_by: getCurrentUser()?.id, // Get current user from auth context
-          // Additional fields for entity integrations
-          vendor_bill_id: expenseForm.vendor_bill_id || null,
-          payroll_record_id: expenseForm.payroll_record_id || null,
-          odometer: null, // Could be added to form for vehicle expenses
-          quantity: null, // Could be added to form for fuel/parts
-          location: null, // Could be added to form for fuel stations, etc.
-          vendor_name: null, // Could be extracted from supplier name
-          receipt_number: null // Could be added to form
-        }),
+        body: JSON.stringify(expenseData),
       });
 
       if (response.ok) {

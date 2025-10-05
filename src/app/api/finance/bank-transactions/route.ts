@@ -49,20 +49,65 @@ export async function GET(request: NextRequest) {
     // 1. Fetch bank transactions (existing) for this account
     const { data: bankTransactions, error: bankTransError } = await supabaseAdmin
       .from('bank_transactions')
-      .select('id, date, type, amount, description, reference')
+      .select('id, date, type, amount, description, reference, source_type, payment_method')
       .eq('bank_account_id', bankAccountId)
       .order('date', { ascending: false });
 
     if (!bankTransError && bankTransactions) {
       bankTransactions.forEach(tx => {
+        // Use source_type if available, otherwise determine from description pattern
+        let transactionType: 'bank_transaction' | 'vendor_payment' | 'withdrawal' | 'liability_payment' = 'bank_transaction';
+        
+        if (tx.source_type) {
+          // Map source_type to transaction_type
+          switch (tx.source_type) {
+            case 'expense':
+              transactionType = 'bank_transaction';
+              break;
+            case 'vendor_payment':
+              transactionType = 'vendor_payment';
+              break;
+            case 'withdrawal':
+              transactionType = 'withdrawal';
+              break;
+            case 'liability_payment':
+              transactionType = 'liability_payment';
+              break;
+            case 'sales_payment':
+              transactionType = 'bank_transaction';
+              break;
+            default:
+              transactionType = 'bank_transaction';
+          }
+        } else {
+          // Fallback to description pattern matching for old records
+          if (tx.description?.includes('Expense:')) {
+            transactionType = 'bank_transaction';
+          } else if (tx.description?.includes('Payment received')) {
+            transactionType = 'bank_transaction';
+          } else if (tx.description?.includes('Vendor Payment')) {
+            transactionType = 'vendor_payment';
+          } else if (tx.description?.includes('Withdrawal') || tx.description?.includes('Owner')) {
+            transactionType = 'withdrawal';
+          } else if (tx.description?.includes('Loan Payment') || tx.description?.includes('Liability')) {
+            transactionType = 'liability_payment';
+          }
+        }
+
+        // Update description to show payment method if available
+        let enhancedDescription = tx.description || 'Bank Transaction';
+        if (tx.payment_method && tx.payment_method !== 'bank_transfer') {
+          enhancedDescription += ` (${tx.payment_method.toUpperCase()})`;
+        }
+
         allTransactions.push({
           id: `bank_${tx.id}`,
           date: tx.date,
           type: tx.type,
           amount: tx.amount || 0,
-          description: tx.description || 'Bank Transaction',
+          description: enhancedDescription,
           reference: tx.reference || '',
-          transaction_type: 'bank_transaction'
+          transaction_type: transactionType
         });
       });
     }

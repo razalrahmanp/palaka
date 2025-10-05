@@ -327,24 +327,40 @@ export function VendorBillsTab({
         }
       } else {
         // For regular expenses, use the expenses API
+        const expenseData: {
+          date: string;
+          subcategory: string;
+          description: string;
+          amount: number;
+          payment_method: string;
+          entity_id: string;
+          entity_type: string;
+          vendor_bill_id: null;
+          bank_account_id?: string;
+        } = {
+          date: expenseForm.date,
+          subcategory: expenseForm.category,
+          description: `${expenseForm.description} [Vendor: ${vendorName}]`,
+          amount: parseFloat(expenseForm.amount),
+          payment_method: expenseForm.payment_method,
+          entity_id: expenseForm.entity_id || vendorId,
+          entity_type: expenseForm.entity_type || 'supplier',
+          vendor_bill_id: null, // No vendor bill for regular expenses
+        };
+
+        // Only include bank_account_id for non-cash payments
+        if (expenseForm.payment_method !== 'cash' && expenseForm.bank_account_id && expenseForm.bank_account_id !== 'no-accounts') {
+          expenseData.bank_account_id = expenseForm.bank_account_id;
+        }
+
+        console.log('Creating vendor expense with data:', expenseData);
+
         const expenseResponse = await fetch('/api/finance/expenses', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            date: expenseForm.date,
-            subcategory: expenseForm.category,
-            description: `${expenseForm.description} [Vendor: ${vendorName}]`,
-            amount: parseFloat(expenseForm.amount),
-            payment_method: expenseForm.payment_method,
-            bank_account_id: (expenseForm.bank_account_id && expenseForm.bank_account_id !== 'no-accounts') 
-              ? expenseForm.bank_account_id 
-              : (bankAccounts.length > 0 ? bankAccounts[0].id : 1),
-            entity_id: expenseForm.entity_id || vendorId,
-            entity_type: expenseForm.entity_type || 'supplier',
-            vendor_bill_id: null, // No vendor bill for regular expenses
-          }),
+          body: JSON.stringify(expenseData),
         });
 
         if (!expenseResponse.ok) {

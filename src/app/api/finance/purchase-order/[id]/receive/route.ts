@@ -59,7 +59,7 @@ export async function PATCH(req: NextRequest) {
       type: "Direct",
       description: `PO ${id} - ${product[0]?.name}`,
       amount: total,
-      payment_method: "Bank",
+      payment_method: "bank_transfer", // Standardized payment method
       subcategory: "Furniture",
     },
   ]);
@@ -71,6 +71,9 @@ export async function PATCH(req: NextRequest) {
       type: "withdrawal",
       amount: total,
       description: `PO Payment: ${product[0]?.name} from ${suppliers[0]?.name}`,
+      source_type: 'vendor_payment',
+      payment_method: 'bank_transfer',
+      source_id: id
     },
   ]);
 

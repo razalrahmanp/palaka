@@ -57,6 +57,8 @@ export async function POST(request: NextRequest) {
       amount,
       description,
       reference,
+      source_type: 'manual',
+      payment_method: 'bank_transfer'
     },
   ]);
 

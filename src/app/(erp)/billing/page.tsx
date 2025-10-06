@@ -760,6 +760,7 @@ export default function BillingPage() {
           notes: data.notes,
           status: 'Converted', // Set as Converted immediately
           created_by: data.selectedSalesman?.user_id || null,
+          invoiceDate: data.invoiceDate, // Pass the invoice date to set created_at
           emi_enabled: hasBajajFinance,
           emi_plan: emiPlan,
           emi_monthly: monthlyEmiAmount,

@@ -30,8 +30,23 @@ export async function POST(req: NextRequest) {
     original_price: body.original_price,
     final_price: body.final_price,
     discount_amount: body.discount_amount,
-    freight_charges: body.freight_charges
+    freight_charges: body.freight_charges,
+    invoiceDate: body.invoiceDate
   });
+
+  // Convert invoice date to ISO timestamp for created_at
+  let createdAtTimestamp = new Date().toISOString();
+  if (body.invoiceDate) {
+    try {
+      // Parse the invoice date and set time to current time
+      const invoiceDateObj = new Date(body.invoiceDate);
+      const currentTime = new Date();
+      invoiceDateObj.setHours(currentTime.getHours(), currentTime.getMinutes(), currentTime.getSeconds(), currentTime.getMilliseconds());
+      createdAtTimestamp = invoiceDateObj.toISOString();
+    } catch (error) {
+      console.warn('Invalid invoice date provided for quote, using current timestamp:', error);
+    }
+  }
 
   // 1) Insert the quote with all columns
   const { data: quote, error: quoteError } = await supabase
@@ -53,6 +68,7 @@ export async function POST(req: NextRequest) {
       notes: body.notes || '',
       status: body.status || 'draft',
       created_by: body.created_by,
+      created_at: createdAtTimestamp, // Use invoice date as created_at
       emi_enabled: body.emi_enabled || false,
       emi_plan: body.emi_plan || null,
       emi_monthly: body.emi_monthly || 0,

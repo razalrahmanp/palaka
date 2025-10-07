@@ -1,18 +1,30 @@
 // app/api/finance/bank-accounts/route.ts
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { supabase } from "@/lib/supabaseAdmin";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { data, error } = await supabase
+    const { searchParams } = new URL(request.url);
+    const accountType = searchParams.get('type');
+
+    let query = supabase
       .from("bank_accounts")
       .select("id, name, account_number, current_balance, account_type, is_active")
-      .eq("is_active", true)
-      .order("name", { ascending: true });
+      .eq("is_active", true);
+
+    // Filter by account type if specified
+    if (accountType) {
+      query = query.eq("account_type", accountType);
+    }
+
+    const { data, error } = await query.order("name", { ascending: true });
 
     if (error) {
       console.error('Error fetching bank accounts:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ 
+        success: false, 
+        error: error.message 
+      }, { status: 500 });
     }
 
     // Enhance each account with payment statistics
@@ -42,10 +54,16 @@ export async function GET() {
       })
     );
 
-    return NextResponse.json({ data: enhancedData });
+    return NextResponse.json({ 
+      success: true, 
+      data: enhancedData 
+    });
   } catch (error) {
     console.error('Unexpected error fetching bank accounts:', error);
-    return NextResponse.json({ error: "Failed to fetch bank accounts" }, { status: 500 });
+    return NextResponse.json({ 
+      success: false, 
+      error: "Failed to fetch bank accounts" 
+    }, { status: 500 });
   }
 }
 

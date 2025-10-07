@@ -48,7 +48,11 @@ import {
   RotateCcw,
   Download,
   Filter,
-  X
+  X,
+  ArrowRightLeft,
+  Banknote,
+  Smartphone,
+  IndianRupee
 } from 'lucide-react';
 import { SalesOrder, Invoice, subcategoryMap } from '@/types';
 import { PaymentTrackingDialog } from './PaymentTrackingDialog';
@@ -212,6 +216,16 @@ interface CashflowTransaction {
   created_at: string;
 }
 
+interface BankAccount {
+  id: string;
+  name?: string;
+  account_name?: string;
+  account_number?: string;
+  upi_id?: string;
+  current_balance: number;
+  account_type: string;
+}
+
 export function SalesOrderInvoiceManager() {
   const [salesOrders, setSalesOrders] = useState<SalesOrderWithInvoice[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -228,6 +242,8 @@ export function SalesOrderInvoiceManager() {
   const [paymentTrackingOpen, setPaymentTrackingOpen] = useState(false);
   const [refundDialogOpen, setRefundDialogOpen] = useState(false);
   const [selectedInvoiceForRefund, setSelectedInvoiceForRefund] = useState<Invoice | null>(null);
+  const [invoiceSelectionOpen, setInvoiceSelectionOpen] = useState(false);
+  const [invoiceSearchQuery, setInvoiceSearchQuery] = useState('');
   const [createExpenseOpen, setCreateExpenseOpen] = useState(false);
   const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
   const [createInvestmentOpen, setCreateInvestmentOpen] = useState(false);
@@ -237,6 +253,19 @@ export function SalesOrderInvoiceManager() {
   const [liabilityLoading, setLiabilityLoading] = useState(false);
   const [loanSetupOpen, setLoanSetupOpen] = useState(false);
   const [showAddInvestorModal, setShowAddInvestorModal] = useState(false);
+  
+  // Fund Transfer states
+  const [showFundTransfer, setShowFundTransfer] = useState(false);
+  const [transferLoading, setTransferLoading] = useState(false);
+  const [fundTransfer, setFundTransfer] = useState({
+    fromAccountId: '',
+    toAccountId: '',
+    amount: '',
+    description: '',
+    reference: '',
+    date: new Date().toISOString().split('T')[0]
+  });
+  const [allAccounts, setAllAccounts] = useState<Array<{id: string; name: string; type: string; balance: number}>>([]);
   
   // Waive-off states
   const [waiveOffOpen, setWaiveOffOpen] = useState(false);
@@ -306,6 +335,7 @@ export function SalesOrderInvoiceManager() {
     category: 'Office Supplies',
     payment_method: 'cash',
     bank_account_id: '',
+    deposit_bank_id: '', // New field for bank deposit selection
     entity_id: '', // For truck, employee, or supplier selection
     entity_type: '', // 'truck', 'employee', 'supplier'
     vendor_bill_id: '', // New field for vendor bill selection
@@ -435,6 +465,7 @@ export function SalesOrderInvoiceManager() {
   useEffect(() => {
     fetchData();
     fetchCustomers();
+    fetchAllAccounts(); // Load accounts for fund transfer
   }, [fetchCustomers]);
 
   const buildCashflowFromExistingData = useCallback(async () => {
@@ -1154,6 +1185,97 @@ export function SalesOrderInvoiceManager() {
     }
   };
 
+  // Fetch all accounts for fund transfer dropdown
+  const fetchAllAccounts = async () => {
+    try {
+      const [bankRes, upiRes, cashRes] = await Promise.all([
+        fetch('/api/finance/bank_accounts?type=BANK'),
+        fetch('/api/finance/bank_accounts?type=UPI'), 
+        fetch('/api/finance/bank_accounts?type=CASH')
+      ]);
+
+      const bankData = bankRes.ok ? await bankRes.json() : { data: [] };
+      const upiData = upiRes.ok ? await upiRes.json() : { data: [] };
+      const cashData = cashRes.ok ? await cashRes.json() : { data: [] };
+
+      const accounts = [
+        ...(bankData.data || []).map((acc: BankAccount) => ({ 
+          id: acc.id, 
+          name: acc.account_name || acc.name, 
+          type: 'bank', 
+          balance: acc.current_balance || 0 
+        })),
+        ...(upiData.data || []).map((acc: BankAccount) => ({ 
+          id: acc.id, 
+          name: acc.upi_id || acc.name, 
+          type: 'upi', 
+          balance: acc.current_balance || 0 
+        })),
+        ...(cashData.data || []).map((acc: BankAccount) => ({ 
+          id: acc.id, 
+          name: acc.account_name || acc.name, 
+          type: 'cash', 
+          balance: acc.current_balance || 0 
+        }))
+      ];
+
+      setAllAccounts(accounts);
+    } catch (error) {
+      console.error('Error fetching accounts for fund transfer:', error);
+    }
+  };
+
+  // Fund transfer handler
+  const handleFundTransfer = async () => {
+    const amountValue = parseFloat(fundTransfer.amount);
+    if (!fundTransfer.fromAccountId || !fundTransfer.toAccountId || !fundTransfer.amount || amountValue <= 0) {
+      alert('Please fill in all required fields with valid values.');
+      return;
+    }
+
+    if (fundTransfer.fromAccountId === fundTransfer.toAccountId) {
+      alert('Source and destination accounts must be different.');
+      return;
+    }
+
+    setTransferLoading(true);
+    try {
+      const response = await fetch('/api/finance/fund-transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fundTransfer)
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        alert(`Fund transfer successful! ₹${fundTransfer.amount.toLocaleString()} transferred successfully.`);
+        
+        // Reset form
+        setFundTransfer({
+          fromAccountId: '',
+          toAccountId: '',
+          amount: '',
+          description: '',
+          reference: '',
+          date: new Date().toISOString().split('T')[0]
+        });
+        setShowFundTransfer(false);
+        
+        // Refresh data
+        fetchData();
+        fetchAllAccounts();
+      } else {
+        alert(`Transfer failed: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error processing fund transfer:', error);
+      alert('An error occurred while processing the transfer.');
+    } finally {
+      setTransferLoading(false);
+    }
+  };
+
 
 
   const getPaymentStatusBadge = (status: string, totalPaid: number = 0, orderTotal: number = 0, waivedAmount: number = 0) => {
@@ -1219,12 +1341,27 @@ export function SalesOrderInvoiceManager() {
 
   const handleCategoryChange = (category: string) => {
     const entityType = getEntityTypeForCategory(category);
-    setExpenseForm({ 
-      ...expenseForm, 
-      category, 
-      entity_type: entityType,
-      entity_id: '' // Reset entity selection when category changes
-    });
+    
+    // Handle special case for Cash to Bank Deposit
+    if (category === 'Cash to Bank Deposit') {
+      setExpenseForm({ 
+        ...expenseForm, 
+        category, 
+        entity_type: entityType,
+        entity_id: '', // Reset entity selection when category changes
+        payment_method: 'cash', // Force cash payment for bank deposits
+        bank_account_id: '', // Reset bank account for source payment
+        deposit_bank_id: '' // Reset deposit bank selection
+      });
+    } else {
+      setExpenseForm({ 
+        ...expenseForm, 
+        category, 
+        entity_type: entityType,
+        entity_id: '', // Reset entity selection when category changes
+        deposit_bank_id: '' // Reset deposit bank selection for non-deposit categories
+      });
+    }
   };
 
   const getEntityOptions = () => {
@@ -2320,6 +2457,12 @@ export function SalesOrderInvoiceManager() {
       return;
     }
 
+    // Validate bank selection for cash deposits
+    if (expenseForm.category === 'Cash to Bank Deposit' && !expenseForm.deposit_bank_id) {
+      alert('Please select a bank account for the deposit');
+      return;
+    }
+
     setIsCreatingExpense(true);
     try {
       // Prepare the expense data
@@ -2340,6 +2483,7 @@ export function SalesOrderInvoiceManager() {
         vendor_name: null;
         receipt_number: null;
         bank_account_id?: string;
+        deposit_bank_id?: string;
       } = {
         date: expenseForm.date,
         subcategory: expenseForm.category,
@@ -2359,9 +2503,14 @@ export function SalesOrderInvoiceManager() {
         receipt_number: null // Could be added to form
       };
 
-      // Only include bank_account_id for non-cash payments
-      if (expenseForm.payment_method !== 'cash' && expenseForm.bank_account_id) {
+      // Only include bank_account_id for non-cash payments (but not for cash deposits)
+      if (expenseForm.payment_method !== 'cash' && expenseForm.bank_account_id && expenseForm.category !== 'Cash to Bank Deposit') {
         expenseData.bank_account_id = expenseForm.bank_account_id;
+      }
+
+      // Include deposit_bank_id for cash to bank deposits
+      if (expenseForm.category === 'Cash to Bank Deposit' && expenseForm.deposit_bank_id) {
+        expenseData.deposit_bank_id = expenseForm.deposit_bank_id;
       }
 
       console.log('Creating expense with data:', expenseData);
@@ -2383,6 +2532,7 @@ export function SalesOrderInvoiceManager() {
           category: 'Office Supplies',
           payment_method: 'cash',
           bank_account_id: '',
+          deposit_bank_id: '',
           entity_id: '',
           entity_type: '',
           vendor_bill_id: '',
@@ -2974,9 +3124,9 @@ export function SalesOrderInvoiceManager() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full h-full">
       {/* Header Section with Navigation Tabs */}
-      <div className="bg-white rounded-lg border shadow-sm">
+      <div className="bg-white border-b">
         <div className="p-4 border-b">
           <div className="flex items-center justify-between">
             <div>
@@ -4046,57 +4196,6 @@ export function SalesOrderInvoiceManager() {
                     Track and manage business expenses
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fetchData()}
-                    className="flex items-center gap-2"
-                  >
-                    <Clock className="h-4 w-4" />
-                    Refresh
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="bg-red-600 hover:bg-red-700"
-                    onClick={() => setCreateExpenseOpen(true)}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Expense
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="bg-green-600 hover:bg-green-700"
-                    onClick={() => setCreateInvestmentOpen(true)}
-                  >
-                    <TrendingUp className="h-4 w-4 mr-2" />
-                    Investment
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="bg-purple-600 hover:bg-purple-700"
-                    onClick={() => setCreateWithdrawalOpen(true)}
-                  >
-                    <TrendingDown className="h-4 w-4 mr-2" />
-                    Withdrawal
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="bg-blue-600 hover:bg-blue-700"
-                    onClick={() => setCreateLiabilityOpen(true)}
-                  >
-                    <CreditCard className="h-4 w-4 mr-2" />
-                    Liabilities
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="bg-orange-600 hover:bg-orange-700"
-                    onClick={() => setLoanSetupOpen(true)}
-                  >
-                    <Building2 className="h-4 w-4 mr-2" />
-                    Loan Setup
-                  </Button>
-                </div>
               </div>
 
               {/* Expenses Summary Cards */}
@@ -4448,9 +4547,9 @@ export function SalesOrderInvoiceManager() {
             </TabsContent>
 
             {/* Cashflow Tab */}
-            <TabsContent value="cashflow" className="space-y-4 p-4">
+            <TabsContent value="cashflow" className="space-y-4 p-0">
               {/* Cashflow Summary Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 m-4 mb-6">
                 {(() => {
                   const filteredTransactions = filterCashflowTransactions(cashflowTransactions, cashflowSearchQuery, cashflowTypeFilter, cashflowCategoryFilter, multipleCategoryFilters, useMultipleFilters);
                   const totalInflow = filteredTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
@@ -4514,7 +4613,7 @@ export function SalesOrderInvoiceManager() {
               </div>
 
               {/* Filters */}
-              <div className="flex flex-col sm:flex-row gap-4 mb-4">
+              <div className="flex flex-col sm:flex-row gap-4 mb-4 mx-4">
                 <div className="flex-1">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
@@ -4719,8 +4818,15 @@ export function SalesOrderInvoiceManager() {
                 )}
               </div>
 
+              {/* Page Title */}
+              <div className="mb-4 mx-4">
+                <div className="text-sm text-gray-600">
+                  <span className="font-medium">Cashflow Manager</span> - Track all money movements
+                </div>
+              </div>
+
               {/* Cashflow Table */}
-              <div className="border rounded-lg overflow-hidden">
+              <div className="border-t overflow-hidden">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -4972,6 +5078,81 @@ export function SalesOrderInvoiceManager() {
             </TabsContent>
           </div>
         </Tabs>
+        
+        {/* Floating Action Buttons - Right Corner - Always Visible */}
+        <div className="fixed top-20 right-4 z-50 flex flex-col gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchData()}
+            className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-white border-2"
+            title="Refresh"
+          >
+            <RotateCcw className="h-4 w-4" />
+          </Button>
+          <Button
+            size="sm"
+            className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-red-600 hover:bg-red-700 border-0"
+            onClick={() => setCreateExpenseOpen(true)}
+            title="Add Expense"
+          >
+            <Plus className="h-4 w-4 text-white" />
+          </Button>
+          <Button
+            size="sm"
+            className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-green-600 hover:bg-green-700 border-0"
+            onClick={() => setCreateInvestmentOpen(true)}
+            title="Investment"
+          >
+            <TrendingUp className="h-4 w-4 text-white" />
+          </Button>
+          <Button
+            size="sm"
+            className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-purple-600 hover:bg-purple-700 border-0"
+            onClick={() => setCreateWithdrawalOpen(true)}
+            title="Withdrawal"
+          >
+            <TrendingDown className="h-4 w-4 text-white" />
+          </Button>
+          <Button
+            size="sm"
+            className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-blue-600 hover:bg-blue-700 border-0"
+            onClick={() => setCreateLiabilityOpen(true)}
+            title="Liabilities"
+          >
+            <CreditCard className="h-4 w-4 text-white" />
+          </Button>
+          <Button
+            size="sm"
+            className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-orange-600 hover:bg-orange-700 border-0"
+            onClick={() => setLoanSetupOpen(true)}
+            title="Loan Setup"
+          >
+            <Building2 className="h-4 w-4 text-white" />
+          </Button>
+          <Button
+            size="sm"
+            className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-indigo-600 hover:bg-indigo-700 border-0"
+            onClick={() => {
+              setShowFundTransfer(true);
+              fetchAllAccounts();
+            }}
+            title="Fund Transfer"
+          >
+            <ArrowRightLeft className="h-4 w-4 text-white" />
+          </Button>
+          <Button
+            size="sm"
+            className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-yellow-600 hover:bg-yellow-700 border-0"
+            onClick={() => {
+              setInvoiceSearchQuery('');
+              setInvoiceSelectionOpen(true);
+            }}
+            title="Refund"
+          >
+            <RotateCcw className="h-4 w-4 text-white" />
+          </Button>
+        </div>
       </div>
 
       {/* Dialogs */}
@@ -4982,10 +5163,126 @@ export function SalesOrderInvoiceManager() {
         onSuccess={fetchData}
       />
 
+      {/* Invoice Selection Dialog for Refund */}
+      <Dialog open={invoiceSelectionOpen} onOpenChange={setInvoiceSelectionOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RotateCcw className="h-5 w-5" />
+              Select Invoice for Refund
+            </DialogTitle>
+            <DialogDescription>
+              Choose an invoice to process a refund for.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {/* Search Input */}
+          <div className="flex items-center gap-2 p-4 border-b">
+            <Search className="h-4 w-4 text-gray-500" />
+            <Input
+              placeholder="Search by customer name or invoice ID..."
+              value={invoiceSearchQuery}
+              onChange={(e) => setInvoiceSearchQuery(e.target.value)}
+              className="flex-1"
+            />
+            {invoiceSearchQuery && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setInvoiceSearchQuery('')}
+                className="p-1 h-8 w-8"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+          
+          <div className="overflow-y-auto max-h-[50vh]">
+            {(() => {
+              const filteredInvoices = invoices
+                .filter(invoice => invoice.paid_amount > 0)
+                .filter(invoice => {
+                  if (!invoiceSearchQuery) return true;
+                  const query = invoiceSearchQuery.toLowerCase();
+                  return (
+                    invoice.customer_name?.toLowerCase().includes(query) ||
+                    invoice.id.toLowerCase().includes(query)
+                  );
+                });
+
+              if (filteredInvoices.length === 0) {
+                return (
+                  <div className="flex flex-col items-center justify-center py-8 text-gray-500">
+                    <Search className="h-8 w-8 mb-2" />
+                    <p className="text-sm">
+                      {invoiceSearchQuery 
+                        ? `No invoices found matching "${invoiceSearchQuery}"`
+                        : "No invoices with payments available for refund"
+                      }
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Invoice ID</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Paid</TableHead>
+                      <TableHead>Balance</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredInvoices.map((invoice) => (
+                  <TableRow key={invoice.id}>
+                    <TableCell className="font-mono text-sm">
+                      {invoice.id.slice(0, 8)}
+                    </TableCell>
+                    <TableCell>{invoice.customer_name}</TableCell>
+                    <TableCell>₹{invoice.total.toLocaleString()}</TableCell>
+                    <TableCell>₹{(invoice.paid_amount || 0).toLocaleString()}</TableCell>
+                    <TableCell>₹{(invoice.total - (invoice.paid_amount || 0)).toLocaleString()}</TableCell>
+                    <TableCell>
+                      <Badge variant={invoice.status === 'paid' ? 'default' : 'secondary'}>
+                        {invoice.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setSelectedInvoiceForRefund(invoice);
+                          setInvoiceSelectionOpen(false);
+                          setRefundDialogOpen(true);
+                        }}
+                        className="bg-yellow-600 hover:bg-yellow-700 text-white"
+                      >
+                        <RotateCcw className="h-4 w-4 mr-1" />
+                        Refund
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              );
+            })()}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Refund Dialog */}
       <RefundDialog
         isOpen={refundDialogOpen}
-        onClose={() => setRefundDialogOpen(false)}
+        onClose={() => {
+          setRefundDialogOpen(false);
+          setSelectedInvoiceForRefund(null);
+        }}
         invoice={selectedInvoiceForRefund}
         onRefundCreated={fetchData}
       />
@@ -5062,7 +5359,24 @@ export function SalesOrderInvoiceManager() {
                         <SelectValue placeholder="Select expense category" />
                       </SelectTrigger>
                       <SelectContent className="max-h-60">
-                        {/* Owner's Drawings categories first */}
+                        {/* Cash Management categories first */}
+                        <div className="border-b pb-2 mb-2">
+                          <div className="px-2 py-1 text-xs font-semibold text-green-600 bg-green-50">
+                            CASH MANAGEMENT
+                          </div>
+                          {Object.entries(subcategoryMap)
+                            .filter(([category, details]) => category && details.category === "Cash Management")
+                            .map(([category, details]) => (
+                              <SelectItem key={category} value={category}>
+                                <div className="flex flex-col">
+                                  <span className="text-green-700 font-medium">{category}</span>
+                                  <span className="text-xs text-green-500">Asset Transfer: {details.accountCode}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                        </div>
+
+                        {/* Owner's Drawings categories */}
                         <div className="border-b pb-2 mb-2">
                           <div className="px-2 py-1 text-xs font-semibold text-purple-600 bg-purple-50">
                             OWNER&apos;S DRAWINGS
@@ -5084,7 +5398,7 @@ export function SalesOrderInvoiceManager() {
                           BUSINESS EXPENSES
                         </div>
                         {Object.entries(subcategoryMap)
-                          .filter(([category, details]) => category && details.category !== "Owner's Drawings")
+                          .filter(([category, details]) => category && details.category !== "Owner's Drawings" && details.category !== "Cash Management")
                           .map(([category, details]) => (
                             <SelectItem key={category} value={category}>
                               <div className="flex flex-col">
@@ -5099,15 +5413,23 @@ export function SalesOrderInvoiceManager() {
                       <div className={`text-xs p-2 rounded ${
                         subcategoryMap[expenseForm.category as keyof typeof subcategoryMap].category === "Owner's Drawings" 
                           ? "text-purple-700 bg-purple-50 border border-purple-200" 
+                          : subcategoryMap[expenseForm.category as keyof typeof subcategoryMap].category === "Cash Management"
+                          ? "text-green-700 bg-green-50 border border-green-200"
                           : "text-gray-600 bg-blue-50"
                       }`}>
                         <span className="font-medium">Category Info:</span> {subcategoryMap[expenseForm.category as keyof typeof subcategoryMap].category} 
-                        {subcategoryMap[expenseForm.category as keyof typeof subcategoryMap].category === "Owner's Drawings" ? " (Personal/Equity)" : " expense"} | 
+                        {subcategoryMap[expenseForm.category as keyof typeof subcategoryMap].category === "Owner's Drawings" ? " (Personal/Equity)" : 
+                         subcategoryMap[expenseForm.category as keyof typeof subcategoryMap].category === "Cash Management" ? " (Asset Transfer)" : " expense"} | 
                         Account: {subcategoryMap[expenseForm.category as keyof typeof subcategoryMap].accountCode} | 
                         Type: {subcategoryMap[expenseForm.category as keyof typeof subcategoryMap].type}
                         {subcategoryMap[expenseForm.category as keyof typeof subcategoryMap].category === "Owner's Drawings" && (
                           <div className="mt-1 text-xs text-purple-600">
                             💡 This will be recorded as Owner&apos;s Drawing (reduces equity, not business expense)
+                          </div>
+                        )}
+                        {subcategoryMap[expenseForm.category as keyof typeof subcategoryMap].category === "Cash Management" && (
+                          <div className="mt-1 text-xs text-green-600">
+                            💰 This will transfer money from cash to selected bank account (no expense recorded)
                           </div>
                         )}
                       </div>
@@ -5212,19 +5534,66 @@ export function SalesOrderInvoiceManager() {
                     <Label htmlFor="payment_method" className="text-sm font-medium">
                       Payment Method *
                     </Label>
-                    <Select value={expenseForm.payment_method} onValueChange={(value) => setExpenseForm({ ...expenseForm, payment_method: value })} disabled={isCreatingExpense}>
+                    <Select value={expenseForm.payment_method} onValueChange={(value) => setExpenseForm({ ...expenseForm, payment_method: value })} disabled={isCreatingExpense || expenseForm.category === 'Cash to Bank Deposit'}>
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select payment method" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="cash">💵 Cash Payment</SelectItem>
-                        <SelectItem value="bank_transfer">🏦 Bank Transfer</SelectItem>
-                        <SelectItem value="card">💳 Card Payment</SelectItem>
-                        <SelectItem value="cheque">📝 Cheque</SelectItem>
-                        <SelectItem value="online">🌐 Online Payment</SelectItem>
+                        {expenseForm.category !== 'Cash to Bank Deposit' && (
+                          <>
+                            <SelectItem value="bank_transfer">🏦 Bank Transfer</SelectItem>
+                            <SelectItem value="card">💳 Card Payment</SelectItem>
+                            <SelectItem value="cheque">📝 Cheque</SelectItem>
+                            <SelectItem value="online">🌐 Online Payment</SelectItem>
+                          </>
+                        )}
                       </SelectContent>
                     </Select>
+                    {expenseForm.category === 'Cash to Bank Deposit' && (
+                      <div className="text-xs text-green-600 bg-green-50 p-2 rounded">
+                        💰 Bank deposits must be paid from cash only
+                      </div>
+                    )}
                   </div>
+
+                  {/* Bank Selection for Cash to Bank Deposit */}
+                  {expenseForm.category === 'Cash to Bank Deposit' && (
+                    <div className="space-y-2">
+                      <Label htmlFor="deposit_bank" className="text-sm font-medium">
+                        Deposit to Bank Account *
+                      </Label>
+                      <div className="flex gap-2">
+                        <Select value={expenseForm.deposit_bank_id} onValueChange={(value) => setExpenseForm({ ...expenseForm, deposit_bank_id: value })} disabled={isCreatingExpense}>
+                          <SelectTrigger className="flex-1">
+                            <SelectValue placeholder="Select bank for deposit" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {bankAccounts && bankAccounts.length > 0 ? (
+                              bankAccounts.map((account) => (
+                                <SelectItem key={account.id} value={account.id}>
+                                  <div className="flex flex-col">
+                                    <span className="font-medium text-green-700">{account.account_name}</span>
+                                    <span className="text-xs text-gray-500">
+                                      {account.account_number ? `${account.account_number}` : ''} 
+                                      {account.account_type ? ` (${account.account_type})` : ''}
+                                    </span>
+                                  </div>
+                                </SelectItem>
+                              ))
+                            ) : (
+                              <SelectItem value="none" disabled>
+                                No bank accounts available
+                              </SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="text-xs text-green-600 bg-green-50 p-2 rounded">
+                        💡 This deposit will increase the selected bank balance and decrease cash balance
+                      </div>
+                    </div>
+                  )}
 
                   {(expenseForm.payment_method === 'bank_transfer' || expenseForm.payment_method === 'card' || expenseForm.payment_method === 'cheque' || expenseForm.payment_method === 'online') && (
                     <div className="space-y-2">
@@ -5301,8 +5670,18 @@ export function SalesOrderInvoiceManager() {
           <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mt-4">
             <h4 className="font-medium text-blue-900 mb-2">Accounting Impact Preview</h4>
             <div className="text-sm text-blue-800 space-y-1">
-              <p>• <strong>Debit:</strong> {expenseForm.category} (Account: {subcategoryMap[expenseForm.category as keyof typeof subcategoryMap]?.accountCode || 'TBD'}) - ₹{expenseForm.amount || '0.00'}</p>
-              <p>• <strong>Credit:</strong> {expenseForm.payment_method === 'cash' ? 'Cash Account (1010)' : 'Bank Account (1020)'} - ₹{expenseForm.amount || '0.00'}</p>
+              {expenseForm.category === 'Cash to Bank Deposit' ? (
+                <>
+                  <p>• <strong>Debit:</strong> Selected Bank Account (1020) - ₹{expenseForm.amount || '0.00'}</p>
+                  <p>• <strong>Credit:</strong> Cash Account (1010) - ₹{expenseForm.amount || '0.00'}</p>
+                  <p className="text-xs mt-2 text-green-600">💰 This is an asset transfer, not an expense</p>
+                </>
+              ) : (
+                <>
+                  <p>• <strong>Debit:</strong> {expenseForm.category} (Account: {subcategoryMap[expenseForm.category as keyof typeof subcategoryMap]?.accountCode || 'TBD'}) - ₹{expenseForm.amount || '0.00'}</p>
+                  <p>• <strong>Credit:</strong> {expenseForm.payment_method === 'cash' ? 'Cash Account (1010)' : 'Bank Account (1020)'} - ₹{expenseForm.amount || '0.00'}</p>
+                </>
+              )}
               <p className="text-xs mt-2 text-blue-600">Journal entry will be automatically created upon expense submission</p>
             </div>
           </div>
@@ -6973,6 +7352,175 @@ export function SalesOrderInvoiceManager() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Fund Transfer Dialog */}
+      <Dialog open={showFundTransfer} onOpenChange={setShowFundTransfer}>
+        <DialogContent className="sm:max-w-md">
+          <div className="flex items-center gap-3 p-6 border-b">
+            <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
+              <ArrowRightLeft className="h-5 w-5 text-purple-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold">Fund Transfer</h3>
+              <p className="text-sm text-gray-600">Transfer funds between accounts</p>
+            </div>
+          </div>
+
+          <div className="p-6 space-y-4">
+            {/* From Account */}
+            <div className="space-y-2">
+              <Label htmlFor="fromAccount">From Account</Label>
+              <Select
+                value={fundTransfer.fromAccountId}
+                onValueChange={(value) => setFundTransfer({
+                  ...fundTransfer, 
+                  fromAccountId: value
+                })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select source account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {allAccounts.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      <div className="flex items-center gap-2">
+                        {account.type === 'bank' && <Building2 className="h-4 w-4" />}
+                        {account.type === 'upi' && <Smartphone className="h-4 w-4" />}
+                        {account.type === 'cash' && <Banknote className="h-4 w-4" />}
+                        <span>{account.name}</span>
+                        <span className="text-sm text-gray-500">
+                          (₹{account.balance?.toFixed(2)})
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* To Account */}
+            <div className="space-y-2">
+              <Label htmlFor="toAccount">To Account</Label>
+              <Select
+                value={fundTransfer.toAccountId}
+                onValueChange={(value) => setFundTransfer({
+                  ...fundTransfer, 
+                  toAccountId: value
+                })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select destination account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {allAccounts
+                    .filter(account => account.id !== fundTransfer.fromAccountId)
+                    .map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      <div className="flex items-center gap-2">
+                        {account.type === 'bank' && <Building2 className="h-4 w-4" />}
+                        {account.type === 'upi' && <Smartphone className="h-4 w-4" />}
+                        {account.type === 'cash' && <Banknote className="h-4 w-4" />}
+                        <span>{account.name}</span>
+                        <span className="text-sm text-gray-500">
+                          (₹{account.balance?.toFixed(2)})
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Amount */}
+            <div className="space-y-2">
+              <Label htmlFor="amount">Amount</Label>
+              <div className="relative">
+                <IndianRupee className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                <Input
+                  id="amount"
+                  type="number"
+                  placeholder="0.00"
+                  value={fundTransfer.amount}
+                  onChange={(e) => setFundTransfer({...fundTransfer, amount: e.target.value})}
+                  className="pl-9"
+                  step="0.01"
+                  min="0"
+                />
+              </div>
+            </div>
+
+            {/* Description */}
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Input
+                id="description"
+                placeholder="Transfer description (optional)"
+                value={fundTransfer.description}
+                onChange={(e) => setFundTransfer({...fundTransfer, description: e.target.value})}
+              />
+            </div>
+
+            {/* Reference */}
+            <div className="space-y-2">
+              <Label htmlFor="reference">Reference</Label>
+              <Input
+                id="reference"
+                placeholder="Reference number (optional)"
+                value={fundTransfer.reference}
+                onChange={(e) => setFundTransfer({...fundTransfer, reference: e.target.value})}
+              />
+            </div>
+
+            {/* Date */}
+            <div className="space-y-2">
+              <Label htmlFor="date">Date</Label>
+              <Input
+                id="date"
+                type="date"
+                value={fundTransfer.date}
+                onChange={(e) => setFundTransfer({...fundTransfer, date: e.target.value})}
+              />
+            </div>
+
+            {/* Transfer Summary */}
+            {fundTransfer.fromAccountId && fundTransfer.toAccountId && fundTransfer.amount && (
+              <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                <h4 className="font-medium text-sm text-gray-700">Transfer Summary</h4>
+                <div className="text-sm text-gray-600">
+                  <div>From: {allAccounts.find(a => a.id === fundTransfer.fromAccountId)?.name}</div>
+                  <div>To: {allAccounts.find(a => a.id === fundTransfer.toAccountId)?.name}</div>
+                  <div className="font-medium text-gray-900">Amount: ₹{parseFloat(fundTransfer.amount || '0').toFixed(2)}</div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-3 p-6 border-t">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowFundTransfer(false)}
+              className="flex-1"
+              disabled={transferLoading}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleFundTransfer}
+              disabled={
+                !fundTransfer.fromAccountId || 
+                !fundTransfer.toAccountId || 
+                !fundTransfer.amount || 
+                parseFloat(fundTransfer.amount || '0') <= 0 ||
+                transferLoading
+              }
+              className="flex-1 bg-purple-600 hover:bg-purple-700"
+            >
+              {transferLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Transfer Funds
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

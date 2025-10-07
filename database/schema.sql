@@ -975,6 +975,33 @@ CREATE TABLE public.investments (
   CONSTRAINT investments_partner_id_fkey FOREIGN KEY (partner_id) REFERENCES public.partners(id),
   CONSTRAINT investments_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.investment_categories(id)
 );
+CREATE TABLE public.invoice_refunds (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  invoice_id uuid NOT NULL,
+  return_id uuid,
+  refund_amount numeric NOT NULL CHECK (refund_amount > 0::numeric),
+  refund_type character varying NOT NULL CHECK (refund_type::text = ANY (ARRAY['full'::character varying, 'partial'::character varying, 'return_based'::character varying]::text[])),
+  reason text NOT NULL,
+  refund_method character varying NOT NULL CHECK (refund_method::text = ANY (ARRAY['cash'::character varying, 'bank_transfer'::character varying, 'credit_card'::character varying, 'cheque'::character varying, 'adjustment'::character varying]::text[])),
+  bank_account_id uuid,
+  reference_number character varying,
+  status character varying NOT NULL DEFAULT 'pending'::character varying CHECK (status::text = ANY (ARRAY['pending'::character varying, 'approved'::character varying, 'processed'::character varying, 'rejected'::character varying, 'cancelled'::character varying]::text[])),
+  requested_by uuid NOT NULL,
+  approved_by uuid,
+  processed_by uuid,
+  approved_at timestamp without time zone,
+  processed_at timestamp without time zone,
+  created_at timestamp without time zone DEFAULT now(),
+  updated_at timestamp without time zone DEFAULT now(),
+  notes text,
+  CONSTRAINT invoice_refunds_pkey PRIMARY KEY (id),
+  CONSTRAINT invoice_refunds_invoice_id_fkey FOREIGN KEY (invoice_id) REFERENCES public.invoices(id),
+  CONSTRAINT invoice_refunds_return_id_fkey FOREIGN KEY (return_id) REFERENCES public.returns(id),
+  CONSTRAINT invoice_refunds_bank_account_id_fkey FOREIGN KEY (bank_account_id) REFERENCES public.bank_accounts(id),
+  CONSTRAINT invoice_refunds_requested_by_fkey FOREIGN KEY (requested_by) REFERENCES public.users(id),
+  CONSTRAINT invoice_refunds_approved_by_fkey FOREIGN KEY (approved_by) REFERENCES public.users(id),
+  CONSTRAINT invoice_refunds_processed_by_fkey FOREIGN KEY (processed_by) REFERENCES public.users(id)
+);
 CREATE TABLE public.invoices (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   sales_order_id uuid,
@@ -985,6 +1012,8 @@ CREATE TABLE public.invoices (
   paid_amount numeric DEFAULT 0,
   customer_name text,
   waived_amount numeric DEFAULT 0,
+  total_refunded numeric DEFAULT 0 CHECK (total_refunded >= 0::numeric),
+  refund_status character varying DEFAULT 'none'::character varying CHECK (refund_status::text = ANY (ARRAY['none'::character varying, 'partial'::character varying, 'full'::character varying]::text[])),
   CONSTRAINT invoices_pkey PRIMARY KEY (id),
   CONSTRAINT invoices_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id)
 );
@@ -1399,6 +1428,8 @@ CREATE TABLE public.purchase_orders (
   paid_amount numeric DEFAULT 0,
   product_name text,
   sales_order_id uuid,
+  image_url text,
+  remaining_amount numeric DEFAULT (total - paid_amount),
   CONSTRAINT purchase_orders_pkey PRIMARY KEY (id),
   CONSTRAINT purchase_orders_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id),
   CONSTRAINT purchase_orders_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
@@ -1559,7 +1590,7 @@ CREATE TABLE public.rma_requests (
 CREATE TABLE public.role_permissions (
   role_id uuid NOT NULL,
   permission_id uuid NOT NULL,
-  CONSTRAINT role_permissions_pkey PRIMARY KEY (role_id, permission_id),
+  CONSTRAINT role_permissions_pkey PRIMARY KEY (permission_id, role_id),
   CONSTRAINT role_permissions_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(id),
   CONSTRAINT role_permissions_permission_id_fkey FOREIGN KEY (permission_id) REFERENCES public.permissions(id)
 );

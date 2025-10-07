@@ -461,6 +461,9 @@ export const subcategoryMap = {
   "Main Loan": { category: "Owner's Drawings", type: "Equity", accountCode: "3200" },
   "Small Loan": { category: "Owner's Drawings", type: "Equity", accountCode: "3200" },
 
+  // ============= CASH MANAGEMENT =============
+  "Cash to Bank Deposit": { category: "Cash Management", type: "Asset Transfer", accountCode: "1000" },
+
   // ============= DIRECT EXPENSES (Cost of Goods Sold) =============
   // Raw Materials
   "Raw Materials - Wood": { category: "Raw Materials", type: "Direct", accountCode: "5100" },
@@ -592,6 +595,12 @@ export const subcategoryMap = {
   "Electricity": { category: "Administrative", type: "Fixed", accountCode: "6101" },
   "Internet": { category: "Administrative", type: "Fixed", accountCode: "6104" },
   "Utilities": { category: "Administrative", type: "Fixed", accountCode: "6101" },
+
+  // ============= CUSTOMER REFUNDS =============
+  "Invoice Refund": { category: "Customer Refunds", type: "Direct", accountCode: "4200" },
+  "Return Refund": { category: "Customer Refunds", type: "Direct", accountCode: "4201" },
+  "Partial Refund": { category: "Customer Refunds", type: "Direct", accountCode: "4202" },
+  "Full Refund": { category: "Customer Refunds", type: "Direct", accountCode: "4203" },
 };
 
 

@@ -95,10 +95,15 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated }: Refu
 
   const fetchBankAccounts = useCallback(async () => {
     try {
-      const response = await fetch('/api/finance/bank-accounts');
+      // Fetch only BANK type accounts for refunds
+      const response = await fetch('/api/finance/bank-accounts?type=BANK');
       const result = await response.json();
       if (result.success) {
-        setBankAccounts(result.data || []);
+        // Double-check filtering on client side for safety
+        const bankTypeAccounts = (result.data || []).filter(
+          (account: BankAccount) => account.account_type === 'BANK'
+        );
+        setBankAccounts(bankTypeAccounts);
       }
     } catch (error) {
       console.error('Error fetching bank accounts:', error);
@@ -227,11 +232,11 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated }: Refu
         // Notify parent component
         onRefundCreated();
       } else {
-        alert(result.error || 'Failed to create refund request');
+        alert(result.error || 'Failed to process refund');
       }
     } catch (error) {
       console.error('Error creating refund:', error);
-      alert('Failed to create refund request');
+      alert('Failed to process refund');
     } finally {
       setLoading(false);
     }
@@ -249,6 +254,8 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated }: Refu
         return <Badge variant="outline" className="bg-red-50 text-red-700"><XCircle className="h-3 w-3 mr-1" />Rejected</Badge>;
       case 'cancelled':
         return <Badge variant="outline" className="bg-gray-50 text-gray-700"><XCircle className="h-3 w-3 mr-1" />Cancelled</Badge>;
+      case 'reversed':
+        return <Badge variant="outline" className="bg-orange-50 text-orange-700"><RotateCcw className="h-3 w-3 mr-1" />Reversed</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -283,7 +290,7 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated }: Refu
             <div>
               <DialogTitle className="flex items-center gap-2">
                 <DollarSign className="h-5 w-5" />
-                {currentView === 'create' ? 'Create Refund Request' : 'Invoice Refunds'}
+                {currentView === 'create' ? 'Process Refund' : 'Invoice Refunds'}
               </DialogTitle>
               <p className="text-sm text-gray-600 mt-1">
                 Invoice: {invoice.id.slice(0, 8)} • Customer: {invoice.customer_name}
@@ -351,7 +358,7 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated }: Refu
                         className="mt-4"
                         onClick={() => setCurrentView('create')}
                       >
-                        Create First Refund Request
+                        Create First Refund
                       </Button>
                     )}
                   </CardContent>
@@ -387,21 +394,9 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated }: Refu
                             </div>
                           </div>
                           
-                          {/* Action Buttons */}
+                          {/* Action Buttons - Only show reversal for processed refunds */}
                           <div className="flex flex-col gap-2 ml-4">
-                            {refund.status === 'approved' && (refund.refund_method === 'bank_transfer' || refund.refund_method === 'cheque') && (
-                              <Button
-                                size="sm"
-                                className="bg-green-600 hover:bg-green-700 text-white"
-                                onClick={() => handleManualRefundProcessing(refund.id, 'process_refund')}
-                                disabled={loading}
-                              >
-                                <CheckCircle className="h-3 w-3 mr-1" />
-                                Process Bank Refund
-                              </Button>
-                            )}
-                            
-                            {refund.status === 'processed' && (refund.refund_method === 'bank_transfer' || refund.refund_method === 'cheque') && (
+                            {refund.status === 'processed' && (
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -414,21 +409,9 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated }: Refu
                               </Button>
                             )}
                             
-                            {refund.status === 'approved' && refund.refund_method === 'cash' && (
-                              <Button
-                                size="sm"
-                                className="bg-blue-600 hover:bg-blue-700 text-white"
-                                onClick={() => handleManualRefundProcessing(refund.id, 'process_refund')}
-                                disabled={loading}
-                              >
-                                <CheckCircle className="h-3 w-3 mr-1" />
-                                Mark as Processed
-                              </Button>
-                            )}
-                            
-                            {refund.status === 'pending' && (
-                              <div className="text-xs text-gray-500 text-center">
-                                Awaiting Approval
+                            {refund.status === 'reversed' && (
+                              <div className="text-xs text-red-600 text-center font-medium">
+                                Refund Reversed
                               </div>
                             )}
                           </div>
@@ -493,7 +476,7 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated }: Refu
                 id="reason"
                 value={formData.reason}
                 onChange={(e) => setFormData({...formData, reason: e.target.value})}
-                placeholder="Please explain the reason for this refund request..."
+                placeholder="Please explain the reason for this refund..."
                 required
                 rows={3}
               />
@@ -594,7 +577,7 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated }: Refu
                 type="submit"
                 disabled={loading}
               >
-                {loading ? 'Creating...' : 'Create Refund Request'}
+                {loading ? 'Processing...' : 'Process Refund'}
               </Button>
             </DialogFooter>
           </form>

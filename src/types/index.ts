@@ -810,6 +810,8 @@ export interface BillingItem {
   tax: number;
   isCustom: boolean;
   globalDiscountApplied?: number; // Track global discount applied to this item
+  return_status?: 'none' | 'partial' | 'full'; // Return status for the item
+  returned_quantity?: number; // Number of items returned
 }
 
 export interface PaymentMethod {

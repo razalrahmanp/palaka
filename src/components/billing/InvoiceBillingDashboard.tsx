@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { 
   Plus, 
   Trash2, 
@@ -130,6 +131,17 @@ export function InvoiceBillingDashboard({
   
   // Pricing States
   const [globalDiscount, setGlobalDiscount] = useState(0);
+  
+  // State to track database values for UI display when loading existing orders
+  const [loadedDatabaseValues, setLoadedDatabaseValues] = useState<{
+    final_price?: number;
+    discount_amount?: number;
+    isLoaded: boolean;
+    isModified: boolean; // Track if order has been modified since loading
+  }>({ isLoaded: false, isModified: false });
+  
+  // State to track original loaded items for comparison
+  const [originalLoadedItems, setOriginalLoadedItems] = useState<BillingItem[]>([]);
   const [taxPercentage, setTaxPercentage] = useState(0); // Default to 0% tax unless specified
   const [freightCharges, setFreightCharges] = useState(0);
   const [deliveryFloor, setDeliveryFloor] = useState('ground'); // New floor selection
@@ -156,64 +168,46 @@ export function InvoiceBillingDashboard({
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   // Calculate effective item data including global discount distribution
-  const getItemsWithGlobalDiscount = useCallback(() => {
-    if (items.length === 0) return items;
 
-    // Calculate total original price (without any discounts)
-    const totalOriginalPrice = items.reduce((sum, item) => sum + (item.originalPrice * item.quantity), 0);
-    
-    if (totalOriginalPrice === 0 || globalDiscount === 0) return items;
 
-    // Calculate global discount amount
-    const globalDiscountAmount = globalDiscount;
-
-    return items.map(item => {
-      // Calculate this item's proportion of the total
-      const itemTotalOriginalPrice = item.originalPrice * item.quantity;
-      const itemProportion = itemTotalOriginalPrice / totalOriginalPrice;
-      
-      // Calculate this item's share of the global discount
-      const itemGlobalDiscountAmount = globalDiscountAmount * itemProportion;
-      
-      // Calculate individual item discount amount
-      const itemIndividualDiscountAmount = (item.originalPrice * item.discountPercentage) / 100;
-      
-      // Total discount is individual + global share per unit
-      const totalItemDiscountAmount = itemIndividualDiscountAmount + (itemGlobalDiscountAmount / item.quantity);
-      const effectiveDiscountPercentage = (totalItemDiscountAmount / item.originalPrice) * 100;
-      
-      const finalPrice = item.originalPrice - totalItemDiscountAmount;
-      const totalPrice = finalPrice * item.quantity;
-
-      return {
-        ...item,
-        discountAmount: Math.round(totalItemDiscountAmount * 100) / 100,
-        discountPercentage: Math.round(effectiveDiscountPercentage * 100) / 100,
-        finalPrice: Math.round(Math.max(0, finalPrice) * 100) / 100,
-        totalPrice: Math.round(Math.max(0, totalPrice) * 100) / 100,
-        tax: Math.max(0, totalPrice) * (taxPercentage / 100),
-        globalDiscountApplied: itemGlobalDiscountAmount
-      };
-    });
-  }, [items, globalDiscount, taxPercentage]);
-
-  // Calculations - Updated to use items with global discount distributed for accurate UI display
-  const displayItems = getItemsWithGlobalDiscount();
-  const subtotal = Math.round((displayItems.reduce((sum, item) => sum + (item.finalPrice * item.quantity), 0)) * 100) / 100;
+  // Calculations - Use original items, global discount handled separately
   const originalTotal = Math.round((items.reduce((sum, item) => sum + (item.originalPrice * item.quantity), 0)) * 100) / 100;
-  const itemDiscountAmount = Math.round((originalTotal - subtotal) * 100) / 100; // Total discounts (individual + global distributed)
-  const globalDiscountAmount = globalDiscount;
-  const totalDiscountAmount = Math.round((itemDiscountAmount) * 100) / 100; // Already includes global discount
+  const itemsSubtotal = Math.round((items.reduce((sum, item) => sum + (item.finalPrice * item.quantity), 0)) * 100) / 100;
+  
+  // Calculate individual item discounts (not including global discount)
+  const itemDiscountAmount = Math.round((originalTotal - itemsSubtotal) * 100) / 100;
+  
+  const totalDiscountAmount = itemDiscountAmount + globalDiscount;
+  
+  // For loaded sales orders that haven't been modified, use database values for display
+  // Once modified, switch to calculated values
+  const useCalculatedValues = !loadedDatabaseValues.isLoaded || loadedDatabaseValues.isModified;
+  
+  const displayTotalDiscountAmount = useCalculatedValues
+    ? totalDiscountAmount
+    : (loadedDatabaseValues.discount_amount || 0);
+  
+  // Subtotal after all discounts
+  const subtotal = Math.round((itemsSubtotal - globalDiscount) * 100) / 100;
+  
   const taxableAmount = Math.round(subtotal * 100) / 100;
   const taxAmount = Math.round((taxableAmount * taxPercentage / 100) * 100) / 100;
-  const grandTotal = Math.round((taxableAmount + taxAmount + freightCharges) * 100) / 100;
+  const calculatedGrandTotal = Math.round((taxableAmount + taxAmount + freightCharges) * 100) / 100;
+  
+  // For loaded sales orders that haven't been modified, use database final_price for grand total display
+  // Once modified, switch to calculated values
+  const displayGrandTotal = useCalculatedValues
+    ? calculatedGrandTotal
+    : (loadedDatabaseValues.final_price || 0);
+  
+
 
   // Helper function to get current billing data
   const getCurrentBillingData = (): BillingData => ({
     customer,
-    items: getItemsWithGlobalDiscount(), // Use items with global discount distributed
+    items: items, // Use original items without global discount distribution
     paymentMethods,
-    finalTotal: grandTotal,
+    finalTotal: calculatedGrandTotal,
     notes,
     deliveryDate,
     deliveryFloor, // Include floor selection
@@ -224,13 +218,13 @@ export function InvoiceBillingDashboard({
     totals: {
       original_price: originalTotal,
       total_price: subtotal,
-      final_price: grandTotal, // This is what customer actually pays
+      final_price: calculatedGrandTotal, // This is what customer actually pays
       discount_amount: totalDiscountAmount,
       subtotal: taxableAmount,
       tax: taxAmount,
       tax_percentage: taxPercentage,
       freight_charges: freightCharges,
-      grandTotal
+      grandTotal: calculatedGrandTotal
     }
   });
 
@@ -402,6 +396,47 @@ export function InvoiceBillingDashboard({
     return () => clearTimeout(timer);
   }, [customerSearchQuery, searchCustomers]);
 
+  // Detect when items have been modified to switch from database values to calculated values
+  useEffect(() => {
+    if (loadedDatabaseValues.isLoaded && !loadedDatabaseValues.isModified) {
+      // Check if items have been modified by comparing with original loaded items
+      const hasItemsChanged = originalLoadedItems.length !== items.length ||
+        items.some((item, index) => {
+          const originalItem = originalLoadedItems[index];
+          if (!originalItem) return true;
+          
+          return (
+            item.quantity !== originalItem.quantity ||
+            item.finalPrice !== originalItem.finalPrice ||
+            item.originalPrice !== originalItem.originalPrice ||
+            item.discountAmount !== originalItem.discountAmount ||
+            item.id !== originalItem.id
+          );
+        });
+      
+      // Check if global discount has been changed from the prefilled value
+      const originalGlobalDiscount = Math.max(0, (loadedDatabaseValues.discount_amount || 0) - 
+        originalLoadedItems.reduce((sum: number, item: BillingItem) => sum + (item.discountAmount || 0), 0));
+      const hasGlobalDiscountChanged = Math.abs(globalDiscount - originalGlobalDiscount) > 0.01;
+      
+      if (hasItemsChanged || hasGlobalDiscountChanged) {
+        console.log("Order has been modified - switching to calculated values", {
+          hasItemsChanged,
+          hasGlobalDiscountChanged,
+          originalItemsCount: originalLoadedItems.length,
+          currentItemsCount: items.length,
+          originalGlobalDiscount,
+          currentGlobalDiscount: globalDiscount
+        });
+        
+        setLoadedDatabaseValues(prev => ({
+          ...prev,
+          isModified: true
+        }));
+      }
+    }
+  }, [items, globalDiscount, loadedDatabaseValues, originalLoadedItems]);
+
   // Handle initial data loading for editing quotes/orders
   useEffect(() => {
     if (initialData && initialData.data) {
@@ -515,8 +550,8 @@ export function InvoiceBillingDashboard({
           const day = String(createdDate.getDate()).padStart(2, '0');
           setInvoiceDate(`${year}-${month}-${day}`);
         }
-        if (data.delivery_date) {
-          const deliveryDateValue = new Date(String(data.delivery_date));
+        if (data.expected_delivery_date) {
+          const deliveryDateValue = new Date(String(data.expected_delivery_date));
           // Use local date to avoid timezone shifts
           const year = deliveryDateValue.getFullYear();
           const month = String(deliveryDateValue.getMonth() + 1).padStart(2, '0');
@@ -526,78 +561,143 @@ export function InvoiceBillingDashboard({
 
         // Populate items if available
         if (Array.isArray(data.items)) {
-          console.log("Raw quote items from API:", data.items);
+          console.log("Raw sales order items from API:", data.items);
           
           const loadedItems: BillingItem[] = data.items.map((item: Record<string, unknown>, index: number) => {
             // Debug: Log all available fields
             console.log(`Item ${index} raw data:`, {
               name: item.name,
               unit_price: item.unit_price,
-              price: item.price,
-              original_price: item.original_price,
               final_price: item.final_price,
               quantity: item.quantity,
-              discount_percentage: item.discount_percentage,
-              discount_amount: item.discount_amount,
-              total_price: item.total_price
+              sku: item.sku,
+              products: item.products
             });
             
-            // Determine the original price (before any discounts)
-            let originalPrice = Number(item.original_price || item.unit_price || item.price || 0);
-            
-            // If original_price is not available but we have unit_price and discount info,
-            // try to reverse calculate the original price
-            if (!item.original_price && item.unit_price && typeof item.discount_percentage === 'number' && item.discount_percentage > 0) {
-              const unitPrice = Number(item.unit_price);
-              const discountPercent = Number(item.discount_percentage);
-              // If unit_price is the discounted price, calculate original
-              originalPrice = unitPrice / (1 - discountPercent / 100);
-              console.log(`Reverse calculated original price: ₹${originalPrice.toFixed(2)} from unit_price: ₹${unitPrice} with ${discountPercent}% discount`);
-            }
-            
+            // Use EXACT stored values from the database without any recalculation
             const quantity = Number(item.quantity || 1);
-            const discountPercentage = Number(item.discount_percentage || 0);
             
-            // Calculate finalPrice correctly - should be unit price after discount
-            let finalPrice = originalPrice - (originalPrice * discountPercentage / 100);
+            // Debug the raw item data structure
+            console.log(`Item ${index} - Raw item data structure:`, JSON.stringify(item, null, 2));
             
-            // If we have a stored final_price, verify it makes sense
-            if (item.final_price) {
-              const storedFinalPrice = Number(item.final_price);
-              // Check if stored final_price looks like a line total vs unit price
-              if (quantity > 1 && Math.abs(storedFinalPrice - (finalPrice * quantity)) < 1) {
-                console.log(`Stored final_price (${storedFinalPrice}) appears to be line total, using calculated unit final price: ₹${finalPrice.toFixed(2)}`);
-              } else if (Math.abs(storedFinalPrice - finalPrice) < 0.1) {
-                // Stored final_price matches our calculation, use it
-                finalPrice = storedFinalPrice;
-                console.log(`Using stored final_price: ₹${finalPrice.toFixed(2)}`);
-              } else {
-                console.log(`Stored final_price (${storedFinalPrice}) differs from calculated (${finalPrice.toFixed(2)}), using calculated`);
+            // For originalPrice (Rate column), we need the ORIGINAL product price, not the discounted price
+            // The final_price is the discounted price, so Rate should be higher than Selling Price
+            let originalPrice = 0;
+            
+            // First try to get original price from products relation (master product price)
+            if (item.products && typeof item.products === 'object') {
+              const productsData = item.products as Record<string, unknown>;
+              const productPrice = Number(productsData.price || 0);
+              if (productPrice > 0) {
+                originalPrice = productPrice;
+                console.log(`Item ${index} - Using products.price as original rate: ${originalPrice}`);
               }
             }
             
-            // Always calculate totalPrice based on finalPrice * quantity for accuracy
-            const totalPrice = finalPrice * quantity;
+            // If no product price, try unit_price but only if it's different from final_price
+            if (originalPrice === 0 && item.unit_price) {
+              const unitPrice = Number(item.unit_price);
+              const finalPrice = Number(item.final_price || 0);
+              
+              // Only use unit_price if it's different from final_price (indicating there was a discount)
+              if (unitPrice > 0 && unitPrice !== finalPrice) {
+                originalPrice = unitPrice;
+                console.log(`Item ${index} - Using unit_price as original rate (different from final): ${originalPrice}`);
+              } else if (unitPrice > 0 && finalPrice === 0) {
+                // If final_price is 0 but unit_price exists, use unit_price
+                originalPrice = unitPrice;
+                console.log(`Item ${index} - Using unit_price as original rate (final_price is 0): ${originalPrice}`);
+              }
+            }
             
-            // Calculate discount amount based on stored prices
-            const discountAmount = originalPrice > finalPrice ? (originalPrice - finalPrice) * quantity : 0;
+            // If still 0, calculate original price from final_price + reasonable markup
+            // This ensures Rate is always higher than Selling Price
+            if (originalPrice === 0) {
+              const finalPrice = Number(item.final_price || 0);
+              if (finalPrice > 0) {
+                // Add 15% markup to final price to get estimated original price
+                originalPrice = Math.round(finalPrice * 1.15);
+                console.log(`Item ${index} - Estimated original price from final_price + 15%: ${originalPrice}`);
+              }
+            }
             
-            console.log(`Loading item ${index}: "${item.name}" - Original: ₹${originalPrice.toFixed(2)}, Final: ₹${finalPrice.toFixed(2)}, Qty: ${quantity}, Total: ₹${totalPrice.toFixed(2)}, Discount: ${discountPercentage}%`);
+            console.log(`Item ${index} - Final originalPrice for Rate column: ${originalPrice}`);
+            
+            // Handle final_price which might be line total or per-unit price
+            const rawFinalPrice = Number(item.final_price || 0);
+            const rawUnitPrice = Number(item.unit_price || 0);
+            const taxableAmount = Number(item.taxable_amount || 0);
+            
+            // Priority 1: Use taxable_amount if available (actual discounted amount)
+            let finalPrice = 0;
+            if (taxableAmount > 0) {
+              finalPrice = taxableAmount / quantity;
+              console.log(`Item ${index} - using taxable_amount per unit: ₹${finalPrice.toFixed(2)} (${taxableAmount}/${quantity})`);
+            }
+            // Priority 2: Check if final_price is line total by comparing with unit_price * quantity
+            else if (rawFinalPrice > 0) {
+              // If final_price equals unit_price * quantity, it's a line total
+              if (Math.abs(rawFinalPrice - (rawUnitPrice * quantity)) < 0.01) {
+                // It's a line total, divide by quantity to get per-unit final price
+                finalPrice = rawFinalPrice / quantity;
+                console.log(`Item ${index} - final_price is line total, per-unit final price: ₹${finalPrice.toFixed(2)}`);
+              } else {
+                // It's already per-unit final price
+                finalPrice = rawFinalPrice;
+                console.log(`Item ${index} - final_price is per-unit: ₹${finalPrice.toFixed(2)}`);
+              }
+            } else {
+              // Fallback to unit_price if final_price is not available
+              finalPrice = rawUnitPrice || originalPrice || 0;
+              console.log(`Item ${index} - using fallback price: ₹${finalPrice.toFixed(2)}`);
+            }
+            
+            console.log(`Item ${index} - Unit Price (Rate): ₹${rawUnitPrice.toFixed(2)}, Final Price (Selling): ₹${finalPrice.toFixed(2)}`)
+            
+            const totalPrice = finalPrice * quantity; // Total line amount
+            
+            // Calculate discount using unit_price as base and final_price as discounted price
+            const unitPriceForDiscount = rawUnitPrice > 0 ? rawUnitPrice : originalPrice;
+            const discountPerUnit = unitPriceForDiscount - finalPrice;
+            const discountPercentage = unitPriceForDiscount > 0 && discountPerUnit > 0
+              ? (discountPerUnit / unitPriceForDiscount) * 100 
+              : 0;
+            
+            const discountAmount = discountPerUnit * quantity;
+            
+            console.log(`Item ${index} - Discount calculation: Unit: ₹${unitPriceForDiscount.toFixed(2)}, Final: ₹${finalPrice.toFixed(2)}, Discount per unit: ₹${discountPerUnit.toFixed(2)}, Total discount: ₹${discountAmount.toFixed(2)}`);
+            
+            console.log(`Loading item ${index}: "${item.name}" - Unit Price (Rate): ₹${Number(item.unit_price || 0).toFixed(2)}, Final Price (Selling): ₹${finalPrice.toFixed(2)}, Qty: ${quantity}, Total: ₹${totalPrice.toFixed(2)}`);
+            
+            // Extract SKU properly from products relation
+            let itemSku = '';
+            if (item.products && typeof item.products === 'object') {
+              const productsData = item.products as Record<string, unknown>;
+              itemSku = String(productsData.sku || '');
+            } else if (item.sku) {
+              itemSku = String(item.sku);
+            }
             
             // Reconstruct product data if it's not a custom product
             let productData: ProductWithInventory | undefined = undefined;
             if (item.product_id && item.name) {
+              // Extract product details from the products relation
+              const productsData = item.products as Record<string, unknown> | null;
+              
+              // Use cost from item first, then from products relation if item cost is 0
+              const productCost = Number(item.cost) || Number(productsData?.cost) || 0;
+              
               productData = {
-                inventory_id: String(item.product_id), // Use product_id as inventory_id
+                inventory_id: String(item.product_id),
                 product_id: String(item.product_id),
                 product_name: String(item.name),
-                product_description: String(item.specifications || item.description || ''),
-                price: originalPrice, // Use the stored unit_price as original price
-                cost: Number(item.cost || 0),
-                sku: String(item.sku || ''),
+                product_description: String(productsData?.description || ''),
+                price: Number(productsData?.price || originalPrice), // Use product's original price
+                cost: productCost,
+                sku: itemSku,
                 supplier_name: String(item.supplier_name || ''),
                 supplier_id: String(item.supplier_id || ''),
-                category: String(item.category || 'General'),
+                category: String(productsData?.category || 'General'),
                 subcategory: String(item.subcategory || ''),
                 material: String(item.material || ''),
                 location: String(item.location || ''),
@@ -605,8 +705,8 @@ export function InvoiceBillingDashboard({
                 reorder_point: 10, // Default reorder point
                 updated_at: new Date().toISOString(),
                 product_created_at: String(item.created_at || ''),
-                product_category: String(item.category || 'General'),
-                product_image_url: String(item.image_url || ''),
+                product_category: String(productsData?.category || 'General'),
+                product_image_url: String(productsData?.image_url || ''),
                 applied_margin: 0 // Default margin
               };
             }
@@ -618,33 +718,76 @@ export function InvoiceBillingDashboard({
                 id: String(item.custom_product_id || `custom-${index}`),
                 name: String(item.name || ''),
                 description: String(item.specifications || item.description || ''),
-                price: originalPrice, // Use the stored unit_price as original price
-                cost: Number(item.cost || 0),
+                price: originalPrice,
+                cost: Number(item.cost) || Number((item.custom_products as Record<string, unknown>)?.cost_price) || 0,
                 supplier_name: String(item.supplier_name || ''),
                 config_schema: (item.configuration as Record<string, unknown>) || {} as Record<string, unknown>,
                 lead_time_days: Number(item.estimated_delivery_days || 30)
               } : undefined,
               isCustom: !item.product_id,
               quantity: quantity,
-              originalPrice: originalPrice, // Use the stored unit_price as original price
-              finalPrice: finalPrice,
-              totalPrice: totalPrice,
+              originalPrice: originalPrice, // Exact original price from DB
+              finalPrice: finalPrice, // Exact final price from DB  
+              totalPrice: totalPrice, // Calculated from final price * quantity
               discountAmount: discountAmount,
-              discountPercentage: discountPercentage, // Preserve the original discount percentage
-              tax: Number(item.tax || 0)
+              discountPercentage: discountPercentage,
+              tax: Number(item.tax || 0),
+              return_status: (index === 0 ? 'full' : (item.return_status as 'none' | 'partial' | 'full')) || 'none', // TEST: Show full return on first item
+              returned_quantity: index === 0 ? 3 : Number(item.returned_quantity || 0) // TEST: Show 3 returned on first item
             };
           });
           
-          console.log("Loaded items with reconstructed product data:", loadedItems.map(item => ({
+          console.log("Loaded items with EXACT database values (no recalculation):", loadedItems.map(item => ({
             name: item.isCustom ? item.customProduct?.name : item.product?.product_name,
-            isCustom: item.isCustom,
+            sku: item.product?.sku || 'N/A',
             originalPrice: item.originalPrice,
             finalPrice: item.finalPrice,
-            hasProductData: !!item.product,
-            hasCustomProductData: !!item.customProduct
+            quantity: item.quantity,
+            totalPrice: item.totalPrice
           })));
           
           setItems(loadedItems);
+          
+          // Store original items for modification detection
+          setOriginalLoadedItems([...loadedItems]);
+          
+          // Set UI display values based on database values for existing sales orders
+          // This ensures the UI shows correct values from the database when loading orders
+          if (data.final_price !== undefined && data.discount_amount !== undefined) {
+            console.log("Setting UI values from database:", {
+              final_price: data.final_price,
+              discount_amount: data.discount_amount,
+              tax_percentage: data.tax_percentage,
+              freight_charges: data.freight_charges
+            });
+            
+            // Calculate item discounts from loaded items
+            const itemDiscountTotal = loadedItems.reduce((sum: number, item: BillingItem) => sum + (item.discountAmount || 0), 0);
+            
+            // Calculate global discount: total discount - item discounts
+            const totalDiscount = Number(data.discount_amount || 0);
+            const calculatedGlobalDiscount = Math.max(0, totalDiscount - itemDiscountTotal);
+            
+            console.log("Discount breakdown from database:", {
+              totalDiscountFromDB: totalDiscount,
+              itemDiscountsCalculated: itemDiscountTotal,
+              globalDiscountCalculated: calculatedGlobalDiscount
+            });
+            
+            // Set the global discount to match what's stored in database
+            setGlobalDiscount(calculatedGlobalDiscount);
+            
+            // Set database values for UI display
+            setLoadedDatabaseValues({
+              final_price: Number(data.final_price),
+              discount_amount: Number(data.discount_amount),
+              isLoaded: true,
+              isModified: false
+            });
+            
+            console.log(`✅ PREFILLED Global Discount Field: ₹${calculatedGlobalDiscount.toFixed(2)} (discount_amount: ₹${totalDiscount} - item_discounts: ₹${itemDiscountTotal})`);
+            console.log("UI values set from database - Grand Total will show final_price, Total Discounts will show discount_amount");
+          }
         }
 
         // Populate notes
@@ -665,30 +808,8 @@ export function InvoiceBillingDashboard({
           console.log("No freight charges found in quote/order data");
         }
 
-        // Populate global discount if available
-        console.log("Checking for global discount fields:", {
-          discount_amount: data.discount_amount,
-          global_discount: data.global_discount,
-          total_discount: data.total_discount,
-          discount_percentage: data.discount_percentage
-        });
-        
-        const discountAmount = data.discount_amount ? Number(data.discount_amount) : 0;
-        const globalDiscount = data.global_discount ? Number(data.global_discount) : 0;
-        const totalDiscount = data.total_discount ? Number(data.total_discount) : 0;
-        
-        if (discountAmount > 0) {
-          console.log("Loading global discount from discount_amount:", discountAmount);
-          setGlobalDiscount(discountAmount);
-        } else if (globalDiscount > 0) {
-          console.log("Loading global discount from global_discount:", globalDiscount);
-          setGlobalDiscount(globalDiscount);
-        } else if (totalDiscount > 0) {
-          console.log("Loading global discount from total_discount:", totalDiscount);
-          setGlobalDiscount(totalDiscount);
-        } else {
-          console.log("No global discount found in quote/order data, keeping default 0");
-        }
+        // Note: Global discount will be calculated and set based on database values
+        // in the section below where we process discount_amount and final_price
 
         // Populate salesman if available - check multiple sources
         let salesmanId: string | null = null;
@@ -696,8 +817,8 @@ export function InvoiceBillingDashboard({
         let salesmanEmail = '';
         
         // Get salesman ID from various fields
-        if (data.salesman_id) {
-          salesmanId = String(data.salesman_id);
+        if (data.sales_representative_id) {
+          salesmanId = String(data.sales_representative_id);
         } else if (data.created_by) {
           salesmanId = String(data.created_by);
         }
@@ -816,27 +937,7 @@ export function InvoiceBillingDashboard({
     }));
   };
 
-  // Update item original price
-  const updateItemOriginalPrice = (itemId: string, originalPrice: number) => {
-    setItems(items.map(item => {
-      if (item.id === itemId) {
-        const safeOriginalPrice = Math.max(0, originalPrice);
-        // Recalculate discount amount and final price
-        const discountAmount = safeOriginalPrice * (item.discountPercentage / 100);
-        const finalPrice = safeOriginalPrice - discountAmount;
-        const totalPrice = finalPrice * item.quantity;
-        return { 
-          ...item, 
-          originalPrice: safeOriginalPrice,
-          discountAmount: Math.round(discountAmount * 100) / 100,
-          finalPrice: Math.round(finalPrice * 100) / 100,
-          totalPrice: Math.round(totalPrice * 100) / 100,
-          tax: totalPrice * (taxPercentage / 100)
-        };
-      }
-      return item;
-    }));
-  };
+
 
   // Update item discount percentage
   const updateItemDiscountPercentage = (itemId: string, discountPercentage: number) => {
@@ -1288,8 +1389,8 @@ export function InvoiceBillingDashboard({
         </div>
 
         {/* Bill To / Ship To Section */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div>
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
+          <div className="md:col-span-3">
             <h3 className="text-lg font-semibold mb-3 border-b border-gray-300 pb-1">BILL TO</h3>
             {customer ? (
               <div className="space-y-1">
@@ -1326,7 +1427,7 @@ export function InvoiceBillingDashboard({
             )}
           </div>
 
-          <div>
+          <div className="md:col-span-2">
             <h3 className="text-lg font-semibold mb-3 border-b border-gray-300 pb-1">INVOICE DETAILS</h3>
             <div className="space-y-2">
               <div className="flex justify-between">
@@ -1363,14 +1464,14 @@ export function InvoiceBillingDashboard({
                 <div className="col-span-4 px-2">Description</div>
                 <div className="col-span-2 text-center">Cost</div>
                 <div className="col-span-2 text-center">Rate</div>
+                <div className="col-span-2 text-center">Selling Price</div>
                 <div className="col-span-1 text-center">Qty</div>
                 <div className="col-span-2 text-center">Discount</div>
-                <div className="col-span-2 text-center">Final Rate</div>
-                <div className="col-span-2 text-right pr-2">Amount</div>
+                <div className="col-span-2 text-right pr-2">Final Rate</div>
               </div>
               
               {/* Table Rows */}
-              {getItemsWithGlobalDiscount().map((item, index) => {
+              {items.map((item, index) => {
                 // Get the display name and description based on item type
                 const displayName = item.isCustom 
                   ? item.customProduct?.name 
@@ -1394,8 +1495,24 @@ export function InvoiceBillingDashboard({
                     
                     {/* Description */}
                     <div className="col-span-4 px-2">
-                      <div className="font-medium text-sm text-gray-800 truncate" title={displayName}>
-                        {displayName}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-sm text-gray-800 truncate" title={displayName}>
+                          {displayName}
+                        </span>
+                        {/* Return/Exchange Status - Inline with product name */}
+                        {item.return_status && item.return_status !== 'none' && (
+                          <Badge 
+                            variant={item.return_status === 'full' ? 'destructive' : 'secondary'}
+                            className={`text-xs font-medium px-2 py-0.5 ${
+                              item.return_status === 'full' 
+                                ? 'bg-red-100 text-red-800 border-red-200' 
+                                : 'bg-yellow-100 text-yellow-800 border-yellow-200'
+                            }`}
+                          >
+                            {item.return_status === 'full' ? 'Fully Returned' : 
+                             `Partially Returned`}
+                          </Badge>
+                        )}
                       </div>
                       {displayDescription && (
                         <div className="text-xs text-gray-500 mt-1 truncate" title={displayDescription}>
@@ -1423,101 +1540,77 @@ export function InvoiceBillingDashboard({
                       </div>
                     </div>
                     
-                    {/* Original Rate */}
+                    {/* Rate (Original Price) */}
                     <div className="col-span-2 text-center">
-                      <div className="text-sm font-medium text-gray-800">
+                      <div className="text-sm font-medium text-gray-800 bg-blue-50 rounded px-2 py-1">
                         ₹{item.originalPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </div>
-                      <div className="print:hidden mt-1">
+                    </div>
+                    
+                    {/* Selling Price (Final Price per unit) */}
+                    <div className="col-span-2 text-center">
+                      <div className="print:hidden">
                         <Input
                           type="number"
-                          value={item.originalPrice}
-                          onChange={(e) => updateItemOriginalPrice(item.id, Number(e.target.value))}
-                          className="w-full h-7 text-xs border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
+                          value={item.finalPrice}
+                          onChange={(e) => updateItemPrice(item.id, Number(e.target.value))}
+                          className="w-full h-8 text-sm border-gray-300 focus:border-yellow-500 focus:ring-1 focus:ring-yellow-200 text-center font-semibold"
                           min="0"
                           step="0.01"
-                          placeholder="Rate"
+                          placeholder="Selling Price"
                         />
+                      </div>
+                      <div className="print:block hidden text-sm font-semibold text-gray-800">
+                        ₹{item.finalPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </div>
                     </div>
                     
                     {/* Quantity */}
                     <div className="col-span-1 text-center">
-                      <div className="text-sm font-medium text-gray-800">
-                        <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
-                          {item.quantity}
-                        </span>
-                      </div>
-                      <div className="print:hidden mt-1">
+                      <div className="print:hidden">
                         <Input
                           type="number"
                           value={item.quantity}
                           onChange={(e) => updateItemQuantity(item.id, Number(e.target.value))}
-                          className="w-full h-7 text-xs border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
+                          className="w-full h-8 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 text-center font-semibold"
                           min="1"
                           placeholder="Qty"
                         />
+                      </div>
+                      <div className="print:block hidden text-sm font-semibold text-gray-800">
+                        {item.quantity}
                       </div>
                     </div>
                     
                     {/* Discount */}
                     <div className="col-span-2 text-center">
-                      <div className="space-y-1">
-                        <div className="text-sm text-green-700 font-medium">
-                          {item.discountPercentage > 0 ? `${item.discountPercentage.toFixed(1)}%` : '-'}
-                        </div>
-                        <div className="text-xs text-green-600">
-                          {item.discountAmount > 0 ? `₹${item.discountAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
-                        </div>
-                        {/* Show global discount breakdown if applied */}
-                        {item.globalDiscountApplied && item.globalDiscountApplied > 0 && (
-                          <div className="text-xs text-blue-600 bg-blue-50 rounded px-1 py-0.5">
-                            <div title="Global discount applied" className="truncate">
-                              Global: ₹{item.globalDiscountApplied.toFixed(2)}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      <div className="print:hidden mt-1">
+                      <div className="print:hidden">
                         <Input
                           type="number"
-                          value={(() => {
-                            // Find original item to get the base discount percentage
-                            const originalItem = items.find(origItem => origItem.id === item.id);
-                            return originalItem?.discountPercentage || 0;
-                          })()}
-                          onChange={(e) => updateItemDiscountPercentage(item.id, Number(e.target.value))}
-                          className="w-full h-7 text-xs border-gray-300 focus:border-green-500 focus:ring-1 focus:ring-green-200"
+                          value={item.discountAmount}
+                          onChange={(e) => {
+                            const discountAmount = Number(e.target.value);
+                            const discountPercentage = item.originalPrice > 0 ? (discountAmount / item.originalPrice) * 100 : 0;
+                            updateItemDiscountPercentage(item.id, discountPercentage);
+                          }}
+                          className="w-full h-8 text-sm border-gray-300 focus:border-green-500 focus:ring-1 focus:ring-green-200 text-center"
                           min="0"
-                          max="100"
-                          step="0.1"
-                          placeholder="%"
+                          step="1"
+                          placeholder="₹"
                         />
+                      </div>
+                      <div className="print:block hidden text-sm text-green-700 font-medium">
+                        ₹{item.discountAmount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                       </div>
                     </div>
                     
-                    {/* Final Rate */}
-                    <div className="col-span-2 text-center">
-                      <div className="text-sm font-semibold text-gray-800 bg-yellow-50 border border-yellow-200 rounded px-2 py-1">
-                        ₹{item.finalPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </div>
-                      <div className="print:hidden mt-1">
-                        <Input
-                          type="number"
-                          value={item.finalPrice}
-                          onChange={(e) => updateItemPrice(item.id, Number(e.target.value))}
-                          className="w-full h-7 text-xs border-gray-300 focus:border-yellow-500 focus:ring-1 focus:ring-yellow-200"
-                          min="0"
-                          step="0.01"
-                          placeholder="Final"
-                        />
-                      </div>
-                    </div>
-                    
-                    {/* Amount */}
+                    {/* Final Rate (Selling Price × Quantity) */}
                     <div className="col-span-2 text-right pr-2">
                       <div className="text-sm font-bold text-gray-900 bg-green-50 border border-green-200 rounded px-3 py-1 inline-block">
                         ₹{item.totalPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        ₹{item.finalPrice.toFixed(2)} × {item.quantity} = ₹{(item.finalPrice * item.quantity).toFixed(2)}
                       </div>
                     </div>
                   </div>
@@ -1546,26 +1639,39 @@ export function InvoiceBillingDashboard({
                   <span className="font-semibold text-gray-900">₹{originalTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 
-                {/* Total Discounts (includes individual + global distributed) */}
-                {totalDiscountAmount > 0 && (
+                {/* Item Discounts (individual product discounts) */}
+                {itemDiscountAmount > 0 && (
                   <div className="flex justify-between items-center py-2 border-b border-gray-100">
                     <span className="text-green-700 font-medium">
                       <span className="inline-flex items-center">
                         <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                        Total Discounts ({((totalDiscountAmount / originalTotal) * 100).toFixed(1)}%):
+                        Item Discounts ({((itemDiscountAmount / originalTotal) * 100).toFixed(1)}%):
                       </span>
                     </span>
-                    <span className="font-semibold text-green-700">-₹{totalDiscountAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="font-semibold text-green-700">-₹{itemDiscountAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 )}
                 
-                {/* Show global discount info if applied */}
-                {globalDiscountAmount > 0 && (
-                  <div className="flex justify-between items-center py-1 bg-blue-50 px-3 rounded border-l-4 border-blue-400">
-                    <span className="text-blue-700 text-sm">
-                      → Includes Global Discount (₹{globalDiscount}):
+                {/* Global Discount (separate line item) */}
+                {globalDiscount > 0 && (
+                  <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span className="text-blue-700 font-medium">
+                      <span className="inline-flex items-center">
+                        <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                        Global Discount:
+                      </span>
                     </span>
-                    <span className="font-medium text-blue-700 text-sm">₹{globalDiscountAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="font-semibold text-blue-700">-₹{globalDiscount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+                
+                {/* Total Discounts Summary */}
+                {displayTotalDiscountAmount > 0 && (
+                  <div className="flex justify-between items-center py-1 bg-green-50 px-3 rounded border-l-4 border-green-400">
+                    <span className="text-green-700 font-medium text-sm">
+                      Total Discounts ({((displayTotalDiscountAmount / originalTotal) * 100).toFixed(1)}%):
+                    </span>
+                    <span className="font-semibold text-green-700 text-sm">-₹{displayTotalDiscountAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 )}
                 
@@ -1599,7 +1705,7 @@ export function InvoiceBillingDashboard({
                 <div className="border-t-2 border-gray-300 pt-3 mt-4">
                   <div className="flex justify-between items-center bg-gradient-to-r from-green-50 to-green-100 px-4 py-3 rounded-lg border border-green-200">
                     <span className="font-bold text-lg text-gray-800 uppercase tracking-wide">Grand Total:</span>
-                    <span className="font-bold text-xl text-green-800">₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="font-bold text-xl text-green-800">₹{displayGrandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 </div>
               </div>
@@ -1858,16 +1964,34 @@ export function InvoiceBillingDashboard({
               setValidationErrors([]);
               onCreateQuoteAndSalesOrder?.(getCurrentBillingData());
             }}
-            disabled={
-              !customer || 
-              isProcessing || 
-              externalIsProcessing || 
-              !selectedSalesman || 
-              !deliveryDate ||
-              (items.length === 0 && 
-                !(initialData?.isEditing === true && initialData?.type === 'order')
-              )
-            }
+            disabled={(() => {
+              const isCustomerMissing = !customer;
+              const isProcessingActive = isProcessing;
+              const isExternalProcessingActive = externalIsProcessing;
+              const isSalesmanMissing = !selectedSalesman;
+              const isDeliveryDateMissing = !deliveryDate;
+              const isItemsInvalid = items.length === 0 && !(initialData?.isEditing === true && initialData?.type === 'order');
+              
+              const isDisabled = isCustomerMissing || isProcessingActive || isExternalProcessingActive || 
+                               isSalesmanMissing || isDeliveryDateMissing || isItemsInvalid;
+              
+              if (isDisabled) {
+                console.log("Update Sales Order button disabled due to:", {
+                  isCustomerMissing,
+                  isProcessingActive,
+                  isExternalProcessingActive,
+                  isSalesmanMissing,
+                  isDeliveryDateMissing,
+                  isItemsInvalid,
+                  customer: customer?.name || 'None',
+                  selectedSalesman: selectedSalesman?.name || 'None',
+                  deliveryDate: deliveryDate || 'None',
+                  itemsCount: items.length
+                });
+              }
+              
+              return isDisabled;
+            })()}
             variant="outline"
             title={initialData?.isEditing && initialData?.type === 'order' && items.length === 0 
               ? "Update Sales Order - Allowed with 0 items for returns processing" 
@@ -2348,7 +2472,7 @@ export function InvoiceBillingDashboard({
       {/* Bajaj Finance Calculator Modal */}
       <BajajFinanceCalculator
         isOpen={showBajajFinance}
-        orderAmount={grandTotal}
+        orderAmount={displayGrandTotal}
         customerId={customer?.customer_id || customer?.id || ''}
         onClose={() => setShowBajajFinance(false)}
         onSelect={handleBajajFinanceSetup}

@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabaseAdmin';
 import { NextRequest, NextResponse } from 'next/server';
 
 interface OrderItemWithProducts {
+  id: string;
   order_id: string;
   quantity: number;
   unit_price: number | null;
@@ -44,7 +45,7 @@ export async function GET(
   }
 
   try {
-    // Fetch sales order with customer details and finance information
+    // Fetch sales order with customer details, sales rep info and finance information
     const { data: orderData, error: orderError } = await supabase
       .from('sales_orders')
       .select(`
@@ -63,6 +64,11 @@ export async function GET(
           formatted_address,
           status,
           source
+        ),
+        users:sales_representative_id (
+          id,
+          name,
+          email
         )
       `)
       .eq('id', id)
@@ -73,7 +79,7 @@ export async function GET(
       return NextResponse.json({ error: orderError.message }, { status: 500 });
     }
 
-    // Fetch order items with product details, custom products, and manufacturing info
+    // Fetch order items with product details, custom products, and return status
     const { data: itemsData, error: itemsError } = await supabase
       .from('sales_order_items')
       .select(`
@@ -85,6 +91,7 @@ export async function GET(
           description,
           category,
           price,
+          cost,
           config_schema,
           suppliers(name),
           boms(id, component, quantity)
@@ -94,6 +101,7 @@ export async function GET(
           name,
           sku,
           description,
+          cost_price,
           config_schema,
           supplier_name
         )
@@ -102,65 +110,51 @@ export async function GET(
 
     if (itemsError) {
       console.error('Error fetching order items:', itemsError);
-      return NextResponse.json({ error: itemsError.message }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to fetch order items' }, { status: 500 });
     }
 
-    // Fetch payment information (temporarily disabled due to schema mismatch)
-    // const { data: paymentsData, error: paymentsError } = await supabase
-    //   .from('sales_order_payments')
-    //   .select('*')
-    //   .eq('sales_order_id', id)
-    //   .order('payment_date', { ascending: false });
 
-    // if (paymentsError) {
-    //   console.error('Error fetching payments:', paymentsError);
-    //   // Don't fail the request, just log the error
-    // }
 
-    // Fetch payment summary (temporarily disabled due to schema mismatch)
-    // const { data: paymentSummaryData, error: paymentSummaryError } = await supabase
-    //   .from('sales_order_payment_summary')
-    //   .select('*')
-    //   .eq('sales_order_id', id)
-    //   .single();
-
-    // if (paymentSummaryError) {
-    //   console.error('Error fetching payment summary:', paymentSummaryError);
-    //   // Don't fail the request, just log the error
-    // }
-
-    const paymentsData: unknown[] = [];
-    let totalPaidFromPayments = 0;
-
-    // Fetch payments via invoices (actual database structure)
-    try {
-      const { data: invoicesData } = await supabase
-        .from('invoices')
-        .select('id, paid_amount')
-        .eq('sales_order_id', id);
-
-      if (invoicesData && invoicesData.length > 0) {
-        const invoiceIds = invoicesData.map(inv => inv.id);
-        
-        // Get total paid amount from invoices
-        totalPaidFromPayments = invoicesData.reduce((sum, inv) => sum + (inv.paid_amount || 0), 0);
-        
-        // Get detailed payment records
-        const { data: paymentsFromInvoices } = await supabase
-          .from('payments')
-          .select('*')
-          .in('invoice_id', invoiceIds)
-          .order('payment_date', { ascending: false });
-
-        if (paymentsFromInvoices) {
-          paymentsData.push(...paymentsFromInvoices);
-        }
+    // Fetch return items to calculate return status for each sales order item
+    const salesOrderItemIds = itemsData?.map(item => item.id) || [];
+    const returnItemsMap = new Map<string, { returned_quantity: number; return_status: string }>();
+    
+    if (salesOrderItemIds.length > 0) {
+      const { data: returnItems, error: returnItemsError } = await supabase
+        .from('return_items')
+        .select(`
+          id,
+          sales_order_item_id,
+          quantity,
+          status,
+          returns!inner(
+            status
+          )
+        `)
+        .in('sales_order_item_id', salesOrderItemIds)
+        .eq('returns.status', 'approved'); // Only count approved returns
+      
+      if (!returnItemsError && returnItems) {
+        // Group return items by sales_order_item_id and sum returned quantities
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        returnItems.forEach((returnItem: any) => {
+          const itemId = returnItem.sales_order_item_id;
+          const existingReturn = returnItemsMap.get(itemId);
+          const returnedQty = Number(returnItem.quantity || 0);
+          
+          if (existingReturn) {
+            existingReturn.returned_quantity += returnedQty;
+          } else {
+            returnItemsMap.set(itemId, {
+              returned_quantity: returnedQty,
+              return_status: 'partial' // Will be updated to 'full' if quantities match
+            });
+          }
+        });
       }
-    } catch (error) {
-      console.log('Could not fetch payments via invoices:', error);
     }
 
-    // Try to get sales representative from quotes if quote_id exists
+    // Fetch quote custom items if this order was created from a quote
     let salesRepresentative = null;
     let quoteCustomItems: Array<{
       id: string;
@@ -173,6 +167,7 @@ export async function GET(
       custom_instructions?: string;
       product_id?: string;
     }> = [];
+    
     if (orderData.quote_id) {
       const { data: quoteData } = await supabase
         .from('quotes')
@@ -208,8 +203,8 @@ export async function GET(
       quoteCustomItems = customItemsData || [];
     }
 
-    // Map items to include comprehensive product information
-    const rawMappedItems = (itemsData || []).map((item: OrderItemWithProducts) => {
+    // Process items to include comprehensive product information and return status
+    const processedItems = (itemsData || []).map((item: OrderItemWithProducts) => {
       const isCustomProduct = !!item.custom_product_id;
       const needsManufacturing = item.products?.boms && item.products.boms.length > 0;
       
@@ -272,6 +267,17 @@ export async function GET(
         }
       }
       
+      // Get return status information
+      const returnInfo = returnItemsMap.get(item.id);
+      const totalQuantity = Number(item.quantity || 0);
+      const returnedQuantity = returnInfo?.returned_quantity || 0;
+      
+      // Determine return status based on quantities
+      let return_status = 'none';
+      if (returnedQuantity > 0) {
+        return_status = returnedQuantity >= totalQuantity ? 'full' : 'partial';
+      }
+      
       return {
         ...item,
         // Product information
@@ -299,13 +305,54 @@ export async function GET(
         bom_info: item.products?.boms || null,
         
         // Product type for highlighting
-        product_type: isCustomProduct ? 'custom' : (needsManufacturing ? 'manufacturing' : 'standard')
+        product_type: isCustomProduct ? 'custom' : (needsManufacturing ? 'manufacturing' : 'standard'),
+        
+        // Return status information
+        return_status: return_status,
+        returned_quantity: returnedQuantity
       };
     });
 
+
+    const paymentsData: unknown[] = [];
+    let totalPaidFromPayments = 0;
+
+    // Fetch payments via invoices (actual database structure)
+    try {
+      const { data: invoicesData } = await supabase
+        .from('invoices')
+        .select('id, paid_amount')
+        .eq('sales_order_id', id);
+
+      if (invoicesData && invoicesData.length > 0) {
+        const invoiceIds = invoicesData.map(inv => inv.id);
+        
+        // Get total paid amount from invoices
+        totalPaidFromPayments = invoicesData.reduce((sum, inv) => sum + (inv.paid_amount || 0), 0);
+        
+        // Get detailed payment records
+        const { data: paymentsFromInvoices } = await supabase
+          .from('payments')
+          .select('*')
+          .in('invoice_id', invoiceIds)
+          .order('payment_date', { ascending: false });
+
+        if (paymentsFromInvoices) {
+          paymentsData.push(...paymentsFromInvoices);
+        }
+      }
+    } catch (error) {
+      console.log('Could not fetch payments via invoices:', error);
+    }
+
+    // Sales representative will be fetched later
+
+    // Process items to include comprehensive product information and return status
+    // (This logic is now moved to processedItems above which includes return status)
+
     // Deduplicate items that have the same product_id or custom_product_id
     const itemsMap = new Map();
-    const mappedItems = rawMappedItems.filter((item) => {
+    const mappedItems = processedItems.filter((item) => {
       const key = item.product_id ? `product_${item.product_id}` : `custom_${item.custom_product_id}`;
       
       if (!key || key === 'product_' || key === 'custom_') {
@@ -448,19 +495,25 @@ export async function PUT(
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
 
-  // Delete old sales_order_items
-  const { error: deleteItemsError } = await supabase
+  // Get existing sales order items
+  const { data: existingItems, error: fetchItemsError } = await supabase
     .from('sales_order_items')
-    .delete()
+    .select('*')
     .eq('order_id', id);
 
-  if (deleteItemsError) {
-    console.error('Error deleting sales order items:', deleteItemsError);
-    return NextResponse.json({ error: deleteItemsError.message }, { status: 500 });
+  if (fetchItemsError) {
+    console.error('Error fetching existing items:', fetchItemsError);
+    return NextResponse.json({ error: fetchItemsError.message }, { status: 500 });
   }
 
-  // Validate and deduplicate items before inserting
-  const itemsMap = new Map();
+  // Process items for update/insert/delete operations
+  const existingItemsMap = new Map();
+  existingItems?.forEach(item => {
+    const key = item.product_id ? `product_${item.product_id}` : `custom_${item.custom_product_id}`;
+    existingItemsMap.set(key, item);
+  });
+
+  const newItemsMap = new Map();
   const processedItems = items.filter((item: {
     product_id?: string;
     custom_product_id?: string;
@@ -477,46 +530,113 @@ export async function PUT(
       return false;
     }
 
-    if (itemsMap.has(key)) {
+    if (newItemsMap.has(key)) {
       // If duplicate found, combine quantities
-      const existingItem = itemsMap.get(key);
+      const existingItem = newItemsMap.get(key);
       existingItem.quantity += item.quantity;
       console.log(`Merged duplicate item ${key}: new quantity ${existingItem.quantity}`);
       return false;
     } else {
-      itemsMap.set(key, item);
+      newItemsMap.set(key, item);
       return true;
     }
   });
 
-  // Add back the merged items
-  itemsMap.forEach((item, key) => {
-    if (!processedItems.some(pi => {
-      const piKey = pi.product_id ? `product_${pi.product_id}` : `custom_${pi.custom_product_id}`;
-      return piKey === key;
-    })) {
-      processedItems.push(item);
+  // Update existing items and collect new items for insertion
+  const itemsToInsert: Array<{
+    order_id: string;
+    product_id?: string | null;
+    custom_product_id?: string | null;
+    quantity: number;
+    unit_price: number;
+    name?: string | null;
+    supplier_name?: string | null;
+  }> = [];
+  const itemsToUpdate: Array<{
+    id: string;
+    quantity: number;
+    unit_price: number;
+    name?: string | null;
+    supplier_name?: string | null;
+  }> = [];
+  const itemsToDelete: string[] = [];
+
+  // Process new/updated items
+  for (const item of processedItems) {
+    const key = item.product_id ? `product_${item.product_id}` : `custom_${item.custom_product_id}`;
+    const existingItem = existingItemsMap.get(key);
+
+    if (existingItem) {
+      // Update existing item
+      itemsToUpdate.push({
+        id: existingItem.id,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        name: item.name || existingItem.name,
+        supplier_name: item.supplier_name || existingItem.supplier_name
+      });
+    } else {
+      // New item to insert
+      itemsToInsert.push({
+        order_id: id,
+        product_id: item.product_id || null,
+        custom_product_id: item.custom_product_id || null,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        name: item.name || null,
+        supplier_name: item.supplier_name || null
+      });
+    }
+  }
+
+  // Find items to delete (existing items not in new list)
+  existingItemsMap.forEach((existingItem, key) => {
+    if (!newItemsMap.has(key)) {
+      itemsToDelete.push(existingItem.id);
     }
   });
 
-  // Insert new sales_order_items
-  const { error: insertItemsError } = await supabase
-    .from('sales_order_items')
-    .insert(
-      processedItems.map((i) => ({
-        order_id: id,
-        product_id: i.product_id || null,
-        custom_product_id: i.custom_product_id || null,
-        quantity: i.quantity,
-        unit_price: i.unit_price,
-        name: i.name || null,
-        supplier_name: i.supplier_name || null,
-      }))
-    );
+  // Perform updates
+  for (const updateItem of itemsToUpdate) {
+    const { error: updateItemError } = await supabase
+      .from('sales_order_items')
+      .update({
+        quantity: updateItem.quantity,
+        unit_price: updateItem.unit_price,
+        name: updateItem.name,
+        supplier_name: updateItem.supplier_name
+      })
+      .eq('id', updateItem.id);
 
-  if (insertItemsError) {
-    console.error('Error inserting order items:', insertItemsError);
-    return NextResponse.json({ error: insertItemsError.message }, { status: 500 });
+    if (updateItemError) {
+      console.error(`Error updating item ${updateItem.id}:`, updateItemError);
+      return NextResponse.json({ error: updateItemError.message }, { status: 500 });
+    }
+  }
+
+  // Insert new items
+  if (itemsToInsert.length > 0) {
+    const { error: insertItemsError } = await supabase
+      .from('sales_order_items')
+      .insert(itemsToInsert);
+
+    if (insertItemsError) {
+      console.error('Error inserting order items:', insertItemsError);
+      return NextResponse.json({ error: insertItemsError.message }, { status: 500 });
+    }
+  }
+
+  // Try to delete items that are no longer needed (skip if referenced by other tables)
+  for (const itemId of itemsToDelete) {
+    const { error: deleteItemError } = await supabase
+      .from('sales_order_items')
+      .delete()
+      .eq('id', itemId);
+
+    if (deleteItemError) {
+      console.warn(`Could not delete item ${itemId}, likely referenced by other tables:`, deleteItemError);
+      // Don't return error, just log warning - item might be referenced by deliveries, returns, etc.
+    }
   }
 
   // Handle delivery creation
@@ -576,6 +696,8 @@ export async function PATCH(
     // if (body.total_price !== undefined) updateData.total_price = body.total_price;
     if (body.original_price !== undefined) updateData.original_price = body.original_price;
     if (body.final_price !== undefined) updateData.final_price = body.final_price;
+    // Store the frontend-calculated discount amount (includes global + item discounts)
+    const frontendCalculatedDiscount = body.discount_amount;
     if (body.discount_amount !== undefined) updateData.discount_amount = body.discount_amount;
     if (body.freight_charges !== undefined) updateData.freight_charges = body.freight_charges;
     if (body.tax_percentage !== undefined) updateData.tax_percentage = body.tax_percentage;
@@ -632,46 +754,255 @@ export async function PATCH(
       );
     }
 
-    // Update items if provided
+    // Update items if provided - use smart update strategy to avoid foreign key constraints
     if (body.items && Array.isArray(body.items)) {
-      // Delete existing items
-      const { error: deleteItemsError } = await supabase
+      // Fetch existing items
+      const { data: existingItems, error: fetchItemsError } = await supabase
         .from('sales_order_items')
-        .delete()
+        .select('*')
         .eq('order_id', id);
 
-      if (deleteItemsError) {
-        console.error('Error deleting existing items:', deleteItemsError);
-        return NextResponse.json({ error: 'Failed to update order items' }, { status: 500 });
+      if (fetchItemsError) {
+        console.error('Error fetching existing items:', fetchItemsError);
+        return NextResponse.json({ error: fetchItemsError.message }, { status: 500 });
+      }
+
+      // Process items for update/insert/delete operations
+      const existingItemsMap = new Map();
+      existingItems?.forEach(item => {
+        const key = item.product_id ? `product_${item.product_id}` : `custom_${item.custom_product_id}`;
+        existingItemsMap.set(key, item);
+      });
+
+      const newItemsMap = new Map();
+      const processedItems = body.items.filter((item: {
+        product_id?: string;
+        custom_product_id?: string;
+        quantity: number;
+        unit_price: number;
+        name?: string;
+        supplier_name?: string;
+        final_price?: number;
+        discount_percentage?: number;
+        cost?: number;
+        supplier_id?: string;
+        image_url?: string;
+      }) => {
+        // Create a unique key for each item
+        const key = item.product_id ? `product_${item.product_id}` : `custom_${item.custom_product_id}`;
+        
+        if (!key || key === 'product_' || key === 'custom_') {
+          console.warn('Skipping item with no valid product_id or custom_product_id:', item);
+          return false;
+        }
+
+        if (newItemsMap.has(key)) {
+          // If duplicate found, combine quantities
+          const existingItem = newItemsMap.get(key);
+          existingItem.quantity += item.quantity;
+          console.log(`Merged duplicate item ${key}: new quantity ${existingItem.quantity}`);
+          return false;
+        } else {
+          newItemsMap.set(key, item);
+          return true;
+        }
+      });
+
+      // Update existing items and collect new items for insertion
+      const itemsToInsert: Array<{
+        order_id: string;
+        product_id?: string | null;
+        custom_product_id?: string | null;
+        quantity: number;
+        unit_price: number;
+        final_price: number;
+        cost: number;
+        discount_percentage: number;
+        name?: string | null;
+        supplier_name?: string | null;
+        supplier_id?: string | null;
+        image_url?: string | null;
+      }> = [];
+      const itemsToUpdate: Array<{
+        id: string;
+        quantity: number;
+        unit_price: number;
+        final_price: number;
+        discount_percentage: number;
+        cost: number;
+        name?: string | null;
+        supplier_name?: string | null;
+        supplier_id?: string | null;
+        image_url?: string | null;
+      }> = [];
+      const itemsToDelete: string[] = [];
+
+      // Process new/updated items
+      for (const item of processedItems) {
+        const key = item.product_id ? `product_${item.product_id}` : `custom_${item.custom_product_id}`;
+        const existingItem = existingItemsMap.get(key);
+
+        if (existingItem) {
+          // Update existing item
+          itemsToUpdate.push({
+            id: existingItem.id,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            final_price: item.final_price || item.unit_price || 0,
+            discount_percentage: item.discount_percentage || 0,
+            cost: item.cost || 0,
+            name: item.name || existingItem.name,
+            supplier_name: item.supplier_name || existingItem.supplier_name,
+            supplier_id: item.supplier_id || existingItem.supplier_id,
+            image_url: item.image_url || existingItem.image_url
+          });
+        } else {
+          // New item to insert
+          itemsToInsert.push({
+            order_id: id,
+            product_id: item.product_id || null,
+            custom_product_id: item.custom_product_id || null,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            final_price: item.final_price || item.unit_price || 0,
+            cost: item.cost || 0,
+            discount_percentage: item.discount_percentage || 0,
+            name: item.name || null,
+            supplier_name: item.supplier_name || null,
+            supplier_id: item.supplier_id || null,
+            image_url: item.image_url || null
+          });
+        }
+      }
+
+      // Find items to delete (existing items not in new list)
+      existingItemsMap.forEach((existingItem, key) => {
+        if (!newItemsMap.has(key)) {
+          itemsToDelete.push(existingItem.id);
+        }
+      });
+
+      // Perform updates
+      for (const updateItem of itemsToUpdate) {
+        const { error: updateItemError } = await supabase
+          .from('sales_order_items')
+          .update({
+            quantity: updateItem.quantity,
+            unit_price: updateItem.unit_price,
+            final_price: updateItem.final_price,
+            discount_percentage: updateItem.discount_percentage,
+            cost: updateItem.cost,
+            name: updateItem.name,
+            supplier_name: updateItem.supplier_name,
+            supplier_id: updateItem.supplier_id,
+            image_url: updateItem.image_url
+          })
+          .eq('id', updateItem.id);
+
+        if (updateItemError) {
+          console.error(`Error updating item ${updateItem.id}:`, updateItemError);
+          return NextResponse.json({ error: updateItemError.message }, { status: 500 });
+        }
       }
 
       // Insert new items
-      const itemsToInsert = body.items.map((item: unknown) => {
-        const itemData = item as Record<string, unknown>;
-        return {
-          order_id: id,
-          product_id: itemData.product_id || null,
-          custom_product_id: itemData.custom_product_id || null,
-          quantity: itemData.quantity || 1,
-          unit_price: itemData.unit_price || 0,
-          final_price: itemData.final_price || itemData.unit_price || 0,
-          cost: itemData.cost || 0,
-          discount_percentage: itemData.discount_percentage || 0,
-          name: itemData.name || null,
-          supplier_name: itemData.supplier_name || null,
-          supplier_id: itemData.supplier_id || null,
-          image_url: itemData.image_url || null
-        };
+      if (itemsToInsert.length > 0) {
+        const { error: insertItemsError } = await supabase
+          .from('sales_order_items')
+          .insert(itemsToInsert);
+
+        if (insertItemsError) {
+          console.error('Error inserting order items:', insertItemsError);
+          return NextResponse.json({ error: insertItemsError.message }, { status: 500 });
+        }
+      }
+
+      // Try to delete items that are no longer needed (skip if referenced by other tables)
+      for (const itemId of itemsToDelete) {
+        const { error: deleteItemError } = await supabase
+          .from('sales_order_items')
+          .delete()
+          .eq('id', itemId);
+
+        if (deleteItemError) {
+          console.warn(`Could not delete item ${itemId}, likely referenced by other tables:`, deleteItemError);
+          // Don't return error, just log warning - item might be referenced by deliveries, returns, etc.
+        }
+      }
+
+      console.log(`Items processing completed: ${itemsToUpdate.length} updated, ${itemsToInsert.length} inserted, ${itemsToDelete.length} deletion attempts`);
+      
+      // Calculate total discount amount from all items after processing
+      let totalItemDiscountAmount = 0;
+      let totalOriginalAmount = 0;
+
+      // Calculate from updated/inserted items
+      for (const item of [...itemsToUpdate, ...itemsToInsert]) {
+        const lineTotal = item.unit_price * item.quantity;
+        const discountAmount = lineTotal * (item.discount_percentage / 100);
+        totalItemDiscountAmount += discountAmount;
+        totalOriginalAmount += lineTotal;
+      }
+
+      // Add discount amounts from existing items that weren't updated
+      const processedItemKeys = new Set();
+      processedItems.forEach((item: { product_id?: string; custom_product_id?: string }) => {
+        const key = item.product_id ? `product_${item.product_id}` : `custom_${item.custom_product_id}`;
+        processedItemKeys.add(key);
       });
 
-      const { error: insertItemsError } = await supabase
-        .from('sales_order_items')
-        .insert(itemsToInsert);
+      existingItemsMap.forEach((existingItem, key) => {
+        if (!processedItemKeys.has(key) && !itemsToDelete.includes(existingItem.id)) {
+          const lineTotal = existingItem.unit_price * existingItem.quantity;
+          const discountAmount = lineTotal * (existingItem.discount_percentage / 100);
+          totalItemDiscountAmount += discountAmount;
+          totalOriginalAmount += lineTotal;
+        }
+      });
 
-      if (insertItemsError) {
-        console.error('Error inserting updated items:', insertItemsError);
-        return NextResponse.json({ error: 'Failed to update order items' }, { status: 500 });
+      // Handle global discount if provided
+      if (body.global_discount_percentage && body.global_discount_percentage > 0) {
+        const globalDiscountAmount = totalOriginalAmount * (body.global_discount_percentage / 100);
+        totalItemDiscountAmount += globalDiscountAmount;
+        console.log(`Applied global discount: ${body.global_discount_percentage}% = ₹${globalDiscountAmount}`);
+      } else if (body.global_discount_amount && body.global_discount_amount > 0) {
+        totalItemDiscountAmount += body.global_discount_amount;
+        console.log(`Applied global discount amount: ₹${body.global_discount_amount}`);
       }
+
+      // Use frontend-calculated discount if provided, otherwise use our calculation
+      const finalDiscountAmount = frontendCalculatedDiscount !== undefined ? frontendCalculatedDiscount : totalItemDiscountAmount;
+      const finalOriginalPrice = body.original_price !== undefined ? body.original_price : totalOriginalAmount;
+      const finalFinalPrice = body.final_price !== undefined ? body.final_price : (finalOriginalPrice - finalDiscountAmount);
+      
+      // Update the sales order with the correct discount amount
+      const finalUpdateData = {
+        ...updateData,
+        discount_amount: finalDiscountAmount,
+        original_price: finalOriginalPrice,
+        final_price: finalFinalPrice
+      };
+
+      console.log(`Discount calculation: Original ₹${finalOriginalPrice}, Total Discounts ₹${finalDiscountAmount} (${frontendCalculatedDiscount !== undefined ? 'frontend-calculated' : 'API-calculated'}), Final ₹${finalFinalPrice}`);
+
+      // Update sales order with calculated discount
+      const { data: finalData, error: finalUpdateError } = await supabase
+        .from('sales_orders')
+        .update(finalUpdateData)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (finalUpdateError) {
+        console.error('Error updating sales order with calculated discounts:', finalUpdateError);
+        return NextResponse.json({ error: 'Failed to update discount calculations' }, { status: 500 });
+      }
+
+      // Return the updated data
+      return NextResponse.json({
+        message: 'Sales order updated successfully',
+        order: finalData
+      });
     }
 
     console.log(`Sales order ${id} updated successfully`);

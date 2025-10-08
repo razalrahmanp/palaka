@@ -128,27 +128,33 @@ export async function GET(
           quantity,
           status,
           returns!inner(
-            status
+            id,
+            status,
+            reason
           )
         `)
-        .in('sales_order_item_id', salesOrderItemIds)
-        .eq('returns.status', 'approved'); // Only count approved returns
+        .in('sales_order_item_id', salesOrderItemIds);
       
-      if (!returnItemsError && returnItems) {
+      if (!returnItemsError && returnItems && returnItems.length > 0) {
         // Group return items by sales_order_item_id and sum returned quantities
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         returnItems.forEach((returnItem: any) => {
           const itemId = returnItem.sales_order_item_id;
-          const existingReturn = returnItemsMap.get(itemId);
+          const returnStatus = returnItem.returns?.status || 'pending';
           const returnedQty = Number(returnItem.quantity || 0);
           
-          if (existingReturn) {
-            existingReturn.returned_quantity += returnedQty;
-          } else {
-            returnItemsMap.set(itemId, {
-              returned_quantity: returnedQty,
-              return_status: 'partial' // Will be updated to 'full' if quantities match
-            });
+          // Only count returns that are not cancelled or rejected
+          if (returnStatus !== 'cancelled' && returnStatus !== 'rejected') {
+            const existingReturn = returnItemsMap.get(itemId);
+            
+            if (existingReturn) {
+              existingReturn.returned_quantity += returnedQty;
+            } else {
+              returnItemsMap.set(itemId, {
+                returned_quantity: returnedQty,
+                return_status: 'partial' // Will be updated to 'full' if quantities match
+              });
+            }
           }
         });
       }

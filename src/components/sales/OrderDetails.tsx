@@ -62,6 +62,10 @@ interface EnhancedOrderItem {
     supplier_name?: string;
   };
   custom_product_id?: string;
+  
+  // Return status properties from API
+  return_status?: 'none' | 'partial' | 'full';
+  returned_quantity?: number;
 }
 
 interface DetailedOrder {
@@ -161,13 +165,18 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
       }
       
       const paymentSummary = await response.json();
-      return {
+      console.log('🔍 Payment Summary API Response:', paymentSummary);
+      
+      const paymentInfo = {
         totalPaid: paymentSummary.total_paid || 0,
         balanceDue: paymentSummary.balance_due || 0,
         paymentStatus: paymentSummary.payment_status || 'pending',
         paymentCount: paymentSummary.payment_count || 0,
         lastPaymentDate: paymentSummary.last_payment_date
       };
+      
+      console.log('💰 Processed Payment Info:', paymentInfo);
+      return paymentInfo;
     } catch (error) {
       console.error('Error fetching payment info:', error);
       return null;
@@ -184,11 +193,20 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
         const response = await fetch(`/api/sales/orders/${initialOrder.id}`);
         if (response.ok) {
           const detailedOrder = await response.json();
+          console.log('📦 Order Details API Response:', detailedOrder);
+          console.log('🔍 Items with Return Status:', detailedOrder.items?.map((item: EnhancedOrderItem) => ({
+            name: item.name,
+            return_status: item.return_status,
+            returned_quantity: item.returned_quantity,
+            final_price: item.final_price,
+            quantity: item.quantity
+          })));
           setOrder(detailedOrder);
         }
 
         // Fetch payment information
         const paymentData = await fetchPaymentInfo();
+        console.log('💳 Final Payment Data Set:', paymentData);
         setPaymentInfo(paymentData);
       } catch (error) {
         console.error('Error fetching detailed order:', error);
@@ -419,7 +437,7 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
           return {
             name: item.name || 'Unknown Product',
             quantity: item.quantity || 0,
-            price: item.unit_price || item.price || 0,
+            price: item.final_price && item.quantity > 0 ? (item.final_price / item.quantity) : (item.unit_price || item.price || 0),
             total: item.final_price || (item.quantity || 0) * (item.unit_price || item.price || 0),
             // Enhanced product details
             sku: productDetails?.sku || itemWithDetails.sku || 'N/A',
@@ -484,7 +502,7 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
           return {
             name: item.name || 'Unknown Product',
             quantity: item.quantity || 0,
-            price: item.unit_price || item.price || 0,
+            price: item.final_price && item.quantity > 0 ? (item.final_price / item.quantity) : (item.unit_price || item.price || 0),
             total: item.final_price || (item.quantity || 0) * (item.unit_price || item.price || 0),
             // Enhanced product details
             sku: productDetails?.sku || itemWithDetails.sku || 'N/A',
@@ -758,7 +776,7 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
                     <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
                     <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
                     <th className="px-2 py-1 text-center text-xs font-medium text-gray-500 uppercase">Qty</th>
-                    <th className="px-2 py-1 text-right text-xs font-medium text-gray-500 uppercase">Unit Price</th>
+                    <th className="px-2 py-1 text-right text-xs font-medium text-gray-500 uppercase">Unit Price (Discounted)</th>
                     <th className="px-2 py-1 text-right text-xs font-medium text-gray-500 uppercase">Discount</th>
                     <th className="px-2 py-1 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
                   </tr>
@@ -772,8 +790,30 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
                             <ImageIcon className="h-4 w-4 text-gray-400" />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="font-medium text-gray-900 text-xs truncate">
+                            <div className="font-medium text-gray-900 text-xs truncate flex items-center gap-1">
                               {item.name || 'Unknown Product'}
+                              {/* Return Status Badges */}
+                              {(() => {
+                                const enhancedItem = item as EnhancedOrderItem & { 
+                                  return_status?: string; 
+                                  returned_quantity?: number; 
+                                };
+                                
+                                if (enhancedItem.return_status === 'full') {
+                                  return (
+                                    <Badge className="bg-red-100 text-red-800 text-xs px-1 py-0.5 ml-1">
+                                      RETURNED
+                                    </Badge>
+                                  );
+                                } else if (enhancedItem.return_status === 'partial') {
+                                  return (
+                                    <Badge className="bg-yellow-100 text-yellow-800 text-xs px-1 py-0.5 ml-1">
+                                      PARTIAL RETURN
+                                    </Badge>
+                                  );
+                                }
+                                return null;
+                              })()}
                             </div>
                             {item.supplier_name && (
                               <div className="text-xs text-gray-500 truncate">
@@ -818,7 +858,20 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
                         </span>
                       </td>
                       <td className="px-2 py-2 text-right font-medium text-xs">
-                        {formatCurrency(item.unit_price || item.price || 0)}
+                        {/* FIXED: Show discounted per-unit price from final_price */}
+                        {(() => {
+                          // Always use final_price from database divided by quantity for actual per-unit price
+                          if (item.final_price && item.quantity > 0) {
+                            const discountedUnitPrice = item.final_price / item.quantity;
+                            console.log(`✅ UNIT PRICE CALC - ${item.name}: final_price=${item.final_price} ÷ quantity=${item.quantity} = ₹${discountedUnitPrice.toFixed(2)}`);
+                            return formatCurrency(discountedUnitPrice);
+                          } else {
+                            // Fallback to original unit price if final_price not available
+                            const fallbackPrice = item.unit_price || item.price || 0;
+                            console.log(`⚠️ UNIT PRICE FALLBACK - ${item.name}: Using fallback price=₹${fallbackPrice}`);
+                            return formatCurrency(fallbackPrice);
+                          }
+                        })()}
                       </td>
                       <td className="px-2 py-2 text-right">
                         {(() => {
@@ -904,8 +957,8 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
                 
                 {/* Payment Information */}
                 {paymentInfo && (
-                  <div className="mt-4 pt-3 border-t border-gray-300">
-                    <h5 className="font-bold text-sm text-gray-900 mb-2">Payment Details</h5>
+                  <div className="mt-4 pt-3 border-gray-300">
+                    <h5 className="font-bold text-sm text-gray-900 mb-2">Payment Details ✅</h5>
                     <div className="space-y-1">
                       <div className="flex justify-between text-gray-600">
                         <span>Payment Status:</span>
@@ -942,6 +995,13 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
                         </div>
                       )}
                     </div>
+                  </div>
+                )}
+                
+                {/* Debug indicator for missing payment info */}
+                {!paymentInfo && (
+                  <div className="mt-4 pt-3 border-t border-red-300 bg-red-50 px-2 py-1 rounded">
+                    <span className="text-red-600 text-xs">⚠️ Payment info loading...</span>
                   </div>
                 )}
               </div>

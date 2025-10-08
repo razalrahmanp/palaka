@@ -7,7 +7,7 @@ export async function GET(
   { params }: { params: { invoiceId: string } }
 ) {
   try {
-    const { invoiceId } = params;
+    const { invoiceId } = await params;
 
     // Get invoice details
     const { data: invoice, error: invoiceError } = await supabase
@@ -89,7 +89,7 @@ export async function POST(
   { params }: { params: { invoiceId: string } }
 ) {
   try {
-    const { invoiceId } = params;
+    const { invoiceId } = await params;
     const body = await request.json();
     
     const {
@@ -103,6 +103,44 @@ export async function POST(
       notes,
       return_id
     } = body;
+
+    console.log('📥 Received refund request:', { 
+      refund_amount, 
+      refund_type, 
+      reason, 
+      refund_method, 
+      bank_account_id, 
+      requested_by,
+      requested_by_type: typeof requested_by 
+    });
+
+    // Validate user exists in database
+    if (!requested_by || requested_by === 'current-user-id') {
+      console.log('❌ User authentication failed:', { requested_by });
+      return NextResponse.json({
+        success: false,
+        error: 'User authentication required. Please visit http://localhost:3000/set-valid-user.html to set a valid user, then refresh the page and try again.',
+        code: 'INVALID_USER_ID',
+        action: 'SETUP_USER'
+      }, { status: 401 });
+    }
+
+    const { data: userExists, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', requested_by)
+      .eq('is_deleted', false)
+      .single();
+
+    if (userError || !userExists) {
+      return NextResponse.json({
+        success: false,
+        error: 'Invalid user ID. Please log in again.'
+      }, { status: 401 });
+    }
+
+    // Handle user authentication - use provided user ID
+    const userId = requested_by;
 
     // Validate invoice exists
     const { data: invoice, error: invoiceError } = await supabase
@@ -147,13 +185,13 @@ export async function POST(
         refund_method,
         bank_account_id: bank_account_id || null,
         reference_number: reference_number || null,
-        requested_by,
+        requested_by: userId,
         notes: notes || null,
         status: 'processed', // Direct refund - no approval needed
-        approval_date: new Date().toISOString(),
-        processed_date: new Date().toISOString(),
-        approved_by: requested_by, // Same user approves and processes
-        processed_by: requested_by
+        approved_at: new Date().toISOString(),
+        processed_at: new Date().toISOString(),
+        approved_by: userId, // Same user approves and processes
+        processed_by: userId
       })
       .select()
       .single();
@@ -180,7 +218,7 @@ export async function POST(
         entity_type: 'customer',
         entity_id: invoiceId,
         entity_reference_id: refund.id,
-        created_by: requested_by
+        created_by: userId
       })
       .select()
       .single();
@@ -230,7 +268,7 @@ export async function POST(
                   transaction_date: new Date().toISOString(),
                   balance_after_transaction: newBalance,
                   category: 'Customer Refund',
-                  created_by: requested_by
+                  created_by: userId
                 })
                 .select('id')
                 .single();

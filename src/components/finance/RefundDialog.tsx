@@ -23,6 +23,7 @@ import {
   Calendar,
   RotateCcw
 } from 'lucide-react';
+import { getCurrentUser } from '@/lib/auth';
 
 interface Invoice {
   id: string;
@@ -71,9 +72,10 @@ interface RefundDialogProps {
   onClose: () => void;
   invoice: Invoice | null;
   onRefundCreated: () => void;
+  prefilledAmount?: number;
 }
 
-export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated }: RefundDialogProps) {
+export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefilledAmount }: RefundDialogProps) {
   const [loading, setLoading] = useState(false);
   const [currentView, setCurrentView] = useState<'create' | 'list'>('list');
   const [refunds, setRefunds] = useState<RefundRequest[]>([]);
@@ -142,6 +144,16 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated }: Refu
     }
   }, [formData.bank_account_id, bankAccounts]);
 
+  // Set prefilled amount when dialog opens
+  useEffect(() => {
+    if (isOpen && prefilledAmount !== undefined) {
+      setFormData(prev => ({
+        ...prev,
+        refund_amount: prefilledAmount.toString()
+      }));
+    }
+  }, [isOpen, prefilledAmount]);
+
   const handleManualRefundProcessing = async (refundId: string, action: 'process_refund' | 'reverse_refund') => {
     setLoading(true);
     try {
@@ -197,16 +209,37 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated }: Refu
     setLoading(true);
 
     try {
+      const currentUser = getCurrentUser();
+      console.log('🔍 Current user from localStorage:', currentUser);
+      
+      if (!currentUser) {
+        alert('You must be logged in to create a refund. Please set a user in localStorage first.');
+        setLoading(false);
+        return;
+      }
+
+      if (!currentUser.id || currentUser.id === 'current-user-id') {
+        alert('Invalid user ID detected. Please visit http://localhost:3000/set-valid-user.html to set a valid user.');
+        setLoading(false);
+        return;
+      }
+
+      console.log('📤 Sending refund request with user ID:', currentUser.id);
+
+      const requestBody = {
+        ...formData,
+        refund_amount: refundAmount,
+        requested_by: currentUser.id
+      };
+
+      console.log('📋 Complete request body:', requestBody);
+
       const response = await fetch(`/api/finance/refunds/${invoice.id}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          ...formData,
-          refund_amount: refundAmount,
-          requested_by: 'current-user-id' // TODO: Get from auth context
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const result = await response.json();
@@ -232,7 +265,13 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated }: Refu
         // Notify parent component
         onRefundCreated();
       } else {
-        alert(result.error || 'Failed to process refund');
+        // Show detailed error message from server
+        const errorMessage = result.error || 'Failed to process refund';
+        if (result.code === 'INVALID_USER_ID') {
+          alert(`Authentication Error: ${errorMessage}`);
+        } else {
+          alert(errorMessage);
+        }
       }
     } catch (error) {
       console.error('Error creating refund:', error);

@@ -12,6 +12,42 @@ interface Payment {
   description?: string;
 }
 
+interface Refund {
+  id: string;
+  invoice_id: string;
+  refund_amount: number;
+  status: string;
+  processed_at: string;
+  reason: string;
+  refund_type: string;
+}
+
+interface SalesOrderItemFromDB {
+  id: string;
+  name: string;
+  quantity: number;
+  unit_price: number;
+  final_price: number;
+  product_id?: string;
+  products?: {
+    sku: string;
+  }[];
+}
+
+interface ReturnItemWithDetails {
+  id: string;
+  sales_order_item_id: string;
+  quantity: number;
+  refund_amount: number;
+  status: string;
+  returns: {
+    id: string;
+    order_id: string;
+    status: string;
+    return_type: string;
+  }[];
+}
+
 export async function GET() {
   try {
     console.log('🧾 Fetching ALL invoices for finance management...');
@@ -49,15 +85,80 @@ export async function GET() {
       .select("id, name, phone, email")
       .in("id", customerIds);
 
-    // Fetch sales orders
+    // First, fetch return data for invoice items to calculate return status
+    const { data: returnItems, error: returnItemsError } = await supabase
+      .from("return_items")
+      .select(`
+        id,
+        sales_order_item_id,
+        quantity,
+        refund_amount,
+        status,
+        returns!inner(
+          id,
+          order_id,
+          status,
+          return_type
+        )
+      `)
+      .in("returns.order_id", salesOrderIds);
+
+    if (returnItemsError) {
+      console.error('❌ Error fetching return items:', returnItemsError);
+    }
+
+    // Group return items by sales order item ID to calculate return status
+    const returnsByItem = new Map();
+    returnItems?.forEach((returnItem: ReturnItemWithDetails) => {
+      if (!returnsByItem.has(returnItem.sales_order_item_id)) {
+        returnsByItem.set(returnItem.sales_order_item_id, {
+          total_returned: 0,
+          return_entries: []
+        });
+      }
+      const itemReturns = returnsByItem.get(returnItem.sales_order_item_id);
+      itemReturns.total_returned += Number(returnItem.quantity) || 0;
+      itemReturns.return_entries.push(returnItem);
+    });
+
+    // Fetch sales orders with items
     const { data: salesOrders } = await supabase
       .from("sales_orders")
-      .select("id, final_price, status")
+      .select(`
+        id, 
+        final_price, 
+        status,
+        sales_order_items!order_id (
+          id,
+          name,
+          quantity,
+          unit_price,
+          final_price,
+          product_id,
+          products!product_id (
+            sku
+          )
+        )
+      `)
       .in("id", salesOrderIds);
 
     // Create lookup maps
     const customersMap = new Map(customers?.map(c => [c.id, c]) || []);
-    const salesOrdersMap = new Map(salesOrders?.map(so => [so.id, so]) || []);
+    const salesOrdersMap = new Map(salesOrders?.map(so => ({
+      ...so,
+      sales_order_items: so.sales_order_items.map((item: SalesOrderItemFromDB) => ({
+        ...item,
+        returned_quantity: returnsByItem.get(item.id)?.total_returned || 0,
+        available_for_return: Math.max(0, item.quantity - (returnsByItem.get(item.id)?.total_returned || 0)),
+        return_status: (() => {
+          const returned = returnsByItem.get(item.id)?.total_returned || 0;
+          if (returned === 0) return 'none';
+          if (returned >= item.quantity) return 'full';
+          return 'partial';
+        })(),
+        return_entries: returnsByItem.get(item.id)?.return_entries || []
+      }))
+    })).map(so => [so.id, so]) || []);
 
     // Fetch all payments for these invoices
     const invoiceIds = invoices?.map(inv => inv.id) || [];
@@ -79,6 +180,25 @@ export async function GET() {
       console.error('❌ Error fetching payments:', paymentsError);
     }
 
+    // Fetch all refunds for these invoices
+    const { data: refunds, error: refundsError } = await supabase
+      .from("invoice_refunds")
+      .select(`
+        id,
+        invoice_id,
+        refund_amount,
+        status,
+        processed_at,
+        reason,
+        refund_type
+      `)
+      .in("invoice_id", invoiceIds)
+      .eq("status", "processed"); // Only count processed refunds
+
+    if (refundsError) {
+      console.error('❌ Error fetching refunds:', refundsError);
+    }
+
     // Group payments by invoice
     const paymentsByInvoice = new Map();
     payments?.forEach((payment: Payment) => {
@@ -88,6 +208,17 @@ export async function GET() {
       paymentsByInvoice.get(payment.invoice_id).push(payment);
     });
 
+    // Group refunds by invoice and calculate total refunded amount
+    const refundsByInvoice = new Map();
+    refunds?.forEach((refund: Refund) => {
+      if (!refundsByInvoice.has(refund.invoice_id)) {
+        refundsByInvoice.set(refund.invoice_id, { total: 0, refunds: [] });
+      }
+      const invoiceRefunds = refundsByInvoice.get(refund.invoice_id);
+      invoiceRefunds.total += Number(refund.refund_amount) || 0;
+      invoiceRefunds.refunds.push(refund);
+    });
+
     // Enhance invoices with payment data and calculated amounts
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const enhancedInvoices = invoices?.map((invoice: any) => {
@@ -95,7 +226,12 @@ export async function GET() {
       const actualPaidAmount = invoicePayments.reduce((sum: number, payment: Payment) => sum + (Number(payment.amount) || 0), 0);
       const waived = Number(invoice.waived_amount) || 0;
       const totalInvoice = Number(invoice.total) || 0;
-      const balance = totalInvoice - actualPaidAmount - waived;
+      
+      // Get refund data for this invoice
+      const invoiceRefundData = refundsByInvoice.get(invoice.id) || { total: 0, refunds: [] };
+      const totalRefunded = invoiceRefundData.total;
+      
+      const balance = totalInvoice - actualPaidAmount - waived - totalRefunded;
 
       // Get customer and sales order from maps
       const customer = customersMap.get(invoice.customer_id);
@@ -112,12 +248,15 @@ export async function GET() {
         total: totalInvoice,
         paid_amount: actualPaidAmount,
         waived_amount: waived,
+        total_refunded: totalRefunded,
         balance_due: balance > 0 ? balance : 0,
         status: invoice.status,
         created_at: invoice.created_at,
         payment_count: invoicePayments.length,
+        refund_count: invoiceRefundData.refunds.length,
         sales_order: salesOrder,
-        payments: invoicePayments
+        payments: invoicePayments,
+        refunds: invoiceRefundData.refunds
       };
     }) || [];
 

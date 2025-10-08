@@ -312,9 +312,59 @@ export interface Invoice {
   waived_amount?: number;
   balance_due?: number;
   total_refunded?: number;
+  refund_count?: number;
   date?: string;
   created_at: string;
   due_date: string;
+  sales_order?: {
+    id: string;
+    final_price: number;
+    status: string;
+    sales_order_items: Array<{
+      id: string;
+      name: string;
+      quantity: number;
+      unit_price: number;
+      final_price: number;
+      product_id?: string;
+      products?: {
+        sku: string;
+      };
+      // Return tracking fields
+      returned_quantity?: number;
+      available_for_return?: number;
+      return_status?: 'none' | 'partial' | 'full';
+      return_entries?: Array<{
+        id: string;
+        quantity: number;
+        refund_amount: number;
+        status: string;
+        returns: {
+          id: string;
+          order_id: string;
+          status: string;
+          return_type: string;
+        }[];
+      }>;
+    }>;
+  };
+  payments?: Array<{
+    id: string;
+    amount: number;
+    payment_date?: string;
+    date: string;
+    method: string;
+    reference?: string;
+    description?: string;
+  }>;
+  refunds?: Array<{
+    id: string;
+    refund_amount: number;
+    status: string;
+    processed_at: string;
+    reason: string;
+    refund_type: string;
+  }>;
 }
 
 // src/types/index.ts

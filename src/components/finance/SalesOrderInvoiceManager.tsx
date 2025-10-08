@@ -24,6 +24,13 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator
+} from '@/components/ui/dropdown-menu';
+import { 
   FileText, 
   DollarSign, 
   Calendar, 
@@ -52,7 +59,11 @@ import {
   ArrowRightLeft,
   Banknote,
   Smartphone,
-  IndianRupee
+  IndianRupee,
+  MoreHorizontal,
+  ChevronDown,
+  ChevronUp,
+  CheckCircle
 } from 'lucide-react';
 import { SalesOrder, Invoice, subcategoryMap } from '@/types';
 import { PaymentTrackingDialog } from './PaymentTrackingDialog';
@@ -63,8 +74,74 @@ import { PaymentDeletionManager } from './PaymentDeletionManager';
 import { getCurrentUser } from '@/lib/auth';
 import OptimizedLedgerManager from './OptimizedLedgerManager';
 import { RefundDialog } from './RefundDialog';
+import { InvoiceReturnExchangeDialog } from './InvoiceReturnExchangeDialog';
 
 // Component interfaces and types
+
+interface SalesOrderItem {
+  id: string;
+  name: string;
+  quantity: number;
+  unit_price: number;
+  final_price: number;
+  product_id?: string;
+  products?: {
+    sku: string;
+  };
+  // Return tracking fields
+  returned_quantity?: number;
+  available_for_return?: number;
+  return_status?: 'none' | 'partial' | 'full';
+  return_entries?: Array<{
+    id: string;
+    quantity: number;
+    refund_amount: number;
+    status: string;
+  }>;
+}
+
+interface PaymentDetail {
+  id: string;
+  amount: number;
+  payment_date?: string;
+  date: string;
+  method: string;
+  reference?: string;
+  description?: string;
+}
+
+interface RefundDetail {
+  id: string;
+  refund_amount: number;
+  status: string;
+  processed_at: string;
+  reason: string;
+  refund_type: string;
+}
+
+interface ReturnItem {
+  id: string;
+  quantity: number;
+  unit_price: number;
+  refund_amount: number;
+  condition_notes?: string;
+  status: string;
+  sales_order_item_id: string;
+  sales_order_items?: {
+    name: string;
+    products?: { sku: string };
+  };
+}
+
+interface ReturnDetail {
+  id: string;
+  return_type: 'return' | 'exchange';
+  status: string;
+  reason: string;
+  return_value: number;
+  created_at: string;
+  return_items: ReturnItem[];
+}
 
 interface Truck {
   id: string;
@@ -149,20 +226,6 @@ interface PaymentDetails {
   status: string;
 }
 
-interface SalesOrderItem {
-  id: string;
-  product_id: string;
-  quantity: number;
-  unit_price: number;
-  products?: {
-    id: string;
-    name: string;
-    sku: string;
-    category: string;
-    unit_price: number;
-  };
-}
-
 interface Expense {
   id: string;
   date: string;
@@ -229,6 +292,8 @@ interface BankAccount {
 export function SalesOrderInvoiceManager() {
   const [salesOrders, setSalesOrders] = useState<SalesOrderWithInvoice[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
+  const [invoiceReturns, setInvoiceReturns] = useState<Map<string, ReturnDetail[]>>(new Map());
   const [payments, setPayments] = useState<PaymentDetails[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [bankAccounts, setBankAccounts] = useState<{id: string; account_name: string; account_number: string; account_type?: string}[]>([]);
@@ -242,6 +307,11 @@ export function SalesOrderInvoiceManager() {
   const [paymentTrackingOpen, setPaymentTrackingOpen] = useState(false);
   const [refundDialogOpen, setRefundDialogOpen] = useState(false);
   const [selectedInvoiceForRefund, setSelectedInvoiceForRefund] = useState<Invoice | null>(null);
+  const [prefilledRefundAmount, setPrefilledRefundAmount] = useState<number | undefined>(undefined);
+  const [refundedItems, setRefundedItems] = useState<Set<string>>(new Set());
+  const [returnExchangeDialogOpen, setReturnExchangeDialogOpen] = useState(false);
+  const [selectedItemForReturn, setSelectedItemForReturn] = useState<SalesOrderItem | null>(null);
+  const [selectedInvoiceForReturn, setSelectedInvoiceForReturn] = useState<Invoice | null>(null);
   const [invoiceSelectionOpen, setInvoiceSelectionOpen] = useState(false);
   const [invoiceSearchQuery, setInvoiceSearchQuery] = useState('');
   const [createExpenseOpen, setCreateExpenseOpen] = useState(false);
@@ -1491,6 +1561,187 @@ export function SalesOrderInvoiceManager() {
     fetchData();
   };
 
+  // Handle return/exchange for invoice items
+  const handleReturnExchange = (item: SalesOrderItem, invoice: Invoice) => {
+    setSelectedItemForReturn(item);
+    setSelectedInvoiceForReturn(invoice);
+    setReturnExchangeDialogOpen(true);
+  };
+
+  const handleReturnExchangeSuccess = () => {
+    setReturnExchangeDialogOpen(false);
+    setSelectedItemForReturn(null);
+    setSelectedInvoiceForReturn(null);
+    // Refresh invoice data to update return status
+    fetchData();
+  };
+
+  // Fetch return details for an invoice
+  const fetchReturnDetails = async (invoiceId: string): Promise<ReturnDetail[]> => {
+    try {
+      const response = await fetch(`/api/finance/invoices/${invoiceId}/returns`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch return details');
+      }
+      const data = await response.json();
+      return data.returns || [];
+    } catch (error) {
+      console.error('Error fetching return details:', error);
+      return [];
+    }
+  };
+
+  // Calculate total refund amount for returned items
+  const calculateRefundAmount = async (invoiceId: string): Promise<number> => {
+    try {
+      const returnDetails = await fetchReturnDetails(invoiceId);
+      if (!returnDetails || returnDetails.length === 0) {
+        return 0;
+      }
+
+      // Calculate total amount for all returned items
+      const totalRefundAmount = returnDetails.reduce((total, returnDetail) => {
+        const returnItems = returnDetail.return_items || [];
+        const returnAmount = returnItems.reduce((itemTotal: number, item: ReturnItem) => {
+          return itemTotal + (item.quantity * item.unit_price);
+        }, 0);
+        return total + returnAmount;
+      }, 0);
+
+      return totalRefundAmount;
+    } catch (error) {
+      console.error('Error calculating refund amount:', error);
+      return 0;
+    }
+  };
+
+  // Refresh refunded items for a specific invoice
+  const refreshRefundedItems = async (invoiceId: string) => {
+    try {
+      const returnDetails = await fetchReturnDetails(invoiceId);
+      const refundedItemsForInvoice = new Set<string>();
+      
+      // Check if there are any refunds for this invoice
+      const response = await fetch(`/api/finance/refunds/${invoiceId}`);
+      if (response.ok) {
+        const refundData = await response.json();
+        const hasRefunds = refundData.success && refundData.data && refundData.data.length > 0;
+        
+        if (hasRefunds) {
+          // If there are refunds, mark all returned items as refunded
+          for (const returnDetail of returnDetails) {
+            const returnItems = returnDetail.return_items || [];
+            returnItems.forEach((item: ReturnItem) => {
+              refundedItemsForInvoice.add(item.sales_order_item_id);
+            });
+          }
+        }
+      }
+
+      // Update refunded items state
+      setRefundedItems(prev => {
+        const newSet = new Set(prev);
+        refundedItemsForInvoice.forEach(itemId => newSet.add(itemId));
+        return newSet;
+      });
+    } catch (error) {
+      console.error('Error refreshing refunded items:', error);
+    }
+  };
+
+  // Process refund for a return
+  const handleProcessRefund = async (returnId: string, invoiceId: string, refundAmount: number) => {
+    try {
+      const response = await fetch('/api/finance/reconciliation/returns', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          return_id: returnId,
+          invoice_id: invoiceId,
+          refund_amount: refundAmount,
+          refund_method: 'cash', // Default to cash, can be enhanced
+          payment_reference: `REFUND-${returnId}-${Date.now()}`,
+          notes: 'Refund processed from invoice view'
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to process refund');
+      }
+
+      // Refresh data after successful refund
+      await fetchData();
+      
+      // Also refresh return details for this specific invoice
+      const updatedReturns = await fetchReturnDetails(invoiceId);
+      setInvoiceReturns(prevReturns => {
+        const newReturns = new Map(prevReturns);
+        newReturns.set(invoiceId, updatedReturns);
+        return newReturns;
+      });
+      
+      alert('Refund processed successfully!');
+    } catch (error) {
+      console.error('Error processing refund:', error);
+      alert(`Failed to process refund: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  // Toggle invoice expansion
+  const toggleInvoiceExpansion = async (invoiceId: string) => {
+    setExpandedInvoices(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(invoiceId)) {
+        newSet.delete(invoiceId);
+      } else {
+        newSet.add(invoiceId);
+        // Fetch return details when expanding
+        fetchReturnDetails(invoiceId).then(async returns => {
+          setInvoiceReturns(prevReturns => {
+            const newReturns = new Map(prevReturns);
+            newReturns.set(invoiceId, returns);
+            return newReturns;
+          });
+
+          // Check which items have been refunded
+          const refundedItemsForInvoice = new Set<string>();
+          
+          // Check if there are any refunds for this invoice
+          try {
+            const response = await fetch(`/api/finance/refunds/${invoiceId}`);
+            if (response.ok) {
+              const refundData = await response.json();
+              const hasRefunds = refundData.success && refundData.data && refundData.data.length > 0;
+              
+              if (hasRefunds) {
+                // If there are refunds, mark all returned items as refunded
+                for (const returnDetail of returns) {
+                  const returnItems = returnDetail.return_items || [];
+                  returnItems.forEach((item: ReturnItem) => {
+                    refundedItemsForInvoice.add(item.sales_order_item_id);
+                  });
+                }
+              }
+            }
+          } catch (error) {
+            console.error('Error checking refunds:', error);
+          }
+
+          // Update refunded items state
+          setRefundedItems(prev => {
+            const newSet = new Set(prev);
+            refundedItemsForInvoice.forEach(itemId => newSet.add(itemId));
+            return newSet;
+          });
+        });
+      }
+      return newSet;
+    });
+  };
+
   // Pagination logic
   const getPaginatedData = <T,>(data: T[], page: number, perPage: number): T[] => {
     const startIndex = (page - 1) * perPage;
@@ -1820,6 +2071,7 @@ export function SalesOrderInvoiceManager() {
                 <th class="text-right">Amount</th>
                 <th class="text-right">Paid</th>
                 <th class="text-right">Waived</th>
+                <th class="text-right">Refunded</th>
                 <th class="text-right">Balance</th>
                 <th>Status</th>
               </tr>
@@ -1829,8 +2081,9 @@ export function SalesOrderInvoiceManager() {
                 const totalPaid = invoice.paid_amount || 0;
                 const invoiceTotal = invoice.total || 0;
                 const waivedAmount = invoice.waived_amount || 0;
+                const totalRefunded = invoice.total_refunded || 0;
                 const effectivePaid = totalPaid + waivedAmount;
-                const balanceDue = Math.max(0, invoiceTotal - effectivePaid);
+                const balanceDue = Math.max(0, invoiceTotal - effectivePaid - totalRefunded);
                 
                 let statusClass = 'status-unpaid';
                 let statusText = 'Unpaid';
@@ -1852,6 +2105,7 @@ export function SalesOrderInvoiceManager() {
                     <td class="text-right">₹${invoice.total?.toLocaleString() || '0'}</td>
                     <td class="text-right">₹${totalPaid.toLocaleString()}</td>
                     <td class="text-right">₹${waivedAmount.toLocaleString()}</td>
+                    <td class="text-right">₹${totalRefunded.toLocaleString()}</td>
                     <td class="text-right">₹${balanceDue.toLocaleString()}</td>
                     <td class="${statusClass}">${statusText}</td>
                   </tr>
@@ -1865,12 +2119,14 @@ export function SalesOrderInvoiceManager() {
             <p><strong>Total Amount:</strong> ₹${filteredInvoices.reduce((sum, inv) => sum + (inv.total || 0), 0).toLocaleString()}</p>
             <p><strong>Total Paid:</strong> ₹${filteredInvoices.reduce((sum, inv) => sum + (inv.paid_amount || 0), 0).toLocaleString()}</p>
             <p><strong>Total Waived:</strong> ₹${filteredInvoices.reduce((sum, inv) => sum + (inv.waived_amount || 0), 0).toLocaleString()}</p>
+            <p><strong>Total Refunded:</strong> ₹${filteredInvoices.reduce((sum, inv) => sum + (inv.total_refunded || 0), 0).toLocaleString()}</p>
             <p><strong>Total Outstanding:</strong> ₹${filteredInvoices.reduce((sum, inv) => {
               const totalPaid = inv.paid_amount || 0;
               const invoiceTotal = inv.total || 0;
               const waivedAmount = inv.waived_amount || 0;
+              const totalRefunded = inv.total_refunded || 0;
               const effectivePaid = totalPaid + waivedAmount;
-              return sum + Math.max(0, invoiceTotal - effectivePaid);
+              return sum + Math.max(0, invoiceTotal - effectivePaid - totalRefunded);
             }, 0).toLocaleString()}</p>
           </div>
         </body>
@@ -2339,7 +2595,7 @@ export function SalesOrderInvoiceManager() {
         customerPhone: orderDetails.customers?.phone || 'N/A',
         orderNumber: orderDetails.order_number || order.id,
         items: orderDetails.items?.map((item: SalesOrderItem) => ({
-          name: item.products?.name || `Product ${item.product_id}`,
+          name: item.name || `Product ${item.product_id}`,
           quantity: item.quantity || 1,
           price: item.unit_price || 0,
           total: (item.quantity || 1) * (item.unit_price || 0)
@@ -2403,7 +2659,7 @@ export function SalesOrderInvoiceManager() {
         customerPhone: orderDetails.customers.phone,
         orderNumber: orderDetails.order_number || order.id,
         items: orderDetails.items?.map((item: SalesOrderItem) => ({
-          name: item.products?.name || `Product ${item.product_id}`,
+          name: item.name || `Product ${item.product_id}`,
           quantity: item.quantity || 1,
           price: item.unit_price || 0,
           total: (item.quantity || 1) * (item.unit_price || 0)
@@ -3929,7 +4185,7 @@ export function SalesOrderInvoiceManager() {
                   </div>
                 )}
               </div>
-              
+             
               <div className="rounded-lg border border-gray-200 overflow-hidden">
                 <Table>
                   <TableHeader className="bg-gray-50">
@@ -3941,6 +4197,7 @@ export function SalesOrderInvoiceManager() {
                       <TableHead className="font-semibold">Amount</TableHead>
                       <TableHead className="font-semibold">Paid</TableHead>
                       <TableHead className="font-semibold">Waived</TableHead>
+                      <TableHead className="font-semibold">Refunded</TableHead>
                       <TableHead className="font-semibold">Balance</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
                       <TableHead className="font-semibold text-center">Actions</TableHead>
@@ -3948,13 +4205,33 @@ export function SalesOrderInvoiceManager() {
                   </TableHeader>
                   <TableBody>
                     {(() => {
+                      console.log('🔍 INVOICE DEBUGGING:', {
+                        totalInvoicesInState: invoices.length,
+                        sampleInvoice: invoices[0],
+                        searchQuery: invoicesSearchQuery,
+                        statusFilter: invoiceStatusFilter,
+                        dateFilter: invoiceDateFilter,
+                        fromDate: invoiceFromDate,
+                        toDate: invoiceToDate
+                      });
+                      
                       const filteredInvoices = filterInvoices(invoices, invoicesSearchQuery, invoiceStatusFilter, invoiceDateFilter, invoiceFromDate, invoiceToDate);
+                      console.log('🔍 FILTERED INVOICES:', {
+                        totalFiltered: filteredInvoices.length,
+                        sampleFiltered: filteredInvoices[0]
+                      });
+                      
                       const paginatedInvoices = getPaginatedData(filteredInvoices, currentPage, itemsPerPage);
+                      console.log('🔍 PAGINATED INVOICES:', {
+                        totalPaginated: paginatedInvoices.length,
+                        currentPage,
+                        itemsPerPage
+                      });
                       
                       if (paginatedInvoices.length === 0) {
                         return (
                           <TableRow>
-                            <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                            <TableCell colSpan={11} className="text-center py-8 text-gray-500">
                               {invoicesSearchQuery ? 'No invoices found matching your search.' : 'No invoices available.'}
                             </TableCell>
                           </TableRow>
@@ -3962,8 +4239,21 @@ export function SalesOrderInvoiceManager() {
                       }
                       
                       return paginatedInvoices.map((invoice) => (
-                      <TableRow key={invoice.id} className="hover:bg-gray-50 transition-colors">
-                        <TableCell className="font-medium text-blue-600">{invoice.id.slice(0, 8)}</TableCell>
+                        <React.Fragment key={invoice.id}>
+                          <TableRow 
+                            className="hover:bg-gray-50 transition-colors cursor-pointer"
+                            onClick={() => toggleInvoiceExpansion(invoice.id)}
+                          >
+                            <TableCell className="font-medium text-blue-600">
+                              <div className="flex items-center gap-2">
+                                {expandedInvoices.has(invoice.id) ? (
+                                  <ChevronUp className="h-4 w-4 text-gray-500" />
+                                ) : (
+                                  <ChevronDown className="h-4 w-4 text-gray-500" />
+                                )}
+                                {invoice.id.slice(0, 8)}
+                              </div>
+                            </TableCell>
                         <TableCell>{invoice.sales_order_id?.slice(0, 8) || 'N/A'}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
@@ -3986,6 +4276,9 @@ export function SalesOrderInvoiceManager() {
                         <TableCell className="text-orange-600 font-medium">
                           {formatCurrency(invoice.waived_amount || 0)}
                         </TableCell>
+                        <TableCell className="text-blue-600 font-medium">
+                          {formatCurrency(invoice.total_refunded || 0)}
+                        </TableCell>
                         <TableCell className="text-red-600 font-medium">
                           {formatCurrency(invoice.balance_due || 0)}
                         </TableCell>
@@ -4006,66 +4299,370 @@ export function SalesOrderInvoiceManager() {
                           })()}
                         </TableCell>
                         <TableCell>
-                          <div className="flex gap-2 justify-center">
-                            {invoice.status !== 'paid' && (
-                              <Button
-                                size="sm"
-                                className="bg-green-600 hover:bg-green-700"
-                                onClick={() => {
-                                  setSelectedInvoice(invoice);
-                                  setPaymentTrackingOpen(true);
-                                }}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="h-8 w-8 p-0"
+                                onClick={(e) => e.stopPropagation()}
                               >
-                                <CreditCard className="h-4 w-4 mr-1" />
-                                Payment
+                                <MoreHorizontal className="h-4 w-4" />
                               </Button>
-                            )}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                // TODO: Implement invoice view/download 
-                                console.log('View invoice:', invoice.id);
-                              }}
-                            >
-                              <Eye className="h-4 w-4 mr-1" />
-                              View
-                            </Button>
-                            
-                            {/* Waive Off Button - Only show if there's a balance due */}
-                            {(invoice.balance_due || 0) > 0 && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-200"
-                                onClick={() => handleWaiveOffInvoice(invoice)}
-                                title="Waive Off Amount"
-                              >
-                                <Minus className="h-4 w-4 mr-1" />
-                                Waive
-                              </Button>
-                            )}
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                              {invoice.status !== 'paid' && (
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    setSelectedInvoice(invoice);
+                                    setPaymentTrackingOpen(true);
+                                  }}
+                                  className="text-green-700"
+                                >
+                                  <CreditCard className="h-4 w-4 mr-2" />
+                                  Record Payment
+                                </DropdownMenuItem>
+                              )}
+                              
+                              {/* Waive Off Button - Only show if there's a balance due */}
+                              {(invoice.balance_due || 0) > 0 && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem 
+                                    onClick={() => handleWaiveOffInvoice(invoice)}
+                                    className="text-orange-700"
+                                  >
+                                    <Minus className="h-4 w-4 mr-2" />
+                                    Waive Off Amount
+                                  </DropdownMenuItem>
+                                </>
+                              )}
 
-                            {/* Refund Button - Only show if there's paid amount and it's greater than any existing refunds */}
-                            {(invoice.paid_amount || 0) > 0 && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
-                                onClick={() => {
-                                  setSelectedInvoiceForRefund(invoice);
-                                  setRefundDialogOpen(true);
-                                }}
-                                title="Process Refund"
-                              >
-                                <RotateCcw className="h-4 w-4 mr-1" />
-                                Refund
-                              </Button>
-                            )}
-                          </div>
+                              {/* Refund Button - Only show if there's paid amount */}
+                              {(invoice.paid_amount || 0) > 0 && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem 
+                                    onClick={async () => {
+                                      setSelectedInvoiceForRefund(invoice);
+                                      const refundAmount = await calculateRefundAmount(invoice.id);
+                                      setPrefilledRefundAmount(refundAmount);
+                                      setRefundDialogOpen(true);
+                                    }}
+                                    className="text-blue-700"
+                                  >
+                                    <RotateCcw className="h-4 w-4 mr-2" />
+                                    Process Refund
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                       </TableRow>
-                      )); // Close the map function and IIFE
+                      
+                      {/* Expanded row content */}
+                      {expandedInvoices.has(invoice.id) && (
+                        <TableRow>
+                          <TableCell colSpan={11} className="bg-gray-50 p-6">
+                            <div className="space-y-4">
+                              <h4 className="font-semibold text-lg mb-4">Invoice Details</h4>
+                              
+                              {/* Sales Order Items */}
+                              <div className="bg-white rounded-lg p-4 shadow-sm">
+                                <h5 className="font-medium text-gray-900 mb-3">Sales Order Items</h5>
+                                {invoice.sales_order && invoice.sales_order.sales_order_items && invoice.sales_order.sales_order_items.length > 0 ? (
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                      <thead>
+                                        <tr className="border-b">
+                                          <th className="text-left py-2 pr-4">Product</th>
+                                          <th className="text-left py-2 pr-4">SKU</th>
+                                          <th className="text-right py-2 pr-4">Quantity</th>
+                                          <th className="text-right py-2 pr-4">Unit Price</th>
+                                          <th className="text-right py-2 pr-4">Final Price</th>
+                                          <th className="text-right py-2 pr-4">Total</th>
+                                          <th className="text-center py-2">Actions</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {invoice.sales_order.sales_order_items.map((item: SalesOrderItem, index: number) => (
+                                          <tr key={index} className="border-b">
+                                            <td className="py-2 pr-4">
+                                              <div className="flex flex-col">
+                                                <span>{item.name}</span>
+                                                {item.return_status && item.return_status !== 'none' && (
+                                                  <div className="flex items-center gap-1 mt-1">
+                                                    <Badge 
+                                                      variant={item.return_status === 'full' ? 'destructive' : 'secondary'}
+                                                      className="text-xs"
+                                                    >
+                                                      {item.return_status === 'full' ? 'Fully Returned' : 
+                                                       `${item.returned_quantity || 0}/${item.quantity} Returned`}
+                                                    </Badge>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </td>
+                                            <td className="py-2 pr-4 font-mono text-xs text-gray-600">
+                                              {Array.isArray(item.products) ? item.products[0]?.sku : item.products?.sku || 'N/A'}
+                                            </td>
+                                            <td className="py-2 pr-4 text-right">{item.quantity}</td>
+                                            <td className="py-2 pr-4 text-right">{formatCurrency(item.unit_price)}</td>
+                                            <td className="py-2 pr-4 text-right font-medium">{formatCurrency(item.final_price)}</td>
+                                            <td className="py-2 pr-4 text-right text-gray-600">{formatCurrency(item.quantity * item.final_price)}</td>
+                                            <td className="py-2 text-center">
+                                              <div className="flex items-center justify-center gap-1">
+                                                {/* Return/Exchange buttons for items available for return */}
+                                                {(item.available_for_return || 0) > 0 ? (
+                                                  <>
+                                                    <Button
+                                                      size="sm"
+                                                      variant="outline"
+                                                      onClick={() => handleReturnExchange(item, invoice)}
+                                                      className="h-6 w-6 p-0 border-blue-200 hover:border-blue-300 hover:bg-blue-50"
+                                                      title="Return Item"
+                                                    >
+                                                      <RotateCcw className="h-3 w-3 text-blue-500" />
+                                                    </Button>
+                                                    <Button
+                                                      size="sm"
+                                                      variant="outline"
+                                                      onClick={() => handleReturnExchange(item, invoice)}
+                                                      className="h-6 w-6 p-0 border-green-200 hover:border-green-300 hover:bg-green-50"
+                                                      title="Exchange Item"
+                                                    >
+                                                      <ArrowRightLeft className="h-3 w-3 text-green-500" />
+                                                    </Button>
+                                                  </>
+                                                ) : null}
+                                                
+                                                {/* Refund dialog button for items with returns */}
+                                                {item.return_status && item.return_status !== 'none' && (
+                                                  refundedItems.has(item.id) ? (
+                                                    <Badge 
+                                                      variant="secondary" 
+                                                      className="h-6 px-2 text-xs bg-green-100 text-green-700 border-green-200"
+                                                    >
+                                                      <CheckCircle className="h-3 w-3 mr-1" />
+                                                      Refunded
+                                                    </Badge>
+                                                  ) : (
+                                                    <Button
+                                                      size="sm"
+                                                      variant="outline"
+                                                      onClick={async () => {
+                                                        setSelectedInvoiceForRefund(invoice);
+                                                        const refundAmount = await calculateRefundAmount(invoice.id);
+                                                        setPrefilledRefundAmount(refundAmount);
+                                                        setRefundDialogOpen(true);
+                                                      }}
+                                                      className="h-6 px-2 text-xs border-orange-200 hover:border-orange-300 hover:bg-orange-50 text-orange-700"
+                                                      title="Process Refund"
+                                                    >
+                                                      <DollarSign className="h-3 w-3 mr-1" />
+                                                      Refund
+                                                    </Button>
+                                                  )
+                                                )}
+                                                
+                                                {/* Status display */}
+                                                {(item.available_for_return || 0) === 0 && (!item.return_status || item.return_status === 'none') && (
+                                                  <span className="text-xs text-gray-400">No Actions</span>
+                                                )}
+                                                
+                                                {(item.available_for_return || 0) < item.quantity && (item.available_for_return || 0) > 0 && (
+                                                  <span className="text-xs text-amber-600 ml-1">
+                                                    {item.available_for_return || 0} left
+                                                  </span>
+                                                )}
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                ) : (
+                                  <p className="text-gray-500">No items available</p>
+                                )}
+                              </div>
+                              
+                              {/* Payment Details */}
+                              <div className="bg-white rounded-lg p-4 shadow-sm">
+                                <h5 className="font-medium text-gray-900 mb-3">Payment Details</h5>
+                                {invoice.payments && invoice.payments.length > 0 ? (
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                      <thead>
+                                        <tr className="border-b">
+                                          <th className="text-left py-2 pr-4">Date</th>
+                                          <th className="text-left py-2 pr-4">Method</th>
+                                          <th className="text-right py-2 pr-6">Amount</th>
+                                          <th className="text-left py-2">Reference</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {invoice.payments.map((payment: PaymentDetail, index: number) => (
+                                          <tr key={index} className="border-b">
+                                            <td className="py-2 pr-4">{formatDate(payment.payment_date || payment.date)}</td>
+                                            <td className="py-2 pr-4 capitalize">{payment.method}</td>
+                                            <td className="py-2 pr-6 text-right font-medium text-green-600">{formatCurrency(payment.amount)}</td>
+                                            <td className="py-2">{payment.reference || 'N/A'}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                ) : (
+                                  <p className="text-gray-500">No payments recorded</p>
+                                )}
+                              </div>
+                              
+                              {/* Return Details */}
+                              {(() => {
+                                const returns = invoiceReturns.get(invoice.id) || [];
+                                return returns.length > 0;
+                              })() && (
+                                <div className="bg-white rounded-lg p-4 shadow-sm">
+                                  <h5 className="font-medium text-gray-900 mb-3">Return Details</h5>
+                                  <div className="space-y-4">
+                                    {(invoiceReturns.get(invoice.id) || []).map((returnDetail: ReturnDetail) => (
+                                      <div key={returnDetail.id} className="border border-gray-200 rounded-lg p-3">
+                                        <div className="flex items-center justify-between mb-3">
+                                          <div className="flex items-center gap-2">
+                                            <Badge 
+                                              variant={returnDetail.status === 'completed' ? 'default' : 
+                                                      returnDetail.status === 'pending' ? 'secondary' : 'destructive'}
+                                              className="text-xs"
+                                            >
+                                              {returnDetail.return_type} - {returnDetail.status}
+                                            </Badge>
+                                            <span className="text-sm text-gray-600">
+                                              {formatDate(returnDetail.created_at)}
+                                            </span>
+                                          </div>
+                                          <div className="text-sm font-medium text-red-600">
+                                            Total: {formatCurrency(returnDetail.return_value)}
+                                          </div>
+                                        </div>
+                                        
+                                        {returnDetail.reason && (
+                                          <div className="mb-3 text-sm text-gray-600">
+                                            <span className="font-medium">Reason:</span> {returnDetail.reason}
+                                          </div>
+                                        )}
+                                        
+                                        <div className="overflow-x-auto">
+                                          <table className="w-full text-sm">
+                                            <thead>
+                                              <tr className="border-b border-gray-200">
+                                                <th className="text-left py-2 pr-4">Item</th>
+                                                <th className="text-right py-2 pr-4">Quantity</th>
+                                                <th className="text-right py-2 pr-4">Unit Price</th>
+                                                <th className="text-right py-2 pr-4">Refund Amount</th>
+                                                <th className="text-center py-2 pr-4">Status</th>
+                                                <th className="text-center py-2">Action</th>
+                                              </tr>
+                                            </thead>
+                                            <tbody>
+                                              {returnDetail.return_items.map((returnItem: ReturnItem) => (
+                                                <tr key={returnItem.id} className="border-b border-gray-100">
+                                                  <td className="py-2 pr-4">
+                                                    <div className="flex flex-col">
+                                                      <span className="font-medium">
+                                                        {returnItem.sales_order_items?.name || 'Unknown Item'}
+                                                      </span>
+                                                      <span className="text-xs text-gray-500">
+                                                        SKU: {returnItem.sales_order_items?.products?.sku || 'N/A'}
+                                                      </span>
+                                                      {returnItem.condition_notes && (
+                                                        <span className="text-xs text-amber-600 mt-1">
+                                                          Note: {returnItem.condition_notes}
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                  </td>
+                                                  <td className="py-2 pr-4 text-right">{returnItem.quantity}</td>
+                                                  <td className="py-2 pr-4 text-right">{formatCurrency(returnItem.unit_price)}</td>
+                                                  <td className="py-2 pr-4 text-right font-medium text-red-600">
+                                                    {formatCurrency(returnItem.refund_amount)}
+                                                  </td>
+                                                  <td className="py-2 pr-4 text-center">
+                                                    <Badge 
+                                                      variant={returnItem.status === 'completed' ? 'default' : 
+                                                              returnItem.status === 'pending' ? 'secondary' : 'destructive'}
+                                                      className="text-xs"
+                                                    >
+                                                      {returnItem.status}
+                                                    </Badge>
+                                                  </td>
+                                                  <td className="py-2 text-center">
+                                                    {returnItem.status === 'pending' && (
+                                                      <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => handleProcessRefund(
+                                                          returnDetail.id, 
+                                                          invoice.id, 
+                                                          returnItem.refund_amount
+                                                        )}
+                                                        className="h-6 px-2 text-xs border-green-200 hover:border-green-300 hover:bg-green-50 text-green-700"
+                                                        title="Process Refund"
+                                                      >
+                                                        <DollarSign className="h-3 w-3 mr-1" />
+                                                        Refund
+                                                      </Button>
+                                                    )}
+                                                    {returnItem.status === 'completed' && (
+                                                      <span className="text-xs text-green-600 font-medium">Refunded</span>
+                                                    )}
+                                                  </td>
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* Refund Details */}
+                              {invoice.refunds && invoice.refunds.length > 0 && (
+                                <div className="bg-white rounded-lg p-4 shadow-sm">
+                                  <h5 className="font-medium text-gray-900 mb-3">Refund Details</h5>
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                      <thead>
+                                        <tr className="border-b">
+                                          <th className="text-left py-2 pr-4">Date</th>
+                                          <th className="text-left py-2 pr-4">Type</th>
+                                          <th className="text-right py-2 pr-6">Amount</th>
+                                          <th className="text-left py-2">Reason</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {invoice.refunds.map((refund: RefundDetail, index: number) => (
+                                          <tr key={index} className="border-b">
+                                            <td className="py-2 pr-4">{formatDate(refund.processed_at)}</td>
+                                            <td className="py-2 pr-4 capitalize">{refund.refund_type}</td>
+                                            <td className="py-2 pr-6 text-right font-medium text-blue-600">{formatCurrency(refund.refund_amount)}</td>
+                                            <td className="py-2">{refund.reason}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </React.Fragment>
+                      ));
                     })()}
                   </TableBody>
                 </Table>
@@ -5255,8 +5852,10 @@ export function SalesOrderInvoiceManager() {
                     <TableCell>
                       <Button
                         size="sm"
-                        onClick={() => {
+                        onClick={async () => {
                           setSelectedInvoiceForRefund(invoice);
+                          const refundAmount = await calculateRefundAmount(invoice.id);
+                          setPrefilledRefundAmount(refundAmount);
                           setInvoiceSelectionOpen(false);
                           setRefundDialogOpen(true);
                         }}
@@ -5282,9 +5881,29 @@ export function SalesOrderInvoiceManager() {
         onClose={() => {
           setRefundDialogOpen(false);
           setSelectedInvoiceForRefund(null);
+          setPrefilledRefundAmount(undefined);
         }}
         invoice={selectedInvoiceForRefund}
-        onRefundCreated={fetchData}
+        onRefundCreated={async () => {
+          await fetchData();
+          if (selectedInvoiceForRefund) {
+            await refreshRefundedItems(selectedInvoiceForRefund.id);
+          }
+        }}
+        prefilledAmount={prefilledRefundAmount}
+      />
+
+      {/* Return/Exchange Dialog */}
+      <InvoiceReturnExchangeDialog
+        isOpen={returnExchangeDialogOpen}
+        onClose={() => {
+          setReturnExchangeDialogOpen(false);
+          setSelectedItemForReturn(null);
+          setSelectedInvoiceForReturn(null);
+        }}
+        invoiceItem={selectedItemForReturn}
+        invoiceId={selectedInvoiceForReturn?.id || ''}
+        onSuccess={handleReturnExchangeSuccess}
       />
 
       {/* Create Expense Dialog */}

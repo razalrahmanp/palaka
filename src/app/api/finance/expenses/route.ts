@@ -130,23 +130,33 @@ export async function POST(req: Request) {
 
     if (expErr) return NextResponse.json({ error: expErr.message }, { status: 500 });
 
-    // 2. Create bank transaction (only for non-cash payments)
-    if (bank_account_id && payment_method !== 'cash') {
+    // 2. Create bank transaction (only for non-cash payments with valid bank account)
+    if (bank_account_id && bank_account_id.trim() !== '' && payment_method !== 'cash') {
       console.log(`Creating bank transaction for ${payment_method} payment of ₹${amount}`);
       
-      await supabase
+      const { data: bankTransaction, error: bankTransError } = await supabase
         .from("bank_transactions")
         .insert([{
           bank_account_id,
           date,
           type: "withdrawal",
           amount,
-          description: `Expense: ${description} (via ${exp.entity_type || 'Al rams Furniture'})`,
-          reference: receipt_number || `EXP-${exp.id.slice(-8)}`,
-          source_type: 'expense',
-          payment_method: payment_method,
-          source_id: exp.id
-        }]);
+          description: `Expense: ${description} (${payment_method?.toUpperCase()})`,
+          reference: receipt_number || `EXP-${exp.id.slice(-8)}`
+        }])
+        .select()
+        .single();
+
+      if (bankTransError) {
+        console.error('❌ Failed to create bank transaction:', bankTransError);
+        return NextResponse.json({ 
+          error: 'Failed to create bank transaction', 
+          details: bankTransError.message,
+          expenseId: exp.id 
+        }, { status: 500 });
+      } else {
+        console.log(`✅ Bank transaction created successfully: ${bankTransaction.id}`);
+      }
 
       // 3. Update bank account balance
       const { data: bankAccount, error: bankError } = await supabase
@@ -155,15 +165,23 @@ export async function POST(req: Request) {
         .eq("id", bank_account_id)
         .single();
       
-      if (!bankError && bankAccount) {
+      if (bankError) {
+        console.error('❌ Failed to fetch bank account for balance update:', bankError);
+      } else if (bankAccount) {
         const newBalance = (bankAccount.current_balance || 0) - amount;
-        await supabase
+        const { error: updateError } = await supabase
           .from("bank_accounts")
           .update({ current_balance: newBalance })
           .eq("id", bank_account_id);
+        
+        if (updateError) {
+          console.error('❌ Failed to update bank account balance:', updateError);
+        } else {
+          console.log(`✅ Bank account balance updated: ${bankAccount.current_balance} → ${newBalance}`);
+        }
       }
-    } else if (payment_method === 'cash') {
-      console.log(`Cash expense of ₹${amount} - no bank transaction created`);
+    } else {
+      console.log(`Cash expense of ₹${amount} - no bank transaction created (payment_method: ${payment_method}, bank_account_id: '${bank_account_id}')`);
     }
 
     // 4. Update cashflow

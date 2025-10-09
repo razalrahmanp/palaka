@@ -967,9 +967,9 @@ export function VendorBillsTab({
                         <TableHead className="text-right">Total Amount</TableHead>
                         <TableHead className="text-right">Paid Amount</TableHead>
                         <TableHead className="text-right">Outstanding</TableHead>
-                        <TableHead>Status</TableHead>
+                        <TableHead className="text-center">Status</TableHead>
                         <TableHead>Description</TableHead>
-                        <TableHead>Actions</TableHead>
+                        <TableHead className="text-center">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1011,7 +1011,7 @@ export function VendorBillsTab({
                                 {formatCurrency(bill.remaining_amount)}
                               </span>
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="text-center">
                               <Badge className={getStatusColor(actualStatus)}>
                                 {actualStatus.charAt(0).toUpperCase() + actualStatus.slice(1)}
                               </Badge>
@@ -1019,8 +1019,8 @@ export function VendorBillsTab({
                             <TableCell className="max-w-[200px] truncate">
                               {bill.description}
                             </TableCell>
-                            <TableCell>
-                              <div className="flex gap-2">
+                            <TableCell className="text-center">
+                              <div className="flex justify-center gap-2">
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1566,11 +1566,11 @@ export function VendorBillsTab({
                 <TableRow>
                   <TableHead className="font-semibold">Date</TableHead>
                   <TableHead className="font-semibold">Description</TableHead>
-                  <TableHead className="font-semibold">Type</TableHead>
-                  <TableHead className="font-semibold">Debit</TableHead>
-                  <TableHead className="font-semibold">Credit</TableHead>
-                  <TableHead className="font-semibold">Outstanding</TableHead>
-                  <TableHead className="font-semibold">Actions</TableHead>
+                  <TableHead className="font-semibold text-center">Type</TableHead>
+                  <TableHead className="font-semibold text-right">Debit</TableHead>
+                  <TableHead className="font-semibold text-right">Credit</TableHead>
+                  <TableHead className="font-semibold text-right">Outstanding</TableHead>
+                  <TableHead className="font-semibold text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1686,7 +1686,7 @@ export function VendorBillsTab({
                             {entry.description}
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="text-center">
                           <Badge 
                             variant="outline" 
                             className={`font-medium ${
@@ -1698,7 +1698,7 @@ export function VendorBillsTab({
                             {entry.type}
                           </Badge>
                         </TableCell>
-                        <TableCell className="font-semibold">
+                        <TableCell className="font-semibold text-right">
                           {entry.isDebit ? (
                             <span className="text-red-600">
                               {formatCurrency(entry.amount)}
@@ -1707,7 +1707,7 @@ export function VendorBillsTab({
                             <span className="text-gray-400">-</span>
                           )}
                         </TableCell>
-                        <TableCell className="font-semibold">
+                        <TableCell className="font-semibold text-right">
                           {entry.isCredit ? (
                             <span className="text-green-600">
                               {formatCurrency(entry.amount)}
@@ -1716,16 +1716,16 @@ export function VendorBillsTab({
                             <span className="text-gray-400">-</span>
                           )}
                         </TableCell>
-                        <TableCell className="font-semibold">
-                          <div className={`text-right ${outstandingAmount > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        <TableCell className="font-semibold text-right">
+                          <div className={outstandingAmount > 0 ? 'text-red-600' : 'text-green-600'}>
                             {formatCurrency(Math.abs(outstandingAmount))}
                             <span className="text-xs ml-1">
                               {outstandingAmount > 0 ? 'DR' : 'CR'}
                             </span>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
+                        <TableCell className="text-center">
+                          <div className="flex items-center justify-center gap-1">
                             {entry.expense_id && (
                               <Button
                                 size="sm"

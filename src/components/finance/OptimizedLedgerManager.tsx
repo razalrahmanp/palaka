@@ -319,6 +319,12 @@ export default function OptimizedLedgerManager() {
       const data = await response.json();
 
       if (data.success) {
+        console.log('API Response for', ledger.type, ':', {
+          transaction_count: data.data?.summary?.transaction_count,
+          transactions_length: data.data?.transactions?.length,
+          breakdown: data.data?.summary?.breakdown
+        });
+        
         // Transform the detailed transaction data to match our interface
         let transformedTransactions: LedgerTransaction[] = [];
         

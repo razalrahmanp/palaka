@@ -46,59 +46,35 @@ export async function GET(request: NextRequest) {
     // Fetch all transaction types for this bank account
     const allTransactions: BankTransactionDetail[] = [];
 
-    // 1. Fetch bank transactions (existing) for this account
+    // 1. Fetch bank transactions (existing) for this account (excluding sales payments to avoid duplicates)
     const { data: bankTransactions, error: bankTransError } = await supabaseAdmin
       .from('bank_transactions')
-      .select('id, date, type, amount, description, reference, source_type, payment_method')
+      .select('id, date, type, amount, description, reference')
       .eq('bank_account_id', bankAccountId)
+      .not('description', 'like', '%Sales Payment%')  // Exclude sales payments - we get these from payments table
+      .not('description', 'like', '%Payment received%')  // Exclude payment received entries if any
       .order('date', { ascending: false });
 
     if (!bankTransError && bankTransactions) {
       bankTransactions.forEach(tx => {
-        // Use source_type if available, otherwise determine from description pattern
+        // Determine transaction type from description pattern matching
         let transactionType: 'bank_transaction' | 'vendor_payment' | 'withdrawal' | 'liability_payment' = 'bank_transaction';
         
-        if (tx.source_type) {
-          // Map source_type to transaction_type
-          switch (tx.source_type) {
-            case 'expense':
-              transactionType = 'bank_transaction';
-              break;
-            case 'vendor_payment':
-              transactionType = 'vendor_payment';
-              break;
-            case 'withdrawal':
-              transactionType = 'withdrawal';
-              break;
-            case 'liability_payment':
-              transactionType = 'liability_payment';
-              break;
-            case 'sales_payment':
-              transactionType = 'bank_transaction';
-              break;
-            default:
-              transactionType = 'bank_transaction';
-          }
-        } else {
-          // Fallback to description pattern matching for old records
-          if (tx.description?.includes('Expense:')) {
-            transactionType = 'bank_transaction';
-          } else if (tx.description?.includes('Payment received')) {
-            transactionType = 'bank_transaction';
-          } else if (tx.description?.includes('Vendor Payment')) {
-            transactionType = 'vendor_payment';
-          } else if (tx.description?.includes('Withdrawal') || tx.description?.includes('Owner')) {
-            transactionType = 'withdrawal';
-          } else if (tx.description?.includes('Loan Payment') || tx.description?.includes('Liability')) {
-            transactionType = 'liability_payment';
-          }
+        // Use description pattern matching to categorize transactions
+        if (tx.description?.includes('Expense:')) {
+          transactionType = 'bank_transaction';
+        } else if (tx.description?.includes('Payment received')) {
+          transactionType = 'bank_transaction';
+        } else if (tx.description?.includes('Vendor Payment')) {
+          transactionType = 'vendor_payment';
+        } else if (tx.description?.includes('Withdrawal') || tx.description?.includes('Owner')) {
+          transactionType = 'withdrawal';
+        } else if (tx.description?.includes('Loan Payment') || tx.description?.includes('Liability')) {
+          transactionType = 'liability_payment';
         }
 
-        // Update description to show payment method if available
-        let enhancedDescription = tx.description || 'Bank Transaction';
-        if (tx.payment_method && tx.payment_method !== 'bank_transfer') {
-          enhancedDescription += ` (${tx.payment_method.toUpperCase()})`;
-        }
+        // Use description as-is (no payment method info available in bank_transactions table)
+        const enhancedDescription = tx.description || 'Bank Transaction';
 
         allTransactions.push({
           id: `bank_${tx.id}`,
@@ -122,7 +98,7 @@ export async function GET(request: NextRequest) {
 
     if (!upiError && linkedUpiAccounts) {
       for (const upiAccount of linkedUpiAccounts) {
-        // Fetch transactions from this linked UPI account
+        // Fetch transactions from this linked UPI account, but filter out cash expenses
         const { data: upiTransactions, error: upiTransError } = await supabaseAdmin
           .from('bank_transactions')
           .select('id, date, type, amount, description, reference')
@@ -130,17 +106,31 @@ export async function GET(request: NextRequest) {
           .order('date', { ascending: false });
 
         if (!upiTransError && upiTransactions) {
-          upiTransactions.forEach(tx => {
-            allTransactions.push({
-              id: `upi_${tx.id}`,
-              date: tx.date,
-              type: tx.type,
-              amount: tx.amount || 0,
-              description: `${tx.description || 'UPI Transaction'} (via ${upiAccount.name})`,
-              reference: tx.reference || '',
-              transaction_type: 'bank_transaction'
-            });
-          });
+          for (const tx of upiTransactions) {
+            // Skip transactions that look like cash expenses based on description pattern
+            let shouldInclude = true;
+            
+            // If this looks like an expense transaction, check if it should be cash
+            if (tx.description && tx.description.includes('Expense:')) {
+              // Try to extract expense info from description and check if it might be cash
+              // For now, we'll be conservative and exclude expenses from "Al rams Furniture" UPI account
+              // since this account seems to be collecting cash expenses incorrectly
+              console.log(`Filtering out expense transaction from UPI account: ${tx.description}`);
+              shouldInclude = false;
+            }
+            
+            if (shouldInclude) {
+              allTransactions.push({
+                id: `upi_${tx.id}`,
+                date: tx.date,
+                type: tx.type,
+                amount: tx.amount || 0,
+                description: `${tx.description || 'UPI Transaction'} (via ${upiAccount.name})`,
+                reference: tx.reference || '',
+                transaction_type: 'bank_transaction'
+              });
+            }
+          }
         }
       }
     }
@@ -163,6 +153,40 @@ export async function GET(request: NextRequest) {
           description: `Vendor Payment: ${supplier?.name || 'Unknown Supplier'}${payment.description ? ` - ${payment.description}` : ''}`,
           reference: payment.reference_number || '',
           transaction_type: 'vendor_payment'
+        });
+      });
+    }
+
+    // 2.5. Fetch sales payments received through this bank account
+    const { data: salesPayments, error: salesPayError } = await supabaseAdmin
+      .from('payments')
+      .select('id, payment_date, date, amount, description, reference, method, invoice_id')
+      .eq('bank_account_id', bankAccountId)
+      .order('payment_date', { ascending: false });
+
+    if (!salesPayError && salesPayments) {
+      salesPayments.forEach(payment => {
+        // Use payment_date if available, otherwise fall back to date
+        const transactionDate = payment.payment_date || payment.date;
+        
+        // Create descriptive text similar to what's shown in bank_transactions
+        let description = 'Sales Payment';
+        if (payment.invoice_id) {
+          description = `Payment received for Sales Order via ${payment.method || 'bank_transfer'}`;
+        }
+        if (payment.description) {
+          description += `: ${payment.description}`;
+        }
+        description += ` (${payment.method || 'bank_transfer'})`;
+        
+        allTransactions.push({
+          id: `payment_${payment.id}`,
+          date: transactionDate,
+          type: 'deposit',
+          amount: payment.amount || 0,
+          description: description,
+          reference: payment.reference || '',
+          transaction_type: 'bank_transaction'
         });
       });
     }
@@ -242,13 +266,108 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // 6. Get invoice returns (sales returns that create refunds)
+    const { data: invoiceReturns, error: returnsError } = await supabaseAdmin
+      .from('returns')
+      .select(`
+        id,
+        created_at,
+        return_value,
+        order_id,
+        reason,
+        return_type,
+        sales_orders!inner(
+          invoice_generated,
+          invoices!inner(
+            bank_account_id,
+            total_amount
+          )
+        )
+      `)
+      .gt('return_value', 0)
+      .not('sales_orders.invoices.bank_account_id', 'is', null)
+      .eq('sales_orders.invoices.bank_account_id', bankAccountId);
+
+    if (invoiceReturns && !returnsError) {
+      invoiceReturns.forEach(returnItem => {
+        allTransactions.push({
+          id: `invoice_return_${returnItem.id}`,
+          date: returnItem.created_at.split('T')[0],
+          type: 'deposit',
+          amount: returnItem.return_value || 0,
+          description: `Invoice Return: ${returnItem.reason || returnItem.return_type || 'Customer Return'} (Order ${returnItem.order_id ? returnItem.order_id.slice(-8) : 'N/A'})`,
+          reference: `RET-${returnItem.id.slice(-8)}`,
+          transaction_type: 'bank_transaction'
+        });
+      });
+    }
+
+    // 7. Get purchase returns (supplier returns with payment reversals)
+    const { data: purchaseReturns, error: purchaseReturnsError } = await supabaseAdmin
+      .from('purchase_returns')
+      .select(`
+        id,
+        return_date,
+        net_return_amount,
+        return_number,
+        reason,
+        reason_description,
+        reversal_bank_account_id,
+        reversal_method,
+        reversal_reference_number,
+        suppliers!inner(name)
+      `)
+      .eq('is_payment_reversed', true)  
+      .eq('reversal_bank_account_id', bankAccountId)
+      .gt('net_return_amount', 0);
+
+    if (purchaseReturns && !purchaseReturnsError) {
+      purchaseReturns.forEach(purchaseReturn => {
+        const supplierName = Array.isArray(purchaseReturn.suppliers) 
+          ? (purchaseReturn.suppliers[0] as { name: string })?.name 
+          : (purchaseReturn.suppliers as { name: string })?.name || 'Unknown Supplier';
+        const reasonText = purchaseReturn.reason_description || purchaseReturn.reason || 'Purchase Return';
+        
+        allTransactions.push({
+          id: `purchase_return_${purchaseReturn.id}`,
+          date: purchaseReturn.return_date,
+          type: 'deposit',
+          amount: purchaseReturn.net_return_amount || 0,
+          description: `Purchase Return from ${supplierName}: ${reasonText} (${purchaseReturn.reversal_method?.toUpperCase() || 'BANK'})`,
+          reference: purchaseReturn.reversal_reference_number || purchaseReturn.return_number || `PR-${purchaseReturn.id.slice(-8)}`,
+          transaction_type: 'bank_transaction'
+        });
+      });
+    }
+
+    // 8. Get bank-linked expenses (non-cash expenses paid via this bank account)
+    const { data: bankExpenses, error: expensesError } = await supabaseAdmin
+      .from('expenses')
+      .select('id, date, description, amount, payment_method, category, entity_type')
+      .eq('bank_account_id', bankAccountId)
+      .neq('payment_method', 'cash');
+
+    if (bankExpenses && !expensesError) {
+      bankExpenses.forEach(expense => {
+        allTransactions.push({
+          id: `bank_expense_${expense.id}`,
+          date: expense.date,
+          type: 'withdrawal',
+          amount: expense.amount || 0,
+          description: `${expense.category || 'Expense'}: ${expense.description} (${expense.payment_method?.toUpperCase() || 'BANK'})`,
+          reference: `EXP-${expense.id.slice(-8)}`,
+          transaction_type: 'bank_transaction'
+        });
+      });
+    }
+
     // Sort all transactions by date (most recent first)
     allTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     // Get paginated results
     const paginatedTransactions = allTransactions.slice(offset, offset + limit);
 
-    console.log(`Found ${allTransactions.length} total transactions for bank account ${bankAccount.name}: ${bankTransactions?.length || 0} bank, ${linkedUpiAccounts?.length || 0} linked UPI accounts, ${vendorPayments?.length || 0} vendor, ${withdrawals?.length || 0} withdrawals, ${liabilityPayments?.length || 0} liability payments`);
+    console.log(`Found ${allTransactions.length} total transactions for bank account ${bankAccount.name}: ${bankTransactions?.length || 0} bank, ${linkedUpiAccounts?.length || 0} linked UPI accounts, ${salesPayments?.length || 0} sales, ${vendorPayments?.length || 0} vendor, ${withdrawals?.length || 0} withdrawals, ${liabilityPayments?.length || 0} liability payments, ${invoiceReturns?.length || 0} invoice returns, ${purchaseReturns?.length || 0} purchase returns, ${bankExpenses?.length || 0} bank-linked expenses`);
 
     // Calculate summary statistics from all transactions
     let totalDeposits = 0;
@@ -286,7 +405,7 @@ export async function GET(request: NextRequest) {
       displayName += ` (${bankAccount.account_number})`;
     }
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: {
         bank_account: {
@@ -309,6 +428,7 @@ export async function GET(request: NextRequest) {
           breakdown: {
             bank_transactions: bankTransactions?.length || 0,
             linked_upi_transactions: linkedUpiTransactionCount,
+            sales_payments: salesPayments?.length || 0,
             vendor_payments: vendorPayments?.length || 0,
             owner_withdrawals: withdrawals?.length || 0,
             loan_payments: liabilityPayments?.length || 0
@@ -324,6 +444,15 @@ export async function GET(request: NextRequest) {
         }
       }
     });
+
+    // Add cache control headers to prevent caching
+    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+    response.headers.set('ETag', `"bank-transactions-${bankAccountId}-${Date.now()}"`);
+    response.headers.set('Last-Modified', new Date().toUTCString());
+
+    return response;
 
   } catch (error) {
     console.error('Error in bank-transactions API:', error);

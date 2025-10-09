@@ -11,8 +11,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileText, Plus, Calendar, DollarSign, CreditCard, Receipt, Search, Minus, Clock, Trash2, Edit, Calculator } from 'lucide-react';
-import { VendorBillForm } from './VendorBillForm';
+import { FileText, Plus, Calendar, DollarSign, CreditCard, Receipt, Search, Minus, Clock, Trash2, Edit, Calculator, ChevronDown, ChevronRight } from 'lucide-react';
+// import { VendorBillForm } from './VendorBillForm';
+import { EnhancedVendorBillForm } from './EnhancedVendorBillForm';
 import { subcategoryMap } from '@/types';
 
 interface VendorBill {
@@ -162,6 +163,7 @@ export function VendorBillsTab({
   const [isCreatingExpense, setIsCreatingExpense] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
+  const [expandedBills, setExpandedBills] = useState<Set<string>>(new Set());
   const [expenseForm, setExpenseForm] = useState({
     date: new Date().toISOString().split('T')[0],
     description: '',
@@ -277,6 +279,18 @@ export function VendorBillsTab({
                    categoryDetails?.category.includes('Supplier') || categoryDetails?.category.includes('Vendor') ? 'supplier' : 
                    categoryDetails?.category.includes('Employee') || categoryDetails?.category.includes('Wage') || categoryDetails?.category.includes('Salary') ? 'employee' : 
                    'supplier' // Default to supplier for vendor bills
+    });
+  };
+
+  const toggleBillExpansion = (billId: string) => {
+    setExpandedBills(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(billId)) {
+        newSet.delete(billId);
+      } else {
+        newSet.add(billId);
+      }
+      return newSet;
     });
   };
 
@@ -870,6 +884,7 @@ export function VendorBillsTab({
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-8"></TableHead>
                         <TableHead>Bill Number</TableHead>
                         <TableHead>
                           <div className="flex items-center gap-1">
@@ -895,12 +910,24 @@ export function VendorBillsTab({
                       {bills.map((bill) => {
                         const isOverdue = new Date(bill.due_date) < new Date() && bill.status !== 'paid';
                         const actualStatus = isOverdue && bill.status === 'pending' ? 'overdue' : bill.status;
+                        const isExpanded = expandedBills.has(bill.id);
                         
                         return (
-                          <TableRow key={bill.id} className="hover:bg-gray-50">
-                            <TableCell className="font-mono text-sm">
-                              {bill.bill_number}
-                            </TableCell>
+                          <React.Fragment key={bill.id}>
+                            <TableRow 
+                              className="hover:bg-gray-50 cursor-pointer" 
+                              onClick={() => toggleBillExpansion(bill.id)}
+                            >
+                              <TableCell className="text-center">
+                                {isExpanded ? (
+                                  <ChevronDown className="h-4 w-4 text-gray-500" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4 text-gray-500" />
+                                )}
+                              </TableCell>
+                              <TableCell className="font-mono text-sm">
+                                {bill.bill_number}
+                              </TableCell>
                             <TableCell>{formatDate(bill.bill_date)}</TableCell>
                             <TableCell>
                               <span className={isOverdue ? 'text-red-600 font-medium' : ''}>
@@ -950,7 +977,43 @@ export function VendorBillsTab({
                                 )}
                               </div>
                             </TableCell>
-                          </TableRow>
+                            </TableRow>
+                            {isExpanded && (
+                              <TableRow>
+                                <TableCell colSpan={7} className="p-6 bg-gray-50">
+                                  <div className="space-y-4">
+                                    <h4 className="font-semibold text-gray-900">Bill Details</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                      <div>
+                                        <label className="text-sm font-medium text-gray-500">Reference Number</label>
+                                        <p className="text-sm text-gray-900">{bill.reference_number || 'N/A'}</p>
+                                      </div>
+                                      <div>
+                                        <label className="text-sm font-medium text-gray-500">Description</label>
+                                        <p className="text-sm text-gray-900">{bill.description || 'No description'}</p>
+                                      </div>
+                                      <div>
+                                        <label className="text-sm font-medium text-gray-500">Tax Amount</label>
+                                        <p className="text-sm text-gray-900">₹{bill.tax_amount || '0.00'}</p>
+                                      </div>
+                                      <div>
+                                        <label className="text-sm font-medium text-gray-500">Discount Amount</label>
+                                        <p className="text-sm text-gray-900">₹{bill.discount_amount || '0.00'}</p>
+                                      </div>
+                                      <div>
+                                        <label className="text-sm font-medium text-gray-500">Total Amount</label>
+                                        <p className="text-sm font-semibold text-gray-900">₹{bill.total_amount}</p>
+                                      </div>
+                                      <div>
+                                        <label className="text-sm font-medium text-gray-500">Created Date</label>
+                                        <p className="text-sm text-gray-900">{new Date(bill.created_at).toLocaleDateString()}</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </React.Fragment>
                         );
                       })}
                     </TableBody>
@@ -1383,14 +1446,23 @@ export function VendorBillsTab({
         </DialogContent>
       </Dialog>
 
-      {/* Vendor Bill Form Dialog */}
-      <VendorBillForm
+      {/* Enhanced Vendor Bill Form Dialog */}
+      <EnhancedVendorBillForm
         vendorId={vendorId}
         vendorName={vendorName}
         open={createBillOpen}
         onOpenChange={setCreateBillOpen}
         onSuccess={onBillUpdate}
       />
+
+      {/* Legacy Vendor Bill Form Dialog (keeping for compatibility) */}
+      {/* <VendorBillForm
+        vendorId={vendorId}
+        vendorName={vendorName}
+        open={createBillOpen}
+        onOpenChange={setCreateBillOpen}
+        onSuccess={onBillUpdate}
+      /> */}
 
       {/* Payment Recording Dialog */}
       <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>

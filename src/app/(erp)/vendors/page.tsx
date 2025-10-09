@@ -27,7 +27,7 @@ interface VendorStats {
   total_purchase_value: number; // Total PO value
   total_paid: number; // Amount paid to vendor
   total_pending: number; // Amount owed to vendor
-  unpaid_orders: number; // Number of unpaid orders
+  unpaid_bills: number; // Number of unpaid bills
   payment_status: 'pending' | 'paid';
   // Detailed inventory information
   inventory_summary?: {
@@ -778,7 +778,7 @@ export default function VendorsPage() {
                             ? 'bg-red-100 text-red-800 border-red-200'
                             : 'bg-gray-100 text-gray-800 border-gray-200'
                       }`}>
-                        {vendor.payment_status === 'paid' ? '✓ All Paid' : `${vendor.unpaid_orders || 0} Unpaid Orders`}
+                        {vendor.payment_status === 'paid' ? '✓ All Paid' : `${vendor.unpaid_bills || 0} Unpaid Bills`}
                       </Badge>
                       <div className="text-xs text-gray-500">
                         Last order: {vendor.last_order_date 

@@ -154,3 +154,85 @@ export async function PUT(
     return NextResponse.json({ error: 'Failed to update bill' }, { status: 500 })
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: vendorId } = await params
+    const body = await request.json()
+    const { bill_id } = body
+
+    if (!bill_id) {
+      return NextResponse.json({ error: 'Bill ID is required' }, { status: 400 })
+    }
+
+    // Check if bill exists and belongs to this vendor
+    const { data: existingBill, error: fetchError } = await supabase
+      .from('vendor_bills')
+      .select('id, bill_number, paid_amount, status')
+      .eq('id', bill_id)
+      .eq('supplier_id', vendorId)
+      .single()
+
+    if (fetchError || !existingBill) {
+      return NextResponse.json({ error: 'Bill not found or does not belong to this vendor' }, { status: 404 })
+    }
+
+    // Delete associated line items first
+    const { error: lineItemsDeleteError } = await supabase
+      .from('vendor_bill_line_items')
+      .delete()
+      .eq('vendor_bill_id', bill_id)
+
+    if (lineItemsDeleteError) {
+      console.error('Error deleting vendor bill line items:', lineItemsDeleteError)
+      return NextResponse.json({ error: 'Failed to delete associated line items' }, { status: 500 })
+    }
+
+    // Delete associated PO links
+    const { error: poLinksDeleteError } = await supabase
+      .from('vendor_bill_po_links')
+      .delete()
+      .eq('vendor_bill_id', bill_id)
+
+    if (poLinksDeleteError) {
+      console.error('Error deleting vendor bill PO links:', poLinksDeleteError)
+      return NextResponse.json({ error: 'Failed to delete associated purchase order links' }, { status: 500 })
+    }
+
+    // Delete associated payment history if any
+    if (existingBill.paid_amount > 0) {
+      const { error: paymentDeleteError } = await supabase
+        .from('vendor_payment_history')
+        .delete()
+        .eq('vendor_bill_id', bill_id)
+
+      if (paymentDeleteError) {
+        console.error('Error deleting payment history:', paymentDeleteError)
+        return NextResponse.json({ error: 'Failed to delete associated payment records' }, { status: 500 })
+      }
+    }
+
+    // Delete the vendor bill
+    const { error: deleteError } = await supabase
+      .from('vendor_bills')
+      .delete()
+      .eq('id', bill_id)
+      .eq('supplier_id', vendorId)
+
+    if (deleteError) {
+      console.error('Error deleting vendor bill:', deleteError)
+      return NextResponse.json({ error: 'Failed to delete vendor bill' }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Vendor bill ${existingBill.bill_number} deleted successfully`
+    })
+  } catch (error) {
+    console.error('Error deleting vendor bill:', error)
+    return NextResponse.json({ error: 'Failed to delete bill' }, { status: 500 })
+  }
+}

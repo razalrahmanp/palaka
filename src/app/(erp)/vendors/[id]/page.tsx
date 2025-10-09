@@ -362,7 +362,7 @@ export default function VendorDetailsPage() {
       </div>
 
       {/* Detailed Tabs */}
-      <Tabs defaultValue="orders" className="space-y-4">
+      <Tabs defaultValue="bills" className="space-y-4">
         <TabsList>
           <TabsTrigger value="performance">Performance</TabsTrigger>
           <TabsTrigger value="orders">Purchase Orders</TabsTrigger>

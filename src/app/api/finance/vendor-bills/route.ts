@@ -324,6 +324,34 @@ export async function DELETE(request: NextRequest) {
       }
     }
 
+    // Delete associated line items first
+    const { error: lineItemsDeleteError } = await supabaseAdmin
+      .from('vendor_bill_line_items')
+      .delete()
+      .eq('vendor_bill_id', bill_id);
+
+    if (lineItemsDeleteError) {
+      console.error('Error deleting vendor bill line items:', lineItemsDeleteError);
+      return NextResponse.json(
+        { success: false, error: 'Failed to delete associated line items' },
+        { status: 500 }
+      );
+    }
+
+    // Delete associated PO links
+    const { error: poLinksDeleteError } = await supabaseAdmin
+      .from('vendor_bill_po_links')
+      .delete()
+      .eq('vendor_bill_id', bill_id);
+
+    if (poLinksDeleteError) {
+      console.error('Error deleting vendor bill PO links:', poLinksDeleteError);
+      return NextResponse.json(
+        { success: false, error: 'Failed to delete associated purchase order links' },
+        { status: 500 }
+      );
+    }
+
     // Delete the vendor bill
     const { error: deleteError } = await supabaseAdmin
       .from('vendor_bills')

@@ -20,6 +20,15 @@ interface PurchaseOrder {
   supplier_id: string;
 }
 
+interface VendorBill {
+  id: string;
+  supplier_id: string;
+  total_amount: number;
+  paid_amount: number;
+  status: string;
+  created_at: string;
+}
+
 interface Product {
   price: number;
   cost: number;
@@ -47,6 +56,12 @@ export async function GET() {
       .select('id, quantity, status, total, paid_amount, payment_status, created_at, supplier_id')
       .in('supplier_id', vendors.map(v => v.id));
 
+    // Bulk fetch all vendor bills for all vendors in one query
+    const { data: allVendorBills } = await supabase
+      .from('vendor_bills')
+      .select('id, supplier_id, total_amount, paid_amount, status, created_at')
+      .in('supplier_id', vendors.map(v => v.id));
+
     // Bulk fetch all inventory data for all vendors in one query
     const { data: allVendorProducts } = await supabase
       .from('inventory_items')
@@ -59,6 +74,7 @@ export async function GET() {
     // Group data by vendor_id for efficient processing
     const purchaseOrdersByVendor = new Map<string, PurchaseOrder[]>();
     const productsByVendor = new Map<string, InventoryItem[]>();
+    const billsByVendor = new Map<string, VendorBill[]>();
 
     // Group purchase orders by vendor
     allPurchaseOrders?.forEach(po => {
@@ -66,6 +82,14 @@ export async function GET() {
         purchaseOrdersByVendor.set(po.supplier_id, []);
       }
       purchaseOrdersByVendor.get(po.supplier_id)!.push(po);
+    });
+
+    // Group vendor bills by vendor
+    allVendorBills?.forEach(bill => {
+      if (!billsByVendor.has(bill.supplier_id)) {
+        billsByVendor.set(bill.supplier_id, []);
+      }
+      billsByVendor.get(bill.supplier_id)!.push(bill);
     });
 
     // Group products by vendor
@@ -84,6 +108,7 @@ export async function GET() {
     const vendorStats = vendors.map((vendor: Vendor) => {
       const purchaseOrders = purchaseOrdersByVendor.get(vendor.id) || [];
       const vendorProducts = productsByVendor.get(vendor.id) || [];
+      const vendorBills = billsByVendor.get(vendor.id) || [];
 
         // Calculate current stock metrics
         const currentStockQuantity = vendorProducts.reduce((sum: number, item: InventoryItem) => sum + (item.quantity || 0), 0);
@@ -102,13 +127,15 @@ export async function GET() {
           return sum + (quantity * cost);
         }, 0);
 
-        // Calculate purchase order metrics with payment tracking
+        // Calculate purchase order metrics
         const totalPurchaseOrders = purchaseOrders.length;
-        const totalSpent = purchaseOrders.reduce((sum: number, po: PurchaseOrder) => sum + (po.total || 0), 0);
-        const totalPaid = purchaseOrders.reduce((sum: number, po: PurchaseOrder) => sum + (po.paid_amount || 0), 0);
-        const totalPending = totalSpent - totalPaid;
         const pendingOrders = purchaseOrders.filter((po: PurchaseOrder) => po.status === 'pending').length;
-        const unpaidOrders = purchaseOrders.filter((po: PurchaseOrder) => po.payment_status !== 'paid').length;
+
+        // Calculate payment metrics from VENDOR BILLS (not POs) for accuracy
+        const totalBillAmount = vendorBills.reduce((sum: number, bill: VendorBill) => sum + (bill.total_amount || 0), 0);
+        const totalPaid = vendorBills.reduce((sum: number, bill: VendorBill) => sum + (bill.paid_amount || 0), 0);
+        const totalPending = totalBillAmount - totalPaid;
+        const unpaidBills = vendorBills.filter((bill: VendorBill) => bill.status !== 'paid').length;
 
         // Get last order date
         const lastOrder = purchaseOrders.sort((a: PurchaseOrder, b: PurchaseOrder) => 
@@ -132,11 +159,11 @@ export async function GET() {
           total_mrp_inr: currentStockValue, // MRP value of current stock
           profit_margin_inr: currentStockValue - totalPurchaseCost,
           profit_percentage: totalPurchaseCost > 0 ? (((currentStockValue - totalPurchaseCost) / totalPurchaseCost) * 100) : 0,
-          // Purchase & Payment tracking
-          total_purchase_value: totalSpent, // Total PO value (ordered)
+          // Bills & Payment tracking (based on actual vendor bills)
+          total_bill_amount: totalBillAmount, // Total amount billed
           total_paid: totalPaid, // Amount paid to vendor
           total_pending: totalPending, // Amount still owed to vendor
-          unpaid_orders: unpaidOrders, // Number of unpaid orders
+          unpaid_bills: unpaidBills, // Number of unpaid bills
           payment_status: totalPending > 0 ? 'pending' : 'paid',
           last_order_date: lastOrder?.created_at || null,
           status: totalPurchaseOrders > 0 || vendorProducts.length > 0 ? 'Active' : 'Inactive'

@@ -68,6 +68,17 @@ interface SalesRecord {
   last_sale_date?: string;
 }
 
+interface VendorBillLineItem {
+  id: string;
+  product_id?: string;
+  product_name: string;
+  description?: string;
+  quantity: number;
+  unit_price: number;
+  actual_cost_per_unit?: number;
+  purchase_order_id?: string;
+}
+
 interface VendorBill {
   id: string;
   supplier_id: string;
@@ -88,6 +99,16 @@ interface VendorBill {
   updated_at: string;
   reference_number?: string;
   updated_by?: string;
+  subtotal?: number;
+  freight_total?: number;
+  additional_charges?: number;
+  cgst?: number;
+  sgst?: number;
+  igst?: number;
+  total_gst?: number;
+  gst_rate?: number;
+  is_interstate?: boolean;
+  vendor_bill_line_items?: VendorBillLineItem[];
 }
 
 interface VendorFinancialSummary {

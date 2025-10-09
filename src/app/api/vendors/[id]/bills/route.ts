@@ -9,7 +9,7 @@ export async function GET(
   try {
     const { id: vendorId } = await params
 
-    // Get vendor bills
+    // Get vendor bills with line items
     const { data: bills, error } = await supabase
       .from('vendor_bills')
       .select(`
@@ -23,11 +23,31 @@ export async function GET(
         description,
         tax_amount,
         discount_amount,
+        reference_number,
+        subtotal,
+        freight_total,
+        additional_charges,
+        cgst,
+        sgst,
+        igst,
+        total_gst,
+        gst_rate,
+        is_interstate,
         purchase_orders(id, total),
         vendor_bill_po_links(
           purchase_order_id,
           amount,
           purchase_orders(id, total, quantity, product:products(id, name))
+        ),
+        vendor_bill_line_items(
+          id,
+          product_id,
+          product_name,
+          description,
+          quantity,
+          unit_price,
+          actual_cost_per_unit,
+          purchase_order_id
         ),
         created_at
       `)

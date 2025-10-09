@@ -16,6 +16,17 @@ import { FileText, Plus, Calendar, DollarSign, CreditCard, Receipt, Search, Minu
 import { EnhancedVendorBillForm } from './EnhancedVendorBillForm';
 import { subcategoryMap } from '@/types';
 
+interface VendorBillLineItem {
+  id: string;
+  product_id?: string;
+  product_name: string;
+  description?: string;
+  quantity: number;
+  unit_price: number;
+  actual_cost_per_unit?: number;
+  purchase_order_id?: string;
+}
+
 interface VendorBill {
   id: string;
   supplier_id: string;
@@ -40,6 +51,16 @@ interface VendorBill {
     id: string;
     total: number;
   };
+  subtotal?: number;
+  freight_total?: number;
+  additional_charges?: number;
+  cgst?: number;
+  sgst?: number;
+  igst?: number;
+  total_gst?: number;
+  gst_rate?: number;
+  is_interstate?: boolean;
+  vendor_bill_line_items?: VendorBillLineItem[];
 }
 
 interface Expense {
@@ -981,34 +1002,183 @@ export function VendorBillsTab({
                             {isExpanded && (
                               <TableRow>
                                 <TableCell colSpan={7} className="p-6 bg-gray-50">
-                                  <div className="space-y-4">
-                                    <h4 className="font-semibold text-gray-900">Bill Details</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                  <div className="space-y-6">
+                                    {/* Bill Summary Info */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-white rounded-lg border">
                                       <div>
                                         <label className="text-sm font-medium text-gray-500">Reference Number</label>
-                                        <p className="text-sm text-gray-900">{bill.reference_number || 'N/A'}</p>
+                                        <p className="text-sm text-gray-900 font-medium">{bill.reference_number || 'N/A'}</p>
                                       </div>
                                       <div>
-                                        <label className="text-sm font-medium text-gray-500">Description</label>
-                                        <p className="text-sm text-gray-900">{bill.description || 'No description'}</p>
-                                      </div>
-                                      <div>
-                                        <label className="text-sm font-medium text-gray-500">Tax Amount</label>
-                                        <p className="text-sm text-gray-900">₹{bill.tax_amount || '0.00'}</p>
+                                        <label className="text-sm font-medium text-gray-500">
+                                          {(bill.total_gst ?? 0) > 0 ? 'GST Amount' : 'Tax Amount'}
+                                        </label>
+                                        <p className="text-sm text-gray-900 font-medium">
+                                          ₹{(bill.total_gst ?? bill.tax_amount ?? 0).toFixed(2)}
+                                        </p>
                                       </div>
                                       <div>
                                         <label className="text-sm font-medium text-gray-500">Discount Amount</label>
-                                        <p className="text-sm text-gray-900">₹{bill.discount_amount || '0.00'}</p>
-                                      </div>
-                                      <div>
-                                        <label className="text-sm font-medium text-gray-500">Total Amount</label>
-                                        <p className="text-sm font-semibold text-gray-900">₹{bill.total_amount}</p>
+                                        <p className="text-sm text-gray-900 font-medium">₹{bill.discount_amount || '0.00'}</p>
                                       </div>
                                       <div>
                                         <label className="text-sm font-medium text-gray-500">Created Date</label>
-                                        <p className="text-sm text-gray-900">{new Date(bill.created_at).toLocaleDateString()}</p>
+                                        <p className="text-sm text-gray-900 font-medium">{new Date(bill.created_at).toLocaleDateString()}</p>
                                       </div>
                                     </div>
+
+                                    {/* Line Items */}
+                                    <div>
+                                      <h5 className="font-semibold text-gray-900 mb-3">Line Items & Pricing Details</h5>
+                                      {bill.vendor_bill_line_items && bill.vendor_bill_line_items.length > 0 ? (
+                                        <div className="overflow-x-auto">
+                                          <table className="w-full border border-gray-200 rounded-lg">
+                                            <thead className="bg-gray-100">
+                                              <tr>
+                                                <th className="px-4 py-2 text-left text-sm font-medium text-gray-700 border-b">Product</th>
+                                                <th className="px-4 py-2 text-left text-sm font-medium text-gray-700 border-b">Description</th>
+                                                <th className="px-4 py-2 text-right text-sm font-medium text-gray-700 border-b">Quantity</th>
+                                                <th className="px-4 py-2 text-right text-sm font-medium text-gray-700 border-b">Unit Price</th>
+                                                <th className="px-4 py-2 text-right text-sm font-medium text-gray-700 border-b">Actual Cost/Unit</th>
+                                                <th className="px-4 py-2 text-right text-sm font-medium text-gray-700 border-b">Line Total</th>
+                                              </tr>
+                                            </thead>
+                                            <tbody className="bg-white">
+                                              {bill.vendor_bill_line_items.map((item, index) => (
+                                                <tr key={item.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                                  <td className="px-4 py-3 text-sm text-gray-900 border-b">
+                                                    <div>
+                                                      <p className="font-medium">{item.product_name}</p>
+                                                      {item.product_id && (
+                                                        <p className="text-xs text-gray-500">ID: {item.product_id.slice(0, 8)}</p>
+                                                      )}
+                                                    </div>
+                                                  </td>
+                                                  <td className="px-4 py-3 text-sm text-gray-900 border-b">
+                                                    {item.description || '-'}
+                                                  </td>
+                                                  <td className="px-4 py-3 text-sm text-gray-900 text-right border-b font-medium">
+                                                    {item.quantity}
+                                                  </td>
+                                                  <td className="px-4 py-3 text-sm text-gray-900 text-right border-b">
+                                                    ₹{item.unit_price.toFixed(2)}
+                                                  </td>
+                                                  <td className="px-4 py-3 text-sm text-gray-900 text-right border-b">
+                                                    {item.actual_cost_per_unit ? (
+                                                      <span className="font-medium text-green-600">₹{item.actual_cost_per_unit.toFixed(2)}</span>
+                                                    ) : (
+                                                      <span className="text-gray-400">-</span>
+                                                    )}
+                                                  </td>
+                                                  <td className="px-4 py-3 text-sm text-gray-900 text-right border-b font-semibold">
+                                                    ₹{(item.quantity * item.unit_price).toFixed(2)}
+                                                  </td>
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                            <tfoot className="bg-gray-50 border-t-2 border-gray-300">
+                                              <tr>
+                                                <td colSpan={5} className="px-4 py-3 text-sm font-semibold text-gray-900 text-right">
+                                                  Subtotal:
+                                                </td>
+                                                <td className="px-4 py-3 text-sm font-semibold text-gray-900 text-right">
+                                                  ₹{bill.vendor_bill_line_items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0).toFixed(2)}
+                                                </td>
+                                              </tr>
+                                              {(bill.freight_total ?? 0) > 0 && (
+                                                <tr>
+                                                  <td colSpan={5} className="px-4 py-2 text-sm text-gray-700 text-right">Freight Charges:</td>
+                                                  <td className="px-4 py-2 text-sm text-gray-900 text-right">₹{bill.freight_total?.toFixed(2) || '0.00'}</td>
+                                                </tr>
+                                              )}
+                                              {(bill.additional_charges ?? 0) > 0 && (
+                                                <tr>
+                                                  <td colSpan={5} className="px-4 py-2 text-sm text-gray-700 text-right">Additional Charges:</td>
+                                                  <td className="px-4 py-2 text-sm text-gray-900 text-right">₹{bill.additional_charges?.toFixed(2) || '0.00'}</td>
+                                                </tr>
+                                              )}
+                                              {(bill.total_gst ?? 0) > 0 && (
+                                                <tr>
+                                                  <td colSpan={5} className="px-4 py-2 text-sm text-gray-700 text-right">
+                                                    GST ({bill.gst_rate ?? 0}%):
+                                                  </td>
+                                                  <td className="px-4 py-2 text-sm text-gray-900 text-right">₹{bill.total_gst?.toFixed(2) || '0.00'}</td>
+                                                </tr>
+                                              )}
+                                              {bill.tax_amount > 0 && !bill.total_gst && (
+                                                <tr>
+                                                  <td colSpan={5} className="px-4 py-2 text-sm text-gray-700 text-right">Tax:</td>
+                                                  <td className="px-4 py-2 text-sm text-gray-900 text-right">₹{bill.tax_amount.toFixed(2)}</td>
+                                                </tr>
+                                              )}
+                                              {bill.discount_amount > 0 && (
+                                                <tr>
+                                                  <td colSpan={5} className="px-4 py-2 text-sm text-gray-700 text-right">Discount:</td>
+                                                  <td className="px-4 py-2 text-sm text-red-600 text-right">-₹{bill.discount_amount.toFixed(2)}</td>
+                                                </tr>
+                                              )}
+                                              <tr className="border-t-2 border-gray-300">
+                                                <td colSpan={5} className="px-4 py-3 text-sm font-bold text-gray-900 text-right">
+                                                  Total Amount:
+                                                </td>
+                                                <td className="px-4 py-3 text-sm font-bold text-gray-900 text-right">
+                                                  ₹{bill.total_amount.toFixed(2)}
+                                                </td>
+                                              </tr>
+                                            </tfoot>
+                                          </table>
+                                        </div>
+                                      ) : (
+                                        <div className="text-center py-8 text-gray-500 bg-white border border-gray-200 rounded-lg">
+                                          <p>No line items found for this bill</p>
+                                          <p className="text-sm mt-1">This might be a legacy bill or created without item details</p>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* GST Breakdown */}
+                                    {(bill.total_gst ?? 0) > 0 && (
+                                      <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                        <h5 className="font-semibold text-gray-900 mb-3">GST Breakdown</h5>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                          <div>
+                                            <label className="text-sm font-medium text-gray-600">Transaction Type</label>
+                                            <p className="text-sm text-gray-900 font-medium">
+                                              {bill.is_interstate ? 'Interstate (IGST)' : 'Intrastate (CGST + SGST)'}
+                                            </p>
+                                          </div>
+                                          <div>
+                                            <label className="text-sm font-medium text-gray-600">GST Rate</label>
+                                            <p className="text-sm text-gray-900 font-medium">{bill.gst_rate ?? 0}%</p>
+                                          </div>
+                                          {bill.is_interstate ? (
+                                            <div>
+                                              <label className="text-sm font-medium text-gray-600">IGST ({bill.gst_rate ?? 0}%)</label>
+                                              <p className="text-sm text-gray-900 font-medium">₹{bill.igst?.toFixed(2) || '0.00'}</p>
+                                            </div>
+                                          ) : (
+                                            <>
+                                              <div>
+                                                <label className="text-sm font-medium text-gray-600">CGST ({((bill.gst_rate ?? 0) / 2)}%)</label>
+                                                <p className="text-sm text-gray-900 font-medium">₹{bill.cgst?.toFixed(2) || '0.00'}</p>
+                                              </div>
+                                              <div>
+                                                <label className="text-sm font-medium text-gray-600">SGST ({((bill.gst_rate ?? 0) / 2)}%)</label>
+                                                <p className="text-sm text-gray-900 font-medium">₹{bill.sgst?.toFixed(2) || '0.00'}</p>
+                                              </div>
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Bill Description */}
+                                    {bill.description && (
+                                      <div className="p-4 bg-white rounded-lg border">
+                                        <label className="text-sm font-medium text-gray-500">Bill Description</label>
+                                        <p className="text-sm text-gray-900 mt-1">{bill.description}</p>
+                                      </div>
+                                    )}
                                   </div>
                                 </TableCell>
                               </TableRow>

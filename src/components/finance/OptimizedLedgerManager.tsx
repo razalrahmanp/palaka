@@ -293,7 +293,7 @@ export default function OptimizedLedgerManager() {
           // Update transaction pagination - for employee ledgers, calculate from meta data
           if (data.pagination) {
             setTransactionPagination(data.pagination);
-          } else if (data.meta && ledger.type === 'employee') {
+          } else if (data.meta && (ledger.type === 'employee' || ledger.type === 'supplier')) {
             const transactionCount = data.meta.transaction_count || data.data.length;
             setTransactionPagination({
               page: 1,
@@ -389,6 +389,9 @@ export default function OptimizedLedgerManager() {
             source_document: `Principal: ₹${tx.principal_amount} | Interest: ₹${tx.interest_amount}`,
             status: 'completed'
           }));
+        } else if (ledger.type === 'supplier') {
+          // For supplier transactions, the data structure is already in the correct format
+          transformedTransactions = data.data || [];
         }
         
         if (page === 1) {

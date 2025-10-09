@@ -354,7 +354,7 @@ async function fetchSupplierTransactions(
         notes,
         status
       `)
-      .eq('vendor_id', supplierId)
+      .eq('supplier_id', supplierId)
       .gte('payment_date', dateFrom || '1900-01-01')
       .lte('payment_date', dateTo || '2100-12-31')
       .order('payment_date', { ascending: false });
@@ -390,7 +390,8 @@ async function fetchSupplierTransactions(
         reference_number,
         status
       `)
-      .eq('vendor_id', supplierId)
+      .eq('entity_id', supplierId)
+      .eq('entity_type', 'supplier')
       .gte('expense_date', dateFrom || '1900-01-01')
       .lte('expense_date', dateTo || '2100-12-31')
       .order('expense_date', { ascending: false });
@@ -422,9 +423,9 @@ async function fetchSupplierTransactions(
         total_amount,
         bill_number,
         status,
-        notes
+        description
       `)
-      .eq('vendor_id', supplierId)
+      .eq('supplier_id', supplierId)
       .gte('bill_date', dateFrom || '1900-01-01')
       .lte('bill_date', dateTo || '2100-12-31')
       .order('bill_date', { ascending: false });
@@ -434,7 +435,7 @@ async function fetchSupplierTransactions(
         transactions.push({
           id: `vb_${bill.id}`,
           date: bill.bill_date,
-          description: `Vendor Bill ${bill.bill_number} - ${bill.notes || 'Bill'}`,
+          description: `Vendor Bill ${bill.bill_number} - ${bill.description || 'Bill'}`,
           reference_number: bill.bill_number,
           transaction_type: 'bill',
           debit_amount: 0,

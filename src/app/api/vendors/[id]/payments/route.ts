@@ -83,25 +83,31 @@ export async function POST(
     } = body;
 
     // Insert into vendor_payment_history table
+    const insertData = {
+      supplier_id: vendorId,
+      amount,
+      payment_date,
+      payment_method,
+      reference_number,
+      notes,
+      status: 'completed' as const,
+      ...(vendor_bill_id && { vendor_bill_id }),
+      ...(purchase_order_id && { purchase_order_id }),
+      ...(bank_account_id && bank_account_id !== 'no-accounts' && { bank_account_id })
+    };
+    // Skip created_by for now to avoid user constraint issues
+
+    console.log('🔄 Attempting to insert vendor payment with data:', insertData);
+
     const { data: payment, error: paymentError } = await supabase
       .from('vendor_payment_history')
-      .insert({
-        supplier_id: vendorId,
-        vendor_bill_id,
-        amount,
-        payment_date,
-        payment_method,
-        reference_number,
-        notes,
-        purchase_order_id,
-        created_by,
-        status: 'completed'
-      })
+      .insert(insertData)
       .select()
       .single();
 
     if (paymentError) {
-      // Fallback to purchase_order_payments for compatibility
+      console.error('❌ Failed to insert into vendor_payment_history:', paymentError);
+      console.log('🔄 Falling back to purchase_order_payments for compatibility');
       const { data: poPayment, error: poError } = await supabase
         .from('purchase_order_payments')
         .insert({

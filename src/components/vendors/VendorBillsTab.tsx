@@ -11,10 +11,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileText, Plus, Calendar, DollarSign, CreditCard, Receipt, Search, Minus, Clock, Trash2, Edit, Calculator, ChevronDown, ChevronRight } from 'lucide-react';
+import { FileText, Plus, Calendar, DollarSign, CreditCard, Receipt, Search, Minus, Clock, Trash2, Edit, Calculator, ChevronDown, ChevronRight, RotateCcw, Scale } from 'lucide-react';
 // import { VendorBillForm } from './VendorBillForm';
 import { EnhancedVendorBillForm } from './EnhancedVendorBillForm';
 import { subcategoryMap } from '@/types';
+import PurchaseReturnWizard from '@/components/purchase-returns/PurchaseReturnWizard';
+import PaymentCollectionForm from '@/components/purchase-returns/PaymentCollectionForm';
 
 interface VendorBillLineItem {
   id: string;
@@ -25,6 +27,8 @@ interface VendorBillLineItem {
   unit_price: number;
   actual_cost_per_unit?: number;
   purchase_order_id?: string;
+  total_returned_quantity?: number;
+  total_amount?: number;
 }
 
 interface VendorBill {
@@ -36,7 +40,7 @@ interface VendorBill {
   total_amount: number;
   paid_amount: number;
   remaining_amount: number;
-  status: 'pending' | 'partial' | 'paid' | 'overdue' | 'cancelled';
+  status: 'pending' | 'partial' | 'paid' | 'overdue' | 'cancelled' | 'approved';
   description?: string;
   tax_amount: number;
   discount_amount: number;
@@ -61,6 +65,11 @@ interface VendorBill {
   gst_rate?: number;
   is_interstate?: boolean;
   vendor_bill_line_items?: VendorBillLineItem[];
+  vendor?: {
+    id: string;
+    name: string;
+    email?: string;
+  };
 }
 
 interface Expense {
@@ -184,7 +193,15 @@ export function VendorBillsTab({
   const [isCreatingExpense, setIsCreatingExpense] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [expenseStartDate, setExpenseStartDate] = useState('');
+  const [expenseEndDate, setExpenseEndDate] = useState('');
   const [expandedBills, setExpandedBills] = useState<Set<string>>(new Set());
+  const [purchaseReturnModalOpen, setPurchaseReturnModalOpen] = useState(false);
+  const [selectedBillForReturn, setSelectedBillForReturn] = useState<VendorBill | null>(null);
+  
+  // Collect reversal payment modal state
+  const [collectPaymentModalOpen, setCollectPaymentModalOpen] = useState(false);
+  const [selectedBillForCollectPayment, setSelectedBillForCollectPayment] = useState<VendorBill | null>(null);
   const [expenseForm, setExpenseForm] = useState({
     date: new Date().toISOString().split('T')[0],
     description: '',
@@ -197,6 +214,17 @@ export function VendorBillsTab({
     vendor_bill_id: '',
   });
 
+  // Helper function to build expenses API URL with date filtering
+  const buildExpensesApiUrl = (vendorId: string, startDate?: string, endDate?: string) => {
+    const baseUrl = `/api/finance/expenses?entity_id=${vendorId}&entity_type=supplier`;
+    const params = new URLSearchParams();
+    
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    
+    return params.toString() ? `${baseUrl}&${params.toString()}` : baseUrl;
+  };
+
   // Fetch bank accounts and expenses for vendor
   useEffect(() => {
     const fetchData = async () => {
@@ -204,7 +232,7 @@ export function VendorBillsTab({
         const [bankResponse, upiResponse, expensesResponse] = await Promise.all([
           fetch('/api/finance/bank_accounts?type=BANK'),
           fetch('/api/finance/bank_accounts?type=UPI'),
-          fetch(`/api/finance/expenses?entity_id=${vendorId}&entity_type=supplier`)
+          fetch(buildExpensesApiUrl(vendorId, expenseStartDate, expenseEndDate))
         ]);
         
         const [bankData, upiData, expensesData] = await Promise.all([
@@ -216,19 +244,13 @@ export function VendorBillsTab({
         // Handle API response format - data might be wrapped in a 'data' property
         const bankAccounts = Array.isArray(bankData) ? bankData : (Array.isArray(bankData?.data) ? bankData.data : []);
         const upiAccounts = Array.isArray(upiData) ? upiData : (Array.isArray(upiData?.data) ? upiData.data : []);
-        const allExpenses = Array.isArray(expensesData) ? expensesData : (Array.isArray(expensesData?.data) ? expensesData.data : []);
-        
-        // Client-side filtering as fallback to ensure only vendor expenses are shown
-        const expenses = allExpenses.filter((expense: Expense) => 
-          expense.entity_type === 'supplier' && expense.entity_id === vendorId
-        );
+        const expenses = Array.isArray(expensesData) ? expensesData : (Array.isArray(expensesData?.data) ? expensesData.data : []);
         
         console.log('Bank accounts loaded:', bankAccounts.length, bankAccounts);
         console.log('UPI accounts loaded:', upiAccounts.length, upiAccounts);
         console.log('Vendor ID being used for filtering:', vendorId);
-        console.log('Expenses API URL:', `/api/finance/expenses?entity_id=${vendorId}&entity_type=supplier`);
-        console.log('All expenses returned from API:', allExpenses.length, allExpenses);
-        console.log('Filtered vendor expenses:', expenses.length, expenses);
+        console.log('Expenses API URL:', buildExpensesApiUrl(vendorId, expenseStartDate, expenseEndDate));
+        console.log('Expenses returned from API:', expenses.length, expenses);
         
         setBankAccounts([...bankAccounts, ...upiAccounts]);
         setExpenses(expenses);
@@ -241,7 +263,7 @@ export function VendorBillsTab({
     };
     
     fetchData();
-  }, [vendorId]);
+  }, [vendorId, expenseStartDate, expenseEndDate]);
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
@@ -273,23 +295,7 @@ export function VendorBillsTab({
     });
   };
 
-  // Expense utility functions
-  const filterExpenses = (expenses: Expense[], searchQuery: string) => {
-    if (!searchQuery) return expenses;
-    
-    const query = searchQuery.toLowerCase();
-    return expenses.filter(expense =>
-      expense.description.toLowerCase().includes(query) ||
-      expense.category.toLowerCase().includes(query) ||
-      expense.payment_method.toLowerCase().includes(query) ||
-      expense.amount.toString().includes(query)
-    );
-  };
 
-  const getPaginatedData = (data: Expense[], page: number, perPage: number) => {
-    const startIndex = (page - 1) * perPage;
-    return data.slice(startIndex, startIndex + perPage);
-  };
 
   const handleCategoryChange = (category: string) => {
     const categoryDetails = subcategoryMap[category as keyof typeof subcategoryMap];
@@ -313,6 +319,49 @@ export function VendorBillsTab({
       }
       return newSet;
     });
+  };
+
+  const handleOpenPurchaseReturn = (bill: VendorBill) => {
+    setSelectedBillForReturn(bill);
+    setPurchaseReturnModalOpen(true);
+  };
+
+  const handleClosePurchaseReturn = () => {
+    setPurchaseReturnModalOpen(false);
+    setSelectedBillForReturn(null);
+    // Refresh bills data to show updated information
+    if (onBillUpdate) {
+      onBillUpdate();
+    }
+  };
+
+  const canProcessReturn = (bill: VendorBill) => {
+    // Can process return if bill is pending or partial (not fully paid)
+    // and has line items with returnable quantities
+    return (bill.status === 'pending' || bill.status === 'partial') && 
+           bill.vendor_bill_line_items && 
+           bill.vendor_bill_line_items.length > 0 &&
+           bill.vendor_bill_line_items.some(item => 
+             item.quantity > (item.total_returned_quantity || 0)
+           );
+  };
+
+  const hasProcessedReturns = (bill: VendorBill) => {
+    // Check if bill has any processed returns (items with returned quantities)
+    return bill.vendor_bill_line_items && 
+           bill.vendor_bill_line_items.some(item => 
+             (item.total_returned_quantity || 0) > 0
+           );
+  };
+
+  const handleOpenCollectPayment = (bill: VendorBill) => {
+    setSelectedBillForCollectPayment(bill);
+    setCollectPaymentModalOpen(true);
+  };
+
+  const handleCloseCollectPayment = () => {
+    setSelectedBillForCollectPayment(null);
+    setCollectPaymentModalOpen(false);
   };
 
   const handleCreateExpense = async () => {
@@ -419,13 +468,9 @@ export function VendorBillsTab({
       });
       
       // Refresh expenses data
-      const expensesResponse = await fetch(`/api/finance/expenses?entity_id=${vendorId}&entity_type=supplier`);
+      const expensesResponse = await fetch(buildExpensesApiUrl(vendorId, expenseStartDate, expenseEndDate));
       const expensesData = await expensesResponse.json();
-      const allExpenses = Array.isArray(expensesData) ? expensesData : (Array.isArray(expensesData?.data) ? expensesData.data : []);
-      // Client-side filtering as fallback to ensure only vendor expenses are shown
-      const expenses = allExpenses.filter((expense: Expense) => 
-        expense.entity_type === 'supplier' && expense.entity_id === vendorId
-      );
+      const expenses = Array.isArray(expensesData) ? expensesData : (Array.isArray(expensesData?.data) ? expensesData.data : []);
       setExpenses(expenses);
       
       // Refresh bill data if this was a bill payment
@@ -1001,7 +1046,7 @@ export function VendorBillsTab({
                             </TableRow>
                             {isExpanded && (
                               <TableRow>
-                                <TableCell colSpan={7} className="p-6 bg-gray-50">
+                                <TableCell colSpan={10} className="p-6 bg-gray-50">
                                   <div className="space-y-6">
                                     {/* Bill Summary Info */}
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-white rounded-lg border">
@@ -1048,7 +1093,14 @@ export function VendorBillsTab({
                                                 <tr key={item.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                                                   <td className="px-4 py-3 text-sm text-gray-900 border-b">
                                                     <div>
-                                                      <p className="font-medium">{item.product_name}</p>
+                                                      <div className="flex items-center gap-2">
+                                                        <p className="font-medium">{item.product_name}</p>
+                                                        {(item.total_returned_quantity || 0) > 0 && (
+                                                          <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-700 border-orange-200">
+                                                            {item.total_returned_quantity === item.quantity ? 'Fully Returned' : `${item.total_returned_quantity} Returned`}
+                                                          </Badge>
+                                                        )}
+                                                      </div>
                                                       {item.product_id && (
                                                         <p className="text-xs text-gray-500">ID: {item.product_id.slice(0, 8)}</p>
                                                       )}
@@ -1179,6 +1231,86 @@ export function VendorBillsTab({
                                         <p className="text-sm text-gray-900 mt-1">{bill.description}</p>
                                       </div>
                                     )}
+
+                                    {/* Purchase Return Actions */}
+                                    {(!hasProcessedReturns(bill) || canProcessReturn(bill)) && (
+                                      <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                        <div className="flex items-center justify-between">
+                                          <div>
+                                            <h5 className="font-semibold text-gray-900 mb-1">Purchase Return</h5>
+                                            <p className="text-sm text-gray-600">
+                                              {canProcessReturn(bill) 
+                                                ? 'Process returns for products from this bill'
+                                                : bill.status === 'paid' 
+                                                  ? 'Returns not available for fully paid bills' 
+                                                  : 'No returnable items available for this bill'
+                                              }
+                                            </p>
+                                          </div>
+                                          <Button
+                                            onClick={() => {
+                                              const billWithVendor: VendorBill = {
+                                                ...bill,
+                                                vendor: {
+                                                  id: vendorId,
+                                                  name: vendorName
+                                                }
+                                              };
+                                              handleOpenPurchaseReturn(billWithVendor);
+                                            }}
+                                            disabled={!canProcessReturn(bill)}
+                                            className="flex items-center gap-2"
+                                            variant={canProcessReturn(bill) ? "default" : "secondary"}
+                                          >
+                                            <RotateCcw className="h-4 w-4" />
+                                            {canProcessReturn(bill) ? 'Process Return' : 'Not Available'}
+                                          </Button>
+                                        </div>
+                                        {canProcessReturn(bill) && bill.vendor_bill_line_items && bill.vendor_bill_line_items.length > 0 && (
+                                          <div className="mt-3 text-xs text-gray-500">
+                                            Available for return: {bill.vendor_bill_line_items.filter(item => 
+                                              item.quantity > (item.total_returned_quantity || 0)
+                                            ).length} of {bill.vendor_bill_line_items.length} items
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {/* Collect Reversal Payment */}
+                                    {hasProcessedReturns(bill) && (
+                                      <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 mt-4">
+                                        <div className="flex items-center justify-between">
+                                          <div>
+                                            <h5 className="font-semibold text-blue-900 mb-1">Collect Reversal Payment</h5>
+                                            <p className="text-sm text-blue-700">
+                                              Collect payment for returned items from this bill
+                                            </p>
+                                          </div>
+                                          <Button
+                                            onClick={() => {
+                                              const billWithVendor: VendorBill = {
+                                                ...bill,
+                                                vendor: {
+                                                  id: vendorId,
+                                                  name: vendorName
+                                                }
+                                              };
+                                              handleOpenCollectPayment(billWithVendor);
+                                            }}
+                                            className="flex items-center gap-2"
+                                            variant="default"
+                                          >
+                                            <DollarSign className="h-4 w-4" />
+                                            Collect Payment
+                                          </Button>
+                                        </div>
+                                        <div className="mt-3 text-xs text-blue-600">
+                                          Returned items: {bill.vendor_bill_line_items?.filter(item => 
+                                            (item.total_returned_quantity || 0) > 0
+                                          ).length || 0} items need payment collection
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
                                 </TableCell>
                               </TableRow>
@@ -1198,9 +1330,9 @@ export function VendorBillsTab({
         <TabsContent value="expenses" className="space-y-4">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">Vendor Expense Management</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Vendor Account Ledger</h3>
               <p className="text-sm text-gray-600 mt-1">
-                Track and manage expenses related to {vendorName}
+                Complete transaction history with bills and payments for {vendorName}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -1229,14 +1361,11 @@ export function VendorBillsTab({
                     }
                     
                     // Then refresh expenses data
-                    const expensesResponse = await fetch(`/api/finance/expenses?entity_id=${vendorId}&entity_type=supplier`);
+                    const expensesResponse = await fetch(buildExpensesApiUrl(vendorId, expenseStartDate, expenseEndDate));
                     const data = await expensesResponse.json();
                     console.log('Refresh expenses API response:', data);
                     
-                    const allExpenses = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
-                    const expenses = allExpenses.filter((expense: Expense) => 
-                      expense.entity_type === 'supplier' && expense.entity_id === vendorId
-                    );
+                    const expenses = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
                     console.log('Parsed expenses after refresh:', expenses);
                     setExpenses(expenses);
                     
@@ -1264,38 +1393,34 @@ export function VendorBillsTab({
             </div>
           </div>
 
-          {/* Expenses Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          {/* Ledger Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 shadow-md">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-red-500 rounded-lg">
-                    <Minus className="h-5 w-5 text-white" />
+                    <FileText className="h-5 w-5 text-white" />
                   </div>
                   <div>
-                    <p className="text-sm text-red-600 font-medium">Total Expenses</p>
+                    <p className="text-sm text-red-600 font-medium">Total Bills (Debit)</p>
                     <p className="text-xl font-bold text-red-900">
-                      {formatCurrency(expenses.reduce((sum, exp) => sum + exp.amount, 0))}
+                      {formatCurrency(financialSummary.totalBillAmount)}
                     </p>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 shadow-md">
+            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 shadow-md">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-orange-500 rounded-lg">
-                    <Calendar className="h-5 w-5 text-white" />
+                  <div className="p-2 bg-green-500 rounded-lg">
+                    <DollarSign className="h-5 w-5 text-white" />
                   </div>
                   <div>
-                    <p className="text-sm text-orange-600 font-medium">This Month</p>
-                    <p className="text-xl font-bold text-orange-900">
-                      {formatCurrency(expenses.filter(exp => {
-                        const expenseDate = new Date(exp.date);
-                        const now = new Date();
-                        return expenseDate.getMonth() === now.getMonth() && expenseDate.getFullYear() === now.getFullYear();
-                      }).reduce((sum, exp) => sum + exp.amount, 0))}
+                    <p className="text-sm text-green-600 font-medium">Total Payments (Credit)</p>
+                    <p className="text-xl font-bold text-green-900">
+                      {formatCurrency(financialSummary.totalPaidAmount)}
                     </p>
                   </div>
                 </div>
@@ -1309,8 +1434,45 @@ export function VendorBillsTab({
                     <Receipt className="h-5 w-5 text-white" />
                   </div>
                   <div>
-                    <p className="text-sm text-purple-600 font-medium">Expense Count</p>
-                    <p className="text-xl font-bold text-purple-900">{expenses.length}</p>
+                    <p className="text-sm text-purple-600 font-medium">Transaction Count</p>
+                    <p className="text-xl font-bold text-purple-900">{bills.length + expenses.length}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className={`bg-gradient-to-br shadow-md ${
+              financialSummary.totalOutstanding > 0 
+                ? 'from-red-50 to-red-100 border-red-200' 
+                : 'from-green-50 to-green-100 border-green-200'
+            }`}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${
+                    financialSummary.totalOutstanding > 0 
+                      ? 'bg-red-500' 
+                      : 'bg-green-500'
+                  }`}>
+                    <Scale className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <p className={`text-sm font-medium ${
+                      financialSummary.totalOutstanding > 0 
+                        ? 'text-red-600' 
+                        : 'text-green-600'
+                    }`}>
+                      Outstanding Amount
+                    </p>
+                    <p className={`text-xl font-bold ${
+                      financialSummary.totalOutstanding > 0 
+                        ? 'text-red-900' 
+                        : 'text-green-900'
+                    }`}>
+                      {formatCurrency(Math.abs(financialSummary.totalOutstanding))}
+                      <span className="text-xs ml-1">
+                        {financialSummary.totalOutstanding > 0 ? 'Outstanding' : 'Overpaid'}
+                      </span>
+                    </p>
                   </div>
                 </div>
               </CardContent>
@@ -1323,7 +1485,7 @@ export function VendorBillsTab({
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
                 type="text"
-                placeholder="Search expenses by description, category, amount..."
+                placeholder="Search transactions by description, type, amount..."
                 value={expensesSearchQuery}
                 onChange={(e) => {
                   setExpensesSearchQuery(e.target.value);
@@ -1346,6 +1508,57 @@ export function VendorBillsTab({
             )}
           </div>
 
+          {/* Date Filter Controls */}
+          <div className="flex items-center gap-4 mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-gray-500" />
+              <span className="text-sm font-medium text-gray-700">Filter by Date:</span>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Label htmlFor="expense-start-date" className="text-sm text-gray-600">From:</Label>
+              <Input
+                id="expense-start-date"
+                type="date"
+                value={expenseStartDate}
+                onChange={(e) => {
+                  setExpenseStartDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-40 text-sm"
+              />
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Label htmlFor="expense-end-date" className="text-sm text-gray-600">To:</Label>
+              <Input
+                id="expense-end-date"
+                type="date"
+                value={expenseEndDate}
+                onChange={(e) => {
+                  setExpenseEndDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-40 text-sm"
+              />
+            </div>
+            
+            {(expenseStartDate || expenseEndDate) && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setExpenseStartDate('');
+                  setExpenseEndDate('');
+                  setCurrentPage(1);
+                }}
+                className="text-sm"
+              >
+                Clear Dates
+              </Button>
+            )}
+          </div>
+
           {/* Expenses Table */}
           <div className="rounded-lg border border-gray-200 overflow-hidden bg-white shadow-sm">
             <Table>
@@ -1353,28 +1566,83 @@ export function VendorBillsTab({
                 <TableRow>
                   <TableHead className="font-semibold">Date</TableHead>
                   <TableHead className="font-semibold">Description</TableHead>
-                  <TableHead className="font-semibold">Category</TableHead>
-                  <TableHead className="font-semibold">Amount</TableHead>
-                  <TableHead className="font-semibold">Payment Method</TableHead>
+                  <TableHead className="font-semibold">Type</TableHead>
+                  <TableHead className="font-semibold">Debit</TableHead>
+                  <TableHead className="font-semibold">Credit</TableHead>
+                  <TableHead className="font-semibold">Outstanding</TableHead>
                   <TableHead className="font-semibold">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {(() => {
-                  const filteredExpenses = filterExpenses(expenses, expensesSearchQuery);
-                  const paginatedExpenses = getPaginatedData(filteredExpenses, currentPage, itemsPerPage);
+                  // Create combined ledger entries from bills and expenses
+                  const ledgerEntries: Array<{
+                    id: string;
+                    date: string;
+                    description: string;
+                    type: string;
+                    amount: number;
+                    isDebit: boolean;
+                    isCredit: boolean;
+                    bill_id?: string;
+                    expense_id?: string;
+                  }> = [];
                   
-                  if (paginatedExpenses.length === 0) {
+                  // Add vendor bills as debit entries
+                  bills.forEach(bill => {
+                    ledgerEntries.push({
+                      id: `bill-${bill.id}`,
+                      date: bill.bill_date,
+                      description: `Bill ${bill.bill_number} - ${vendorName}`,
+                      type: 'Bill',
+                      amount: bill.total_amount,
+                      isDebit: true,
+                      isCredit: false,
+                      bill_id: bill.id
+                    });
+                  });
+                  
+                  // Add expenses (payments) as credit entries
+                  expenses.forEach(expense => {
+                    ledgerEntries.push({
+                      id: `expense-${expense.id}`,
+                      date: expense.date,
+                      description: expense.description,
+                      type: 'Payment',
+                      amount: expense.amount,
+                      isDebit: false,
+                      isCredit: true,
+                      expense_id: expense.id
+                    });
+                  });
+                  
+                  // Sort by date (newest first)
+                  ledgerEntries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                  
+                  // Filter the combined ledger entries
+                  const filteredLedgerEntries = ledgerEntries.filter(entry => {
+                    if (!expensesSearchQuery) return true;
+                    const searchTerm = expensesSearchQuery.toLowerCase();
+                    return entry.description.toLowerCase().includes(searchTerm) ||
+                           entry.type.toLowerCase().includes(searchTerm) ||
+                           entry.amount.toString().includes(searchTerm);
+                  });
+                  
+                  // Apply pagination to filtered entries
+                  const startIndex = (currentPage - 1) * itemsPerPage;
+                  const paginatedLedgerEntries = filteredLedgerEntries.slice(startIndex, startIndex + itemsPerPage);
+                  
+                  if (paginatedLedgerEntries.length === 0) {
                     return (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8">
+                        <TableCell colSpan={7} className="text-center py-8">
                           <div className="flex flex-col items-center gap-2">
                             <Minus className="h-8 w-8 text-gray-400" />
                             <p className="text-gray-500">
-                              {expensesSearchQuery ? 'No expenses found matching your search.' : 'No expenses found for this vendor'}
+                              {expensesSearchQuery ? 'No transactions found matching your search.' : 'No transactions found for this vendor'}
                             </p>
                             <p className="text-xs text-gray-400">
-                              {expensesSearchQuery ? 'Try adjusting your search terms.' : 'Add an expense to get started'}
+                              {expensesSearchQuery ? 'Try adjusting your search terms.' : 'Vendor bills and payments will appear here'}
                             </p>
                           </div>
                         </TableCell>
@@ -1382,43 +1650,115 @@ export function VendorBillsTab({
                     );
                   }
                   
-                  return paginatedExpenses.map((expense) => (
-                    <TableRow key={expense.id} className="hover:bg-gray-50 transition-colors">
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Calendar className="h-4 w-4 text-gray-500" />
-                          {formatDate(expense.date)}
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-medium max-w-[300px]">
-                        <div className="truncate" title={expense.description}>
-                          {expense.description}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="font-medium">{expense.category}</Badge>
-                      </TableCell>
-                      <TableCell className="font-semibold text-red-600">
-                        {formatCurrency(expense.amount)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="font-medium">{expense.payment_method}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 w-7 p-0 hover:bg-red-50 hover:border-red-300 hover:text-red-600"
-                            title="Delete expense"
-                            onClick={() => handleDeleteExpense(expense)}
+                  // Calculate running outstanding for each entry
+                  // Start with current outstanding and work backwards through transactions
+                  const currentOutstanding = financialSummary.totalOutstanding;
+                  const outstandingMap = new Map();
+                  let runningOutstanding = currentOutstanding;
+                  
+                  // Work through filtered entries (newest first) and calculate what outstanding was at each point
+                  filteredLedgerEntries.forEach((entry, index) => {
+                    outstandingMap.set(entry.id, runningOutstanding);
+                    
+                    // After recording current outstanding, adjust for the next (older) transaction
+                    if (index < filteredLedgerEntries.length - 1) {
+                      if (entry.isDebit) {
+                        runningOutstanding -= entry.amount; // Going back in time: bills would have been lower outstanding before
+                      } else {
+                        runningOutstanding += entry.amount; // Going back in time: payments would have been higher outstanding before
+                      }
+                    }
+                  });
+                  
+                  return paginatedLedgerEntries.map((entry) => {
+                    const outstandingAmount = outstandingMap.get(entry.id) || 0;
+                    
+                    return (
+                      <TableRow key={entry.id} className="hover:bg-gray-50 transition-colors">
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-gray-500" />
+                            {formatDate(entry.date)}
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-medium max-w-[300px]">
+                          <div className="truncate" title={entry.description}>
+                            {entry.description}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge 
+                            variant="outline" 
+                            className={`font-medium ${
+                              entry.type === 'Bill' 
+                                ? 'border-red-300 text-red-600 bg-red-50' 
+                                : 'border-green-300 text-green-600 bg-green-50'
+                            }`}
                           >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ));
+                            {entry.type}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-semibold">
+                          {entry.isDebit ? (
+                            <span className="text-red-600">
+                              {formatCurrency(entry.amount)}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="font-semibold">
+                          {entry.isCredit ? (
+                            <span className="text-green-600">
+                              {formatCurrency(entry.amount)}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="font-semibold">
+                          <div className={`text-right ${outstandingAmount > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                            {formatCurrency(Math.abs(outstandingAmount))}
+                            <span className="text-xs ml-1">
+                              {outstandingAmount > 0 ? 'DR' : 'CR'}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            {entry.expense_id && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 w-7 p-0 hover:bg-red-50 hover:border-red-300 hover:text-red-600"
+                                title="Delete payment"
+                                onClick={() => {
+                                  const expense = expenses.find(exp => exp.id === entry.expense_id);
+                                  if (expense) handleDeleteExpense(expense);
+                                }}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            )}
+                            {entry.bill_id && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 w-7 p-0 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600"
+                                title="View bill details"
+                                onClick={() => {
+                                  const bill = bills.find(b => b.id === entry.bill_id);
+                                  if (bill) handleEditBill(bill);
+                                }}
+                              >
+                                <FileText className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  });
                 })()}
               </TableBody>
             </Table>
@@ -1426,18 +1766,63 @@ export function VendorBillsTab({
 
           {/* Pagination Controls */}
           {(() => {
-            const filteredExpenses = filterExpenses(expenses, expensesSearchQuery);
-            const totalPages = Math.ceil(filteredExpenses.length / itemsPerPage);
-            const startIndex = (currentPage - 1) * itemsPerPage + 1;
-            const endIndex = Math.min(currentPage * itemsPerPage, filteredExpenses.length);
+            // Create combined ledger entries for pagination
+            const ledgerEntries: Array<{
+              id: string;
+              date: string;
+              description: string;
+              type: string;
+              amount: number;
+              isDebit: boolean;
+              isCredit: boolean;
+            }> = [];
             
-            if (filteredExpenses.length === 0) return null;
+            // Add vendor bills as debit entries
+            bills.forEach(bill => {
+              ledgerEntries.push({
+                id: `bill-${bill.id}`,
+                date: bill.bill_date,
+                description: `Bill ${bill.bill_number} - ${vendorName}`,
+                type: 'Bill',
+                amount: bill.total_amount,
+                isDebit: true,
+                isCredit: false
+              });
+            });
+            
+            // Add expenses (payments) as credit entries
+            expenses.forEach(expense => {
+              ledgerEntries.push({
+                id: `expense-${expense.id}`,
+                date: expense.date,
+                description: expense.description,
+                type: 'Payment',
+                amount: expense.amount,
+                isDebit: false,
+                isCredit: true
+              });
+            });
+            
+            // Filter the combined ledger entries
+            const filteredLedgerEntries = ledgerEntries.filter(entry => {
+              if (!expensesSearchQuery) return true;
+              const searchTerm = expensesSearchQuery.toLowerCase();
+              return entry.description.toLowerCase().includes(searchTerm) ||
+                     entry.type.toLowerCase().includes(searchTerm) ||
+                     entry.amount.toString().includes(searchTerm);
+            });
+            
+            const totalPages = Math.ceil(filteredLedgerEntries.length / itemsPerPage);
+            const startIndex = (currentPage - 1) * itemsPerPage + 1;
+            const endIndex = Math.min(currentPage * itemsPerPage, filteredLedgerEntries.length);
+            
+            if (filteredLedgerEntries.length === 0) return null;
             
             return (
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-gray-50 border-t border-gray-200">
                 {/* Results Info */}
                 <div className="text-sm text-gray-600">
-                  Showing {startIndex}-{endIndex} of {filteredExpenses.length} expenses
+                  Showing {startIndex}-{endIndex} of {filteredLedgerEntries.length} transactions
                 </div>
 
                 {/* Items per page selector */}
@@ -1456,7 +1841,7 @@ export function VendorBillsTab({
                     <option value="10">10</option>
                     <option value="25">25</option>
                     <option value="50">50</option>
-                    <option value={filteredExpenses.length}>All ({filteredExpenses.length})</option>
+                    <option value={filteredLedgerEntries.length}>All ({filteredLedgerEntries.length})</option>
                   </select>
                   <span className="text-sm text-gray-600">per page</span>
                 </div>
@@ -2445,6 +2830,153 @@ export function VendorBillsTab({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Purchase Return Modal */}
+      {purchaseReturnModalOpen && selectedBillForReturn && (
+        <div className="fixed inset-0 z-50 bg-white">
+          <div className="h-full flex flex-col">
+            {/* Header */}
+            <div className="flex-none bg-blue-50 border-b border-blue-200 px-6 py-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-semibold text-blue-700 flex items-center gap-2">
+                    <RotateCcw className="h-6 w-6" />
+                    Purchase Return - {selectedBillForReturn.bill_number}
+                  </h1>
+                  <p className="text-sm text-gray-600">
+                    Process returns for products from {vendorName} | Bill Date: {selectedBillForReturn.bill_date ? new Date(selectedBillForReturn.bill_date).toLocaleDateString() : ''}
+                  </p>
+                </div>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={handleClosePurchaseReturn}
+                  className="flex items-center gap-2"
+                >
+                  ✕ Close
+                </Button>
+              </div>
+            </div>
+            
+            {/* Content Area - Scrollable */}
+            <div className="flex-1 overflow-auto">
+              <PurchaseReturnWizard 
+                preSelectedBill={{
+                  ...selectedBillForReturn,
+                  vendor: selectedBillForReturn.vendor || {
+                    id: vendorId,
+                    name: vendorName
+                  },
+                  vendor_bill_line_items: (selectedBillForReturn.vendor_bill_line_items || []).map(item => ({
+                    id: item.id,
+                    product_name: item.product_name,
+                    quantity: item.quantity,
+                    unit_price: item.unit_price,
+                    total_amount: item.total_amount || (item.quantity * item.unit_price),
+                    total_returned_quantity: item.total_returned_quantity || 0
+                  }))
+                }}
+                onClose={handleClosePurchaseReturn}
+                fullScreen={true}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Collect Reversal Payment Modal */}
+      {collectPaymentModalOpen && selectedBillForCollectPayment && (
+        <div className="fixed inset-0 z-50 bg-white">
+          <div className="h-full flex flex-col">
+            {/* Header */}
+            <div className="flex-none bg-green-50 border-b border-green-200 px-6 py-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-semibold text-green-700 flex items-center gap-2">
+                    <DollarSign className="h-6 w-6" />
+                    Collect Reversal Payment - {selectedBillForCollectPayment.bill_number}
+                  </h1>
+                  <p className="text-sm text-gray-600">
+                    Collect payment for returned items from {vendorName} | Bill Date: {selectedBillForCollectPayment.bill_date ? new Date(selectedBillForCollectPayment.bill_date).toLocaleDateString() : ''}
+                  </p>
+                </div>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={handleCloseCollectPayment}
+                  className="flex items-center gap-2"
+                >
+                  ✕ Close
+                </Button>
+              </div>
+            </div>
+            
+            {/* Content Area - Scrollable */}
+            <div className="flex-1 overflow-auto p-6">
+              <div className="max-w-4xl mx-auto space-y-6">
+                {/* Returned Items Summary */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Returned Items Summary</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {selectedBillForCollectPayment.vendor_bill_line_items?.filter(item => 
+                        (item.total_returned_quantity || 0) > 0
+                      ).map((item, index) => (
+                        <div key={index} className="border rounded-lg p-4">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h4 className="font-medium">{item.product_name}</h4>
+                              <p className="text-sm text-muted-foreground">
+                                Returned: {item.total_returned_quantity} × ${item.unit_price.toFixed(2)}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-semibold">
+                                ${((item.total_returned_quantity || 0) * item.unit_price).toFixed(2)}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      
+                      <div className="border-t pt-4">
+                        <div className="flex justify-between items-center font-semibold text-lg">
+                          <span>Total Payment to Collect:</span>
+                          <span>
+                            ${selectedBillForCollectPayment.vendor_bill_line_items?.reduce((total, item) => 
+                              total + ((item.total_returned_quantity || 0) * item.unit_price), 0
+                            ).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Payment Collection Form */}
+                <PaymentCollectionForm
+                  totalAmount={selectedBillForCollectPayment.vendor_bill_line_items?.reduce((total, item) => 
+                    total + ((item.total_returned_quantity || 0) * item.unit_price), 0
+                  ) || 0}
+                  onConfigChange={(config) => {
+                    // Handle payment config change
+                    console.log('Payment config changed:', config);
+                  }}
+                  onSubmit={(config) => {
+                    // Handle payment submission
+                    console.log('Payment submitted:', config);
+                    // Here you would typically call an API to record the payment
+                    // For now, just close the modal
+                    handleCloseCollectPayment();
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

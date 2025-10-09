@@ -6,13 +6,46 @@ import { createExpenseJournalEntry } from "@/lib/journalHelper";
 import { 
   processExpenseIntegration,
   EntityExpenseParams
-} from "@/lib/expense-integrations/expenseIntegrationManager";export async function GET() {
-  const { data, error } = await supabase
-    .from("expenses")
-    .select("*")
-    .order("date", { ascending: false });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ data });
+} from "@/lib/expense-integrations/expenseIntegrationManager";export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const entity_id = searchParams.get('entity_id');
+    const entity_type = searchParams.get('entity_type');
+    const start_date = searchParams.get('start_date');
+    const end_date = searchParams.get('end_date');
+
+    let query = supabase
+      .from("expenses")
+      .select("*")
+      .order("date", { ascending: false });
+
+    // Apply entity filtering
+    if (entity_id && entity_type) {
+      query = query
+        .eq('entity_id', entity_id)
+        .eq('entity_type', entity_type);
+    }
+
+    // Apply date range filtering
+    if (start_date) {
+      query = query.gte('date', start_date);
+    }
+    if (end_date) {
+      query = query.lte('date', end_date);
+    }
+
+    const { data, error } = await query;
+    
+    if (error) {
+      console.error('Error fetching expenses:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ data });
+  } catch (error) {
+    console.error('Error in GET /api/finance/expenses:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
 }
 
 export async function POST(req: Request) {

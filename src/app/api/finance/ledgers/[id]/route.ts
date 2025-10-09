@@ -515,38 +515,75 @@ async function fetchEmployeeTransactions(
       });
     }
 
-    // 2. EMPLOYEE EXPENSES
+    // 2. EMPLOYEE EXPENSES (from expenses table)
     const { data: empExpenses } = await supabaseAdmin
       .from('expenses')
       .select(`
         id,
-        expense_date,
+        date,
         amount,
         description,
         category,
         payment_method,
-        reference_number,
-        status
+        created_at
       `)
-      .eq('employee_id', employeeId)
-      .gte('expense_date', dateFrom || '1900-01-01')
-      .lte('expense_date', dateTo || '2100-12-31')
-      .order('expense_date', { ascending: false });
+      .eq('entity_type', 'employee')
+      .eq('entity_id', employeeId)
+      .gte('date', dateFrom || '1900-01-01')
+      .lte('date', dateTo || '2100-12-31')
+      .order('date', { ascending: false });
 
     if (empExpenses) {
       empExpenses.forEach((expense) => {
         transactions.push({
           id: `emp_exp_${expense.id}`,
-          date: expense.expense_date,
-          description: `Employee Expense: ${expense.description} (${expense.category})`,
-          reference_number: expense.reference_number || `EEXP-${expense.id.slice(-8)}`,
-          transaction_type: 'expense',
+          date: expense.date,
+          description: expense.description || `${expense.category} Expense`,
+          reference_number: `EXP-${expense.id.slice(-8)}`,
+          transaction_type: 'salary_expense',
           debit_amount: expense.amount || 0,
           credit_amount: 0,
           balance: 0,
-          source_document: 'employee_expense',
-          status: expense.status,
+          source_document: 'employee_salary',
+          status: 'paid',
           document_id: expense.id
+        });
+      });
+    }
+
+    // 3. PAYROLL RECORDS (from payroll_records table)
+    const { data: payrollRecords } = await supabaseAdmin
+      .from('payroll_records')
+      .select(`
+        id,
+        pay_period_start,
+        pay_period_end,
+        gross_salary,
+        net_salary,
+        overtime_amount,
+        bonus,
+        status,
+        processed_at
+      `)
+      .eq('employee_id', employeeId)
+      .gte('pay_period_start', dateFrom || '1900-01-01')
+      .lte('pay_period_end', dateTo || '2100-12-31')
+      .order('pay_period_start', { ascending: false });
+
+    if (payrollRecords) {
+      payrollRecords.forEach((payroll) => {
+        transactions.push({
+          id: `payroll_${payroll.id}`,
+          date: payroll.processed_at?.split('T')[0] || payroll.pay_period_end,
+          description: `Payroll: ${payroll.pay_period_start} to ${payroll.pay_period_end}${payroll.overtime_amount ? ` (OT: ₹${payroll.overtime_amount})` : ''}`,
+          reference_number: `PAY-${payroll.id.slice(-8)}`,
+          transaction_type: 'payroll',
+          debit_amount: payroll.net_salary || 0,
+          credit_amount: 0,
+          balance: 0,
+          source_document: 'payroll_record',
+          status: payroll.status,
+          document_id: payroll.id
         });
       });
     }

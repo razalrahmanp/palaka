@@ -515,24 +515,53 @@ async function getEmployeeLedgers(search: string, hideZeroBalances: boolean): Pr
 
     console.log(`Found ${allEmployees.length} employees`);
     
-    // Convert employees to ledger format with salary information
-    const ledgers: LedgerSummary[] = allEmployees.map(employee => {
-      const monthlySalary = employee.salary || 0;
-      const annualSalary = monthlySalary * 12;
+    // Convert employees to ledger format with actual transaction totals
+    const ledgers: LedgerSummary[] = [];
+    
+    for (const employee of allEmployees) {
+      // Get actual transaction totals from expenses table
+      const { data: employeeExpenses } = await supabaseAdmin
+        .from('expenses')
+        .select('amount, date')
+        .eq('entity_type', 'employee')
+        .eq('entity_id', employee.id);
       
-      return {
+      // Get payroll records
+      const { data: payrollRecords } = await supabaseAdmin
+        .from('payroll_records')
+        .select('net_salary, processed_at')
+        .eq('employee_id', employee.id);
+      
+      // Calculate totals from actual transactions
+      const expenseTotal = employeeExpenses?.reduce((sum, exp) => sum + (exp.amount || 0), 0) || 0;
+      const payrollTotal = payrollRecords?.reduce((sum, pr) => sum + (pr.net_salary || 0), 0) || 0;
+      const totalAmount = expenseTotal + payrollTotal;
+      
+      // Get latest transaction date
+      const allDates = [
+        ...(employeeExpenses?.map(exp => exp.date) || []),
+        ...(payrollRecords?.map(pr => pr.processed_at?.split('T')[0]) || [])
+      ].filter(Boolean);
+      
+      const lastTransactionDate = allDates.length > 0 
+        ? allDates.sort().reverse()[0] 
+        : employee.created_at;
+      
+      const transactionCount = (employeeExpenses?.length || 0) + (payrollRecords?.length || 0);
+      
+      ledgers.push({
         id: employee.id,
         name: `${employee.name}${employee.position ? ` (${employee.position})` : ''}`,
         type: 'employee' as const,
         email: employee.email,
         phone: employee.phone,
-        total_transactions: 0, // Could be enhanced with payroll transactions
-        total_amount: annualSalary,
-        balance_due: monthlySalary, // Current month salary
-        last_transaction_date: employee.created_at,
+        total_transactions: transactionCount,
+        total_amount: totalAmount,
+        balance_due: totalAmount, // Total amount owed to employee
+        last_transaction_date: lastTransactionDate,
         status: 'active'
-      };
-    });
+      });
+    }
 
     console.log(`Processed ${ledgers.length} employee ledgers`);
     

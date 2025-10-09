@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
 import {
   Table,
   TableBody,
@@ -184,14 +184,7 @@ export default function OptimizedLedgerManager() {
     type: activeTab as 'customer' | 'supplier' | 'employee' | 'investors' | 'loans' | 'banks' | 'cash'
   });
 
-  // Adjustment form state
-  const [showAdjustmentDialog, setShowAdjustmentDialog] = useState(false);
-  const [adjustmentForm, setAdjustmentForm] = useState({
-    type: 'discount' as 'discount' | 'additional',
-    amount: '',
-    description: '',
-    reference: ''
-  });
+
 
   // Supplier-specific state
   const [showOpeningBalanceDialog, setShowOpeningBalanceDialog] = useState(false);
@@ -279,7 +272,7 @@ export default function OptimizedLedgerManager() {
         apiEndpoint = '/api/finance/loan-payments';
         paramKey = 'loan_id';
       } else {
-        // Fall back to existing API for other types
+        // Fall back to existing API for other types (customer, supplier, employee)
         const params = new URLSearchParams({
           type: ledger.type,
           page: page.toString(),
@@ -296,9 +289,19 @@ export default function OptimizedLedgerManager() {
           } else {
             setTransactions(prev => [...prev, ...data.data]);
           }
-          // Update transaction pagination if available
+          
+          // Update transaction pagination - for employee ledgers, calculate from meta data
           if (data.pagination) {
             setTransactionPagination(data.pagination);
+          } else if (data.meta && ledger.type === 'employee') {
+            const transactionCount = data.meta.transaction_count || data.data.length;
+            setTransactionPagination({
+              page: 1,
+              limit: 25,
+              total: transactionCount,
+              totalPages: Math.ceil(transactionCount / 25),
+              hasMore: false
+            });
           }
         } else {
           console.error('Failed to fetch transactions:', data.error);
@@ -478,36 +481,7 @@ export default function OptimizedLedgerManager() {
     }
   };
 
-  const handleCreateAdjustment = async () => {
-    if (!selectedLedger) return;
 
-    try {
-      const adjustmentData = {
-        ledger_id: selectedLedger.id,
-        ledger_type: selectedLedger.type,
-        type: adjustmentForm.type,
-        amount: parseFloat(adjustmentForm.amount),
-        description: adjustmentForm.description,
-        reference_number: adjustmentForm.reference,
-        date: new Date().toISOString()
-      };
-
-      const response = await fetch('/api/finance/adjustments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(adjustmentData)
-      });
-
-      if (response.ok) {
-        setShowAdjustmentDialog(false);
-        setAdjustmentForm({ type: 'discount', amount: '', description: '', reference: '' });
-        fetchTransactions(selectedLedger);
-        fetchLedgers(pagination.page, activeTab, searchTerm, false);
-      }
-    } catch (error) {
-      console.error('Error creating adjustment:', error);
-    }
-  };
 
   const handleCreateOpeningBalance = async () => {
     if (!selectedLedger) return;
@@ -856,70 +830,7 @@ export default function OptimizedLedgerManager() {
               </>
             )}
 
-            <Dialog open={showAdjustmentDialog} onOpenChange={setShowAdjustmentDialog}>
-              <DialogTrigger asChild>
-                <Button size="sm" className="flex items-center gap-2">
-                  <DollarSign className="h-4 w-4" />
-                  Add Adjustment
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Add Adjustment</DialogTitle>
-                  <DialogDescription>
-                    Add a discount or additional charge to this ledger
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="adjustmentType">Type</Label>
-                    <Select value={adjustmentForm.type} onValueChange={(value: 'discount' | 'additional') => 
-                      setAdjustmentForm(prev => ({ ...prev, type: value }))}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="discount">Discount</SelectItem>
-                        <SelectItem value="additional">Additional Charge</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="amount">Amount</Label>
-                    <Input
-                      id="amount"
-                      type="number"
-                      step="0.01"
-                      value={adjustmentForm.amount}
-                      onChange={(e) => setAdjustmentForm(prev => ({ ...prev, amount: e.target.value }))}
-                      placeholder="0.00"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="description">Description</Label>
-                    <Textarea
-                      id="description"
-                      value={adjustmentForm.description}
-                      onChange={(e) => setAdjustmentForm(prev => ({ ...prev, description: e.target.value }))}
-                      placeholder="Reason for adjustment..."
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="reference">Reference</Label>
-                    <Input
-                      id="reference"
-                      value={adjustmentForm.reference}
-                      onChange={(e) => setAdjustmentForm(prev => ({ ...prev, reference: e.target.value }))}
-                      placeholder="Reference number (optional)"
-                    />
-                  </div>
-                  <Button onClick={handleCreateAdjustment} className="w-full">
-                    <Save className="h-4 w-4 mr-2" />
-                    Create Adjustment
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+
           </div>
         </div>
 

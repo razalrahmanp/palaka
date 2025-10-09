@@ -183,7 +183,7 @@ export function VendorBillsTab({
   const [isSyncingExpenses, setIsSyncingExpenses] = useState(false);
   const [isCreatingExpense, setIsCreatingExpense] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [expandedBills, setExpandedBills] = useState<Set<string>>(new Set());
   const [expenseForm, setExpenseForm] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -1423,6 +1423,117 @@ export function VendorBillsTab({
               </TableBody>
             </Table>
           </div>
+
+          {/* Pagination Controls */}
+          {(() => {
+            const filteredExpenses = filterExpenses(expenses, expensesSearchQuery);
+            const totalPages = Math.ceil(filteredExpenses.length / itemsPerPage);
+            const startIndex = (currentPage - 1) * itemsPerPage + 1;
+            const endIndex = Math.min(currentPage * itemsPerPage, filteredExpenses.length);
+            
+            if (filteredExpenses.length === 0) return null;
+            
+            return (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-gray-50 border-t border-gray-200">
+                {/* Results Info */}
+                <div className="text-sm text-gray-600">
+                  Showing {startIndex}-{endIndex} of {filteredExpenses.length} expenses
+                </div>
+
+                {/* Items per page selector */}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">Show:</span>
+                  <select 
+                    title="Items per page"
+                    value={itemsPerPage} 
+                    onChange={(e) => {
+                      const newItemsPerPage = parseInt(e.target.value);
+                      setItemsPerPage(newItemsPerPage);
+                      setCurrentPage(1); // Reset to first page
+                    }}
+                    className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
+                  >
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value={filteredExpenses.length}>All ({filteredExpenses.length})</option>
+                  </select>
+                  <span className="text-sm text-gray-600">per page</span>
+                </div>
+
+                {/* Pagination buttons */}
+                {totalPages > 1 && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1}
+                      className="px-3 py-1"
+                    >
+                      First
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                      disabled={currentPage === 1}
+                      className="px-3 py-1"
+                    >
+                      Previous
+                    </Button>
+                    
+                    {/* Page numbers */}
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let pageNum;
+                        if (totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1;
+                        } else if (currentPage >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i;
+                        } else {
+                          pageNum = currentPage - 2 + i;
+                        }
+                        
+                        return (
+                          <Button
+                            key={pageNum}
+                            variant={currentPage === pageNum ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setCurrentPage(pageNum)}
+                            className="px-3 py-1"
+                          >
+                            {pageNum}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                      disabled={currentPage === totalPages}
+                      className="px-3 py-1"
+                    >
+                      Next
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(totalPages)}
+                      disabled={currentPage === totalPages}
+                      className="px-3 py-1"
+                    >
+                      Last
+                    </Button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </TabsContent>
       </Tabs>
 

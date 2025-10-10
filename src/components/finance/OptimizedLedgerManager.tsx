@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -36,7 +36,8 @@ import {
   CreditCard,
   HandCoins,
   Banknote,
-  Wallet
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 
 interface LedgerSummary {
@@ -114,32 +115,51 @@ interface LoanPayment {
   upi_reference?: string;
 }
 
+interface TransactionRowProps {
+  transaction: LedgerTransaction;
+  formatDate: (date: string) => string;
+  formatCurrency: (amount: number) => string;
+  getTransactionTypeBadge: (type: string) => React.ReactNode;
+}
+
+// Memoized transaction row component for better performance
+const TransactionRow = ({ 
+  transaction, 
+  formatDate, 
+  formatCurrency,
+  getTransactionTypeBadge 
+}: TransactionRowProps) => (
+  <TableRow>
+    <TableCell>{formatDate(transaction.date)}</TableCell>
+    <TableCell>{transaction.description}</TableCell>
+    <TableCell className="font-mono text-xs">{transaction.reference_number}</TableCell>
+    <TableCell>{getTransactionTypeBadge(transaction.transaction_type)}</TableCell>
+    <TableCell className="text-right font-mono">
+      {transaction.debit_amount > 0 ? formatCurrency(transaction.debit_amount) : '-'}
+    </TableCell>
+    <TableCell className="text-right font-mono">
+      {transaction.credit_amount > 0 ? formatCurrency(transaction.credit_amount) : '-'}
+    </TableCell>
+    <TableCell className="text-right font-mono">
+      {formatCurrency(transaction.balance)}
+    </TableCell>
+    <TableCell>
+      <Badge variant="outline" className="text-xs capitalize">
+        {transaction.status}
+      </Badge>
+    </TableCell>
+  </TableRow>
+);
+
+const MemoizedTransactionRow = memo(TransactionRow);
+MemoizedTransactionRow.displayName = 'MemoizedTransactionRow';
+
 interface PaginationInfo {
   page: number;
   limit: number;
   total: number;
   totalPages: number;
   hasMore: boolean;
-}
-
-interface CashTransaction {
-  id: string;
-  date: string;
-  type: 'deposit' | 'withdrawal';
-  amount: number;
-  description: string;
-  reference: string;
-  source: string;
-  balance_after?: number;
-}
-
-interface CashSummary {
-  total_deposits: number;
-  total_withdrawals: number;
-  net_cash_flow: number;
-  current_cash_balance: number;
-  transaction_count: number;
-  source_breakdown: Record<string, number>;
 }
 
 export default function OptimizedLedgerManager() {
@@ -161,18 +181,16 @@ export default function OptimizedLedgerManager() {
   const [selectedLedger, setSelectedLedger] = useState<LedgerSummary | null>(null);
   const [transactions, setTransactions] = useState<LedgerTransaction[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
-  const [transactionPagination, setTransactionPagination] = useState<PaginationInfo>({
-    page: 1,
-    limit: 25,
-    total: 0,
-    totalPages: 0,
-    hasMore: false
+  const [transactionSort, setTransactionSort] = useState<'newest' | 'oldest'>('newest');
+  const [transactionItemsPerPage, setTransactionItemsPerPage] = useState(25);
+  const [transactionPagination, setTransactionPagination] = useState({ 
+    page: 1, 
+    totalPages: 1, 
+    totalTransactions: 0 
   });
-
-  // Cash transactions state
-  const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>([]);
-  const [cashSummary, setCashSummary] = useState<CashSummary | null>(null);
-  const [cashLoading, setCashLoading] = useState(false);
+  
+  // Add a ref for the latest abort controller to prevent overlapping requests
+  const abortControllerRef = React.useRef<AbortController | null>(null);
 
   // New ledger form state
   const [showNewLedgerDialog, setShowNewLedgerDialog] = useState(false);
@@ -181,10 +199,17 @@ export default function OptimizedLedgerManager() {
     email: '',
     phone: '',
     address: '',
-    type: activeTab as 'customer' | 'supplier' | 'employee' | 'investors' | 'loans' | 'banks' | 'cash'
+    type: activeTab as 'customer' | 'supplier' | 'employee' | 'investors' | 'loans' | 'banks'
   });
 
-
+  // Adjustment form state
+  const [showAdjustmentDialog, setShowAdjustmentDialog] = useState(false);
+  const [adjustmentForm, setAdjustmentForm] = useState({
+    type: 'discount' as 'discount' | 'additional',
+    amount: '',
+    description: '',
+    reference: ''
+  });
 
   // Supplier-specific state
   const [showOpeningBalanceDialog, setShowOpeningBalanceDialog] = useState(false);
@@ -204,12 +229,29 @@ export default function OptimizedLedgerManager() {
 
   // Debounced search function
   const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
+  
+  // Track if component is mounted to prevent state updates after unmount
+  const isMounted = React.useRef(true);
 
   // Debug selectedLedger
   useEffect(() => {
     console.log('Selected ledger changed:', selectedLedger);
     console.log('Selected ledger type:', selectedLedger?.type);
   }, [selectedLedger]);
+  
+  // Cleanup effect to abort any pending requests when component unmounts
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      // Clear any pending timeouts
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+    };
+  }, [searchTimeout]);
 
   const fetchLedgers = useCallback(async (
     page: number = 1,
@@ -229,37 +271,70 @@ export default function OptimizedLedgerManager() {
         _t: Date.now().toString() // Cache busting
       });
 
+      // Create a timeout to abort fetch if it takes too long
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+
       console.log('Fetching ledgers with params:', params.toString());
 
-      const response = await fetch(`/api/finance/ledgers-summary?${params}`);
+      const response = await fetch(`/api/finance/ledgers-summary?${params}`, {
+        method: 'GET',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        },
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
       const data = await response.json();
 
-      if (data.success) {
-        if (resetData || page === 1) {
-          setLedgers(data.data);
+      // Only update state if component is still mounted
+      if (isMounted.current) {
+        if (data.success) {
+          if (resetData || page === 1) {
+            setLedgers(data.data);
+          } else {
+            // Append data for "load more" functionality
+            setLedgers(prev => [...prev, ...data.data]);
+          }
+          setPagination(data.pagination);
         } else {
-          // Append data for "load more" functionality
-          setLedgers(prev => [...prev, ...data.data]);
+          console.error('Failed to fetch ledgers:', data.error);
+          setLedgers([]);
         }
-        setPagination(data.pagination);
-      } else {
-        console.error('Failed to fetch ledgers:', data.error);
-        setLedgers([]);
       }
     } catch (error) {
-      console.error('Error fetching ledgers:', error);
-      setLedgers([]);
+      if (error instanceof Error && error.name !== 'AbortError') {
+        console.error('Error fetching ledgers:', error);
+        if (isMounted.current) {
+          setLedgers([]);
+        }
+      }
     } finally {
-      setLoading(false);
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
   }, [itemsPerPage, hideZeroBalances]);
 
   const fetchTransactions = async (ledger: LedgerSummary, page: number = 1) => {
     try {
+      // Cancel previous fetch if it's still in progress
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      
       setTransactionsLoading(true);
       
       let apiEndpoint = '';
       let paramKey = '';
+      
+      // Create a new abort controller for this request
+      abortControllerRef.current = new AbortController();
+      const timeoutId = setTimeout(() => {
+        if (abortControllerRef.current) abortControllerRef.current.abort();
+      }, 15000); // 15 second timeout
       
       // Determine which API endpoint to use based on ledger type
       if (ledger.type === 'investors') {
@@ -272,40 +347,45 @@ export default function OptimizedLedgerManager() {
         apiEndpoint = '/api/finance/loan-payments';
         paramKey = 'loan_id';
       } else {
-        // Fall back to existing API for other types (customer, supplier, employee)
+        // Fall back to existing API for other types - OPTIMIZATION: Added cache control headers and timeout        
         const params = new URLSearchParams({
           type: ledger.type,
           page: page.toString(),
-          limit: '50',
+          limit: transactionItemsPerPage.toString(),
+          sort_order: transactionSort === 'newest' ? 'desc' : 'asc',
           _t: Date.now().toString()
         });
 
-        const response = await fetch(`/api/finance/ledgers/${ledger.id}?${params}`);
+        const response = await fetch(`/api/finance/ledgers/${ledger.id}?${params}`, {
+          method: 'GET',
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          },
+          signal: abortControllerRef.current.signal
+        });
+        
+        clearTimeout(timeoutId);
         const data = await response.json();
 
+        if (!isMounted.current) return;
+
         if (data.success) {
-          if (page === 1) {
-            setTransactions(data.data);
-          } else {
-            setTransactions(prev => [...prev, ...data.data]);
-          }
-          
-          // Update transaction pagination - for employee ledgers, calculate from meta data
-          if (data.pagination) {
-            setTransactionPagination(data.pagination);
-          } else if (data.meta && (ledger.type === 'employee' || ledger.type === 'supplier')) {
-            const transactionCount = data.meta.transaction_count || data.data.length;
-            setTransactionPagination({
-              page: 1,
-              limit: 25,
-              total: transactionCount,
-              totalPages: Math.ceil(transactionCount / 25),
-              hasMore: false
-            });
-          }
+          setTransactions(data.data);
+          // Update transaction pagination
+          setTransactionPagination({
+            page: page,
+            totalPages: data.pagination?.totalPages || 1,
+            totalTransactions: data.pagination?.total || data.data.length
+          });
         } else {
           console.error('Failed to fetch transactions:', data.error);
           setTransactions([]);
+          setTransactionPagination({
+            page: 1,
+            totalPages: 1,
+            totalTransactions: 0
+          });
         }
         return;
       }
@@ -314,20 +394,24 @@ export default function OptimizedLedgerManager() {
       const params = new URLSearchParams({
         [paramKey]: ledger.id,
         page: page.toString(),
-        limit: transactionPagination.limit.toString(),
+        limit: transactionItemsPerPage.toString(),
+        sort_order: transactionSort === 'newest' ? 'desc' : 'asc',
         _t: Date.now().toString()
       });
 
-      const response = await fetch(`${apiEndpoint}?${params}`);
+      const response = await fetch(`${apiEndpoint}?${params}`, {
+        method: 'GET',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        },
+        signal: abortControllerRef.current.signal
+      });
+      
+      clearTimeout(timeoutId);
       const data = await response.json();
 
       if (data.success) {
-        console.log('API Response for', ledger.type, ':', {
-          transaction_count: data.data?.summary?.transaction_count,
-          transactions_length: data.data?.transactions?.length,
-          breakdown: data.data?.summary?.breakdown
-        });
-        
         // Transform the detailed transaction data to match our interface
         let transformedTransactions: LedgerTransaction[] = [];
         
@@ -389,9 +473,6 @@ export default function OptimizedLedgerManager() {
             source_document: `Principal: ₹${tx.principal_amount} | Interest: ₹${tx.interest_amount}`,
             status: 'completed'
           }));
-        } else if (ledger.type === 'supplier') {
-          // For supplier transactions, the data structure is already in the correct format
-          transformedTransactions = data.data || [];
         }
         
         if (page === 1) {
@@ -399,68 +480,36 @@ export default function OptimizedLedgerManager() {
         } else {
           setTransactions(prev => [...prev, ...transformedTransactions]);
         }
-        
-        // Update transaction pagination state - for bank transactions it's at data.pagination
-        if (data.data?.pagination) {
-          setTransactionPagination(data.data.pagination);
-        } else if (data.pagination) {
-          setTransactionPagination(data.pagination);
-        }
       } else {
         console.error('Failed to fetch transactions:', data.error);
         setTransactions([]);
       }
     } catch (error) {
-      console.error('Error fetching transactions:', error);
-      setTransactions([]);
-    } finally {
-      setTransactionsLoading(false);
-    }
-  };
-
-  const fetchCashTransactions = async (page: number = 1) => {
-    try {
-      setCashLoading(true);
-      
-      const params = new URLSearchParams({
-        page: page.toString(),
-        limit: transactionPagination.limit.toString(),
-        _t: Date.now().toString()
-      });
-
-      const response = await fetch(`/api/finance/cash-ledger?${params}`);
-      const data = await response.json();
-
-      if (data.success) {
-        if (page === 1) {
-          setCashTransactions(data.data.transactions);
-        } else {
-          setCashTransactions(prev => [...prev, ...data.data.transactions]);
+      if (error instanceof Error && error.name !== 'AbortError') {
+        console.error('Error fetching transactions:', error);
+        if (isMounted.current) {
+          setTransactions([]);
         }
-        setCashSummary(data.data.summary);
-        
-        // Update pagination
-        if (data.data.pagination) {
-          setPagination(data.data.pagination);
-        }
-      } else {
-        console.error('Failed to fetch cash transactions:', data.error);
-        setCashTransactions([]);
-        setCashSummary(null);
       }
-    } catch (error) {
-      console.error('Error fetching cash transactions:', error);
-      setCashTransactions([]);
-      setCashSummary(null);
     } finally {
-      setCashLoading(false);
+      if (isMounted.current) {
+        setTransactionsLoading(false);
+      }
     }
   };
 
   const handleLedgerClick = (ledger: LedgerSummary) => {
     setSelectedLedger(ledger);
-    setTransactionPagination({ page: 1, limit: 25, total: 0, totalPages: 0, hasMore: false });
-    fetchTransactions(ledger, 1);
+    // Reset transaction pagination when selecting a new ledger
+    setTransactionPagination({
+      page: 1,
+      totalPages: 1,
+      totalTransactions: 0
+    });
+    // Reset to default values when switching ledgers
+    setTransactionSort('newest');
+    setTransactionItemsPerPage(25);
+    fetchTransactions(ledger);
   };
 
   const handleCreateNewLedger = async () => {
@@ -484,7 +533,36 @@ export default function OptimizedLedgerManager() {
     }
   };
 
+  const handleCreateAdjustment = async () => {
+    if (!selectedLedger) return;
 
+    try {
+      const adjustmentData = {
+        ledger_id: selectedLedger.id,
+        ledger_type: selectedLedger.type,
+        type: adjustmentForm.type,
+        amount: parseFloat(adjustmentForm.amount),
+        description: adjustmentForm.description,
+        reference_number: adjustmentForm.reference,
+        date: new Date().toISOString()
+      };
+
+      const response = await fetch('/api/finance/adjustments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(adjustmentData)
+      });
+
+      if (response.ok) {
+        setShowAdjustmentDialog(false);
+        setAdjustmentForm({ type: 'discount', amount: '', description: '', reference: '' });
+        fetchTransactions(selectedLedger);
+        fetchLedgers(pagination.page, activeTab, searchTerm, false);
+      }
+    } catch (error) {
+      console.error('Error creating adjustment:', error);
+    }
+  };
 
   const handleCreateOpeningBalance = async () => {
     if (!selectedLedger) return;
@@ -547,15 +625,24 @@ export default function OptimizedLedgerManager() {
     }
   };
 
-  // Debounced search effect
+  // Effect for tab and filter changes
   useEffect(() => {
+    // Don't trigger on initial render
+    if (ledgers.length === 0) {
+      fetchLedgers(1, activeTab, searchTerm, true);
+      return;
+    }
+    
+    // Use debouncing for filter changes
     if (searchTimeout) {
       clearTimeout(searchTimeout);
     }
 
     const timeout = setTimeout(() => {
-      fetchLedgers(1, activeTab, searchTerm, true);
-    }, 300); // 300ms delay
+      if (isMounted.current) {
+        fetchLedgers(1, activeTab, searchTerm, true);
+      }
+    }, 300);
 
     setSearchTimeout(timeout);
 
@@ -563,7 +650,7 @@ export default function OptimizedLedgerManager() {
       if (timeout) clearTimeout(timeout);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchTerm, activeTab, hideZeroBalances]);
+  }, [activeTab, hideZeroBalances]);
 
   // Initial load on mount only
   useEffect(() => {
@@ -573,14 +660,9 @@ export default function OptimizedLedgerManager() {
 
   const handleTabChange = (newTab: string) => {
     setActiveTab(newTab);
-    setNewLedgerForm(prev => ({ ...prev, type: newTab as 'customer' | 'supplier' | 'employee' | 'investors' | 'loans' | 'banks' | 'cash' }));
+    setNewLedgerForm(prev => ({ ...prev, type: newTab as 'customer' | 'supplier' | 'employee' | 'investors' | 'loans' | 'banks' }));
     setSelectedLedger(null); // Close transaction view
     setPagination(prev => ({ ...prev, page: 1 }));
-    
-    // For cash tab, automatically show cash transactions
-    if (newTab === 'cash') {
-      fetchCashTransactions(1);
-    }
   };
 
   const handleNextPage = () => {
@@ -597,23 +679,23 @@ export default function OptimizedLedgerManager() {
     }
   };
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = useCallback((amount: number) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(Math.abs(amount));
-  };
+  }, []);
 
-  const formatDate = (dateString?: string) => {
+  const formatDate = useCallback((dateString?: string) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-IN', {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
     });
-  };
+  }, []);
 
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -833,7 +915,70 @@ export default function OptimizedLedgerManager() {
               </>
             )}
 
-
+            <Dialog open={showAdjustmentDialog} onOpenChange={setShowAdjustmentDialog}>
+              <DialogTrigger asChild>
+                <Button size="sm" className="flex items-center gap-2">
+                  <DollarSign className="h-4 w-4" />
+                  Add Adjustment
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add Adjustment</DialogTitle>
+                  <DialogDescription>
+                    Add a discount or additional charge to this ledger
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="adjustmentType">Type</Label>
+                    <Select value={adjustmentForm.type} onValueChange={(value: 'discount' | 'additional') => 
+                      setAdjustmentForm(prev => ({ ...prev, type: value }))}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="discount">Discount</SelectItem>
+                        <SelectItem value="additional">Additional Charge</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="amount">Amount</Label>
+                    <Input
+                      id="amount"
+                      type="number"
+                      step="0.01"
+                      value={adjustmentForm.amount}
+                      onChange={(e) => setAdjustmentForm(prev => ({ ...prev, amount: e.target.value }))}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="description">Description</Label>
+                    <Textarea
+                      id="description"
+                      value={adjustmentForm.description}
+                      onChange={(e) => setAdjustmentForm(prev => ({ ...prev, description: e.target.value }))}
+                      placeholder="Reason for adjustment..."
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="reference">Reference</Label>
+                    <Input
+                      id="reference"
+                      value={adjustmentForm.reference}
+                      onChange={(e) => setAdjustmentForm(prev => ({ ...prev, reference: e.target.value }))}
+                      placeholder="Reference number (optional)"
+                    />
+                  </div>
+                  <Button onClick={handleCreateAdjustment} className="w-full">
+                    <Save className="h-4 w-4 mr-2" />
+                    Create Adjustment
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
 
@@ -1015,123 +1160,137 @@ export default function OptimizedLedgerManager() {
         {/* Transactions table */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Transaction History</span>
-              {transactionsLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <span>Transaction History</span>
+                {transactionsLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+              </CardTitle>
+              <div className="flex items-center gap-3">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  className="flex items-center gap-1 text-xs"
+                  onClick={() => {
+                    const newSortOrder = transactionSort === 'newest' ? 'oldest' : 'newest';
+                    setTransactionSort(newSortOrder);
+                    fetchTransactions(selectedLedger!, 1);
+                  }}
+                >
+                  {transactionSort === 'newest' ? (
+                    <>Newest First <ArrowUp className="h-3 w-3" /></>
+                  ) : (
+                    <>Oldest First <ArrowDown className="h-3 w-3" /></>
+                  )}
+                </Button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Reference</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead className="text-right">Debit</TableHead>
-                    <TableHead className="text-right">Credit</TableHead>
-                    <TableHead className="text-right">Balance</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {transactions.map((transaction) => (
-                    <TableRow key={transaction.id}>
-                      <TableCell>{formatDate(transaction.date)}</TableCell>
-                      <TableCell>{transaction.description}</TableCell>
-                      <TableCell className="font-mono text-xs">{transaction.reference_number}</TableCell>
-                      <TableCell>{getTransactionTypeBadge(transaction.transaction_type)}</TableCell>
-                      <TableCell className="text-right font-mono">
-                        {transaction.debit_amount > 0 ? formatCurrency(transaction.debit_amount) : '-'}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {transaction.credit_amount > 0 ? formatCurrency(transaction.credit_amount) : '-'}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {formatCurrency(transaction.balance)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-xs capitalize">
-                          {transaction.status}
-                        </Badge>
-                      </TableCell>
+              {transactionsLoading && transactions.length === 0 ? (
+                <div className="flex justify-center items-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Reference</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead className="text-right">Debit</TableHead>
+                      <TableHead className="text-right">Credit</TableHead>
+                      <TableHead className="text-right">Balance</TableHead>
+                      <TableHead>Status</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {transactions.length > 0 ? (
+                      transactions.map((transaction) => (
+                        <MemoizedTransactionRow 
+                          key={transaction.id} 
+                          transaction={transaction} 
+                          formatDate={formatDate} 
+                          formatCurrency={formatCurrency}
+                          getTransactionTypeBadge={getTransactionTypeBadge}
+                        />
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center py-4 text-gray-500">
+                          No transactions found
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              )}
             </div>
-          </CardContent>
-          
-          {/* Transaction Pagination Controls */}
-          {transactions.length > 0 && (
-            <div className="border-t px-6 py-4 bg-gray-50">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4 text-sm text-gray-600">
-                  <div className="flex items-center gap-2">
-                    <span>Items per page:</span>
-                    <select
-                      value={transactionPagination.limit}
-                      onChange={(e) => {
-                        const newLimit = parseInt(e.target.value);
-                        setTransactionPagination(prev => ({ ...prev, limit: newLimit, page: 1 }));
-                        if (selectedLedger) {
-                          fetchTransactions(selectedLedger, 1);
-                        }
-                      }}
-                      className="border rounded px-2 py-1 text-sm"
-                      title="Items per page"
-                    >
-                      <option value={10}>10</option>
-                      <option value={25}>25</option>
-                      <option value={50}>50</option>
-                      <option value={100}>100</option>
-                    </select>
-                  </div>
-                  <div>
-                    Page {transactionPagination.page} of {transactionPagination.totalPages} 
-                    ({transactionPagination.total} total transactions)
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      if (transactionPagination.page > 1 && selectedLedger) {
-                        const prevPage = transactionPagination.page - 1;
-                        setTransactionPagination(prev => ({ ...prev, page: prevPage }));
-                        fetchTransactions(selectedLedger, prevPage);
-                      }
-                    }}
-                    disabled={transactionPagination.page <= 1 || transactionsLoading}
-                    className="flex items-center gap-2"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    Previous
-                  </Button>
-                  
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      if (transactionPagination.page < transactionPagination.totalPages && selectedLedger) {
-                        const nextPage = transactionPagination.page + 1;
-                        setTransactionPagination(prev => ({ ...prev, page: nextPage }));
-                        fetchTransactions(selectedLedger, nextPage);
-                      }
-                    }}
-                    disabled={transactionPagination.page >= transactionPagination.totalPages || transactionsLoading}
-                    className="flex items-center gap-2"
-                  >
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
+            
+            {/* Transaction Pagination Controls */}
+            <div className="flex justify-between items-center p-4 border-t bg-gray-50">
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <span>Items per page:</span>
+                <Select
+                  value={transactionItemsPerPage.toString()}
+                  onValueChange={(value) => {
+                    const newLimit = parseInt(value);
+                    setTransactionItemsPerPage(newLimit);
+                    if (selectedLedger) {
+                      fetchTransactions(selectedLedger, 1);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-8 w-24">
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="25">25</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="flex items-center gap-1 text-sm font-medium">
+                <span>Page {transactionPagination.page} of {transactionPagination.totalPages}</span>
+                <Badge variant="outline" className="ml-2">
+                  {transactionPagination.totalTransactions} total transactions
+                </Badge>
+              </div>
+              
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => {
+                    if (selectedLedger && transactionPagination.page > 1) {
+                      fetchTransactions(selectedLedger, transactionPagination.page - 1);
+                    }
+                  }}
+                  disabled={transactionPagination.page <= 1 || transactionsLoading}
+                >
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Previous
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => {
+                    if (selectedLedger && transactionPagination.page < transactionPagination.totalPages) {
+                      fetchTransactions(selectedLedger, transactionPagination.page + 1);
+                    }
+                  }}
+                  disabled={transactionPagination.page >= transactionPagination.totalPages || transactionsLoading}
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
               </div>
             </div>
-          )}
+          </CardContent>
         </Card>
       </div>
     );
@@ -1153,7 +1312,29 @@ export default function OptimizedLedgerManager() {
             <Input
               placeholder="Search ledgers..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value;
+                setSearchTerm(value);
+                
+                // Clear existing timeout
+                if (searchTimeout) {
+                  clearTimeout(searchTimeout);
+                }
+                
+                // Skip API call if search term is cleared and we already have ledgers
+                if (!value && ledgers.length > 0) {
+                  return;
+                }
+                
+                // Debounce search with 500ms delay
+                const timeout = setTimeout(() => {
+                  if (isMounted.current) {
+                    fetchLedgers(1, activeTab, value, true);
+                  }
+                }, 500);
+                
+                setSearchTimeout(timeout);
+              }}
               className="pl-10 w-64"
             />
           </div>
@@ -1259,7 +1440,7 @@ export default function OptimizedLedgerManager() {
       <div className="flex-1 overflow-auto">
         <div className="space-y-4">
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-8">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="customer" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
             Customers
@@ -1284,10 +1465,6 @@ export default function OptimizedLedgerManager() {
             <CreditCard className="h-4 w-4" />
             Banks
           </TabsTrigger>
-          <TabsTrigger value="cash" className="flex items-center gap-2">
-            <Wallet className="h-4 w-4" />
-            Cash
-          </TabsTrigger>
           <TabsTrigger value="all" className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
             All Types
@@ -1295,134 +1472,6 @@ export default function OptimizedLedgerManager() {
         </TabsList>
 
         <TabsContent value={activeTab} className="space-y-4">
-          {activeTab === 'cash' ? (
-            // Cash Transactions View
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span>Cash Transactions</span>
-                  {cashLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-                </CardTitle>
-                <CardDescription>
-                  All cash inflows and outflows across the business
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {cashSummary && (
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
-                    <div className="text-center">
-                      <p className="text-sm text-gray-600">Total Deposits</p>
-                      <p className="text-lg font-semibold text-green-600">
-                        ₹{cashSummary.total_deposits.toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm text-gray-600">Total Withdrawals</p>
-                      <p className="text-lg font-semibold text-red-600">
-                        ₹{cashSummary.total_withdrawals.toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm text-gray-600">Net Cash Flow</p>
-                      <p className={`text-lg font-semibold ${cashSummary.net_cash_flow >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        ₹{cashSummary.net_cash_flow.toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm text-gray-600">Current Balance</p>
-                      <p className="text-lg font-semibold text-blue-600">
-                        ₹{cashSummary.current_cash_balance.toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead>Reference</TableHead>
-                        <TableHead>Source</TableHead>
-                        <TableHead className="text-right">Amount</TableHead>
-                        <TableHead className="text-right">Balance</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {cashTransactions.map((transaction) => (
-                        <TableRow key={transaction.id}>
-                          <TableCell>
-                            {new Date(transaction.date).toLocaleDateString()}
-                          </TableCell>
-                          <TableCell>
-                            <span className={`px-2 py-1 rounded text-xs font-medium ${
-                              transaction.type === 'deposit' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                            }`}>
-                              {transaction.type === 'deposit' ? 'Deposit' : 'Withdrawal'}
-                            </span>
-                          </TableCell>
-                          <TableCell>{transaction.description}</TableCell>
-                          <TableCell>{transaction.reference}</TableCell>
-                          <TableCell>{transaction.source}</TableCell>
-                          <TableCell className={`text-right font-medium ${
-                            transaction.type === 'deposit' ? 'text-green-600' : 'text-red-600'
-                          }`}>
-                            {transaction.type === 'deposit' ? '+' : '-'}₹{transaction.amount.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            ₹{transaction.balance_after?.toLocaleString() || 'N/A'}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-
-                {/* Pagination for Cash Transactions */}
-                <div className="mt-4 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-600">
-                      Page {pagination.page} of {pagination.totalPages} ({pagination.total} total transactions)
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        const prevPage = Math.max(1, pagination.page - 1);
-                        setPagination((prev: PaginationInfo) => ({ ...prev, page: prevPage }));
-                        fetchCashTransactions(prevPage);
-                      }}
-                      disabled={pagination.page <= 1 || cashLoading}
-                      className="flex items-center gap-2"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                      Previous
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        const nextPage = Math.min(pagination.totalPages, pagination.page + 1);
-                        setPagination((prev: PaginationInfo) => ({ ...prev, page: nextPage }));
-                        fetchCashTransactions(nextPage);
-                      }}
-                      disabled={pagination.page >= pagination.totalPages || cashLoading}
-                      className="flex items-center gap-2"
-                    >
-                      Next
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-            // Regular Ledgers View
-            <>
           {/* Ledgers Table */}
           <Card>
             <CardHeader>
@@ -1662,8 +1711,6 @@ export default function OptimizedLedgerManager() {
               </Button>
             </div>
           </div>
-          </>
-          )}
         </TabsContent>
         </Tabs>
         </div>

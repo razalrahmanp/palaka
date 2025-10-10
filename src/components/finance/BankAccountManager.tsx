@@ -145,7 +145,8 @@ export function BankAccountManager() {
     amount: '',
     description: '',
     reference: '',
-    date: new Date().toISOString().split('T')[0]
+    date: new Date().toISOString().split('T')[0],
+    isContraEntry: false
   });
 
   useEffect(() => {
@@ -330,19 +331,92 @@ export function BankAccountManager() {
       alert('Source and destination accounts must be different.');
       return;
     }
+    
+    // For contra entries, validate that we're moving from cash to bank
+    if (fundTransfer.isContraEntry) {
+      const fromAccount = allAccounts.find(a => a.id === fundTransfer.fromAccountId);
+      const toAccount = allAccounts.find(a => a.id === fundTransfer.toAccountId);
+      
+      if (fromAccount?.type !== 'cash') {
+        alert('For cash deposits, the source account must be a cash account.');
+        return;
+      }
+      
+      if (toAccount?.type !== 'bank') {
+        alert('For cash deposits, the destination account must be a bank account.');
+        return;
+      }
+    }
 
     setTransferLoading(true);
     try {
+      // Regular fund transfer - same API as before
       const response = await fetch('/api/finance/fund-transfer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(fundTransfer)
+        body: JSON.stringify({
+          ...fundTransfer,
+          description: fundTransfer.isContraEntry 
+            ? `Cash deposit to bank: ${fundTransfer.description || 'No description'}`
+            : fundTransfer.description
+        })
       });
 
       const result = await response.json();
 
       if (result.success) {
-        alert(`Fund transfer successful! ₹${fundTransfer.amount.toLocaleString()} transferred successfully.`);
+        // For contra entries, also create a journal entry
+        if (fundTransfer.isContraEntry) {
+          try {
+            // Get account details
+            const fromAccount = allAccounts.find(a => a.id === fundTransfer.fromAccountId);
+            const toAccount = allAccounts.find(a => a.id === fundTransfer.toAccountId);
+            
+            // Create journal entry for the contra entry
+            const journalResponse = await fetch('/api/finance/journal-entries', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                journal_number: `CONTRA-${Date.now().toString().slice(-8)}`,
+                entry_date: fundTransfer.date,
+                description: `Cash Deposit: ${fromAccount?.name} to ${toAccount?.name}`,
+                reference_number: result.data.transferId || `CD-${Date.now()}`,
+                lines: [
+                  {
+                    // Credit Cash account (reducing cash on hand)
+                    account_id: fundTransfer.fromAccountId, // Cash account ID
+                    description: `Cash deposit to ${toAccount?.name}`,
+                    debit_amount: 0,
+                    credit_amount: amountValue
+                  },
+                  {
+                    // Debit Bank account (increasing bank balance)
+                    account_id: fundTransfer.toAccountId, // Bank account ID
+                    description: `Cash deposit from ${fromAccount?.name}`,
+                    debit_amount: amountValue,
+                    credit_amount: 0
+                  }
+                ]
+              })
+            });
+            
+            const journalResult = await journalResponse.json();
+            
+            if (!journalResponse.ok) {
+              console.error('Journal entry creation failed:', journalResult);
+              // Still consider the operation successful since the fund transfer worked
+            }
+          } catch (journalError) {
+            console.error('Error creating contra entry journal:', journalError);
+            // Still consider the operation successful since the fund transfer worked
+          }
+        }
+        
+        const message = fundTransfer.isContraEntry 
+          ? `Cash deposit successful! ₹${amountValue.toLocaleString()} deposited to bank.`
+          : `Fund transfer successful! ₹${amountValue.toLocaleString()} transferred successfully.`;
+          
+        alert(message);
         
         // Reset form
         setFundTransfer({
@@ -351,7 +425,8 @@ export function BankAccountManager() {
           amount: '',
           description: '',
           reference: '',
-          date: new Date().toISOString().split('T')[0]
+          date: new Date().toISOString().split('T')[0],
+          isContraEntry: false
         });
         setShowFundTransfer(false);
         
@@ -559,6 +634,36 @@ export function BankAccountManager() {
                 </Button>
               </DialogTrigger>
             </Dialog>
+            
+            {/* Cash Deposit Button (Shortcut for Contra Entry) */}
+            <Button
+              className="bg-green-600 hover:bg-green-700"
+              onClick={() => {
+                // Find first cash account and bank account
+                const cashAccount = cashAccounts[0]?.id || '';
+                const bankAccount = bankAccounts[0]?.id || '';
+                
+                if (!cashAccount || !bankAccount) {
+                  alert('You need both a cash account and a bank account to make a cash deposit.');
+                  return;
+                }
+                
+                // Set up the contra entry form
+                setFundTransfer({
+                  fromAccountId: cashAccount,
+                  toAccountId: bankAccount,
+                  amount: '',
+                  description: 'Cash deposit to bank',
+                  reference: '',
+                  date: new Date().toISOString().split('T')[0],
+                  isContraEntry: true
+                });
+                setShowFundTransfer(true);
+              }}
+            >
+              <Banknote className="h-4 w-4 mr-2" />
+              Cash Deposit
+            </Button>
 
             <Dialog open={showAddAccount} onOpenChange={setShowAddAccount}>
               <DialogTrigger asChild>
@@ -1021,8 +1126,48 @@ export function BankAccountManager() {
               <ArrowRightLeft className="h-5 w-5 text-purple-600" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold">Fund Transfer</h3>
-              <p className="text-sm text-gray-600">Transfer funds between accounts</p>
+              <h3 className="text-lg font-semibold">{fundTransfer.isContraEntry ? 'Cash Deposit to Bank' : 'Fund Transfer'}</h3>
+              <p className="text-sm text-gray-600">
+                {fundTransfer.isContraEntry 
+                  ? 'Record cash deposit to bank account (contra entry)'
+                  : 'Transfer funds between accounts'}
+              </p>
+            </div>
+          </div>
+
+          {/* Transfer Type Selection */}
+          <div className="px-6 pt-2">
+            <div className="flex items-center space-x-2">
+              <Button
+                type="button"
+                variant={!fundTransfer.isContraEntry ? "default" : "outline"}
+                onClick={() => setFundTransfer(prev => ({ ...prev, isContraEntry: false }))}
+                className={!fundTransfer.isContraEntry ? "bg-purple-600 hover:bg-purple-700" : ""}
+                size="sm"
+              >
+                <ArrowRightLeft className="h-4 w-4 mr-2" />
+                Regular Transfer
+              </Button>
+              <Button
+                type="button"
+                variant={fundTransfer.isContraEntry ? "default" : "outline"}
+                onClick={() => {
+                  // When switching to contra entry, auto-select cash accounts if available
+                  const cashAccount = cashAccounts[0]?.id || '';
+                  const bankAccount = bankAccounts[0]?.id || '';
+                  setFundTransfer(prev => ({ 
+                    ...prev, 
+                    isContraEntry: true,
+                    fromAccountId: cashAccount,
+                    toAccountId: bankAccount
+                  }));
+                }}
+                className={fundTransfer.isContraEntry ? "bg-green-600 hover:bg-green-700" : ""}
+                size="sm"
+              >
+                <Banknote className="h-4 w-4 mr-2" />
+                Cash Deposit
+              </Button>
             </div>
           </div>
 
@@ -1041,7 +1186,10 @@ export function BankAccountManager() {
                   <SelectValue placeholder="Select source account" />
                 </SelectTrigger>
                 <SelectContent>
-                  {allAccounts.map((account) => (
+                  {/* Filter accounts based on transfer type */}
+                  {allAccounts
+                    .filter(account => !fundTransfer.isContraEntry || account.type === 'cash')
+                    .map((account) => (
                     <SelectItem key={account.id} value={account.id}>
                       <div className="flex items-center gap-2">
                         {account.type === 'bank' && <Building2 className="h-4 w-4" />}
@@ -1073,7 +1221,14 @@ export function BankAccountManager() {
                 </SelectTrigger>
                 <SelectContent>
                   {allAccounts
-                    .filter(account => account.id !== fundTransfer.fromAccountId)
+                    .filter(account => {
+                      // Different filtering based on transfer type
+                      if (fundTransfer.isContraEntry) {
+                        return account.type === 'bank';  // Only bank accounts for cash deposits
+                      } else {
+                        return account.id !== fundTransfer.fromAccountId;  // Any account except source for regular transfers
+                      }
+                    })
                     .map((account) => (
                     <SelectItem key={account.id} value={account.id}>
                       <div className="flex items-center gap-2">
@@ -1114,7 +1269,7 @@ export function BankAccountManager() {
               <Label htmlFor="description">Description</Label>
               <Input
                 id="description"
-                placeholder="Transfer description (optional)"
+                placeholder={fundTransfer.isContraEntry ? "Reason for cash deposit" : "Transfer description (optional)"}
                 value={fundTransfer.description}
                 onChange={(e) => setFundTransfer({...fundTransfer, description: e.target.value})}
               />
@@ -1144,12 +1299,19 @@ export function BankAccountManager() {
 
             {/* Transfer Summary */}
             {fundTransfer.fromAccountId && fundTransfer.toAccountId && fundTransfer.amount && (
-              <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                <h4 className="font-medium text-sm text-gray-700">Transfer Summary</h4>
+              <div className={`${fundTransfer.isContraEntry ? 'bg-green-50 border border-green-100' : 'bg-gray-50'} rounded-lg p-4 space-y-2`}>
+                <h4 className="font-medium text-sm text-gray-700">
+                  {fundTransfer.isContraEntry ? 'Cash Deposit Summary' : 'Transfer Summary'}
+                </h4>
                 <div className="text-sm text-gray-600">
                   <div>From: {allAccounts.find(a => a.id === fundTransfer.fromAccountId)?.name}</div>
                   <div>To: {allAccounts.find(a => a.id === fundTransfer.toAccountId)?.name}</div>
                   <div className="font-medium text-gray-900">Amount: ₹{parseFloat(fundTransfer.amount || '0').toFixed(2)}</div>
+                  {fundTransfer.isContraEntry && (
+                    <div className="mt-2 text-green-700 bg-green-50 p-2 rounded text-xs">
+                      <span className="font-semibold">Contra Entry:</span> This transaction will be recorded as a deposit of cash to bank with proper accounting entries.
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1173,10 +1335,10 @@ export function BankAccountManager() {
                 parseFloat(fundTransfer.amount || '0') <= 0 ||
                 transferLoading
               }
-              className="flex-1 bg-purple-600 hover:bg-purple-700"
+              className={`flex-1 ${fundTransfer.isContraEntry ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'}`}
             >
               {transferLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Transfer Funds
+              {fundTransfer.isContraEntry ? 'Deposit Cash' : 'Transfer Funds'}
             </Button>
           </div>
         </DialogContent>

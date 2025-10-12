@@ -658,13 +658,13 @@ export default function EnhancedModularDashboard() {
                         `₹${(kpiData?.data?.withdrawalsTotal || 0).toLocaleString()}`
                       )}
                     </div>
-                    <p className="text-xs text-violet-600 truncate">
+                    <div className="text-xs text-violet-600 truncate">
                       {isLoading ? (
                         <div className="h-3 w-12 bg-violet-200 rounded animate-pulse"></div>
                       ) : (
                         `${kpiData?.data?.withdrawalsCount || 0} transactions`
                       )}
-                    </p>
+                    </div>
                   </div>
                   <div className="w-8 h-8 sm:w-10 sm:h-10 bg-violet-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
                     <ArrowDownLeft className="h-4 w-4 sm:h-5 sm:w-5 text-white" />

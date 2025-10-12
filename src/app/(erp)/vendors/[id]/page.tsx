@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   ArrowLeft, 
@@ -16,7 +17,9 @@ import {
   Mail,
   MapPin,
   Calendar,
-  AlertTriangle
+  AlertTriangle,
+  Search,
+  Copy
 } from 'lucide-react';
 import Link from 'next/link';
 import { VendorPerformanceMetrics } from '@/components/vendors/VendorPerformanceMetrics';
@@ -53,6 +56,7 @@ interface PurchaseOrderItem {
 interface StockItem {
   product_id: string;
   product_name: string;
+  sku?: string;
   current_quantity: number;
   reorder_point: number;
   unit_price: number;
@@ -139,6 +143,7 @@ export default function VendorDetailsPage() {
     pendingPOsCount: 0
   });
   const [loading, setLoading] = useState(true);
+  const [stockFilter, setStockFilter] = useState('');
 
   // Calculate financial summary from vendor bills
   const calculateFinancialSummary = (bills: VendorBill[]): VendorFinancialSummary => {
@@ -462,10 +467,38 @@ export default function VendorDetailsPage() {
               <CardDescription>Inventory levels for products from this vendor</CardDescription>
             </CardHeader>
             <CardContent>
+              {/* Search/Filter Input */}
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Search className="h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="Search by product name or SKU..."
+                    value={stockFilter}
+                    onChange={(e) => setStockFilter(e.target.value)}
+                    className="max-w-sm"
+                  />
+                </div>
+                {stockItems.length > 0 && (
+                  <div className="text-sm text-gray-500">
+                    {stockFilter ? (
+                      <>
+                        {stockItems.filter(item => 
+                          item.product_name.toLowerCase().includes(stockFilter.toLowerCase()) ||
+                          (item.sku && item.sku.toLowerCase().includes(stockFilter.toLowerCase()))
+                        ).length} of {stockItems.length} items
+                      </>
+                    ) : (
+                      `${stockItems.length} items`
+                    )}
+                  </div>
+                )}
+              </div>
+              
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product</TableHead>
+                    <TableHead className="w-32">SKU</TableHead>
                     <TableHead className="text-right">Current Quantity</TableHead>
                     <TableHead className="text-right">Reorder Point</TableHead>
                     <TableHead className="text-right">Unit Price</TableHead>
@@ -475,16 +508,43 @@ export default function VendorDetailsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {stockItems.length === 0 ? (
+                  {(() => {
+                    // Filter stock items based on search term
+                    const filteredStockItems = stockItems.filter(item => 
+                      item.product_name.toLowerCase().includes(stockFilter.toLowerCase()) ||
+                      (item.sku && item.sku.toLowerCase().includes(stockFilter.toLowerCase()))
+                    );
+                    
+                    return filteredStockItems.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-gray-500">
-                        No stock items found for this vendor
+                      <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                        {stockFilter ? 
+                          `No stock items match "${stockFilter}"` : 
+                          'No stock items found for this vendor'
+                        }
                       </TableCell>
                     </TableRow>
                   ) : (
-                    stockItems.map((item) => (
+                    filteredStockItems.map((item) => (
                       <TableRow key={item.product_id}>
                         <TableCell className="font-medium">{item.product_name}</TableCell>
+                        <TableCell className="font-mono text-sm text-gray-700 bg-gray-50">
+                          {item.sku ? (
+                            <div 
+                              className="flex items-center gap-1 cursor-pointer hover:bg-gray-100 p-1 rounded transition-colors"
+                              onClick={() => {
+                                navigator.clipboard.writeText(item.sku || '');
+                                // Could add a toast notification here
+                              }}
+                              title="Click to copy SKU"
+                            >
+                              <span>{item.sku}</span>
+                              <Copy className="h-3 w-3 text-gray-400" />
+                            </div>
+                          ) : (
+                            '-'
+                          )}
+                        </TableCell>
                         <TableCell className="text-right">{item.current_quantity}</TableCell>
                         <TableCell className="text-right">{item.reorder_point}</TableCell>
                         <TableCell className="text-right">{formatCurrency(item.unit_price)}</TableCell>
@@ -504,7 +564,8 @@ export default function VendorDetailsPage() {
                         </TableCell>
                       </TableRow>
                     ))
-                  )}
+                  );
+                  })()}
                 </TableBody>
               </Table>
             </CardContent>

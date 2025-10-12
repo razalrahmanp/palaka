@@ -173,6 +173,42 @@ CREATE TABLE public.boms (
   CONSTRAINT boms_pkey PRIMARY KEY (id),
   CONSTRAINT boms_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id)
 );
+CREATE TABLE public.cash_balances (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  cash_account_id uuid NOT NULL UNIQUE,
+  current_balance numeric NOT NULL DEFAULT 0,
+  last_transaction_id uuid,
+  last_updated timestamp without time zone DEFAULT now(),
+  created_at timestamp without time zone DEFAULT now(),
+  CONSTRAINT cash_balances_pkey PRIMARY KEY (id),
+  CONSTRAINT cash_balances_cash_account_id_fkey FOREIGN KEY (cash_account_id) REFERENCES public.bank_accounts(id),
+  CONSTRAINT cash_balances_last_transaction_id_fkey FOREIGN KEY (last_transaction_id) REFERENCES public.cash_transactions(id)
+);
+CREATE TABLE public.cash_transactions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  transaction_date date NOT NULL DEFAULT CURRENT_DATE,
+  amount numeric NOT NULL CHECK (amount <> 0::numeric),
+  transaction_type text NOT NULL CHECK (transaction_type = ANY (ARRAY['DEBIT'::text, 'CREDIT'::text])),
+  description text NOT NULL,
+  reference_number text,
+  source_type text NOT NULL CHECK (source_type = ANY (ARRAY['expense'::text, 'withdrawal'::text, 'investment'::text, 'liability_payment'::text, 'fund_transfer'::text, 'refund'::text, 'purchase_return'::text, 'sales_payment'::text, 'manual_adjustment'::text, 'opening_balance'::text])),
+  source_id text,
+  cash_account_id uuid,
+  running_balance numeric NOT NULL DEFAULT 0,
+  notes text,
+  created_by uuid,
+  created_at timestamp without time zone DEFAULT now(),
+  updated_at timestamp without time zone DEFAULT now(),
+  journal_entry_id uuid,
+  is_deleted boolean DEFAULT false,
+  deleted_at timestamp without time zone,
+  deleted_by uuid,
+  CONSTRAINT cash_transactions_pkey PRIMARY KEY (id),
+  CONSTRAINT cash_transactions_cash_account_id_fkey FOREIGN KEY (cash_account_id) REFERENCES public.bank_accounts(id),
+  CONSTRAINT cash_transactions_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
+  CONSTRAINT cash_transactions_journal_entry_id_fkey FOREIGN KEY (journal_entry_id) REFERENCES public.journal_entries(id),
+  CONSTRAINT cash_transactions_deleted_by_fkey FOREIGN KEY (deleted_by) REFERENCES public.users(id)
+);
 CREATE TABLE public.cashflow_entries (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   date date,
@@ -396,6 +432,7 @@ CREATE TABLE public.customers (
   formatted_address text,
   floor text,
   assigned_sales_rep_id uuid,
+  customer_visit_date date,
   CONSTRAINT customers_pkey PRIMARY KEY (id),
   CONSTRAINT customers_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
   CONSTRAINT fk_customers_created_by FOREIGN KEY (created_by) REFERENCES public.users(id),

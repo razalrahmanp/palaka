@@ -112,9 +112,11 @@ export function BankAccountManager() {
     amount: number;
     transaction_type: string;
     reference_number: string;
-    account_name: string;
-    source: string;
-    balance_after: number;
+    cash_account_name: string;
+    source_description: string;
+    running_balance: number;
+    balance_after?: number;
+    source?: string;
   }[]>([]);
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [showAddAccount, setShowAddAccount] = useState(false);
@@ -149,12 +151,97 @@ export function BankAccountManager() {
     isContraEntry: false
   });
 
+  // Cash transaction filters
+  const [cashFilters, setCashFilters] = useState({
+    sourceType: 'all',
+    dateFrom: '',
+    dateTo: '',
+    transactionType: 'all'
+  });
+
+  // Pagination for cash transactions
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 25;
+
+  // Filtered cash transactions
+  const allFilteredTransactions = cashTransactions.filter(transaction => {
+    // Source type filter
+    if (cashFilters.sourceType !== 'all') {
+      const sourceType = transaction.source_description?.toLowerCase() || '';
+      if (cashFilters.sourceType === 'sales' && !sourceType.includes('sales') && !sourceType.includes('receipt')) return false;
+      if (cashFilters.sourceType === 'expense' && !sourceType.includes('expense') && !sourceType.includes('payment')) return false;
+      if (cashFilters.sourceType === 'investment' && !sourceType.includes('investment')) return false;
+      if (cashFilters.sourceType === 'withdrawal' && !sourceType.includes('withdrawal')) return false;
+      if (cashFilters.sourceType === 'fund_transfer' && !sourceType.includes('fund') && !sourceType.includes('transfer')) return false;
+    }
+
+    // Transaction type filter
+    if (cashFilters.transactionType !== 'all') {
+      if (cashFilters.transactionType === 'credit' && transaction.transaction_type !== 'CREDIT') return false;
+      if (cashFilters.transactionType === 'debit' && transaction.transaction_type !== 'DEBIT') return false;
+    }
+
+    // Date range filter
+    const transactionDate = new Date(transaction.transaction_date);
+    if (cashFilters.dateFrom) {
+      const fromDate = new Date(cashFilters.dateFrom);
+      if (transactionDate < fromDate) return false;
+    }
+    if (cashFilters.dateTo) {
+      const toDate = new Date(cashFilters.dateTo);
+      toDate.setHours(23, 59, 59, 999); // End of day
+      if (transactionDate > toDate) return false;
+    }
+
+    return true;
+  });
+
+  // Paginated transactions
+  const totalPages = Math.ceil(allFilteredTransactions.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const filteredCashTransactions = allFilteredTransactions.slice(startIndex, startIndex + itemsPerPage);
+
+  // Helper function to format source type for display
+  const formatSourceType = (sourceDescription: string) => {
+    if (!sourceDescription) return 'Unknown';
+    
+    const lower = sourceDescription.toLowerCase();
+    if (lower.includes('sales') || lower.includes('receipt')) return 'Sales Receipt';
+    if (lower.includes('expense') || lower.includes('payment')) return 'Expense Payment';
+    if (lower.includes('investment')) return 'Investment Receipt';
+    if (lower.includes('withdrawal')) return 'Cash Withdrawal';
+    if (lower.includes('fund') || lower.includes('transfer')) return 'Fund Transfer';
+    if (lower.includes('liability')) return 'Liability Payment';
+    
+    return sourceDescription;
+  };
+
+  // Helper function to get badge color for source type
+  const getSourceBadgeColor = (sourceDescription: string) => {
+    if (!sourceDescription) return 'bg-gray-100 text-gray-800';
+    
+    const lower = sourceDescription.toLowerCase();
+    if (lower.includes('sales') || lower.includes('receipt')) return 'bg-green-100 text-green-800';
+    if (lower.includes('expense') || lower.includes('payment')) return 'bg-red-100 text-red-800';
+    if (lower.includes('investment')) return 'bg-blue-100 text-blue-800';
+    if (lower.includes('withdrawal')) return 'bg-orange-100 text-orange-800';
+    if (lower.includes('fund') || lower.includes('transfer')) return 'bg-purple-100 text-purple-800';
+    if (lower.includes('liability')) return 'bg-yellow-100 text-yellow-800';
+    
+    return 'bg-gray-100 text-gray-800';
+  };
+
   useEffect(() => {
     fetchBankAccounts();
     fetchUpiAccounts();
     fetchCashAccounts();
     fetchCashTransactions();
   }, []);
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [cashFilters]);
 
   const fetchBankAccounts = async () => {
     try {
@@ -204,10 +291,13 @@ export function BankAccountManager() {
         throw new Error('Failed to fetch cash transactions');
       }
       const data = await response.json();
-      setCashTransactions(data);
+      // Extract the transactions array from the API response
+      setCashTransactions(data.transactions || []);
     } catch (error) {
       console.error('Error fetching cash transactions:', error);
       alert('Failed to fetch cash transactions');
+      // Set empty array on error to prevent map function errors
+      setCashTransactions([]);
     } finally {
       setLoading(false);
     }
@@ -893,8 +983,178 @@ export function BankAccountManager() {
                 <div className="text-right">
                   <p className="text-sm text-gray-500">Current Cash Balance</p>
                   <p className="text-2xl font-bold text-green-600">
-                    ₹{(cashTransactions.length > 0 ? cashTransactions[0]?.balance_after || 0 : 0).toLocaleString()}
+                    ₹{(Array.isArray(cashTransactions) && cashTransactions.length > 0 ? cashTransactions[0]?.running_balance || cashTransactions[0]?.balance_after || 0 : 0).toLocaleString()}
                   </p>
+                </div>
+              </div>
+
+              {/* Filter Controls */}
+              <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <Label htmlFor="sourceType" className="text-sm font-medium">Source Type</Label>
+                    <Select 
+                      value={cashFilters.sourceType} 
+                      onValueChange={(value) => setCashFilters({...cashFilters, sourceType: value})}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All Sources" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Sources</SelectItem>
+                        <SelectItem value="sales">Sales Receipts</SelectItem>
+                        <SelectItem value="expense">Expense Payments</SelectItem>
+                        <SelectItem value="investment">Investment Receipts</SelectItem>
+                        <SelectItem value="withdrawal">Cash Withdrawals</SelectItem>
+                        <SelectItem value="fund_transfer">Fund Transfers</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="transactionType" className="text-sm font-medium">Transaction Type</Label>
+                    <Select 
+                      value={cashFilters.transactionType} 
+                      onValueChange={(value) => setCashFilters({...cashFilters, transactionType: value})}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All Types" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Types</SelectItem>
+                        <SelectItem value="credit">Cash In (Credit)</SelectItem>
+                        <SelectItem value="debit">Cash Out (Debit)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="dateFrom" className="text-sm font-medium">From Date</Label>
+                    <Input
+                      id="dateFrom"
+                      type="date"
+                      value={cashFilters.dateFrom}
+                      onChange={(e) => setCashFilters({...cashFilters, dateFrom: e.target.value})}
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="dateTo" className="text-sm font-medium">To Date</Label>
+                    <Input
+                      id="dateTo"
+                      type="date"
+                      value={cashFilters.dateTo}
+                      onChange={(e) => setCashFilters({...cashFilters, dateTo: e.target.value})}
+                    />
+                  </div>
+                </div>
+
+                {/* Filter Summary with Totals */}
+                <div className="mt-4 space-y-3">
+                  <div className="flex items-center justify-between text-sm text-gray-600">
+                    <span>
+                      Showing {startIndex + 1}-{Math.min(startIndex + itemsPerPage, allFilteredTransactions.length)} of {allFilteredTransactions.length} filtered transactions ({cashTransactions.length} total)
+                    </span>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCashFilters({
+                          sourceType: 'all',
+                          dateFrom: '',
+                          dateTo: '',
+                          transactionType: 'all'
+                        })}
+                      >
+                        Clear Filters
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const csvContent = [
+                            ['Date', 'Description', 'Source', 'Type', 'Amount', 'Balance', 'Reference'].join(','),
+                            ...allFilteredTransactions.map(t => [
+                              new Date(t.transaction_date).toLocaleDateString('en-IN'),
+                              `"${t.description}"`,
+                              `"${formatSourceType(t.source_description || t.source || 'Unknown')}"`,
+                              t.transaction_type,
+                              t.transaction_type === 'CREDIT' ? t.amount : -Math.abs(t.amount),
+                              t.running_balance || t.balance_after || 0,
+                              `"${t.reference_number || 'N/A'}"`
+                            ].join(','))
+                          ].join('\n');
+                          
+                          const blob = new Blob([csvContent], { type: 'text/csv' });
+                          const url = window.URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `cash-transactions-${new Date().toISOString().split('T')[0]}.csv`;
+                          a.click();
+                          window.URL.revokeObjectURL(url);
+                        }}
+                      >
+                        Export CSV
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Summary Totals */}
+                  {allFilteredTransactions.length > 0 && (
+                    <div className="grid grid-cols-3 gap-4 p-3 bg-white rounded border">
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500">Cash In (Credits)</p>
+                        <p className="text-sm font-semibold text-green-600">
+                          +₹{allFilteredTransactions
+                            .filter(t => t.transaction_type === 'CREDIT')
+                            .reduce((sum, t) => sum + t.amount, 0)
+                            .toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500">Cash Out (Debits)</p>
+                        <p className="text-sm font-semibold text-red-600">
+                          -₹{allFilteredTransactions
+                            .filter(t => t.transaction_type === 'DEBIT')
+                            .reduce((sum, t) => sum + Math.abs(t.amount), 0)
+                            .toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500">Net Movement</p>
+                        <p className="text-sm font-semibold text-blue-600">
+                          ₹{allFilteredTransactions
+                            .reduce((sum, t) => sum + (t.transaction_type === 'CREDIT' ? t.amount : -Math.abs(t.amount)), 0)
+                            .toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pagination Controls */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-center space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={currentPage === 1}
+                        onClick={() => setCurrentPage(currentPage - 1)}
+                      >
+                        Previous
+                      </Button>
+                      <span className="text-sm text-gray-600">
+                        Page {currentPage} of {totalPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={currentPage === totalPages}
+                        onClick={() => setCurrentPage(currentPage + 1)}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             </CardHeader>
@@ -905,11 +1165,17 @@ export function BankAccountManager() {
                 </div>
               ) : (
                 <>
-                  {cashTransactions.length === 0 ? (
+                  {!Array.isArray(cashTransactions) || cashTransactions.length === 0 ? (
                     <div className="text-center py-8 px-6 text-gray-500">
                       <Wallet className="h-12 w-12 mx-auto mb-3 text-gray-300" />
                       <p>No cash transactions found</p>
                       <p className="text-sm">Cash transactions from sales, investments, and other operations will appear here</p>
+                    </div>
+                  ) : allFilteredTransactions.length === 0 ? (
+                    <div className="text-center py-8 px-6 text-gray-500">
+                      <Wallet className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                      <p>No transactions match the current filters</p>
+                      <p className="text-sm">Try adjusting your filters to see more transactions</p>
                     </div>
                   ) : (
                     <div className="overflow-hidden">
@@ -924,7 +1190,7 @@ export function BankAccountManager() {
                       
                       {/* Transaction Rows */}
                       <div className="divide-y divide-gray-100">
-                        {cashTransactions.map((transaction) => (
+                        {filteredCashTransactions.map((transaction) => (
                           <div key={transaction.id} className="grid grid-cols-12 gap-4 px-6 py-3 hover:bg-gray-50 transition-colors">
                             {/* Date */}
                             <div className="col-span-2 text-sm text-gray-600">
@@ -945,8 +1211,8 @@ export function BankAccountManager() {
                             
                             {/* Source */}
                             <div className="col-span-2">
-                              <Badge variant="outline" className="text-xs">
-                                {transaction.source}
+                              <Badge className={`text-xs ${getSourceBadgeColor(transaction.source_description || transaction.source || '')}`}>
+                                {formatSourceType(transaction.source_description || transaction.source || 'Unknown')}
                               </Badge>
                             </div>
                             
@@ -964,7 +1230,7 @@ export function BankAccountManager() {
                             {/* Running Balance */}
                             <div className="col-span-2 text-right">
                               <span className="text-sm font-medium text-gray-900">
-                                ₹{transaction.balance_after.toLocaleString()}
+                                ₹{(transaction.running_balance || transaction.balance_after || 0).toLocaleString()}
                               </span>
                             </div>
                           </div>
@@ -1120,14 +1386,14 @@ export function BankAccountManager() {
 
       {/* Fund Transfer Dialog */}
       <Dialog open={showFundTransfer} onOpenChange={setShowFundTransfer}>
-        <DialogContent className="sm:max-w-md">
-          <div className="flex items-center gap-3 p-6 border-b">
-            <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
-              <ArrowRightLeft className="h-5 w-5 text-purple-600" />
+        <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto w-full">
+          <div className="flex items-center gap-2 p-3 border-b">
+            <div className="h-7 w-7 rounded-full bg-purple-100 flex items-center justify-center">
+              <ArrowRightLeft className="h-3.5 w-3.5 text-purple-600" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold">{fundTransfer.isContraEntry ? 'Cash Deposit to Bank' : 'Fund Transfer'}</h3>
-              <p className="text-sm text-gray-600">
+              <h3 className="text-base font-semibold">{fundTransfer.isContraEntry ? 'Cash Deposit to Bank' : 'Fund Transfer'}</h3>
+              <p className="text-xs text-gray-600">
                 {fundTransfer.isContraEntry 
                   ? 'Record cash deposit to bank account (contra entry)'
                   : 'Transfer funds between accounts'}
@@ -1136,16 +1402,16 @@ export function BankAccountManager() {
           </div>
 
           {/* Transfer Type Selection */}
-          <div className="px-6 pt-2">
+          <div className="px-3 pt-2">
             <div className="flex items-center space-x-2">
               <Button
                 type="button"
                 variant={!fundTransfer.isContraEntry ? "default" : "outline"}
                 onClick={() => setFundTransfer(prev => ({ ...prev, isContraEntry: false }))}
-                className={!fundTransfer.isContraEntry ? "bg-purple-600 hover:bg-purple-700" : ""}
+                className={`${!fundTransfer.isContraEntry ? "bg-purple-600 hover:bg-purple-700" : ""} text-xs`}
                 size="sm"
               >
-                <ArrowRightLeft className="h-4 w-4 mr-2" />
+                <ArrowRightLeft className="h-3 w-3 mr-1" />
                 Regular Transfer
               </Button>
               <Button
@@ -1162,19 +1428,19 @@ export function BankAccountManager() {
                     toAccountId: bankAccount
                   }));
                 }}
-                className={fundTransfer.isContraEntry ? "bg-green-600 hover:bg-green-700" : ""}
+                className={`${fundTransfer.isContraEntry ? "bg-green-600 hover:bg-green-700" : ""} text-xs`}
                 size="sm"
               >
-                <Banknote className="h-4 w-4 mr-2" />
+                <Banknote className="h-3 w-3 mr-1" />
                 Cash Deposit
               </Button>
             </div>
           </div>
 
-          <div className="p-6 space-y-4">
+          <div className="p-3 space-y-2">
             {/* From Account */}
-            <div className="space-y-2">
-              <Label htmlFor="fromAccount">From Account</Label>
+            <div className="space-y-1">
+              <Label htmlFor="fromAccount" className="text-xs">From Account</Label>
               <Select
                 value={fundTransfer.fromAccountId}
                 onValueChange={(value) => setFundTransfer({
@@ -1182,7 +1448,7 @@ export function BankAccountManager() {
                   fromAccountId: value
                 })}
               >
-                <SelectTrigger>
+                <SelectTrigger className="h-7 text-xs py-1">
                   <SelectValue placeholder="Select source account" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1191,12 +1457,12 @@ export function BankAccountManager() {
                     .filter(account => !fundTransfer.isContraEntry || account.type === 'cash')
                     .map((account) => (
                     <SelectItem key={account.id} value={account.id}>
-                      <div className="flex items-center gap-2">
-                        {account.type === 'bank' && <Building2 className="h-4 w-4" />}
-                        {account.type === 'upi' && <Smartphone className="h-4 w-4" />}
-                        {account.type === 'cash' && <Banknote className="h-4 w-4" />}
-                        <span>{account.name}</span>
-                        <span className="text-sm text-gray-500">
+                      <div className="flex items-center gap-1.5">
+                        {account.type === 'bank' && <Building2 className="h-3 w-3" />}
+                        {account.type === 'upi' && <Smartphone className="h-3 w-3" />}
+                        {account.type === 'cash' && <Banknote className="h-3 w-3" />}
+                        <span className="text-xs">{account.name}</span>
+                        <span className="text-xs text-gray-500">
                           (₹{account.balance?.toFixed(2)})
                         </span>
                       </div>
@@ -1207,8 +1473,8 @@ export function BankAccountManager() {
             </div>
 
             {/* To Account */}
-            <div className="space-y-2">
-              <Label htmlFor="toAccount">To Account</Label>
+            <div className="space-y-1">
+              <Label htmlFor="toAccount" className="text-xs">To Account</Label>
               <Select
                 value={fundTransfer.toAccountId}
                 onValueChange={(value) => setFundTransfer({
@@ -1216,7 +1482,7 @@ export function BankAccountManager() {
                   toAccountId: value
                 })}
               >
-                <SelectTrigger>
+                <SelectTrigger className="h-7 text-xs py-1">
                   <SelectValue placeholder="Select destination account" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1231,12 +1497,12 @@ export function BankAccountManager() {
                     })
                     .map((account) => (
                     <SelectItem key={account.id} value={account.id}>
-                      <div className="flex items-center gap-2">
-                        {account.type === 'bank' && <Building2 className="h-4 w-4" />}
-                        {account.type === 'upi' && <Smartphone className="h-4 w-4" />}
-                        {account.type === 'cash' && <Banknote className="h-4 w-4" />}
-                        <span>{account.name}</span>
-                        <span className="text-sm text-gray-500">
+                      <div className="flex items-center gap-1.5">
+                        {account.type === 'bank' && <Building2 className="h-3 w-3" />}
+                        {account.type === 'upi' && <Smartphone className="h-3 w-3" />}
+                        {account.type === 'cash' && <Banknote className="h-3 w-3" />}
+                        <span className="text-xs">{account.name}</span>
+                        <span className="text-xs text-gray-500">
                           (₹{account.balance?.toFixed(2)})
                         </span>
                       </div>
@@ -1247,17 +1513,17 @@ export function BankAccountManager() {
             </div>
 
             {/* Amount */}
-            <div className="space-y-2">
-              <Label htmlFor="amount">Amount</Label>
+            <div className="space-y-1">
+              <Label htmlFor="amount" className="text-xs">Amount</Label>
               <div className="relative">
-                <IndianRupee className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                <IndianRupee className="absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-500" />
                 <Input
                   id="amount"
                   type="number"
                   placeholder="0.00"
                   value={fundTransfer.amount}
                   onChange={(e) => setFundTransfer({...fundTransfer, amount: e.target.value})}
-                  className="pl-9"
+                  className="pl-7 h-7 text-xs"
                   step="0.01"
                   min="0"
                 />
@@ -1265,51 +1531,54 @@ export function BankAccountManager() {
             </div>
 
             {/* Description */}
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+            <div className="space-y-1">
+              <Label htmlFor="description" className="text-xs">Description</Label>
               <Input
                 id="description"
                 placeholder={fundTransfer.isContraEntry ? "Reason for cash deposit" : "Transfer description (optional)"}
                 value={fundTransfer.description}
                 onChange={(e) => setFundTransfer({...fundTransfer, description: e.target.value})}
+                className="h-7 text-xs"
               />
             </div>
 
             {/* Reference */}
-            <div className="space-y-2">
-              <Label htmlFor="reference">Reference</Label>
+            <div className="space-y-1">
+              <Label htmlFor="reference" className="text-xs">Reference</Label>
               <Input
                 id="reference"
                 placeholder="Reference number (optional)"
                 value={fundTransfer.reference}
                 onChange={(e) => setFundTransfer({...fundTransfer, reference: e.target.value})}
+                className="h-7 text-xs"
               />
             </div>
 
             {/* Date */}
-            <div className="space-y-2">
-              <Label htmlFor="date">Date</Label>
+            <div className="space-y-1">
+              <Label htmlFor="date" className="text-xs">Date</Label>
               <Input
                 id="date"
                 type="date"
                 value={fundTransfer.date}
                 onChange={(e) => setFundTransfer({...fundTransfer, date: e.target.value})}
+                className="h-7 text-xs"
               />
             </div>
 
             {/* Transfer Summary */}
             {fundTransfer.fromAccountId && fundTransfer.toAccountId && fundTransfer.amount && (
-              <div className={`${fundTransfer.isContraEntry ? 'bg-green-50 border border-green-100' : 'bg-gray-50'} rounded-lg p-4 space-y-2`}>
-                <h4 className="font-medium text-sm text-gray-700">
+              <div className={`${fundTransfer.isContraEntry ? 'bg-green-50 border border-green-100' : 'bg-gray-50'} rounded-lg p-2 space-y-0.5`}>
+                <h4 className="font-medium text-xs text-gray-700">
                   {fundTransfer.isContraEntry ? 'Cash Deposit Summary' : 'Transfer Summary'}
                 </h4>
-                <div className="text-sm text-gray-600">
+                <div className="text-xs text-gray-600">
                   <div>From: {allAccounts.find(a => a.id === fundTransfer.fromAccountId)?.name}</div>
                   <div>To: {allAccounts.find(a => a.id === fundTransfer.toAccountId)?.name}</div>
                   <div className="font-medium text-gray-900">Amount: ₹{parseFloat(fundTransfer.amount || '0').toFixed(2)}</div>
                   {fundTransfer.isContraEntry && (
-                    <div className="mt-2 text-green-700 bg-green-50 p-2 rounded text-xs">
-                      <span className="font-semibold">Contra Entry:</span> This transaction will be recorded as a deposit of cash to bank with proper accounting entries.
+                    <div className="mt-1 text-green-700 bg-green-50 p-1.5 rounded text-xs">
+                      <span className="font-semibold">Contra Entry:</span> Will be recorded as cash deposit with proper accounting.
                     </div>
                   )}
                 </div>
@@ -1317,12 +1586,13 @@ export function BankAccountManager() {
             )}
           </div>
 
-          <div className="flex gap-3 p-6 border-t">
+          <div className="flex gap-1.5 p-2 border-t">
             <Button 
               variant="outline" 
               onClick={() => setShowFundTransfer(false)}
-              className="flex-1"
+              className="flex-1 text-xs h-7 py-1"
               disabled={transferLoading}
+              size="sm"
             >
               Cancel
             </Button>
@@ -1335,9 +1605,10 @@ export function BankAccountManager() {
                 parseFloat(fundTransfer.amount || '0') <= 0 ||
                 transferLoading
               }
-              className={`flex-1 ${fundTransfer.isContraEntry ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'}`}
+              className={`flex-1 text-xs h-7 py-1 ${fundTransfer.isContraEntry ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'}`}
+              size="sm"
             >
-              {transferLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {transferLoading && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
               {fundTransfer.isContraEntry ? 'Deposit Cash' : 'Transfer Funds'}
             </Button>
           </div>

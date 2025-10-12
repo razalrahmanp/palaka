@@ -75,6 +75,7 @@ import { getCurrentUser } from '@/lib/auth';
 import OptimizedLedgerManager from './OptimizedLedgerManager';
 import { RefundDialog } from './RefundDialog';
 import { InvoiceReturnExchangeDialog } from './InvoiceReturnExchangeDialog';
+import { CashTransactionManager } from '@/lib/cashTransactionManager';
 
 // Component interfaces and types
 
@@ -88,6 +89,7 @@ interface SalesOrderItem {
   products?: {
     sku: string;
   };
+
   // Return tracking fields
   returned_quantity?: number;
   available_for_return?: number;
@@ -1319,6 +1321,27 @@ export function SalesOrderInvoiceManager() {
       const result = await response.json();
 
       if (result.success) {
+        const transferId = result.transfer_id;
+
+        // Handle cash transaction if cash account is involved
+        const fromAccount = allAccounts.find(acc => acc.id === fundTransfer.fromAccountId);
+        const toAccount = allAccounts.find(acc => acc.id === fundTransfer.toAccountId);
+        
+        // Check if either account is a cash account (assuming cash accounts have 'cash' in name or type)
+        const isFromCash = Boolean(fromAccount?.name?.toLowerCase().includes('cash') || fromAccount?.type?.toLowerCase().includes('cash'));
+        const isToCash = Boolean(toAccount?.name?.toLowerCase().includes('cash') || toAccount?.type?.toLowerCase().includes('cash'));
+        
+        if (isFromCash || isToCash) {
+          await CashTransactionManager.handleFundTransferCash(
+            transferId,
+            parseFloat(fundTransfer.amount),
+            fundTransfer.description || `Transfer from ${fromAccount?.name} to ${toAccount?.name}`,
+            fundTransfer.date,
+            isFromCash, // true if transferring FROM cash (debit), false if transferring TO cash (credit)
+            fundTransfer.reference
+          );
+        }
+
         alert(`Fund transfer successful! ₹${fundTransfer.amount.toLocaleString()} transferred successfully.`);
         
         // Reset form
@@ -2780,6 +2803,20 @@ export function SalesOrderInvoiceManager() {
       });
 
       if (response.ok) {
+        const expenseResult = await response.json();
+        const expenseId = expenseResult.id;
+
+        // Handle cash transaction if payment method is cash
+        if (expenseForm.payment_method === 'cash') {
+          await CashTransactionManager.handleExpenseCashPayment(
+            expenseId,
+            parseFloat(expenseForm.amount),
+            expenseForm.description + (getSelectedEntityDetails() ? ` [${getSelectedEntityDetails()?.name}]` : ''),
+            expenseForm.date,
+            getCurrentUser()?.id
+          );
+        }
+
         setCreateExpenseOpen(false);
         setExpenseForm({
           date: new Date().toISOString().split('T')[0],
@@ -3033,6 +3070,19 @@ export function SalesOrderInvoiceManager() {
 
       if (response.ok) {
         const result = await response.json();
+        const investmentId = result.id;
+
+        // Handle cash transaction if payment method is cash
+        if (investmentForm.payment_method === 'cash') {
+          await CashTransactionManager.handleInvestmentCashPayment(
+            investmentId,
+            parseFloat(investmentForm.amount),
+            investmentForm.description,
+            investmentForm.date,
+            getCurrentUser()?.id
+          );
+        }
+
         setCreateInvestmentOpen(false);
         
         // Reset form
@@ -3122,6 +3172,19 @@ export function SalesOrderInvoiceManager() {
 
       if (response.ok) {
         const result = await response.json();
+        const withdrawalId = result.id;
+
+        // Handle cash transaction if payment method is cash
+        if (withdrawalForm.payment_method === 'cash') {
+          await CashTransactionManager.handleWithdrawalCashPayment(
+            withdrawalId,
+            parseFloat(withdrawalForm.amount),
+            withdrawalForm.description,
+            withdrawalForm.date,
+            getCurrentUser()?.id
+          );
+        }
+
         setCreateWithdrawalOpen(false);
         
         // Reset form
@@ -3227,6 +3290,19 @@ export function SalesOrderInvoiceManager() {
 
       if (response.ok) {
         const result = await response.json();
+        const liabilityPaymentId = result.id;
+
+        // Handle cash transaction if payment method is cash
+        if (liabilityForm.payment_method === 'cash') {
+          await CashTransactionManager.handleLiabilityCashPayment(
+            liabilityPaymentId,
+            totalAmount,
+            liabilityForm.description,
+            liabilityForm.date,
+            getCurrentUser()?.id
+          );
+        }
+
         setCreateLiabilityOpen(false);
         
         // Reset form

@@ -108,6 +108,38 @@ export async function POST(
     if (paymentError) {
       console.error('❌ Failed to insert into vendor_payment_history:', paymentError);
       console.log('🔄 Falling back to purchase_order_payments for compatibility');
+    } else {
+      // ✅ CRITICAL FIX: Also insert into expenses table for data consistency
+      console.log('📝 Creating corresponding expense record for vendor payment...');
+      
+      const expenseData = {
+        amount: parseFloat(amount),
+        category: 'Vendor Payment',
+        subcategory: 'Smart Settlement',
+        description: notes || `Smart payment settlement: ${reference_number || ''}`,
+        date: payment_date,
+        payment_method: payment_method || 'cash',
+        entity_type: 'vendor',
+        entity_id: vendorId,
+        reference_number: reference_number,
+        vendor_payment_id: payment.id // Link to vendor payment history
+      };
+
+      const { data: expense, error: expenseError } = await supabase
+        .from('expenses')
+        .insert(expenseData)
+        .select()
+        .single();
+
+      if (expenseError) {
+        console.error('❌ Failed to create corresponding expense record:', expenseError);
+        // Don't fail the main payment - just log the error
+      } else {
+        console.log('✅ Created corresponding expense record:', expense.id);
+      }
+    }
+
+    if (paymentError) {
       const { data: poPayment, error: poError } = await supabase
         .from('purchase_order_payments')
         .insert({

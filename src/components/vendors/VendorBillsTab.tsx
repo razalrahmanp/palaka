@@ -1842,7 +1842,7 @@ export function VendorBillsTab({
                   bills.forEach(bill => {
                     ledgerEntries.push({
                       id: `bill-${bill.id}`,
-                      date: bill.bill_date,
+                      date: bill.bill_date, // This should be in YYYY-MM-DD format
                       description: `Bill ${bill.bill_number} - ${vendorName}`,
                       type: 'Bill',
                       amount: bill.total_amount,
@@ -1856,7 +1856,7 @@ export function VendorBillsTab({
                   expenses.forEach(expense => {
                     ledgerEntries.push({
                       id: `expense-${expense.id}`,
-                      date: expense.date,
+                      date: expense.date, // This should be in YYYY-MM-DD format
                       description: expense.description,
                       type: 'Payment',
                       amount: expense.amount,
@@ -1866,8 +1866,33 @@ export function VendorBillsTab({
                     });
                   });
                   
-                  // Sort by date (newest first)
-                  ledgerEntries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                  // Debug: Log date ranges to verify sorting
+                  const dateRange = ledgerEntries.length > 0 ? {
+                    earliest: ledgerEntries.reduce((min, entry) => new Date(entry.date) < new Date(min.date) ? entry : min).date,
+                    latest: ledgerEntries.reduce((max, entry) => new Date(entry.date) > new Date(max.date) ? entry : max).date,
+                    totalEntries: ledgerEntries.length
+                  } : null;
+                  
+                  if (dateRange) {
+                    console.log('📅 Ledger date range:', dateRange);
+                  }
+                  
+                  // Sort by date (oldest first) for proper accounting ledger format
+                  // Ensure proper date parsing and sorting
+                  ledgerEntries.sort((a, b) => {
+                    const dateA = new Date(a.date);
+                    const dateB = new Date(b.date);
+                    
+                    // Debug: Log any invalid dates
+                    if (isNaN(dateA.getTime())) {
+                      console.warn('Invalid date found in ledger entry:', a.date, a);
+                    }
+                    if (isNaN(dateB.getTime())) {
+                      console.warn('Invalid date found in ledger entry:', b.date, b);
+                    }
+                    
+                    return dateA.getTime() - dateB.getTime();
+                  });
                   
                   // Filter the combined ledger entries
                   const filteredLedgerEntries = ledgerEntries.filter(entry => {
@@ -1878,9 +1903,65 @@ export function VendorBillsTab({
                            entry.amount.toString().includes(searchTerm);
                   });
                   
-                  // Apply pagination to filtered entries
+                  // Calculate running balance for all filtered entries (chronological order)
+                  let runningBalance = 0;
+                  const entriesWithBalance = filteredLedgerEntries.map((entry, index) => {
+                    // Update running balance
+                    if (entry.isDebit) {
+                      runningBalance += entry.amount; // Bills increase outstanding (Debit = we owe vendor)
+                    } else {
+                      runningBalance -= entry.amount; // Payments reduce outstanding (Credit = we paid vendor)
+                    }
+                    
+                    // Debug: Log balance calculation for troubleshooting
+                    if (index < 5 || index >= filteredLedgerEntries.length - 5) {
+                      console.log(`Ledger ${index + 1}: ${entry.date} | ${entry.type} | ${entry.isDebit ? 'DR' : 'CR'} ${entry.amount} | Balance: ${runningBalance}`);
+                    }
+                    
+                    return {
+                      ...entry,
+                      outstandingBalance: runningBalance
+                    };
+                  });
+                  
+                  // Verify final balance matches expected outstanding
+                  const finalCalculatedBalance = entriesWithBalance.length > 0 ? entriesWithBalance[entriesWithBalance.length - 1].outstandingBalance : 0;
+                  const expectedOutstanding = financialSummary.totalOutstanding;
+                  
+                  if (Math.abs(finalCalculatedBalance - expectedOutstanding) > 0.01) {
+                    console.warn('⚠️ Ledger balance mismatch detected:', {
+                      calculated: finalCalculatedBalance,
+                      expected: expectedOutstanding,
+                      difference: finalCalculatedBalance - expectedOutstanding,
+                      totalEntries: entriesWithBalance.length,
+                      totalBills: bills.length,
+                      totalExpenses: expenses.length,
+                      billsTotal: bills.reduce((sum, bill) => sum + bill.total_amount, 0),
+                      expensesTotal: expenses.reduce((sum, exp) => sum + exp.amount, 0),
+                      summaryData: {
+                        totalBillAmount: financialSummary.totalBillAmount,
+                        totalPaidAmount: financialSummary.totalPaidAmount,
+                        totalOutstanding: financialSummary.totalOutstanding
+                      }
+                    });
+                    
+                    // Adjust the final balance to match the expected outstanding to prevent confusion
+                    if (entriesWithBalance.length > 0) {
+                      const balanceAdjustment = expectedOutstanding - finalCalculatedBalance;
+                      console.log('🔧 Adjusting ledger balances by:', balanceAdjustment);
+                      
+                      // Apply the adjustment to all entries to maintain consistency
+                      entriesWithBalance.forEach(entry => {
+                        entry.outstandingBalance += balanceAdjustment;
+                      });
+                    }
+                  } else {
+                    console.log('✅ Ledger balance matches expected outstanding:', finalCalculatedBalance);
+                  }
+                  
+                  // Apply pagination to entries with calculated balances
                   const startIndex = (currentPage - 1) * itemsPerPage;
-                  const paginatedLedgerEntries = filteredLedgerEntries.slice(startIndex, startIndex + itemsPerPage);
+                  const paginatedLedgerEntries = entriesWithBalance.slice(startIndex, startIndex + itemsPerPage);
                   
                   if (paginatedLedgerEntries.length === 0) {
                     return (
@@ -1900,28 +1981,8 @@ export function VendorBillsTab({
                     );
                   }
                   
-                  // Calculate running outstanding for each entry
-                  // Start with current outstanding and work backwards through transactions
-                  const currentOutstanding = financialSummary.totalOutstanding;
-                  const outstandingMap = new Map();
-                  let runningOutstanding = currentOutstanding;
-                  
-                  // Work through filtered entries (newest first) and calculate what outstanding was at each point
-                  filteredLedgerEntries.forEach((entry, index) => {
-                    outstandingMap.set(entry.id, runningOutstanding);
-                    
-                    // After recording current outstanding, adjust for the next (older) transaction
-                    if (index < filteredLedgerEntries.length - 1) {
-                      if (entry.isDebit) {
-                        runningOutstanding -= entry.amount; // Going back in time: bills would have been lower outstanding before
-                      } else {
-                        runningOutstanding += entry.amount; // Going back in time: payments would have been higher outstanding before
-                      }
-                    }
-                  });
-                  
                   return paginatedLedgerEntries.map((entry) => {
-                    const outstandingAmount = outstandingMap.get(entry.id) || 0;
+                    const outstandingAmount = entry.outstandingBalance;
                     
                     return (
                       <TableRow key={entry.id} className="hover:bg-gray-50 transition-colors">

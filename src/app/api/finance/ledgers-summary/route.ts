@@ -940,15 +940,27 @@ async function getCustomerLedgersPaginated(
     // Fetch aggregated data for these specific customers only
     const customerIds = customers.map(c => c.id);
     
-    const [salesOrders, invoices] = await Promise.all([
+    const [salesOrders, invoices, payments, returns, refunds] = await Promise.all([
       supabaseAdmin
         .from('sales_orders')
-        .select('customer_id, final_price, grand_total')
+        .select('id, customer_id, final_price, grand_total')
         .in('customer_id', customerIds),
       supabaseAdmin
         .from('invoices')
-        .select('customer_id, total, paid_amount')
-        .in('customer_id', customerIds)
+        .select('customer_id, total, paid_amount, id')
+        .in('customer_id', customerIds),
+      supabaseAdmin
+        .from('payments')
+        .select('invoice_id, amount, invoices!inner(customer_id)')
+        .in('invoices.customer_id', customerIds),
+      supabaseAdmin
+        .from('returns')
+        .select('order_id, return_value, sales_orders!inner(customer_id)')
+        .in('sales_orders.customer_id', customerIds),
+      supabaseAdmin
+        .from('invoice_refunds')
+        .select('invoice_id, refund_amount, invoices!inner(customer_id)')
+        .in('invoices.customer_id', customerIds)
     ]);
 
     // Build ledger data
@@ -956,19 +968,49 @@ async function getCustomerLedgersPaginated(
       const customerOrders = salesOrders.data?.filter(o => o.customer_id === customer.id) || [];
       const customerInvoices = invoices.data?.filter(i => i.customer_id === customer.id) || [];
       
-      const totalAmount = customerOrders.reduce((sum, o) => sum + (o.final_price || o.grand_total || 0), 0);
-      const paidAmount = customerInvoices.reduce((sum, i) => sum + (i.paid_amount || 0), 0);
-      const balanceDue = totalAmount - paidAmount;
+      // Since we're using inner joins, the data is already filtered by customer
+      // We just need to find payments/returns/refunds that relate to this customer's invoices/orders
+      const customerInvoiceIds = customerInvoices.map(i => i.id);
+      const customerOrderIds = customerOrders.map(o => o.id);
+      
+      // Get payments for this customer's invoices
+      const customerPayments = payments.data?.filter(p => 
+        customerInvoiceIds.includes(p.invoice_id)
+      ) || [];
+      
+      // Get returns for this customer's orders  
+      const customerReturns = returns.data?.filter(r => 
+        customerOrderIds.includes(r.order_id)
+      ) || [];
+      
+      // Get refunds for this customer's invoices
+      const customerRefunds = refunds.data?.filter(rf => 
+        customerInvoiceIds.includes(rf.invoice_id)
+      ) || [];
+      
+      // Calculate totals (use sales orders only to avoid double counting with invoices)
+      const totalOrderAmount = customerOrders.reduce((sum, o) => sum + (o.final_price || o.grand_total || 0), 0);
+      // Note: We don't use invoice amounts to avoid double counting since invoices are generated from orders
+      const totalPayments = customerPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      const totalReturns = customerReturns.reduce((sum, r) => sum + (r.return_value || 0), 0);
+      const totalRefunds = customerRefunds.reduce((sum, rf) => sum + (rf.refund_amount || 0), 0);
+      
+      // Balance calculation: Sales Orders - Payments - Returns - Refunds
+      const totalAmount = totalOrderAmount; // Use sales orders amount only
+      const totalCredits = totalPayments + totalReturns + totalRefunds;
+      const balanceDue = totalAmount - totalCredits;
+      
+      const totalTransactions = customerOrders.length + customerInvoices.length + customerPayments.length + customerReturns.length + customerRefunds.length;
 
       return {
         id: customer.id,
         name: customer.name,
-        type: 'customer',
+        type: 'customer' as const,
         email: customer.email,
         phone: customer.phone,
-        total_transactions: customerOrders.length,
+        total_transactions: totalTransactions,
         total_amount: totalAmount,
-        paid_amount: paidAmount,
+        paid_amount: totalPayments,
         balance_due: balanceDue,
         status: balanceDue > 0 ? 'pending' : 'paid'
       };
@@ -1054,14 +1096,11 @@ async function processSuppliers(
   try {
     const supplierIds = suppliers.map(s => s.id);
     
-    const [vendorBills, vendorPayments, purchaseOrders] = await Promise.all([
+    // UNIFIED DATA SOURCE: Use vendor_bills.paid_amount for consistency with VendorBillsTab
+    const [vendorBills, purchaseOrders] = await Promise.all([
       supabaseAdmin
         .from('vendor_bills')
         .select('supplier_id, total_amount, paid_amount, remaining_amount, bill_date, status')
-        .in('supplier_id', supplierIds),
-      supabaseAdmin
-        .from('vendor_payment_history')
-        .select('supplier_id, amount, payment_date')
         .in('supplier_id', supplierIds),
       supabaseAdmin
         .from('purchase_orders')
@@ -1071,24 +1110,22 @@ async function processSuppliers(
 
     const ledgers: LedgerSummary[] = suppliers.map(supplier => {
       const bills = vendorBills.data?.filter(b => b.supplier_id === supplier.id) || [];
-      const payments = vendorPayments.data?.filter(p => p.supplier_id === supplier.id) || [];
       const pos = purchaseOrders.data?.filter(p => p.supplier_id === supplier.id) || [];
       
       // Debit = Total vendor bills (what we owe them)
       const totalDebit = bills.reduce((sum, b) => sum + (b.total_amount || 0), 0);
       
-      // Credit = Total payments made (what we paid them)
-      const totalCredit = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      // Credit = Total paid_amount from vendor_bills (matches VendorBillsTab calculation)
+      const totalCredit = bills.reduce((sum, b) => sum + (b.paid_amount || 0), 0);
       
-      // Balance = Debit - Credit (outstanding amount we owe)
-      const balanceDue = totalDebit - totalCredit;
+      // Balance = Debit - Credit (outstanding amount we owe) = Total remaining_amount
+      const balanceDue = bills.reduce((sum, b) => sum + (b.remaining_amount || 0), 0);
       
       const totalPOs = pos.reduce((sum, p) => sum + (p.total || 0), 0);
       
-      // Get latest transaction date
+      // Get latest transaction date from bills
       const allDates = [
-        ...bills.map(b => b.bill_date),
-        ...payments.map(p => p.payment_date)
+        ...bills.map(b => b.bill_date)
       ].filter(Boolean);
       
       const lastTransactionDate = allDates.length > 0 
@@ -1101,7 +1138,7 @@ async function processSuppliers(
         type: 'supplier' as const,
         email: supplier.email || undefined,
         phone: supplier.contact || undefined,
-        total_transactions: bills.length + payments.length,
+        total_transactions: bills.length,
         total_amount: totalDebit,
         debit: totalDebit,  // Total bills
         credit: totalCredit, // Total payments
@@ -1203,7 +1240,7 @@ async function getEmployeeLedgersPaginated(
       return {
         id: employee.id,
         name: `${employee.name}${employee.position ? ` (${employee.position})` : ''}`,
-        type: 'employee',
+        type: 'employee' as const,
         email: employee.email,
         phone: employee.phone,
         total_transactions: empExpenses.length + empPayrolls.length,
@@ -1301,7 +1338,7 @@ async function getInvestorLedgersPaginated(
       return {
         id: partner.id.toString(),
         name: `${partner.name}${partner.partner_type ? ` (${partner.partner_type})` : ''}`,
-        type: 'investors',
+        type: 'investors' as const,
         email: partner.email,
         phone: partner.phone,
         partner_type: partner.partner_type,
@@ -1364,7 +1401,7 @@ async function getLoansLedgersPaginated(
     const ledgers: LedgerSummary[] = loans.map(loan => ({
       id: loan.id,
       name: `${loan.loan_name} - ${loan.bank_name}`,
-      type: 'loans',
+      type: 'loans' as const,
       loan_type: loan.loan_type,
       original_amount: loan.original_loan_amount,
       current_balance: loan.opening_balance,
@@ -1423,7 +1460,7 @@ async function getBankLedgersPaginated(
     const ledgers: LedgerSummary[] = banks.map(bank => ({
       id: bank.id,
       name: bank.name,
-      type: 'bank',
+      type: 'bank' as const,
       account_number: bank.account_number,
       account_type: bank.account_type,
       current_balance_amount: bank.current_balance,

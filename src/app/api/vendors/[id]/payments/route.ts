@@ -123,25 +123,104 @@ export async function POST(
       // Create journal entry for the fallback payment
       console.log('💰 Vendor payment created via fallback, creating journal entry...');
       
-      // Determine bank account ID based on payment method
-      const selectedBankAccountId = payment_method === 'upi' ? upi_account_id : bank_account_id;
-      
-      const journalResult = await createVendorPaymentJournalEntry({
-        paymentId: poPayment.id,
-        amount: parseFloat(amount),
-        date: payment_date,
-        reference: reference_number,
-        description: notes || `Vendor payment via ${payment_method}`,
-        paymentMethod: payment_method,
-        bankAccountId: selectedBankAccountId
-      });
-      
-      if (journalResult.success) {
-        console.log('✅ Vendor payment journal entry created:', journalResult.journalEntryId);
-        console.log(`📊 Dr. ${journalResult.apAccount} ${amount}, Cr. ${journalResult.cashAccount} ${amount}`);
+      // Handle cash payments vs bank payments differently (fallback)
+      if (payment_method === 'cash') {
+        console.log('💰 Processing fallback cash payment - creating cash transaction...');
+        
+        // 1. Create cash transaction record
+        const { data: cashAccount } = await supabase
+          .from('bank_accounts')
+          .select('id')
+          .eq('account_type', 'CASH')
+          .single();
+
+        if (cashAccount) {
+          const { data: cashTransaction, error: cashTransactionError } = await supabase
+            .from('cash_transactions')
+            .insert({
+              transaction_date: payment_date,
+              amount: -parseFloat(amount), // Negative for outgoing payment
+              transaction_type: 'DEBIT',
+              description: `Vendor payment (fallback) - ${notes || 'Smart settlement'}`,
+              reference_number: reference_number,
+              source_type: 'expense',
+              source_id: poPayment.id,
+              cash_account_id: cashAccount.id,
+              notes: `Fallback payment to vendor via cash settlement`
+            })
+            .select()
+            .single();
+
+          if (cashTransactionError) {
+            console.error('❌ Failed to create fallback cash transaction:', cashTransactionError);
+          } else {
+            console.log('✅ Created fallback cash transaction:', cashTransaction.id);
+
+            // 2. Update cash balance
+            const { data: currentBalance } = await supabase
+              .from('cash_balances')
+              .select('current_balance')
+              .eq('cash_account_id', cashAccount.id)
+              .single();
+
+            const newBalance = (currentBalance?.current_balance || 0) - parseFloat(amount);
+
+            const { error: balanceUpdateError } = await supabase
+              .from('cash_balances')
+              .upsert({
+                cash_account_id: cashAccount.id,
+                current_balance: newBalance,
+                last_transaction_id: cashTransaction.id,
+                last_updated: new Date().toISOString()
+              }, {
+                onConflict: 'cash_account_id'
+              });
+
+            if (balanceUpdateError) {
+              console.error('❌ Failed to update fallback cash balance:', balanceUpdateError);
+            } else {
+              console.log(`✅ Updated fallback cash balance: ${currentBalance?.current_balance || 0} → ${newBalance}`);
+            }
+          }
+        }
+
+        // 3. Create journal entry for fallback cash payment
+        const journalResult = await createVendorPaymentJournalEntry({
+          paymentId: poPayment.id,
+          amount: parseFloat(amount),
+          date: payment_date,
+          reference: reference_number,
+          description: notes || `Vendor fallback cash payment via smart settlement`,
+          paymentMethod: payment_method,
+          bankAccountId: cashAccount?.id // Use cash account ID
+        });
+
+        if (journalResult.success) {
+          console.log('✅ Vendor fallback cash payment journal entry created:', journalResult.journalEntryId);
+          console.log(`📊 Dr. ${journalResult.apAccount} ${amount}, Cr. Cash ${amount}`);
+        } else {
+          console.error('❌ Failed to create vendor fallback cash payment journal entry:', journalResult.error);
+        }
       } else {
-        console.error('❌ Failed to create vendor payment journal entry:', journalResult.error);
-        // Don't fail the payment, just log the error
+        // Handle bank/UPI payments as before (fallback)
+        const selectedBankAccountId = payment_method === 'upi' ? upi_account_id : bank_account_id;
+        
+        const journalResult = await createVendorPaymentJournalEntry({
+          paymentId: poPayment.id,
+          amount: parseFloat(amount),
+          date: payment_date,
+          reference: reference_number,
+          description: notes || `Vendor payment via ${payment_method}`,
+          paymentMethod: payment_method,
+          bankAccountId: selectedBankAccountId
+        });
+        
+        if (journalResult.success) {
+          console.log('✅ Vendor fallback payment journal entry created:', journalResult.journalEntryId);
+          console.log(`📊 Dr. ${journalResult.apAccount} ${amount}, Cr. ${journalResult.cashAccount} ${amount}`);
+        } else {
+          console.error('❌ Failed to create vendor fallback payment journal entry:', journalResult.error);
+        }
       }
 
       // Update vendor bill paid amount if bill is provided
@@ -233,28 +312,107 @@ export async function POST(
       return NextResponse.json(poPayment, { status: 201 });
     }
 
-    // Create journal entry for the successful vendor payment
-    console.log('💰 Vendor payment created successfully, creating journal entry...');
-    
-    // Determine bank account ID based on payment method
-    const selectedBankAccountId = payment_method === 'upi' ? upi_account_id : bank_account_id;
-    
-    const journalResult = await createVendorPaymentJournalEntry({
-      paymentId: payment.id,
-      amount: parseFloat(amount),
-      date: payment_date,
-      reference: reference_number,
-      description: notes || `Vendor payment via ${payment_method}`,
-      paymentMethod: payment_method,
-      bankAccountId: selectedBankAccountId
-    });
-    
-    if (journalResult.success) {
-      console.log('✅ Vendor payment journal entry created:', journalResult.journalEntryId);
-      console.log(`📊 Dr. ${journalResult.apAccount} ${amount}, Cr. ${journalResult.cashAccount} ${amount}`);
+    // Handle cash payments vs bank payments differently
+    if (payment_method === 'cash') {
+      console.log('💰 Processing cash payment - creating cash transaction...');
+      
+      // 1. Create cash transaction record
+      const { data: cashAccount } = await supabase
+        .from('bank_accounts')
+        .select('id')
+        .eq('account_type', 'CASH')
+        .single();
+
+      if (cashAccount) {
+        const { data: cashTransaction, error: cashTransactionError } = await supabase
+          .from('cash_transactions')
+          .insert({
+            transaction_date: payment_date,
+            amount: -parseFloat(amount), // Negative for outgoing payment
+            transaction_type: 'DEBIT',
+            description: `Vendor payment - ${notes || 'Smart settlement'}`,
+            reference_number: reference_number,
+            source_type: 'expense',
+            source_id: payment.id,
+            cash_account_id: cashAccount.id,
+            notes: `Payment to vendor via cash settlement`
+          })
+          .select()
+          .single();
+
+        if (cashTransactionError) {
+          console.error('❌ Failed to create cash transaction:', cashTransactionError);
+        } else {
+          console.log('✅ Created cash transaction:', cashTransaction.id);
+
+          // 2. Update cash balance
+          const { data: currentBalance } = await supabase
+            .from('cash_balances')
+            .select('current_balance')
+            .eq('cash_account_id', cashAccount.id)
+            .single();
+
+          const newBalance = (currentBalance?.current_balance || 0) - parseFloat(amount);
+
+          const { error: balanceUpdateError } = await supabase
+            .from('cash_balances')
+            .upsert({
+              cash_account_id: cashAccount.id,
+              current_balance: newBalance,
+              last_transaction_id: cashTransaction.id,
+              last_updated: new Date().toISOString()
+            }, {
+              onConflict: 'cash_account_id'
+            });
+
+          if (balanceUpdateError) {
+            console.error('❌ Failed to update cash balance:', balanceUpdateError);
+          } else {
+            console.log(`✅ Updated cash balance: ${currentBalance?.current_balance || 0} → ${newBalance}`);
+          }
+        }
+      }
+
+      // 3. Create journal entry for cash payment
+      const journalResult = await createVendorPaymentJournalEntry({
+        paymentId: payment.id,
+        amount: parseFloat(amount),
+        date: payment_date,
+        reference: reference_number,
+        description: notes || `Vendor cash payment via smart settlement`,
+        paymentMethod: payment_method,
+        bankAccountId: cashAccount?.id // Use cash account ID
+      });
+
+      if (journalResult.success) {
+        console.log('✅ Vendor cash payment journal entry created:', journalResult.journalEntryId);
+        console.log(`📊 Dr. ${journalResult.apAccount} ${amount}, Cr. Cash ${amount}`);
+      } else {
+        console.error('❌ Failed to create vendor cash payment journal entry:', journalResult.error);
+      }
     } else {
-      console.error('❌ Failed to create vendor payment journal entry:', journalResult.error);
-      // Don't fail the payment, just log the error
+      // Handle bank/UPI payments as before
+      console.log('💰 Processing bank/UPI payment - creating journal entry...');
+      
+      // Determine bank account ID based on payment method
+      const selectedBankAccountId = payment_method === 'upi' ? upi_account_id : bank_account_id;
+      
+      const journalResult = await createVendorPaymentJournalEntry({
+        paymentId: payment.id,
+        amount: parseFloat(amount),
+        date: payment_date,
+        reference: reference_number,
+        description: notes || `Vendor payment via ${payment_method}`,
+        paymentMethod: payment_method,
+        bankAccountId: selectedBankAccountId
+      });
+
+      if (journalResult.success) {
+        console.log('✅ Vendor bank payment journal entry created:', journalResult.journalEntryId);
+        console.log(`📊 Dr. ${journalResult.apAccount} ${amount}, Cr. ${journalResult.cashAccount} ${amount}`);
+      } else {
+        console.error('❌ Failed to create vendor bank payment journal entry:', journalResult.error);
+      }
     }
 
     // Update vendor bill paid amount if bill is provided

@@ -51,7 +51,6 @@ import {
   TrendingDown,
   Building2,
   Loader2,
-  BookOpen,
   RotateCcw,
   Download,
   Filter,
@@ -72,7 +71,6 @@ import { WhatsAppService, WhatsAppBillData } from '@/lib/whatsappService';
 import { WaiveOffDialog } from './WaiveOffDialog';
 import { PaymentDeletionManager } from './PaymentDeletionManager';
 import { getCurrentUser } from '@/lib/auth';
-import OptimizedLedgerManager from './OptimizedLedgerManager';
 import { RefundDialog } from './RefundDialog';
 import { InvoiceReturnExchangeDialog } from './InvoiceReturnExchangeDialog';
 import { CashTransactionManager } from '@/lib/cashTransactionManager';
@@ -3473,7 +3471,7 @@ export function SalesOrderInvoiceManager() {
         
         {/* Main Navigation Tabs */}
         <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-          <TabsList className="grid w-full grid-cols-7 h-12 bg-gray-50 rounded-none border-b">
+          <TabsList className="grid w-full grid-cols-6 h-12 bg-gray-50 rounded-none border-b">
             <TabsTrigger 
               value="orders" 
               className="text-sm font-medium h-full data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-blue-500"
@@ -3515,14 +3513,6 @@ export function SalesOrderInvoiceManager() {
             >
               <Receipt className="h-4 w-4 mr-2" />
               Cashflow Manager
-            </TabsTrigger>
-            
-            <TabsTrigger 
-              value="ledgers"
-              className="text-sm font-medium h-full data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-purple-500"
-            >
-              <BookOpen className="h-4 w-4 mr-2" />
-              Ledgers
             </TabsTrigger>
           </TabsList>
 
@@ -5730,24 +5720,6 @@ export function SalesOrderInvoiceManager() {
                   </div>
                 </div>
               )}
-            </TabsContent>
-
-            {/* Ledgers Tab */}
-            <TabsContent value="ledgers" className="space-y-4 p-4">
-              <div className="bg-white rounded-lg shadow-sm border">
-                <div className="p-4 border-b">
-                  <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                    <BookOpen className="h-5 w-5 text-purple-600" />
-                    Ledger Management
-                  </h3>
-                  <p className="text-sm text-gray-600 mt-1">
-                    View and manage all account ledger entries and balances
-                  </p>
-                </div>
-                <div className="p-6">
-                  <OptimizedLedgerManager />
-                </div>
-              </div>
             </TabsContent>
           </div>
         </Tabs>

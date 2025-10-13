@@ -168,6 +168,13 @@ export default function OptimizedLedgerManager() {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('customer');
   const [hideZeroBalances, setHideZeroBalances] = useState(false);
+  
+  // Cache for ledger data by tab type to avoid refetching
+  const [ledgerCache, setLedgerCache] = useState<Record<string, {
+    data: LedgerSummary[];
+    pagination: PaginationInfo;
+    timestamp: number;
+  }>>({});
   const [pagination, setPagination] = useState<PaginationInfo>({
     page: 1,
     limit: 10,
@@ -260,6 +267,19 @@ export default function OptimizedLedgerManager() {
     resetData: boolean = true
   ) => {
     try {
+      // Create cache key
+      const cacheKey = `${type}-${page}-${search}-${hideZeroBalances}`;
+      const cachedData = ledgerCache[cacheKey];
+      const cacheAge = cachedData ? Date.now() - cachedData.timestamp : Infinity;
+      
+      // Use cache if it's less than 30 seconds old and no search term
+      if (cachedData && cacheAge < 30000 && !search) {
+        console.log('Using cached ledger data for', type);
+        setLedgers(cachedData.data);
+        setPagination(cachedData.pagination);
+        return;
+      }
+      
       setLoading(true);
       
       const params = new URLSearchParams({
@@ -287,21 +307,56 @@ export default function OptimizedLedgerManager() {
       });
       
       clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        console.error('API returned error status:', response.status);
+        throw new Error(`API error: ${response.status}`);
+      }
+      
       const data = await response.json();
+
+      console.log('API Response for', type, ':', {
+        success: data.success,
+        dataLength: data.data?.length,
+        pagination: data.pagination,
+        error: data.error,
+        rawData: data.data?.slice(0, 2) // Log first 2 items for debugging
+      });
 
       // Only update state if component is still mounted
       if (isMounted.current) {
         if (data.success) {
-          if (resetData || page === 1) {
-            setLedgers(data.data);
-          } else {
-            // Append data for "load more" functionality
-            setLedgers(prev => [...prev, ...data.data]);
-          }
-          setPagination(data.pagination);
+          const newData = resetData || page === 1 ? data.data || [] : [...(ledgers || []), ...(data.data || [])];
+          console.log('Setting ledgers:', newData.length, 'items for type:', type);
+          console.log('resetData:', resetData, 'page:', page, 'ledgers length before:', ledgers?.length);
+          setLedgers(newData);
+          setPagination(data.pagination || {
+            page: 1,
+            limit: itemsPerPage,
+            total: 0,
+            totalPages: 0,
+            hasMore: false
+          });
+          
+          // Cache the result
+          setLedgerCache(prev => ({
+            ...prev,
+            [cacheKey]: {
+              data: newData,
+              pagination: data.pagination,
+              timestamp: Date.now()
+            }
+          }));
         } else {
-          console.error('Failed to fetch ledgers:', data.error);
+          console.error('Failed to fetch ledgers - API returned success: false', data.error);
           setLedgers([]);
+          setPagination({
+            page: 1,
+            limit: itemsPerPage,
+            total: 0,
+            totalPages: 0,
+            hasMore: false
+          });
         }
       }
     } catch (error) {
@@ -316,7 +371,7 @@ export default function OptimizedLedgerManager() {
         setLoading(false);
       }
     }
-  }, [itemsPerPage, hideZeroBalances]);
+  }, [itemsPerPage, hideZeroBalances, ledgerCache, ledgers]);
 
   const fetchTransactions = async (ledger: LedgerSummary, page: number = 1) => {
     try {
@@ -625,24 +680,28 @@ export default function OptimizedLedgerManager() {
     }
   };
 
-  // Effect for tab and filter changes
+  // Effect for tab and filter changes - consolidated
+  const [isInitialMount, setIsInitialMount] = useState(true);
+  
   useEffect(() => {
-    // Don't trigger on initial render
-    if (ledgers.length === 0) {
-      fetchLedgers(1, activeTab, searchTerm, true);
+    // Skip on initial mount to avoid multiple calls
+    if (isInitialMount) {
+      setIsInitialMount(false);
+      fetchLedgers(1, 'customer', '', true);
       return;
     }
-    
-    // Use debouncing for filter changes
+
+    // Debounce for hideZeroBalances changes, immediate for tab changes
     if (searchTimeout) {
       clearTimeout(searchTimeout);
     }
 
     const timeout = setTimeout(() => {
       if (isMounted.current) {
+        console.log('Fetching ledgers due to filter/tab change:', { activeTab, hideZeroBalances });
         fetchLedgers(1, activeTab, searchTerm, true);
       }
-    }, 300);
+    }, 50); // Very short debounce just to batch rapid changes
 
     setSearchTimeout(timeout);
 
@@ -652,17 +711,51 @@ export default function OptimizedLedgerManager() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, hideZeroBalances]);
 
-  // Initial load on mount only
-  useEffect(() => {
-    fetchLedgers(1, 'customer', '', true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const handleTabChange = (newTab: string) => {
     setActiveTab(newTab);
     setNewLedgerForm(prev => ({ ...prev, type: newTab as 'customer' | 'supplier' | 'employee' | 'investors' | 'loans' | 'banks' }));
     setSelectedLedger(null); // Close transaction view
     setPagination(prev => ({ ...prev, page: 1 }));
+    // Fetch happens automatically via useEffect
+    
+    // Prefetch adjacent tabs in the background after a short delay
+    setTimeout(() => {
+      prefetchAdjacentTabs(newTab);
+    }, 500);
+  };
+
+  // Prefetch adjacent tabs for instant switching
+  const prefetchAdjacentTabs = (currentTab: string) => {
+    const tabs = ['customer', 'supplier', 'employee', 'investors', 'loans', 'banks'];
+    const currentIndex = tabs.indexOf(currentTab);
+    
+    // Prefetch next and previous tabs
+    const tabsToPrefetch = [
+      tabs[currentIndex + 1],
+      tabs[currentIndex - 1]
+    ].filter(Boolean);
+    
+    tabsToPrefetch.forEach(tab => {
+      const cacheKey = `${tab}-1--${hideZeroBalances}`;
+      if (!ledgerCache[cacheKey]) {
+        // Silently fetch in background without showing loading state
+        fetch(`/api/finance/ledgers-summary?page=1&limit=${itemsPerPage}&type=${tab}&search=&hide_zero_balances=${hideZeroBalances}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data.success && isMounted.current) {
+              setLedgerCache(prev => ({
+                ...prev,
+                [cacheKey]: {
+                  data: data.data,
+                  pagination: data.pagination,
+                  timestamp: Date.now()
+                }
+              }));
+            }
+          })
+          .catch(err => console.log('Prefetch failed for', tab, err));
+      }
+    });
   };
 
   const handleNextPage = () => {

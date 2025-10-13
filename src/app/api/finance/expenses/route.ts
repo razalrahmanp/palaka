@@ -271,7 +271,7 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    const { expense_id } = await req.json();
+    const { expense_id, vendor_bill_id } = await req.json();
 
     if (!expense_id) {
       return NextResponse.json({ error: "Expense ID is required" }, { status: 400 });
@@ -288,15 +288,20 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "Expense not found" }, { status: 404 });
     }
 
+    // Use the vendor_bill_id passed from frontend (found from vendor_payment_history) 
+    // or fallback to the one in expense record
+    const targetVendorBillId = vendor_bill_id || expense.vendor_bill_id;
+
     // If this expense is linked to a vendor bill, we need to handle the relationships
-    if (expense.vendor_bill_id) {
-      console.log(`🔗 Expense ${expense_id} is linked to vendor bill ${expense.vendor_bill_id}. Handling relationships...`);
+    if (targetVendorBillId) {
+      console.log(`🔗 Expense ${expense_id} is linked to vendor bill ${targetVendorBillId}. Handling relationships...`);
+      console.log(`🔗 Expense ${expense_id} is linked to vendor bill ${targetVendorBillId}. Handling relationships...`);
 
       // Get the current vendor bill details
       const { data: vendorBill, error: billError } = await supabase
         .from('vendor_bills')
         .select('*')
-        .eq('id', expense.vendor_bill_id)
+        .eq('id', targetVendorBillId)
         .single();
 
       if (billError) {
@@ -307,7 +312,7 @@ export async function DELETE(req: Request) {
       if (vendorBill) {
         // Calculate new paid amount (reduce by the expense amount)
         const newPaidAmount = Math.max(0, (vendorBill.paid_amount || 0) - expense.amount);
-        const newRemainingAmount = vendorBill.total_amount - newPaidAmount;
+        // remaining_amount will be calculated automatically by the database
         
         // Determine new status based on payment amounts
         let newStatus = vendorBill.status;
@@ -319,16 +324,15 @@ export async function DELETE(req: Request) {
           newStatus = 'paid';
         }
 
-        // Update the vendor bill
+        // Update the vendor bill (don't update remaining_amount - it's computed automatically)
         const { error: updateBillError } = await supabase
           .from('vendor_bills')
           .update({
             paid_amount: newPaidAmount,
-            remaining_amount: newRemainingAmount,
             status: newStatus,
             updated_at: new Date().toISOString()
           })
-          .eq('id', expense.vendor_bill_id);
+          .eq('id', targetVendorBillId);
 
         if (updateBillError) {
           console.error('Error updating vendor bill:', updateBillError);
@@ -338,34 +342,45 @@ export async function DELETE(req: Request) {
         // Delete associated vendor payment history record
         // Try multiple approaches to find and delete the correct payment history record
         
+        console.log('🔍 Attempting to delete vendor_payment_history with:', {
+          vendor_bill_id: targetVendorBillId,
+          amount: expense.amount,
+          payment_date: expense.date,
+          supplier_id: expense.entity_id
+        });
+        
         // First approach: Match by vendor_bill_id, amount, and payment_date
-        const { error: paymentHistoryError1 } = await supabase
+        const { data: matchedPayments1, error: paymentHistoryError1 } = await supabase
           .from('vendor_payment_history')
           .delete()
           .match({
-            vendor_bill_id: expense.vendor_bill_id,
+            vendor_bill_id: targetVendorBillId,
             amount: expense.amount,
             payment_date: expense.date
-          });
+          })
+          .select();
 
-        if (paymentHistoryError1) {
-          console.log('First approach failed, trying alternative matching...');
+        if (paymentHistoryError1 || !matchedPayments1 || matchedPayments1.length === 0) {
+          console.log('First approach failed:', paymentHistoryError1?.message || 'No matching records found');
+          console.log('Trying alternative matching...');
           
           // Second approach: Match by vendor_bill_id and amount (in case dates don't match exactly)
-          const { error: paymentHistoryError2 } = await supabase
+          const { data: matchedPayments2, error: paymentHistoryError2 } = await supabase
             .from('vendor_payment_history')
             .delete()
             .match({
-              vendor_bill_id: expense.vendor_bill_id,
+              vendor_bill_id: targetVendorBillId,
               amount: expense.amount
             })
-            .limit(1);  // Only delete one record
+            .limit(1)
+            .select();
 
-          if (paymentHistoryError2) {
-            console.log('Second approach failed, trying by supplier and amount...');
+          if (paymentHistoryError2 || !matchedPayments2 || matchedPayments2.length === 0) {
+            console.log('Second approach failed:', paymentHistoryError2?.message || 'No matching records found');
+            console.log('Trying by supplier and amount...');
             
             // Third approach: Match by supplier_id, amount, and payment_date
-            const { error: paymentHistoryError3 } = await supabase
+            const { data: matchedPayments3, error: paymentHistoryError3 } = await supabase
               .from('vendor_payment_history')
               .delete()
               .match({
@@ -373,33 +388,98 @@ export async function DELETE(req: Request) {
                 amount: expense.amount,
                 payment_date: expense.date
               })
-              .limit(1);
+              .limit(1)
+              .select();
 
-            if (paymentHistoryError3) {
-              console.warn('Warning: Could not delete vendor payment history with any approach:', {
-                error1: paymentHistoryError1,
-                error2: paymentHistoryError2, 
-                error3: paymentHistoryError3
+            if (paymentHistoryError3 || !matchedPayments3 || matchedPayments3.length === 0) {
+              console.warn('❌ Warning: Could not delete vendor payment history with any approach:', {
+                error1: paymentHistoryError1?.message,
+                error2: paymentHistoryError2?.message, 
+                error3: paymentHistoryError3?.message,
+                expense_details: {
+                  id: expense.id,
+                  vendor_bill_id: targetVendorBillId,
+                  amount: expense.amount,
+                  date: expense.date,
+                  entity_id: expense.entity_id
+                }
               });
             } else {
-              console.log('✅ Successfully deleted vendor payment history using supplier matching');
+              console.log('✅ Successfully deleted vendor payment history using supplier matching:', matchedPayments3);
             }
           } else {
-            console.log('✅ Successfully deleted vendor payment history using bill and amount matching');
+            console.log('✅ Successfully deleted vendor payment history using bill and amount matching:', matchedPayments2);
           }
         } else {
-          console.log('✅ Successfully deleted vendor payment history using bill, amount, and date matching');
+          console.log('✅ Successfully deleted vendor payment history using bill, amount, and date matching:', matchedPayments1);
         }
 
-        console.log(`✅ Updated vendor bill ${expense.vendor_bill_id}: paid_amount: ${vendorBill.paid_amount} → ${newPaidAmount}, status: ${vendorBill.status} → ${newStatus}`);
+        console.log(`✅ Updated vendor bill ${targetVendorBillId}: paid_amount: ${vendorBill.paid_amount} → ${newPaidAmount}, status: ${vendorBill.status} → ${newStatus} (remaining_amount calculated automatically)`);
       }
     }
 
-    // Handle bank account reversal if the expense was paid from a bank account
+    // Handle cash vs bank account reversal based on payment method
     let bankAccountUpdated = false;
     let bankTransactionDeleted = false;
+    let cashTransactionDeleted = false;
+    let cashBalanceUpdated = false;
     
-    if (expense.bank_account_id) {
+    if (expense.payment_method === 'cash') {
+      console.log(`💰 Expense ${expense_id} was paid with cash. Reversing cash transaction...`);
+
+      // 1. Find and delete the cash transaction
+      const { data: cashTransactions, error: cashTransactionError } = await supabase
+        .from('cash_transactions')
+        .select('*')
+        .eq('source_type', 'expense')
+        .eq('source_id', expense.entity_reference_id || expense_id) // Try both IDs
+        .eq('amount', -expense.amount); // Should be negative for outgoing payments
+
+      if (!cashTransactionError && cashTransactions && cashTransactions.length > 0) {
+        const cashTransaction = cashTransactions[0];
+        
+        // Delete the cash transaction
+        const { error: deleteCashError } = await supabase
+          .from('cash_transactions')
+          .delete()
+          .eq('id', cashTransaction.id);
+
+        if (deleteCashError) {
+          console.warn('Warning: Could not delete cash transaction:', deleteCashError);
+        } else {
+          cashTransactionDeleted = true;
+          console.log(`✅ Deleted cash transaction for expense ${expense_id}`);
+
+          // 2. Restore cash balance
+          if (cashTransaction.cash_account_id) {
+            const { data: currentBalance } = await supabase
+              .from('cash_balances')
+              .select('current_balance')
+              .eq('cash_account_id', cashTransaction.cash_account_id)
+              .single();
+
+            const restoredBalance = (currentBalance?.current_balance || 0) + expense.amount;
+
+            const { error: balanceUpdateError } = await supabase
+              .from('cash_balances')
+              .update({
+                current_balance: restoredBalance,
+                last_updated: new Date().toISOString()
+              })
+              .eq('cash_account_id', cashTransaction.cash_account_id);
+
+            if (balanceUpdateError) {
+              console.warn('Warning: Could not update cash balance:', balanceUpdateError);
+            } else {
+              cashBalanceUpdated = true;
+              console.log(`✅ Restored cash balance: ${currentBalance?.current_balance || 0} → ${restoredBalance}`);
+            }
+          }
+        }
+      } else {
+        console.warn('Warning: Could not find cash transaction to delete:', cashTransactionError?.message || 'No matching transaction found');
+      }
+    } else if (expense.bank_account_id) {
       console.log(`💰 Expense ${expense_id} was paid from bank account ${expense.bank_account_id}. Reversing bank transaction...`);
 
       // 1. Delete the bank transaction
@@ -463,9 +543,12 @@ export async function DELETE(req: Request) {
       success: true, 
       message: "Expense deleted successfully with complete accounting reversal",
       deleted_expense: expense,
-      vendor_bill_updated: !!expense.vendor_bill_id,
+      vendor_bill_updated: !!targetVendorBillId,
       bank_account_updated: bankAccountUpdated,
-      bank_transaction_deleted: bankTransactionDeleted
+      bank_transaction_deleted: bankTransactionDeleted,
+      cash_transaction_deleted: cashTransactionDeleted,
+      cash_balance_updated: cashBalanceUpdated,
+      payment_method: expense.payment_method
     });
   } catch (error) {
     console.error('Error in DELETE /api/finance/expenses:', error);

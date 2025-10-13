@@ -87,6 +87,22 @@ interface Expense {
   entity_type?: string;
 }
 
+interface VendorPaymentHistory {
+  id: string;
+  supplier_id: string;
+  vendor_bill_id?: string;
+  purchase_order_id?: string;
+  amount: number;
+  payment_date: string;
+  payment_method: string;
+  reference_number?: string;
+  notes?: string;
+  bank_account_id?: string;
+  status?: string;
+  created_at: string;
+  created_by?: string;
+}
+
 interface VendorFinancialSummary {
   totalBillAmount: number;
   totalPaidAmount: number;
@@ -196,8 +212,15 @@ export function VendorBillsTab({
   const [expenseStartDate, setExpenseStartDate] = useState('');
   const [expenseEndDate, setExpenseEndDate] = useState('');
   const [expandedBills, setExpandedBills] = useState<Set<string>>(new Set());
+  const [billPaymentHistory, setBillPaymentHistory] = useState<Record<string, VendorPaymentHistory[]>>({});
+  const [loadingPaymentHistory, setLoadingPaymentHistory] = useState<Set<string>>(new Set());
   const [purchaseReturnModalOpen, setPurchaseReturnModalOpen] = useState(false);
   const [selectedBillForReturn, setSelectedBillForReturn] = useState<VendorBill | null>(null);
+  
+  // Delete confirmation dialog state
+  const [deleteExpenseDialogOpen, setDeleteExpenseDialogOpen] = useState(false);
+  const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null);
+  const [isDeletingExpense, setIsDeletingExpense] = useState(false);
   
   // Collect reversal payment modal state
   const [collectPaymentModalOpen, setCollectPaymentModalOpen] = useState(false);
@@ -309,16 +332,46 @@ export function VendorBillsTab({
     });
   };
 
-  const toggleBillExpansion = (billId: string) => {
+  const toggleBillExpansion = async (billId: string) => {
     setExpandedBills(prev => {
       const newSet = new Set(prev);
       if (newSet.has(billId)) {
         newSet.delete(billId);
       } else {
         newSet.add(billId);
+        // Fetch payment history when expanding
+        fetchBillPaymentHistory(billId);
       }
       return newSet;
     });
+  };
+
+  // Fetch payment history for a specific bill
+  const fetchBillPaymentHistory = async (billId: string) => {
+    // Skip if already loaded
+    if (billPaymentHistory[billId]) return;
+
+    setLoadingPaymentHistory(prev => new Set(prev).add(billId));
+    
+    try {
+      const response = await fetch(`/api/finance/vendor-payments?vendor_bill_id=${billId}`);
+      const data = await response.json();
+      
+      if (data.success && data.data) {
+        setBillPaymentHistory(prev => ({
+          ...prev,
+          [billId]: data.data
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching payment history for bill:', billId, error);
+    } finally {
+      setLoadingPaymentHistory(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(billId);
+        return newSet;
+      });
+    }
   };
 
   const handleOpenPurchaseReturn = (bill: VendorBill) => {
@@ -688,24 +741,25 @@ export function VendorBillsTab({
   };
 
   const handleDeleteExpense = async (expense: Expense) => {
-    // Confirm deletion with enhanced information
-    const billInfo = expense.vendor_bill_id ? 
-      `\n⚠️  This expense is linked to a vendor bill and will:\n` +
-      `   • Update the bill's paid amount\n` +
-      `   • Remove payment history record\n` +
-      `   • Restore bank account balance\n\n` 
-      : '\n';
-      
-    const confirmDelete = window.confirm(
-      `Are you sure you want to delete this expense?\n\n` +
-      `Description: ${expense.description}\n` +
-      `Amount: ${formatCurrency(expense.amount)}\n` +
-      `Date: ${formatDate(expense.date)}` +
-      billInfo +
-      `This action cannot be undone and will permanently remove the expense record.`
-    );
+    // Open confirmation dialog instead of window.confirm
+    console.log('🗑️ Delete expense clicked:', {
+      expense_id: expense.id,
+      vendor_bill_id: expense.vendor_bill_id,
+      description: expense.description,
+      amount: expense.amount,
+      payment_method: expense.payment_method,
+      entity_id: expense.entity_id,
+      full_expense: expense
+    });
+    setExpenseToDelete(expense);
+    setDeleteExpenseDialogOpen(true);
+  };
 
-    if (!confirmDelete) return;
+  const confirmDeleteExpense = async () => {
+    if (!expenseToDelete) return;
+
+    const expense = expenseToDelete;
+    setIsDeletingExpense(true);
 
     try {
       console.log(`🗑️ Deleting vendor expense: ${expense.id}`, {
@@ -715,13 +769,49 @@ export function VendorBillsTab({
         hasVendorBill: !!expense.vendor_bill_id
       });
 
+      // STEP 1: Find the vendor_bill_id from vendor_payment_history table
+      // Since expenses table might not have vendor_bill_id, we need to find it
+      let vendorBillId = expense.vendor_bill_id;
+      
+      if (!vendorBillId) {
+        console.log('🔍 vendor_bill_id not found in expense. Searching vendor_payment_history...');
+        
+        try {
+          const paymentHistoryResponse = await fetch(
+            `/api/finance/vendor-payments?supplier_id=${vendorId}&amount=${expense.amount}&payment_date=${expense.date}`
+          );
+          
+          if (paymentHistoryResponse.ok) {
+            const paymentData = await paymentHistoryResponse.json();
+            const payments = Array.isArray(paymentData) ? paymentData : (Array.isArray(paymentData?.data) ? paymentData.data : []);
+            
+            // Find matching payment by amount, date, and supplier
+            const matchingPayment = payments.find((payment: VendorPaymentHistory) => 
+              payment.amount === expense.amount &&
+              payment.payment_date === expense.date &&
+              payment.supplier_id === vendorId
+            );
+            
+            if (matchingPayment && matchingPayment.vendor_bill_id) {
+              vendorBillId = matchingPayment.vendor_bill_id;
+              console.log('✅ Found vendor_bill_id in payment history:', vendorBillId);
+            } else {
+              console.log('⚠️ No matching payment found in vendor_payment_history');
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ Error searching vendor_payment_history:', error);
+        }
+      }
+
       const response = await fetch('/api/finance/expenses', {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          expense_id: expense.id
+          expense_id: expense.id,
+          vendor_bill_id: vendorBillId // Pass the found vendor_bill_id to API
         }),
       });
 
@@ -738,15 +828,60 @@ export function VendorBillsTab({
         prevExpenses.filter(exp => exp.id !== expense.id)
       );
       
-      // If this expense was linked to a vendor bill, refresh the bill data
-      if (expense.vendor_bill_id) {
-        onBillUpdate(); // Refresh bills to show updated paid amounts and status
+      // Targeted refresh based on found vendor_bill_id
+      if (vendorBillId) {
+        console.log('🔄 Refreshing specific bill and payment history for:', vendorBillId);
+        
+        // Clear the payment history cache for this specific bill
+        setBillPaymentHistory(prev => {
+          const updated = { ...prev };
+          delete updated[vendorBillId!];
+          return updated;
+        });
+        
+        // Refresh the bills to update paid amounts
+        onBillUpdate();
+        
+        // If the bill is currently expanded, re-fetch its payment history
+        if (expandedBills.has(vendorBillId)) {
+          setTimeout(() => {
+            fetchBillPaymentHistory(vendorBillId!);
+          }, 500); // Small delay to ensure backend has updated
+        }
+      } else {
+        // Fallback: Clear all payment history cache and refresh all expanded bills
+        console.log('🔄 No vendor_bill_id found. Clearing all payment history cache...');
+        
+        // Get all currently expanded bill IDs before clearing cache
+        const currentlyExpandedBills = Array.from(expandedBills);
+        
+        // Clear ALL payment history cache
+        setBillPaymentHistory({});
+        
+        // Refresh the bills to update paid amounts
+        onBillUpdate();
+        
+        // Re-fetch payment history for all currently expanded bills
+        if (currentlyExpandedBills.length > 0) {
+          console.log('🔄 Re-fetching payment history for expanded bills:', currentlyExpandedBills);
+          setTimeout(() => {
+            currentlyExpandedBills.forEach(billId => {
+              fetchBillPaymentHistory(billId);
+            });
+          }, 500); // Small delay to ensure backend has updated
+        }
       }
       
-      alert('Expense deleted successfully with complete cleanup!');
+      // Close dialog and reset state
+      setDeleteExpenseDialogOpen(false);
+      setExpenseToDelete(null);
+      
+      alert('Payment deleted successfully with complete cleanup!');
     } catch (error) {
       console.error('Error deleting expense:', error);
-      alert(`Error deleting expense: ${error instanceof Error ? error.message : 'Please try again.'}`);
+      alert(`Error deleting payment: ${error instanceof Error ? error.message : 'Please try again.'}`);
+    } finally {
+      setIsDeletingExpense(false);
     }
   };
 
@@ -1231,6 +1366,121 @@ export function VendorBillsTab({
                                         <p className="text-sm text-gray-900 mt-1">{bill.description}</p>
                                       </div>
                                     )}
+
+                                    {/* Payment History Section */}
+                                    <div className="p-4 bg-white rounded-lg border">
+                                      <div className="flex items-center justify-between mb-3">
+                                        <h5 className="font-semibold text-gray-900">Payment History</h5>
+                                        <div className="flex items-center gap-2">
+                                          {loadingPaymentHistory.has(bill.id) && (
+                                            <span className="text-sm text-gray-500">Loading payments...</span>
+                                          )}
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              // Clear cache and refetch
+                                              setBillPaymentHistory(prev => {
+                                                const updated = { ...prev };
+                                                delete updated[bill.id];
+                                                return updated;
+                                              });
+                                              fetchBillPaymentHistory(bill.id);
+                                            }}
+                                            disabled={loadingPaymentHistory.has(bill.id)}
+                                            className="h-7 px-2 text-xs"
+                                            title="Refresh payment history"
+                                          >
+                                            <RotateCcw className="h-3 w-3 mr-1" />
+                                            Refresh
+                                          </Button>
+                                        </div>
+                                      </div>
+                                      
+                                      {billPaymentHistory[bill.id] && billPaymentHistory[bill.id].length > 0 ? (
+                                        <div className="overflow-x-auto">
+                                          <table className="w-full border border-gray-200 rounded-lg">
+                                            <thead className="bg-gray-100">
+                                              <tr>
+                                                <th className="px-4 py-2 text-left text-sm font-medium text-gray-700 border-b">Date</th>
+                                                <th className="px-4 py-2 text-left text-sm font-medium text-gray-700 border-b">Amount</th>
+                                                <th className="px-4 py-2 text-left text-sm font-medium text-gray-700 border-b">Payment Method</th>
+                                                <th className="px-4 py-2 text-left text-sm font-medium text-gray-700 border-b">Reference</th>
+                                                <th className="px-4 py-2 text-left text-sm font-medium text-gray-700 border-b">Status</th>
+                                                <th className="px-4 py-2 text-left text-sm font-medium text-gray-700 border-b">Notes</th>
+                                              </tr>
+                                            </thead>
+                                            <tbody className="bg-white">
+                                              {billPaymentHistory[bill.id].map((payment: VendorPaymentHistory, index: number) => (
+                                                <tr key={payment.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                                  <td className="px-4 py-3 text-sm text-gray-900 border-b">
+                                                    {new Date(payment.payment_date).toLocaleDateString('en-GB', {
+                                                      day: '2-digit',
+                                                      month: 'short',
+                                                      year: 'numeric'
+                                                    })}
+                                                  </td>
+                                                  <td className="px-4 py-3 text-sm font-semibold text-green-600 border-b">
+                                                    {formatCurrency(payment.amount)}
+                                                  </td>
+                                                  <td className="px-4 py-3 text-sm text-gray-900 border-b">
+                                                    <Badge variant="secondary" className="capitalize">
+                                                      {payment.payment_method?.replace('_', ' ')}
+                                                    </Badge>
+                                                  </td>
+                                                  <td className="px-4 py-3 text-sm text-gray-600 border-b font-mono">
+                                                    {payment.reference_number || '-'}
+                                                  </td>
+                                                  <td className="px-4 py-3 text-sm border-b">
+                                                    <Badge 
+                                                      variant={payment.status === 'completed' ? 'default' : 'secondary'}
+                                                      className={
+                                                        payment.status === 'completed' 
+                                                          ? 'bg-green-100 text-green-800 border-green-200' 
+                                                          : payment.status === 'pending'
+                                                          ? 'bg-yellow-100 text-yellow-800 border-yellow-200'
+                                                          : 'bg-gray-100 text-gray-800 border-gray-200'
+                                                      }
+                                                    >
+                                                      {payment.status || 'completed'}
+                                                    </Badge>
+                                                  </td>
+                                                  <td className="px-4 py-3 text-sm text-gray-600 border-b max-w-[200px] truncate">
+                                                    {payment.notes || '-'}
+                                                  </td>
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                            <tfoot className="bg-gray-50 border-t-2 border-gray-300">
+                                              <tr>
+                                                <td className="px-4 py-3 text-sm font-semibold text-gray-900">
+                                                  Total Payments:
+                                                </td>
+                                                <td className="px-4 py-3 text-sm font-bold text-green-600">
+                                                  {formatCurrency(
+                                                    billPaymentHistory[bill.id].reduce((sum: number, p: VendorPaymentHistory) => sum + parseFloat(p.amount.toString() || '0'), 0)
+                                                  )}
+                                                </td>
+                                                <td colSpan={4} className="px-4 py-3 text-sm text-gray-500">
+                                                  {billPaymentHistory[bill.id].length} payment{billPaymentHistory[bill.id].length !== 1 ? 's' : ''} recorded
+                                                </td>
+                                              </tr>
+                                            </tfoot>
+                                          </table>
+                                        </div>
+                                      ) : (
+                                        <div className="text-center py-6 text-gray-500 bg-gray-50 rounded-lg border border-gray-200">
+                                          <CreditCard className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                                          <p className="text-sm font-medium">No payments recorded for this bill yet</p>
+                                          <p className="text-xs mt-1">
+                                            {bill.remaining_amount > 0 
+                                              ? 'Use the "Pay" button to record a payment' 
+                                              : 'This bill has been marked as paid'}
+                                          </p>
+                                        </div>
+                                      )}
+                                    </div>
 
                                     {/* Purchase Return Actions */}
                                     {(!hasProcessedReturns(bill) || canProcessReturn(bill)) && (
@@ -2977,6 +3227,143 @@ export function VendorBillsTab({
           </div>
         </div>
       )}
+
+      {/* Delete Payment Confirmation Dialog */}
+      <Dialog open={deleteExpenseDialogOpen} onOpenChange={setDeleteExpenseDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="h-5 w-5" />
+              Confirm Payment Deletion
+            </DialogTitle>
+          </DialogHeader>
+          
+          {expenseToDelete && (
+            <div className="space-y-4">
+              {/* Payment Details */}
+              <div className="p-4 bg-gray-50 rounded-lg border space-y-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-500 uppercase">Description</label>
+                  <p className="text-sm font-medium text-gray-900 mt-1">{expenseToDelete.description}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 uppercase">Amount</label>
+                    <p className="text-lg font-bold text-gray-900 mt-1">{formatCurrency(expenseToDelete.amount)}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 uppercase">Date</label>
+                    <p className="text-sm font-medium text-gray-900 mt-1">{formatDate(expenseToDelete.date)}</p>
+                  </div>
+                </div>
+                {expenseToDelete.payment_method && (
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 uppercase">Payment Method</label>
+                    <p className="text-sm font-medium text-gray-900 mt-1 capitalize">
+                      {expenseToDelete.payment_method.replace('_', ' ')}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Warning Message */}
+              {expenseToDelete.vendor_bill_id ? (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 mt-0.5">
+                      <svg className="h-5 w-5 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-sm font-semibold text-amber-900 mb-2">This payment is linked to a vendor bill</h4>
+                      <ul className="text-xs text-amber-800 space-y-1">
+                        <li className="flex items-center gap-2">
+                          <span className="h-1 w-1 rounded-full bg-amber-600"></span>
+                          Bill&apos;s paid amount will be reduced
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <span className="h-1 w-1 rounded-full bg-amber-600"></span>
+                          Payment history record will be removed
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <span className="h-1 w-1 rounded-full bg-amber-600"></span>
+                          Bank account balance will be restored
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <span className="h-1 w-1 rounded-full bg-amber-600"></span>
+                          Bill status may change (e.g., from Paid to Partial)
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 mt-0.5">
+                      <svg className="h-5 w-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs text-blue-800">
+                        This payment is not linked to a specific vendor bill. Only the payment record will be deleted.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Danger Warning */}
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-xs font-medium text-red-800 flex items-center gap-2">
+                  <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                  This action cannot be undone. The payment record will be permanently deleted.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setDeleteExpenseDialogOpen(false);
+                setExpenseToDelete(null);
+              }}
+              disabled={isDeletingExpense}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={confirmDeleteExpense}
+              disabled={isDeletingExpense}
+              className="gap-2"
+            >
+              {isDeletingExpense ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4" />
+                  Delete Payment
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

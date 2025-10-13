@@ -4,7 +4,7 @@ import { supabase as supabaseAdmin } from '@/lib/supabaseAdmin';
 interface LedgerSummary {
   id: string;
   name: string;
-  type: 'customer' | 'supplier' | 'employee' | 'bank' | 'product' | 'investors' | 'loans';
+  type: 'customer' | 'supplier' | 'employee' | 'bank' | 'product' | 'investors' | 'loans' | 'sales_returns' | 'purchase_returns';
   email?: string;
   phone?: string;
   total_transactions: number;
@@ -44,6 +44,14 @@ interface LedgerSummary {
   account_type?: string;
   current_balance_amount?: number;
   upi_id?: string;
+  // Returns specific fields
+  return_number?: string;
+  return_date?: string;
+  return_type?: string;
+  return_value?: number;
+  return_count?: number;
+  approved_returns?: number;
+  pending_returns?: number;
 }
 
 export async function GET(request: NextRequest) {
@@ -61,60 +69,65 @@ export async function GET(request: NextRequest) {
       search, page, limit, type, hideZeroBalances, offset 
     });
 
-    const ledgers: LedgerSummary[] = [];
+    let ledgers: LedgerSummary[] = [];
+    let totalCount = 0;
 
-    // CUSTOMER LEDGERS
-    if (type === 'all' || type === 'customer') {
-      console.log('Fetching customer ledgers...');
-      const customerLedgers = await getCustomerLedgers(search, hideZeroBalances);
-      ledgers.push(...customerLedgers);
+    // OPTIMIZED: Fetch only the requested type with database-level pagination
+    if (type === 'customer') {
+      const result = await getCustomerLedgersPaginated(search, hideZeroBalances, limit, offset);
+      ledgers = result.data;
+      totalCount = result.total;
+    } else if (type === 'supplier') {
+      const result = await getSupplierLedgersPaginated(search, hideZeroBalances, limit, offset);
+      ledgers = result.data;
+      totalCount = result.total;
+    } else if (type === 'employee') {
+      const result = await getEmployeeLedgersPaginated(search, hideZeroBalances, limit, offset);
+      ledgers = result.data;
+      totalCount = result.total;
+    } else if (type === 'investors') {
+      const result = await getInvestorLedgersPaginated(search, hideZeroBalances, limit, offset);
+      ledgers = result.data;
+      totalCount = result.total;
+    } else if (type === 'loans') {
+      const result = await getLoansLedgersPaginated(search, hideZeroBalances, limit, offset);
+      ledgers = result.data;
+      totalCount = result.total;
+    } else if (type === 'banks' || type === 'bank') {
+      const result = await getBankLedgersPaginated(search, hideZeroBalances, limit, offset);
+      ledgers = result.data;
+      totalCount = result.total;
+    } else if (type === 'sales_returns') {
+      const result = await getSalesReturnsLedgersPaginated(search, hideZeroBalances, limit, offset);
+      ledgers = result.data;
+      totalCount = result.total;
+    } else if (type === 'purchase_returns') {
+      const result = await getPurchaseReturnsLedgersPaginated(search, hideZeroBalances, limit, offset);
+      ledgers = result.data;
+      totalCount = result.total;
+    } else if (type === 'all') {
+      // For 'all' type, fetch from all sources (this will still be slower)
+      const [customers, suppliers, employees, investors, loans, banks, salesReturns, purchaseReturns] = await Promise.all([
+        getCustomerLedgers(search, hideZeroBalances),
+        getSupplierLedgers(search, hideZeroBalances),
+        getEmployeeLedgers(search, hideZeroBalances),
+        getInvestorLedgers(search, hideZeroBalances),
+        getLoansLedgers(search, hideZeroBalances),
+        getBankLedgers(search, hideZeroBalances),
+        getSalesReturnsLedgers(search, hideZeroBalances),
+        getPurchaseReturnsLedgers(search, hideZeroBalances)
+      ]);
+      
+      ledgers = [...customers, ...suppliers, ...employees, ...investors, ...loans, ...banks, ...salesReturns, ...purchaseReturns];
+      totalCount = ledgers.length;
+      ledgers = ledgers.slice(offset, offset + limit);
     }
 
-    // SUPPLIER LEDGERS
-    if (type === 'all' || type === 'supplier') {
-      console.log('Fetching supplier ledgers...');
-      const supplierLedgers = await getSupplierLedgers(search, hideZeroBalances);
-      ledgers.push(...supplierLedgers);
-    }
-
-    // EMPLOYEE LEDGERS
-    if (type === 'all' || type === 'employee') {
-      console.log('Fetching employee ledgers...');
-      const employeeLedgers = await getEmployeeLedgers(search, hideZeroBalances);
-      ledgers.push(...employeeLedgers);
-    }
-
-    // INVESTOR/PARTNER LEDGERS
-    if (type === 'all' || type === 'investors') {
-      console.log('Fetching investor/partner ledgers...');
-      const investorLedgers = await getInvestorLedgers(search, hideZeroBalances);
-      ledgers.push(...investorLedgers);
-    }
-
-    // LOAN LEDGERS
-    if (type === 'all' || type === 'loans') {
-      console.log('Fetching loan ledgers...');
-      const loanLedgers = await getLoansLedgers(search, hideZeroBalances);
-      ledgers.push(...loanLedgers);
-    }
-
-    // BANK ACCOUNT LEDGERS
-    if (type === 'all' || type === 'banks') {
-      console.log('Fetching bank account ledgers...');
-      const bankLedgers = await getBankLedgers(search, hideZeroBalances);
-      ledgers.push(...bankLedgers);
-    }
-
-    const totalCount = ledgers.length;
-    const paginatedLedgers = type === 'all' 
-      ? ledgers.slice(offset, offset + limit)
-      : ledgers;
-
-    console.log(`Returning ${paginatedLedgers.length} ledgers out of ${totalCount} total`);
+    console.log(`Returning ${ledgers.length} ledgers out of ${totalCount} total`);
 
     return NextResponse.json({
       success: true,
-      data: paginatedLedgers,
+      data: ledgers,
       pagination: {
         page,
         limit,
@@ -877,5 +890,753 @@ async function getBankLedgers(search: string, hideZeroBalances: boolean): Promis
   } catch (error) {
     console.error('Error fetching bank account ledgers:', error);
     return [];
+  }
+}
+
+// ==================== OPTIMIZED PAGINATED FUNCTIONS ====================
+
+async function getCustomerLedgersPaginated(
+  search: string,
+  hideZeroBalances: boolean,
+  limit: number,
+  offset: number
+): Promise<{ data: LedgerSummary[]; total: number }> {
+  try {
+    console.log('Fetching customer ledgers (paginated)...');
+    
+    // Build base query
+    let customerQuery = supabaseAdmin
+      .from('customers')
+      .select('id, name, email, phone', { count: 'exact' });
+
+    if (search) {
+      customerQuery = customerQuery.or(`name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`);
+    }
+
+    // Get total count first
+    const { count } = await customerQuery;
+    const total = count || 0;
+
+    // Now fetch paginated data
+    customerQuery = supabaseAdmin
+      .from('customers')
+      .select('id, name, email, phone')
+      .order('name')
+      .range(offset, offset + limit - 1);
+
+    if (search) {
+      customerQuery = customerQuery.or(`name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`);
+    }
+
+    const { data: customers, error } = await customerQuery;
+
+    if (error || !customers) {
+      console.error('Error fetching customers:', error);
+      return { data: [], total: 0 };
+    }
+
+    console.log(`Found ${customers.length} customers for page (total: ${total})`);
+
+    // Fetch aggregated data for these specific customers only
+    const customerIds = customers.map(c => c.id);
+    
+    const [salesOrders, invoices] = await Promise.all([
+      supabaseAdmin
+        .from('sales_orders')
+        .select('customer_id, final_price, grand_total')
+        .in('customer_id', customerIds),
+      supabaseAdmin
+        .from('invoices')
+        .select('customer_id, total, paid_amount')
+        .in('customer_id', customerIds)
+    ]);
+
+    // Build ledger data
+    const ledgers: LedgerSummary[] = customers.map(customer => {
+      const customerOrders = salesOrders.data?.filter(o => o.customer_id === customer.id) || [];
+      const customerInvoices = invoices.data?.filter(i => i.customer_id === customer.id) || [];
+      
+      const totalAmount = customerOrders.reduce((sum, o) => sum + (o.final_price || o.grand_total || 0), 0);
+      const paidAmount = customerInvoices.reduce((sum, i) => sum + (i.paid_amount || 0), 0);
+      const balanceDue = totalAmount - paidAmount;
+
+      return {
+        id: customer.id,
+        name: customer.name,
+        type: 'customer',
+        email: customer.email,
+        phone: customer.phone,
+        total_transactions: customerOrders.length,
+        total_amount: totalAmount,
+        paid_amount: paidAmount,
+        balance_due: balanceDue,
+        status: balanceDue > 0 ? 'pending' : 'paid'
+      };
+    });
+
+    const filteredLedgers = hideZeroBalances 
+      ? ledgers.filter(l => l.balance_due !== 0)
+      : ledgers;
+
+    return { data: filteredLedgers, total: hideZeroBalances ? filteredLedgers.length : total };
+
+  } catch (error) {
+    console.error('Error in getCustomerLedgersPaginated:', error);
+    return { data: [], total: 0 };
+  }
+}
+
+async function getSupplierLedgersPaginated(
+  search: string,
+  hideZeroBalances: boolean,
+  limit: number,
+  offset: number
+): Promise<{ data: LedgerSummary[]; total: number }> {
+  try {
+    console.log('Fetching supplier ledgers (paginated)...');
+    
+    // Build base query with count
+    let countQuery = supabaseAdmin
+      .from('suppliers')
+      .select('id', { count: 'exact', head: true })
+      .eq('is_deleted', false);
+
+    if (search) {
+      countQuery = countQuery.or(`name.ilike.%${search}%,email.ilike.%${search}%,contact.ilike.%${search}%`);
+    }
+
+    const { count } = await countQuery;
+    const total = count || 0;
+
+    // Fetch paginated data
+    const dataQuery = supabaseAdmin
+      .from('suppliers')
+      .select('id, name, email, contact, created_at')
+      .eq('is_deleted', false)
+      .order('name')
+      .range(offset, offset + limit - 1);
+
+    if (search) {
+      const { data: suppliers, error } = await dataQuery.or(`name.ilike.%${search}%,email.ilike.%${search}%,contact.ilike.%${search}%`);
+      
+      if (error || !suppliers) {
+        console.error('Error fetching suppliers:', error);
+        return { data: [], total: 0 };
+      }
+      
+      console.log(`Found ${suppliers.length} suppliers for page (total: ${total})`);
+
+      // Continue processing
+      return await processSuppliers(suppliers, total, hideZeroBalances);
+    }
+
+    const { data: suppliers, error } = await dataQuery;
+    
+    if (error || !suppliers) {
+      console.error('Error fetching suppliers:', error);
+      return { data: [], total: 0 };
+    }
+
+    console.log(`Found ${suppliers.length} suppliers for page (total: ${total})`);
+    return await processSuppliers(suppliers, total, hideZeroBalances);
+
+  } catch (error) {
+    console.error('Error in getSupplierLedgersPaginated:', error);
+    return { data: [], total: 0 };
+  }
+}
+
+async function processSuppliers(
+  suppliers: { id: string; name: string; email: string | null; contact: string | null; created_at: string }[],
+  total: number,
+  hideZeroBalances: boolean
+): Promise<{ data: LedgerSummary[]; total: number }> {
+  try {
+    const supplierIds = suppliers.map(s => s.id);
+    
+    const [vendorBills, vendorPayments, purchaseOrders] = await Promise.all([
+      supabaseAdmin
+        .from('vendor_bills')
+        .select('supplier_id, total_amount, paid_amount, remaining_amount, bill_date, status')
+        .in('supplier_id', supplierIds),
+      supabaseAdmin
+        .from('vendor_payment_history')
+        .select('supplier_id, amount, payment_date')
+        .in('supplier_id', supplierIds),
+      supabaseAdmin
+        .from('purchase_orders')
+        .select('supplier_id, total, status')
+        .in('supplier_id', supplierIds)
+    ]);
+
+    const ledgers: LedgerSummary[] = suppliers.map(supplier => {
+      const bills = vendorBills.data?.filter(b => b.supplier_id === supplier.id) || [];
+      const payments = vendorPayments.data?.filter(p => p.supplier_id === supplier.id) || [];
+      const pos = purchaseOrders.data?.filter(p => p.supplier_id === supplier.id) || [];
+      
+      // Debit = Total vendor bills (what we owe them)
+      const totalDebit = bills.reduce((sum, b) => sum + (b.total_amount || 0), 0);
+      
+      // Credit = Total payments made (what we paid them)
+      const totalCredit = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      
+      // Balance = Debit - Credit (outstanding amount we owe)
+      const balanceDue = totalDebit - totalCredit;
+      
+      const totalPOs = pos.reduce((sum, p) => sum + (p.total || 0), 0);
+      
+      // Get latest transaction date
+      const allDates = [
+        ...bills.map(b => b.bill_date),
+        ...payments.map(p => p.payment_date)
+      ].filter(Boolean);
+      
+      const lastTransactionDate = allDates.length > 0 
+        ? allDates.sort().reverse()[0] 
+        : supplier.created_at;
+
+      return {
+        id: supplier.id,
+        name: supplier.name,
+        type: 'supplier' as const,
+        email: supplier.email || undefined,
+        phone: supplier.contact || undefined,
+        total_transactions: bills.length + payments.length,
+        total_amount: totalDebit,
+        debit: totalDebit,  // Total bills
+        credit: totalCredit, // Total payments
+        paid_amount: totalCredit,
+        balance_due: balanceDue,
+        total_po_value: totalPOs,
+        last_transaction_date: lastTransactionDate,
+        status: balanceDue > 0 ? 'pending' : balanceDue < 0 ? 'overpaid' : 'paid'
+      };
+    });
+
+    const filteredLedgers = hideZeroBalances 
+      ? ledgers.filter(l => Math.abs(l.balance_due) > 0.01)
+      : ledgers;
+
+    return { data: filteredLedgers, total: hideZeroBalances ? filteredLedgers.length : total };
+
+  } catch (error) {
+    console.error('Error in getSupplierLedgersPaginated:', error);
+    return { data: [], total: 0 };
+  }
+}
+
+async function getEmployeeLedgersPaginated(
+  search: string,
+  hideZeroBalances: boolean,
+  limit: number,
+  offset: number
+): Promise<{ data: LedgerSummary[]; total: number }> {
+  try {
+    console.log('Fetching employee ledgers (paginated)...');
+    
+    // Get count first
+    let countQuery = supabaseAdmin
+      .from('employees')
+      .select('id', { count: 'exact', head: true });
+
+    if (search) {
+      countQuery = countQuery.or(`name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%,position.ilike.%${search}%`);
+    }
+
+    const { count } = await countQuery;
+    const total = count || 0;
+
+    // Get paginated data
+    let dataQuery = supabaseAdmin
+      .from('employees')
+      .select('id, name, email, phone, salary, position, department, created_at')
+      .order('name')
+      .range(offset, offset + limit - 1);
+
+    if (search) {
+      dataQuery = dataQuery.or(`name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%,position.ilike.%${search}%`);
+    }
+
+    const { data: employees, error } = await dataQuery;
+
+    if (error || !employees) {
+      console.error('Error fetching employees:', error);
+      return { data: [], total: 0 };
+    }
+
+    console.log(`Found ${employees.length} employees for page (total: ${total})`);
+
+    // Get employee IDs for fetching related data
+    const employeeIds = employees.map(e => e.id);
+
+    // Fetch expenses for these employees
+    const { data: expenses } = await supabaseAdmin
+      .from('expenses')
+      .select('entity_id, amount, date')
+      .eq('entity_type', 'employee')
+      .in('entity_id', employeeIds);
+
+    // Fetch payroll records
+    const { data: payrolls } = await supabaseAdmin
+      .from('payroll_records')
+      .select('employee_id, net_salary, processed_at')
+      .in('employee_id', employeeIds);
+
+    // Build ledgers with transaction data
+    const ledgers: LedgerSummary[] = employees.map(employee => {
+      const empExpenses = expenses?.filter(e => e.entity_id === employee.id) || [];
+      const empPayrolls = payrolls?.filter(p => p.employee_id === employee.id) || [];
+      
+      const totalExpenses = empExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+      const totalPayroll = empPayrolls.reduce((sum, p) => sum + (p.net_salary || 0), 0);
+      const totalAmount = totalExpenses + totalPayroll;
+      
+      const allDates = [
+        ...empExpenses.map(e => e.date),
+        ...empPayrolls.map(p => p.processed_at?.split('T')[0])
+      ].filter(Boolean);
+      
+      const lastTransactionDate = allDates.length > 0 
+        ? allDates.sort().reverse()[0] 
+        : employee.created_at;
+
+      return {
+        id: employee.id,
+        name: `${employee.name}${employee.position ? ` (${employee.position})` : ''}`,
+        type: 'employee',
+        email: employee.email,
+        phone: employee.phone,
+        total_transactions: empExpenses.length + empPayrolls.length,
+        total_amount: totalAmount,
+        paid_amount: totalPayroll,
+        balance_due: totalAmount,
+        last_transaction_date: lastTransactionDate,
+        status: 'active'
+      };
+    });
+
+    return { data: ledgers, total };
+
+  } catch (error) {
+    console.error('Error in getEmployeeLedgersPaginated:', error);
+    return { data: [], total: 0 };
+  }
+}
+
+async function getInvestorLedgersPaginated(
+  search: string,
+  hideZeroBalances: boolean,
+  limit: number,
+  offset: number
+): Promise<{ data: LedgerSummary[]; total: number }> {
+  try {
+    console.log('Fetching investor/partner ledgers (paginated)...');
+    
+    // Get count first from partners table
+    let countQuery = supabaseAdmin
+      .from('partners')
+      .select('id', { count: 'exact', head: true })
+      .eq('is_active', true);
+
+    if (search) {
+      countQuery = countQuery.or(`name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`);
+    }
+
+    const { count } = await countQuery;
+    const total = count || 0;
+
+    // Get paginated data
+    let partnerQuery = supabaseAdmin
+      .from('partners')
+      .select('id, name, email, phone, partner_type, initial_investment, equity_percentage, created_at')
+      .eq('is_active', true)
+      .order('name')
+      .range(offset, offset + limit - 1);
+
+    if (search) {
+      partnerQuery = partnerQuery.or(`name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`);
+    }
+
+    const { data: partners, error } = await partnerQuery;
+
+    if (error || !partners) {
+      console.error('Error fetching partners:', error);
+      return { data: [], total: 0 };
+    }
+
+    console.log(`Found ${partners.length} partners for page (total: ${total})`);
+
+    const partnerIds = partners.map(p => p.id);
+
+    // Fetch investments
+    const { data: investments } = await supabaseAdmin
+      .from('investments')
+      .select('partner_id, amount, investment_date')
+      .in('partner_id', partnerIds);
+
+    // Fetch withdrawals
+    const { data: withdrawals } = await supabaseAdmin
+      .from('withdrawals')
+      .select('partner_id, amount, withdrawal_date')
+      .in('partner_id', partnerIds);
+
+    // Build ledgers with transaction data
+    const ledgers: LedgerSummary[] = partners.map(partner => {
+      const partnerInvestments = investments?.filter(inv => inv.partner_id === partner.id) || [];
+      const partnerWithdrawals = withdrawals?.filter(wd => wd.partner_id === partner.id) || [];
+      
+      const totalInvestments = partnerInvestments.reduce((sum, inv) => sum + (inv.amount || 0), 0);
+      const totalWithdrawals = partnerWithdrawals.reduce((sum, wd) => sum + (wd.amount || 0), 0);
+      
+      const initialInvestment = partner.initial_investment || 0;
+      const netEquity = initialInvestment + totalInvestments - totalWithdrawals;
+      
+      const allTransactionDates = [
+        ...partnerInvestments.map(inv => inv.investment_date),
+        ...partnerWithdrawals.map(wd => wd.withdrawal_date)
+      ].filter(Boolean).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+      
+      const lastTransactionDate = allTransactionDates[0] || partner.created_at;
+
+      return {
+        id: partner.id.toString(),
+        name: `${partner.name}${partner.partner_type ? ` (${partner.partner_type})` : ''}`,
+        type: 'investors',
+        email: partner.email,
+        phone: partner.phone,
+        partner_type: partner.partner_type,
+        equity_percentage: partner.equity_percentage,
+        total_transactions: partnerInvestments.length + partnerWithdrawals.length,
+        total_amount: totalInvestments + totalWithdrawals,
+        balance_due: netEquity,
+        total_investments: totalInvestments,
+        total_withdrawals: totalWithdrawals,
+        net_equity: netEquity,
+        last_transaction_date: lastTransactionDate,
+        status: 'active'
+      };
+    });
+
+    return { data: ledgers, total };
+
+  } catch (error) {
+    console.error('Error in getInvestorLedgersPaginated:', error);
+    return { data: [], total: 0 };
+  }
+}
+
+async function getLoansLedgersPaginated(
+  search: string,
+  hideZeroBalances: boolean,
+  limit: number,
+  offset: number
+): Promise<{ data: LedgerSummary[]; total: number }> {
+  try {
+    // Get count first
+    let countQuery = supabaseAdmin
+      .from('loan_opening_balances')
+      .select('id', { count: 'exact', head: true });
+
+    if (search) {
+      countQuery = countQuery.or(`loan_name.ilike.%${search}%,bank_name.ilike.%${search}%`);
+    }
+
+    const { count } = await countQuery;
+    const total = count || 0;
+
+    // Get paginated data
+    let dataQuery = supabaseAdmin
+      .from('loan_opening_balances')
+      .select('id, loan_name, bank_name, loan_type, original_loan_amount, opening_balance, interest_rate, emi_amount')
+      .order('loan_name')
+      .range(offset, offset + limit - 1);
+
+    if (search) {
+      dataQuery = dataQuery.or(`loan_name.ilike.%${search}%,bank_name.ilike.%${search}%`);
+    }
+
+    const { data: loans, error } = await dataQuery;
+
+    if (error || !loans) {
+      return { data: [], total: 0 };
+    }
+
+    const ledgers: LedgerSummary[] = loans.map(loan => ({
+      id: loan.id,
+      name: `${loan.loan_name} - ${loan.bank_name}`,
+      type: 'loans',
+      loan_type: loan.loan_type,
+      original_amount: loan.original_loan_amount,
+      current_balance: loan.opening_balance,
+      emi_amount: loan.emi_amount,
+      interest_rate: loan.interest_rate,
+      total_transactions: 0,
+      total_amount: loan.original_loan_amount || 0,
+      balance_due: loan.opening_balance || 0,
+      status: 'active'
+    }));
+
+    return { data: ledgers, total };
+
+  } catch (error) {
+    console.error('Error in getLoansLedgersPaginated:', error);
+    return { data: [], total: 0 };
+  }
+}
+
+async function getBankLedgersPaginated(
+  search: string,
+  hideZeroBalances: boolean,
+  limit: number,
+  offset: number
+): Promise<{ data: LedgerSummary[]; total: number }> {
+  try {
+    let bankQuery = supabaseAdmin
+      .from('bank_accounts')
+      .select('id, name, account_number, account_type, current_balance, upi_id', { count: 'exact' })
+      .eq('is_active', true);
+
+    if (search) {
+      bankQuery = bankQuery.or(`name.ilike.%${search}%,account_number.ilike.%${search}%`);
+    }
+
+    const { count } = await bankQuery;
+    const total = count || 0;
+
+    bankQuery = supabaseAdmin
+      .from('bank_accounts')
+      .select('id, name, account_number, account_type, current_balance, upi_id')
+      .eq('is_active', true)
+      .order('name')
+      .range(offset, offset + limit - 1);
+
+    if (search) {
+      bankQuery = bankQuery.or(`name.ilike.%${search}%,account_number.ilike.%${search}%`);
+    }
+
+    const { data: banks, error } = await bankQuery;
+
+    if (error || !banks) {
+      return { data: [], total: 0 };
+    }
+
+    const ledgers: LedgerSummary[] = banks.map(bank => ({
+      id: bank.id,
+      name: bank.name,
+      type: 'bank',
+      account_number: bank.account_number,
+      account_type: bank.account_type,
+      current_balance_amount: bank.current_balance,
+      upi_id: bank.upi_id,
+      total_transactions: 0,
+      total_amount: 0,
+      balance_due: bank.current_balance || 0,
+      status: 'active'
+    }));
+
+    return { data: ledgers, total };
+
+  } catch (error) {
+    console.error('Error in getBankLedgersPaginated:', error);
+    return { data: [], total: 0 };
+  }
+}
+
+// ==================== SALES RETURNS FUNCTIONS ====================
+
+async function getSalesReturnsLedgers(
+  search: string,
+  hideZeroBalances: boolean
+): Promise<LedgerSummary[]> {
+  try {
+    const { data: returns, error } = await supabaseAdmin
+      .from('returns')
+      .select('id, return_type, status, return_value, created_at')
+      .order('created_at', { ascending: false });
+
+    if (error || !returns) {
+      console.error('Error fetching sales returns:', error);
+      return [];
+    }
+
+    const ledgers: LedgerSummary[] = returns.map(ret => ({
+      id: ret.id,
+      name: `Sales Return ${ret.id.slice(0, 8)}`,
+      type: 'sales_returns' as const,
+      total_transactions: 1,
+      total_amount: ret.return_value || 0,
+      balance_due: 0,
+      paid_amount: ret.return_value || 0,
+      return_value: ret.return_value || 0,
+      status: ret.status
+    }));
+
+    return hideZeroBalances ? ledgers.filter(l => l.total_amount > 0) : ledgers;
+
+  } catch (error) {
+    console.error('Error fetching sales returns ledgers:', error);
+    return [];
+  }
+}
+
+async function getSalesReturnsLedgersPaginated(
+  search: string,
+  hideZeroBalances: boolean,
+  limit: number,
+  offset: number
+): Promise<{ data: LedgerSummary[]; total: number }> {
+  try {
+    // Get count first
+    let countQuery = supabaseAdmin
+      .from('returns')
+      .select('id', { count: 'exact', head: true });
+
+    if (search) {
+      countQuery = countQuery.or(`return_type.ilike.%${search}%,status.ilike.%${search}%`);
+    }
+
+    const { count } = await countQuery;
+    const total = count || 0;
+
+    // Get paginated data
+    let dataQuery = supabaseAdmin
+      .from('returns')
+      .select('id, return_type, status, return_value, created_at')
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (search) {
+      dataQuery = dataQuery.or(`return_type.ilike.%${search}%,status.ilike.%${search}%`);
+    }
+
+    const { data: returns, error } = await dataQuery;
+
+    if (error || !returns) {
+      return { data: [], total: 0 };
+    }
+
+    const ledgers: LedgerSummary[] = returns.map(ret => ({
+      id: ret.id,
+      name: `Sales Return ${ret.id.slice(0, 8)}`,
+      type: 'sales_returns' as const,
+      total_transactions: 1,
+      total_amount: ret.return_value || 0,
+      balance_due: 0,
+      paid_amount: ret.return_value || 0,
+      return_value: ret.return_value || 0,
+      return_type: ret.return_type,
+      status: ret.status
+    }));
+
+    const filteredLedgers = hideZeroBalances 
+      ? ledgers.filter(l => l.total_amount > 0)
+      : ledgers;
+
+    return { data: filteredLedgers, total: hideZeroBalances ? filteredLedgers.length : total };
+
+  } catch (error) {
+    console.error('Error in getSalesReturnsLedgersPaginated:', error);
+    return { data: [], total: 0 };
+  }
+}
+
+// ==================== PURCHASE RETURNS FUNCTIONS ====================
+
+async function getPurchaseReturnsLedgers(
+  search: string,
+  hideZeroBalances: boolean
+): Promise<LedgerSummary[]> {
+  try {
+    const { data: returns, error } = await supabaseAdmin
+      .from('purchase_returns')
+      .select('id, return_number, return_date, total_return_amount, net_return_amount, status, reason')
+      .order('return_date', { ascending: false });
+
+    if (error || !returns) {
+      console.error('Error fetching purchase returns:', error);
+      return [];
+    }
+
+    const ledgers: LedgerSummary[] = returns.map(ret => ({
+      id: ret.id,
+      name: `Purchase Return ${ret.return_number}`,
+      type: 'purchase_returns' as const,
+      total_transactions: 1,
+      total_amount: ret.net_return_amount || 0,
+      balance_due: 0,
+      paid_amount: ret.net_return_amount || 0,
+      return_value: ret.net_return_amount || 0,
+      return_number: ret.return_number,
+      return_date: ret.return_date,
+      status: ret.status
+    }));
+
+    return hideZeroBalances ? ledgers.filter(l => l.total_amount > 0) : ledgers;
+
+  } catch (error) {
+    console.error('Error fetching purchase returns ledgers:', error);
+    return [];
+  }
+}
+
+async function getPurchaseReturnsLedgersPaginated(
+  search: string,
+  hideZeroBalances: boolean,
+  limit: number,
+  offset: number
+): Promise<{ data: LedgerSummary[]; total: number }> {
+  try {
+    // Get count first
+    let countQuery = supabaseAdmin
+      .from('purchase_returns')
+      .select('id', { count: 'exact', head: true });
+
+    if (search) {
+      countQuery = countQuery.or(`return_number.ilike.%${search}%,reason.ilike.%${search}%`);
+    }
+
+    const { count } = await countQuery;
+    const total = count || 0;
+
+    // Get paginated data
+    let dataQuery = supabaseAdmin
+      .from('purchase_returns')
+      .select('id, return_number, return_date, total_return_amount, net_return_amount, status, reason')
+      .order('return_date', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (search) {
+      dataQuery = dataQuery.or(`return_number.ilike.%${search}%,reason.ilike.%${search}%`);
+    }
+
+    const { data: returns, error } = await dataQuery;
+
+    if (error || !returns) {
+      return { data: [], total: 0 };
+    }
+
+    const ledgers: LedgerSummary[] = returns.map(ret => ({
+      id: ret.id,
+      name: `Purchase Return ${ret.return_number}`,
+      type: 'purchase_returns' as const,
+      total_transactions: 1,
+      total_amount: ret.net_return_amount || 0,
+      balance_due: 0,
+      paid_amount: ret.net_return_amount || 0,
+      return_value: ret.net_return_amount || 0,
+      return_number: ret.return_number,
+      return_date: ret.return_date,
+      status: ret.status
+    }));
+
+    const filteredLedgers = hideZeroBalances 
+      ? ledgers.filter(l => l.total_amount > 0)
+      : ledgers;
+
+    return { data: filteredLedgers, total: hideZeroBalances ? filteredLedgers.length : total };
+
+  } catch (error) {
+    console.error('Error in getPurchaseReturnsLedgersPaginated:', error);
+    return { data: [], total: 0 };
   }
 }

@@ -13,6 +13,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import {
   ArrowLeft,
   FileText,
@@ -24,6 +29,12 @@ import {
   TrendingDown,
   DollarSign,
   Trash2,
+  Plus,
+  RotateCcw,
+  Receipt,
+  CreditCard,
+  Building2,
+  ArrowRightLeft,
 } from 'lucide-react';
 
 interface LedgerDetail {
@@ -105,10 +116,25 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
     lastMonthIncentive: number;
   } | null>(null);
 
+  // Floating button dialogs state
+  const [createExpenseOpen, setCreateExpenseOpen] = useState(false);
+  const [createInvestmentOpen, setCreateInvestmentOpen] = useState(false);
+  const [createWithdrawalOpen, setCreateWithdrawalOpen] = useState(false);
+  const [createLiabilityOpen, setCreateLiabilityOpen] = useState(false);
+  const [loanSetupOpen, setLoanSetupOpen] = useState(false);
+  const [showFundTransfer, setShowFundTransfer] = useState(false);
+  const [refreshLoading, setRefreshLoading] = useState(false);
+
   useEffect(() => {
     fetchLedgerDetails();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ledgerId, ledgerType]);
+
+  const handleRefresh = async () => {
+    setRefreshLoading(true);
+    await fetchLedgerDetails();
+    setRefreshLoading(false);
+  };
 
   const fetchLedgerDetails = async () => {
     try {
@@ -377,7 +403,15 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
       console.log('🔍 Fetching real employee transactions for:', employeeId);
       
       // Fetch employee transactions from payroll_records only
-      const response = await fetch(`/api/finance/employee-transactions?employee_id=${employeeId}`);
+      // Add cache-busting timestamp to force fresh data
+      const timestamp = Date.now();
+      const response = await fetch(`/api/finance/employee-transactions?employee_id=${employeeId}&_t=${timestamp}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      });
       
       if (response.ok) {
         const data = await response.json();
@@ -771,7 +805,25 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
   };
 
   const exportToCSV = () => {
+    const salaryPaid = transactions
+      .filter(txn => txn.transaction_type === 'Salary Payment' || txn.description.toLowerCase().includes('salary'))
+      .reduce((sum, txn) => sum + txn.credit_amount, 0);
+    
+    const overtimePaid = transactions
+      .filter(txn => txn.transaction_type === 'Overtime Payment' || txn.description.toLowerCase().includes('overtime'))
+      .reduce((sum, txn) => sum + txn.credit_amount, 0);
+    
+    const incentivePaid = transactions
+      .filter(txn => txn.transaction_type === 'Incentive Payment' || txn.description.toLowerCase().includes('incentive'))
+      .reduce((sum, txn) => sum + txn.credit_amount, 0);
+
     const csv = [
+      // Header
+      ['Employee Ledger Statement'],
+      [`Employee: ${ledgerDetail?.name}`],
+      [`Generated: ${new Date().toLocaleDateString('en-IN')} ${new Date().toLocaleTimeString('en-IN')}`],
+      [''],
+      // Transaction Data
       ['Date', 'Description', 'Reference', 'Type', 'Debit', 'Credit', 'Balance', 'Status'],
       ...transactions.map(txn => [
         formatDate(txn.date),
@@ -782,7 +834,16 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
         txn.credit_amount > 0 ? txn.credit_amount.toString() : '',
         txn.running_balance.toString(),
         txn.status || 'completed'
-      ])
+      ]),
+      [''],
+      // Summary
+      ['PAYMENT BREAKDOWN SUMMARY'],
+      ['Type', 'Amount'],
+      ['Total Salary Paid', salaryPaid.toString()],
+      ['Total Overtime Paid', overtimePaid.toString()],
+      ['Total Incentive Paid', incentivePaid.toString()],
+      ['Grand Total Paid', calculatedTotals.totalCredit.toString()],
+      ['Total Transactions', transactions.length.toString()]
     ].map(row => row.join(',')).join('\n');
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -809,9 +870,30 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
   };
 
   const exportToExcel = () => {
+    const salaryPaid = transactions
+      .filter(txn => txn.transaction_type === 'Salary Payment' || txn.description.toLowerCase().includes('salary'))
+      .reduce((sum, txn) => sum + txn.credit_amount, 0);
+    
+    const overtimePaid = transactions
+      .filter(txn => txn.transaction_type === 'Overtime Payment' || txn.description.toLowerCase().includes('overtime'))
+      .reduce((sum, txn) => sum + txn.credit_amount, 0);
+    
+    const incentivePaid = transactions
+      .filter(txn => txn.transaction_type === 'Incentive Payment' || txn.description.toLowerCase().includes('incentive'))
+      .reduce((sum, txn) => sum + txn.credit_amount, 0);
+
     // Create Excel-compatible HTML
     const excelData = `
       <table border="1">
+        <tr style="background-color: #2563eb; color: white; font-weight: bold;">
+          <td colspan="8" style="text-align: center; font-size: 16px;">PALAKA ERP - Employee Statement</td>
+        </tr>
+        <tr style="background-color: #f8fafc;">
+          <td colspan="8" style="text-align: center; padding: 10px;">
+            Employee: ${ledgerDetail?.name} | Generated: ${new Date().toLocaleDateString('en-IN')} ${new Date().toLocaleTimeString('en-IN')}
+          </td>
+        </tr>
+        <tr><td colspan="8"></td></tr>
         <tr style="background-color: #f0f0f0; font-weight: bold;">
           <td>Date</td><td>Description</td><td>Reference</td><td>Type</td>
           <td>Debit (₹)</td><td>Credit (₹)</td><td>Balance (₹)</td><td>Status</td>
@@ -828,6 +910,34 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
             <td>${txn.status || 'completed'}</td>
           </tr>
         `).join('')}
+        <tr><td colspan="8"></td></tr>
+        <tr style="background-color: #1e40af; color: white; font-weight: bold;">
+          <td colspan="8" style="text-align: center;">PAYMENT BREAKDOWN SUMMARY</td>
+        </tr>
+        <tr style="background-color: #f8fafc; font-weight: bold;">
+          <td colspan="4">Payment Type</td>
+          <td colspan="4" style="text-align: right;">Amount (₹)</td>
+        </tr>
+        <tr>
+          <td colspan="4">Total Salary Paid</td>
+          <td colspan="4" style="text-align: right; color: #16a34a; font-weight: bold;">${salaryPaid}</td>
+        </tr>
+        <tr>
+          <td colspan="4">Total Overtime Paid</td>
+          <td colspan="4" style="text-align: right; color: #dc2626; font-weight: bold;">${overtimePaid}</td>
+        </tr>
+        <tr>
+          <td colspan="4">Total Incentive Paid</td>
+          <td colspan="4" style="text-align: right; color: #7c3aed; font-weight: bold;">${incentivePaid}</td>
+        </tr>
+        <tr style="background-color: #1e40af; color: white; font-weight: bold;">
+          <td colspan="4">GRAND TOTAL PAID</td>
+          <td colspan="4" style="text-align: right;">${calculatedTotals.totalCredit}</td>
+        </tr>
+        <tr>
+          <td colspan="4">Total Transactions</td>
+          <td colspan="4" style="text-align: right;">${transactions.length}</td>
+        </tr>
       </table>
     `;
 
@@ -940,20 +1050,20 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
           
           <div class="summary-cards">
             <div class="summary-card">
-              <h4>Total ${ledgerType === 'supplier' ? 'Bills' : 'Debit'}</h4>
-              <p class="debit">${formatCurrency(ledgerDetail?.debit || ledgerDetail?.total_amount || 0)}</p>
+              <h4>Total Debit</h4>
+              <p class="debit">${formatCurrency(calculatedTotals.totalDebit)}</p>
             </div>
             <div class="summary-card">
-              <h4>Total ${ledgerType === 'supplier' ? 'Payments' : 'Credit'}</h4>
-              <p class="credit">${formatCurrency(ledgerDetail?.credit || 0)}</p>
+              <h4>Total Credit</h4>
+              <p class="credit">${formatCurrency(calculatedTotals.totalCredit)}</p>
             </div>
             <div class="summary-card">
               <h4>Outstanding Balance</h4>
-              <p class="balance">${formatCurrency(ledgerDetail?.balance_due || 0)}</p>
+              <p class="balance">${formatCurrency(Math.abs(calculatedTotals.netBalance))}</p>
             </div>
             <div class="summary-card">
               <h4>Total Transactions</h4>
-              <p class="transactions">${ledgerDetail?.total_transactions || 0}</p>
+              <p class="transactions">${calculatedTotals.transactionCount}</p>
             </div>
           </div>
           
@@ -986,6 +1096,100 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
               `).join('')}
             </tbody>
           </table>
+          
+          ${ledgerType === 'employee' ? `
+          <div class="salary-breakdown" style="margin-top: 30px; padding: 20px; background: #fafafa; border-radius: 8px;">
+            <h3 style="font-size: 18px; color: #1e40af; margin-bottom: 15px; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px;">Payment Breakdown Summary</h3>
+            
+            <div class="breakdown-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+              <div class="breakdown-card" style="background: white; padding: 15px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                <div style="font-size: 12px; color: #64748b; text-transform: uppercase; margin-bottom: 5px;">Total Salary Paid</div>
+                <div style="font-size: 20px; font-weight: bold; color: #16a34a;">
+                  ${formatCurrency(
+                    transactions
+                      .filter(txn => 
+                        txn.transaction_type === 'Salary Payment' || 
+                        txn.description.toLowerCase().includes('salary')
+                      )
+                      .reduce((sum, txn) => sum + txn.credit_amount, 0)
+                  )}
+                </div>
+              </div>
+              
+              <div class="breakdown-card" style="background: white; padding: 15px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                <div style="font-size: 12px; color: #64748b; text-transform: uppercase; margin-bottom: 5px;">Total Overtime Paid</div>
+                <div style="font-size: 20px; font-weight: bold; color: #dc2626;">
+                  ${formatCurrency(
+                    transactions
+                      .filter(txn => 
+                        txn.transaction_type === 'Overtime Payment' || 
+                        txn.description.toLowerCase().includes('overtime')
+                      )
+                      .reduce((sum, txn) => sum + txn.credit_amount, 0)
+                  )}
+                </div>
+              </div>
+              
+              <div class="breakdown-card" style="background: white; padding: 15px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                <div style="font-size: 12px; color: #64748b; text-transform: uppercase; margin-bottom: 5px;">Total Incentive Paid</div>
+                <div style="font-size: 20px; font-weight: bold; color: #7c3aed;">
+                  ${formatCurrency(
+                    transactions
+                      .filter(txn => 
+                        txn.transaction_type === 'Incentive Payment' || 
+                        txn.description.toLowerCase().includes('incentive')
+                      )
+                      .reduce((sum, txn) => sum + txn.credit_amount, 0)
+                  )}
+                </div>
+              </div>
+              
+              <div class="breakdown-card" style="background: white; padding: 15px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                <div style="font-size: 12px; color: #64748b; text-transform: uppercase; margin-bottom: 5px;">Total Paid (All)</div>
+                <div style="font-size: 20px; font-weight: bold; color: #1e40af;">
+                  ${formatCurrency(calculatedTotals.totalCredit)}
+                </div>
+              </div>
+            </div>
+            
+            <div class="period-breakdown" style="margin-top: 20px;">
+              <h4 style="font-size: 16px; color: #374151; margin-bottom: 10px;">Current Month Performance</h4>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+                ${employeeSalaryInfo ? `
+                <div style="background: white; padding: 10px; border-radius: 4px; border-left: 4px solid #16a34a;">
+                  <div style="font-size: 11px; color: #64748b;">Monthly Salary</div>
+                  <div style="font-weight: bold; color: #16a34a;">${formatCurrency(employeeSalaryInfo.monthlySalary)}</div>
+                </div>
+                <div style="background: white; padding: 10px; border-radius: 4px; border-left: 4px solid #2563eb;">
+                  <div style="font-size: 11px; color: #64748b;">Current Month Paid</div>
+                  <div style="font-weight: bold; color: #2563eb;">${formatCurrency(employeeSalaryInfo.currentMonthPaid)}</div>
+                </div>
+                <div style="background: white; padding: 10px; border-radius: 4px; border-left: 4px solid #dc2626;">
+                  <div style="font-size: 11px; color: #64748b;">Current Month Pending</div>
+                  <div style="font-weight: bold; color: #dc2626;">${formatCurrency(employeeSalaryInfo.currentMonthPending)}</div>
+                </div>
+                <div style="background: white; padding: 10px; border-radius: 4px; border-left: 4px solid #7c3aed;">
+                  <div style="font-size: 11px; color: #64748b;">Incentives Earned</div>
+                  <div style="font-weight: bold; color: #7c3aed;">${formatCurrency(employeeSalaryInfo.currentMonthIncentive)}</div>
+                </div>
+                ` : ''}
+              </div>
+            </div>
+            
+            <div class="payment-summary" style="margin-top: 20px; border-top: 1px solid #e5e7eb; padding-top: 15px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; background: white; padding: 15px; border-radius: 6px; border: 2px solid #1e40af;">
+                <div>
+                  <div style="font-size: 14px; color: #64748b;">Grand Total Paid (All Time)</div>
+                  <div style="font-size: 24px; font-weight: bold; color: #1e40af;">${formatCurrency(calculatedTotals.totalCredit)}</div>
+                </div>
+                <div style="text-align: right;">
+                  <div style="font-size: 12px; color: #64748b;">Total Entries: ${transactions.length}</div>
+                  <div style="font-size: 12px; color: #64748b;">Period: ${transactions.length > 0 ? formatDate(transactions[transactions.length - 1].date) : '-'} to ${transactions.length > 0 ? formatDate(transactions[0].date) : '-'}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          ` : ''}
           
           <div class="footer">
             <p>This statement is generated electronically and does not require a signature.</p>
@@ -1023,35 +1227,15 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
     <div className="w-full min-h-screen p-4">
       {/* Compact Header */}
       <div className="mb-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => router.push('/ledgers')}
-            >
-              <ArrowLeft className="h-4 w-4 mr-1" />
-              Back
-            </Button>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                <FileText className="h-6 w-6 text-blue-600" />
-                {ledgerDetail.name}
-              </h1>
-              <p className="text-sm text-gray-600">
-                {ledgerType.charAt(0).toUpperCase() + ledgerType.slice(1)} Ledger - Account Statement
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={handleExport} className="gap-1">
-              <Download className="h-4 w-4" />
-              Export
-            </Button>
-            <Button variant="outline" size="sm" onClick={handlePrint} className="gap-1">
-              <Printer className="h-4 w-4" />
-              Print
-            </Button>
+        <div className="flex items-center justify-center mb-3">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2 justify-center">
+              <FileText className="h-6 w-6 text-blue-600" />
+              {ledgerDetail.name}
+            </h1>
+            <p className="text-sm text-gray-600 text-center">
+              {ledgerType.charAt(0).toUpperCase() + ledgerType.slice(1)} Ledger - Account Statement
+            </p>
           </div>
         </div>
       </div>
@@ -1475,6 +1659,513 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
           )}
         </CardContent>
       </Card>
+
+      {/* Navigation & Document Actions - Left Side */}
+      <div className="fixed top-20 left-4 z-50 flex flex-col gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => router.push('/ledgers')}
+          className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-white border-2"
+          title="Back to Ledgers"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleExport}
+          className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-white border-2"
+          title="Export"
+        >
+          <Download className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handlePrint}
+          className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-white border-2"
+          title="Print"
+        >
+          <Printer className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={refreshLoading}
+          className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-white border-2"
+          title="Refresh"
+        >
+          {refreshLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RotateCcw className="h-4 w-4" />
+          )}
+        </Button>
+      </div>
+
+      {/* Financial Action Buttons - Right Corner - Always Visible */}
+      <div className="fixed top-20 right-4 z-50 flex flex-col gap-2">
+        
+        <Button
+          size="sm"
+          className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-red-600 hover:bg-red-700 border-0"
+          onClick={() => setCreateExpenseOpen(true)}
+          title="Add Expense"
+        >
+          <Plus className="h-4 w-4 text-white" />
+        </Button>
+        <Button
+          size="sm"
+          className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-green-600 hover:bg-green-700 border-0"
+          onClick={() => setCreateInvestmentOpen(true)}
+          title="Investment"
+        >
+          <TrendingUp className="h-4 w-4 text-white" />
+        </Button>
+        <Button
+          size="sm"
+          className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-purple-600 hover:bg-purple-700 border-0"
+          onClick={() => setCreateWithdrawalOpen(true)}
+          title="Withdrawal"
+        >
+          <TrendingDown className="h-4 w-4 text-white" />
+        </Button>
+        <Button
+          size="sm"
+          className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-blue-600 hover:bg-blue-700 border-0"
+          onClick={() => setCreateLiabilityOpen(true)}
+          title="Liabilities"
+        >
+          <CreditCard className="h-4 w-4 text-white" />
+        </Button>
+        <Button
+          size="sm"
+          className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-orange-600 hover:bg-orange-700 border-0"
+          onClick={() => setLoanSetupOpen(true)}
+          title="Loan Setup"
+        >
+          <Building2 className="h-4 w-4 text-white" />
+        </Button>
+        <Button
+          size="sm"
+          className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-indigo-600 hover:bg-indigo-700 border-0"
+          onClick={() => setShowFundTransfer(true)}
+          title="Fund Transfer"
+        >
+          <ArrowRightLeft className="h-4 w-4 text-white" />
+        </Button>
+      </div>
+
+      {/* Dialog Modals */}
+      
+      {/* Create Expense Dialog */}
+      <Dialog open={createExpenseOpen} onOpenChange={setCreateExpenseOpen}>
+        <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader className="pb-6">
+            <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+              <Receipt className="h-5 w-5 text-red-600" />
+              Create New Expense
+            </DialogTitle>
+            <DialogDescription>
+              Add a new expense entry with automatic accounting integration
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 py-4">
+            <div className="space-y-6">
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="font-medium text-gray-900 mb-4 flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  Basic Information
+                </h3>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="date" className="text-sm font-medium">
+                      Expense Date *
+                    </Label>
+                    <Input
+                      id="date"
+                      type="date"
+                      className="w-full"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="amount" className="text-sm font-medium">
+                      Amount (₹) *
+                    </Label>
+                    <Input
+                      id="amount"
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      className="w-full text-lg"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="category" className="text-sm font-medium">
+                      Expense Category *
+                    </Label>
+                    <Select>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select expense category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="office-supplies">Office Supplies</SelectItem>
+                        <SelectItem value="travel">Travel & Transportation</SelectItem>
+                        <SelectItem value="utilities">Utilities</SelectItem>
+                        <SelectItem value="marketing">Marketing & Advertising</SelectItem>
+                        <SelectItem value="meals">Meals & Entertainment</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="description" className="text-sm font-medium">
+                      Description
+                    </Label>
+                    <Textarea
+                      id="description"
+                      placeholder="Enter expense description..."
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="space-y-6">
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h3 className="font-medium text-gray-900 mb-4">Payment Information</h3>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Payment Method</Label>
+                    <Select>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select payment method" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cash">Cash</SelectItem>
+                        <SelectItem value="bank">Bank Transfer</SelectItem>
+                        <SelectItem value="card">Credit/Debit Card</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateExpenseOpen(false)}>
+              Cancel
+            </Button>
+            <Button className="bg-red-600 hover:bg-red-700">
+              Create Expense
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Investment Dialog */}
+      <Dialog open={createInvestmentOpen} onOpenChange={setCreateInvestmentOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-green-600" />
+              Create Investment
+            </DialogTitle>
+            <DialogDescription>
+              Record a new investment transaction
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Investment Date</Label>
+              <Input type="date" />
+            </div>
+            <div className="space-y-2">
+              <Label>Amount (₹)</Label>
+              <Input type="number" placeholder="0.00" />
+            </div>
+            <div className="space-y-2">
+              <Label>Investment Type</Label>
+              <Select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select investment type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="stocks">Stocks</SelectItem>
+                  <SelectItem value="bonds">Bonds</SelectItem>
+                  <SelectItem value="mutual-funds">Mutual Funds</SelectItem>
+                  <SelectItem value="fixed-deposit">Fixed Deposit</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea placeholder="Investment details..." />
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateInvestmentOpen(false)}>
+              Cancel
+            </Button>
+            <Button className="bg-green-600 hover:bg-green-700">
+              Create Investment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Withdrawal Dialog */}
+      <Dialog open={createWithdrawalOpen} onOpenChange={setCreateWithdrawalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+              <TrendingDown className="h-5 w-5 text-purple-600" />
+              Create Withdrawal
+            </DialogTitle>
+            <DialogDescription>
+              Record a cash withdrawal or fund removal
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Withdrawal Date</Label>
+              <Input type="date" />
+            </div>
+            <div className="space-y-2">
+              <Label>Amount (₹)</Label>
+              <Input type="number" placeholder="0.00" />
+            </div>
+            <div className="space-y-2">
+              <Label>From Account</Label>
+              <Select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select account" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="main-account">Main Business Account</SelectItem>
+                  <SelectItem value="savings">Savings Account</SelectItem>
+                  <SelectItem value="cash">Cash Register</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Purpose</Label>
+              <Textarea placeholder="Reason for withdrawal..." />
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateWithdrawalOpen(false)}>
+              Cancel
+            </Button>
+            <Button className="bg-purple-600 hover:bg-purple-700">
+              Create Withdrawal
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Liability Dialog */}
+      <Dialog open={createLiabilityOpen} onOpenChange={setCreateLiabilityOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-blue-600" />
+              Record Liability
+            </DialogTitle>
+            <DialogDescription>
+              Add a new liability or debt record
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Liability Date</Label>
+              <Input type="date" />
+            </div>
+            <div className="space-y-2">
+              <Label>Amount (₹)</Label>
+              <Input type="number" placeholder="0.00" />
+            </div>
+            <div className="space-y-2">
+              <Label>Liability Type</Label>
+              <Select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select liability type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="loan">Bank Loan</SelectItem>
+                  <SelectItem value="credit-card">Credit Card</SelectItem>
+                  <SelectItem value="accounts-payable">Accounts Payable</SelectItem>
+                  <SelectItem value="tax-liability">Tax Liability</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Creditor/Institution</Label>
+              <Input placeholder="Bank name or creditor..." />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea placeholder="Liability details..." />
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateLiabilityOpen(false)}>
+              Cancel
+            </Button>
+            <Button className="bg-blue-600 hover:bg-blue-700">
+              Record Liability
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Loan Setup Dialog */}
+      <Dialog open={loanSetupOpen} onOpenChange={setLoanSetupOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-orange-600" />
+              Loan Setup
+            </DialogTitle>
+            <DialogDescription>
+              Set up a new loan account with payment schedule
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Loan Date</Label>
+                <Input type="date" />
+              </div>
+              <div className="space-y-2">
+                <Label>Principal Amount (₹)</Label>
+                <Input type="number" placeholder="0.00" />
+              </div>
+              <div className="space-y-2">
+                <Label>Interest Rate (%)</Label>
+                <Input type="number" step="0.01" placeholder="0.00" />
+              </div>
+              <div className="space-y-2">
+                <Label>Term (Months)</Label>
+                <Input type="number" placeholder="12" />
+              </div>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Lender</Label>
+                <Input placeholder="Bank or lender name..." />
+              </div>
+              <div className="space-y-2">
+                <Label>Loan Type</Label>
+                <Select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select loan type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="business">Business Loan</SelectItem>
+                    <SelectItem value="equipment">Equipment Loan</SelectItem>
+                    <SelectItem value="working-capital">Working Capital</SelectItem>
+                    <SelectItem value="personal">Personal Loan</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Purpose</Label>
+                <Textarea placeholder="Loan purpose and details..." />
+              </div>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLoanSetupOpen(false)}>
+              Cancel
+            </Button>
+            <Button className="bg-orange-600 hover:bg-orange-700">
+              Setup Loan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Fund Transfer Dialog */}
+      <Dialog open={showFundTransfer} onOpenChange={setShowFundTransfer}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+              <ArrowRightLeft className="h-5 w-5 text-indigo-600" />
+              Fund Transfer
+            </DialogTitle>
+            <DialogDescription>
+              Transfer funds between accounts
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Transfer Date</Label>
+              <Input type="date" />
+            </div>
+            <div className="space-y-2">
+              <Label>Amount (₹)</Label>
+              <Input type="number" placeholder="0.00" />
+            </div>
+            <div className="space-y-2">
+              <Label>From Account</Label>
+              <Select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select source account" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="main">Main Business Account</SelectItem>
+                  <SelectItem value="savings">Savings Account</SelectItem>
+                  <SelectItem value="cash">Cash Register</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>To Account</Label>
+              <Select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select destination account" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="main">Main Business Account</SelectItem>
+                  <SelectItem value="savings">Savings Account</SelectItem>
+                  <SelectItem value="cash">Cash Register</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Reference/Notes</Label>
+              <Textarea placeholder="Transfer reference or notes..." />
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowFundTransfer(false)}>
+              Cancel
+            </Button>
+            <Button className="bg-indigo-600 hover:bg-indigo-700">
+              Transfer Funds
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

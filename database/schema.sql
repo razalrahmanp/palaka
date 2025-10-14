@@ -1279,6 +1279,7 @@ CREATE TABLE public.payroll_records (
   processed_by uuid,
   processed_at timestamp without time zone,
   created_at timestamp without time zone DEFAULT now(),
+  payment_type character varying DEFAULT 'salary'::character varying CHECK (payment_type::text = ANY (ARRAY['salary'::character varying, 'overtime'::character varying, 'incentive'::character varying, 'bonus'::character varying, 'allowance'::character varying, 'reimbursement'::character varying]::text[])),
   CONSTRAINT payroll_records_pkey PRIMARY KEY (id),
   CONSTRAINT payroll_records_salary_structure_id_fkey FOREIGN KEY (salary_structure_id) REFERENCES public.salary_structures(id),
   CONSTRAINT payroll_records_processed_by_fkey FOREIGN KEY (processed_by) REFERENCES public.users(id),

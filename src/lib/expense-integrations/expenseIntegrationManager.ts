@@ -74,7 +74,8 @@ export function getEntityTypeFromCategory(category: string, subcategory: string)
     'Bonus - Festival',
     'Allowance - Travel',
     'Allowance - Medical',
-    'Overtime Payment'
+    'Overtime Payment',
+    'Incentive Pay'
   ];
 
   // Vendor/Supplier-related categories
@@ -122,6 +123,7 @@ export function getExpenseTypeFromSubcategory(subcategory: string): string {
   if (subcategory.includes('Bonus')) return 'bonus';
   if (subcategory.includes('Allowance')) return 'allowance';
   if (subcategory.includes('Overtime')) return 'overtime';
+  if (subcategory.includes('Incentive')) return 'incentive';
 
   // Default
   return 'other';
@@ -196,7 +198,7 @@ export async function processExpenseIntegration(params: EntityExpenseParams): Pr
       }
 
       case 'employee': {
-        const paymentType = getExpenseTypeFromSubcategory(subcategory) as 'salary' | 'bonus' | 'allowance' | 'overtime' | 'reimbursement';
+        const paymentType = getExpenseTypeFromSubcategory(subcategory) as 'salary' | 'bonus' | 'allowance' | 'overtime' | 'incentive' | 'reimbursement';
         
         const employeeParams: EmployeePaymentParams = {
           expenseId,

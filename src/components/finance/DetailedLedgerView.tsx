@@ -23,6 +23,7 @@ import {
   TrendingUp,
   TrendingDown,
   DollarSign,
+  Trash2,
 } from 'lucide-react';
 
 interface LedgerDetail {
@@ -52,6 +53,8 @@ interface Transaction {
   running_balance: number;
   source_document?: string;
   status?: string;
+  payroll_record_id?: string;
+  can_delete?: boolean;
 }
 
 interface VendorBill {
@@ -133,10 +136,10 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
       } else if (ledgerType === 'customer') {
         fetchedTransactions = await fetchCustomerTransactions(ledgerId);
       } else if (ledgerType === 'employee') {
-        console.log('🔍 Generating employee transactions for ledger:', { ledgerId, ledgerType });
-        // For now, use enhanced mock data based on real salary patterns
-        fetchedTransactions = generateEmployeeMockTransactions(ledger);
-        console.log('✅ Employee transactions generated:', fetchedTransactions.length);
+        console.log('🔍 Fetching employee transactions for ledger:', { ledgerId, ledgerType });
+        // Try to fetch real data first, fallback to mock data
+        fetchedTransactions = await fetchEmployeeTransactions(ledgerId);
+        console.log('✅ Employee transactions fetched:', fetchedTransactions.length);
       } else {
         // For other types, use mock data for now
         fetchedTransactions = generateMockTransactions(ledger);
@@ -166,23 +169,26 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
     try {
       console.log('🔍 Calculating employee salary info for:', employeeId);
       
-      // Get position from ledger detail
-      const position = ledgerDetail?.name.includes('(') 
-        ? ledgerDetail.name.match(/\(([^)]+)\)/)?.[1] 
-        : 'Staff';
+      // Fetch actual salary from employee table
+      let monthlySalary = 25000; // Default fallback
       
-      // Determine monthly salary based on position
-      const getBaseSalary = (pos: string | undefined): number => {
-        if (!pos) return 25000;
-        const posLower = pos.toLowerCase();
-        if (posLower.includes('coordinator')) return 35000;
-        if (posLower.includes('representative')) return 30000;
-        if (posLower.includes('manager')) return 45000;
-        if (posLower.includes('assistant')) return 22000;
-        return 25000;
-      };
-      
-      const monthlySalary = getBaseSalary(position);
+      try {
+        const employeeSalaryResponse = await fetch(`/api/employees/${employeeId}`);
+        if (employeeSalaryResponse.ok) {
+          const employeeData = await employeeSalaryResponse.json();
+          if (employeeData.success && employeeData.data?.salary) {
+            monthlySalary = parseFloat(employeeData.data.salary);
+            console.log(`✅ Fetched salary from database: ₹${monthlySalary} for employee ${employeeId}`);
+          } else {
+            console.warn(`⚠️ No salary found in database for employee ${employeeId}, using default: ₹${monthlySalary}`);
+          }
+        } else {
+          console.warn(`⚠️ Failed to fetch employee data for ${employeeId}, using default salary: ₹${monthlySalary}`);
+        }
+      } catch (error) {
+        console.error('Error fetching employee salary from database:', error);
+        console.log(`Using default salary: ₹${monthlySalary}`);
+      }
       
       // Get current date for month calculations
       const currentDate = new Date();
@@ -246,7 +252,7 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
       });
       
       console.log('✅ Employee salary info calculated:', {
-        position,
+        employeeId,
         monthlySalary,
         totalPaid: totalPaidAmount,
         currentMonth: {
@@ -366,6 +372,88 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
     }
   };
 
+  const fetchEmployeeTransactions = async (employeeId: string): Promise<Transaction[]> => {
+    try {
+      console.log('🔍 Fetching real employee transactions for:', employeeId);
+      
+      // Fetch employee transactions from payroll_records only
+      const response = await fetch(`/api/finance/employee-transactions?employee_id=${employeeId}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('🔍 API Response received:', { 
+          success: data.success, 
+          hasTransactions: !!data.transactions,
+          transactionCount: data.transactions ? Object.keys(data.transactions).length : 0
+        });
+        if (data.success && data.transactions) {
+          // Combine salary_payments and expense_reimbursements into a flat array
+          const allTransactions = [
+            ...(data.transactions.salary_payments || []),
+            ...(data.transactions.expense_reimbursements || [])
+          ];
+          
+          if (allTransactions.length > 0) {
+            console.log('✅ Found real employee transactions:', allTransactions.length);
+            
+            // Convert API response format to our Transaction format
+            const convertedTransactions: Transaction[] = allTransactions.map((txn: {
+              id: string;
+              date: string;
+              description: string;
+              type: string;
+              reference: string;
+              amount: number;
+              transaction_type: string;
+              status?: string;
+              payroll_record_id?: string;
+              can_delete?: boolean;
+            }) => ({
+              id: txn.id,
+              date: txn.date,
+              description: txn.description,
+              reference_number: txn.reference,
+              transaction_type: txn.type,
+              debit_amount: txn.transaction_type === 'debit' ? txn.amount : 0,
+              credit_amount: txn.transaction_type === 'credit' ? txn.amount : 0,
+              running_balance: 0, // Will be calculated later
+              source_document: `Expense Record - Salaries & Benefits`,
+              status: txn.status || 'completed',
+              payroll_record_id: txn.payroll_record_id,
+              can_delete: txn.can_delete
+            }));
+            
+            // Sort by date (newest first)
+            convertedTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            
+            // Calculate running balance
+            let runningBalance = 0;
+            convertedTransactions.forEach(txn => {
+              runningBalance += (txn.credit_amount - txn.debit_amount);
+              txn.running_balance = runningBalance;
+            });
+            
+            return convertedTransactions;
+          }
+        }
+      }
+      
+      console.log('❌ API call failed or returned no data');
+      const errorText = await response.text().catch(() => 'Could not read response');
+      console.log('🔍 API Response details:', { 
+        responseOk: response.ok, 
+        status: response.status,
+        employeeId,
+        errorText: errorText.substring(0, 200)
+      });
+      return [];
+      
+    } catch (error) {
+      console.error('Error fetching employee transactions:', error);
+      return [];
+    }
+  };
+
   const fetchCustomerTransactions = async (customerId: string): Promise<Transaction[]> => {
     try {
       console.log('🔍 Fetching customer transactions for:', customerId);
@@ -466,6 +554,44 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
     }
   };
 
+  const handleDeletePayment = async (payrollRecordId: string, description: string) => {
+    if (!confirm(`Are you sure you want to delete this payment?\n\n"${description}"\n\nThis will remove the payroll record, expense record, and reverse any bank/cash transactions.`)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      const response = await fetch('/api/finance/delete-employee-payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          payroll_record_id: payrollRecordId,
+          confirm: true
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        // Show success message
+        alert(`Payment deleted successfully!\n\nDeleted:\n- Payroll record: ${result.summary.payroll_record_deleted ? '✅' : '❌'}\n- Expense record: ${result.summary.expense_record_deleted ? '✅' : '❌'}\n- Bank/Cash transaction: ${result.summary.bank_transaction_deleted || result.summary.cash_transaction_deleted ? '✅' : '❌'}\n- Balance reversed: ${result.summary.balance_reversed ? '✅' : '❌'}`);
+        
+        // Refresh the ledger data
+        await fetchLedgerDetails();
+      } else {
+        alert(`Failed to delete payment: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error deleting payment:', error);
+      alert('Failed to delete payment. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
 
 
   const generateMockTransactions = (ledger: LedgerDetail | undefined): Transaction[] => {
@@ -473,7 +599,7 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
     
     // For employees, generate more realistic data
     if (ledger.type === 'employee') {
-      return generateEmployeeMockTransactions(ledger);
+      return [];
     }
     
     // Generate transaction entries in chronological order first
@@ -534,65 +660,7 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
     return transactionsWithBalance;
   };
 
-  const generateEmployeeMockTransactions = (ledger: LedgerDetail): Transaction[] => {
-    if (!ledger) return [];
-    
-    // Generate realistic employee salary data based on actual expense patterns
-    const employeeName = ledger.name.split('(')[0].trim(); // Extract name without position
-    const position = ledger.name.includes('(') ? ledger.name.match(/\(([^)]+)\)/)?.[1] : 'Staff';
-    
-    // Create realistic salary and incentive payments similar to the expense data
-    const transactions: Omit<Transaction, 'running_balance'>[] = [];
-    
-    // Generate recent salary transactions (last 3 months)
-    const salaryTransactions = [
-      { date: '2025-10-10', desc: `SALARY ${employeeName.toUpperCase()}`, amount: 6000, type: 'Fixed' },
-      { date: '2025-10-09', desc: `${employeeName.split(' ')[0].toUpperCase()} INCENTIVE`, amount: 4000, type: 'Variable' },
-      { date: '2025-10-08', desc: `${employeeName.split(' ')[0].toLowerCase()} incentive`, amount: 1600, type: 'Variable' },
-      { date: '2025-10-08', desc: `incentive ${employeeName.split(' ')[0].toLowerCase()}`, amount: 3500, type: 'Variable' },
-      { date: '2025-10-01', desc: `SALARY`, amount: 8000, type: 'Fixed' },
-      { date: '2025-09-23', desc: `SALARY`, amount: 3000, type: 'Fixed' },
-      { date: '2025-09-20', desc: `SALARY`, amount: 4000, type: 'Fixed' },
-      { date: '2025-09-17', desc: `INCENTIVE`, amount: 8800, type: 'Variable' },
-      { date: '2025-09-16', desc: `INCENTIVE ${employeeName.split(' ')[0].toUpperCase()}`, amount: 1200, type: 'Variable' },
-      { date: '2025-09-12', desc: `INCENTIVE`, amount: 9000, type: 'Variable' },
-      { date: '2025-09-11', desc: `salary ${employeeName.split(' ')[0].toLowerCase()}`, amount: 7000, type: 'Fixed' },
-      { date: '2025-09-10', desc: `${employeeName.split(' ')[0].toUpperCase()} INCENTIVE`, amount: 9400, type: 'Variable' },
-      { date: '2025-09-09', desc: `salary ${employeeName.split(' ')[0].toLowerCase()}`, amount: 5000, type: 'Fixed' },
-    ];
-    
-    // Convert to transaction format
-    salaryTransactions.forEach((sal, index) => {
-      const transactionType = sal.type === 'Fixed' ? 'Salary Payment' : 'Incentive Payment';
-      
-      transactions.push({
-        id: `exp-${ledger.id}-${index}`,
-        date: sal.date,
-        description: `${sal.desc} [${employeeName} (${position})]`,
-        reference_number: `EXP-${String(Math.random()).slice(2, 8)}`,
-        transaction_type: transactionType,
-        debit_amount: 0, // All are payments made to employee
-        credit_amount: sal.amount,
-        status: 'completed',
-        source_document: `Expense Record - Salaries & Benefits`
-      });
-    });
-    
-    // Sort chronologically (oldest first)
-    transactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    
-    // Calculate running balances (for employees, credits accumulate as negative balance)
-    let runningBalance = 0;
-    const transactionsWithBalance = transactions.map(txn => {
-      runningBalance += txn.debit_amount - txn.credit_amount; // Credits make balance more negative
-      return {
-        ...txn,
-        running_balance: runningBalance
-      };
-    });
-    
-    return transactionsWithBalance;
-  };
+
 
   const getDescriptionByType = (type: string, isDebit: boolean): string => {
     const descriptions: Record<string, { debit: string; credit: string }> = {
@@ -1027,10 +1095,13 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-blue-600 font-medium mb-1">
-                  Outstanding Amount
+                  {ledgerType === 'employee' ? 'Pending Salary' : 'Outstanding Amount'}
                 </p>
                 <p className="text-lg font-bold text-blue-900">
-                  {formatCurrency(calculatedTotals.netBalance)}
+                  {ledgerType === 'employee' && employeeSalaryInfo 
+                    ? formatCurrency(employeeSalaryInfo.currentMonthPending + employeeSalaryInfo.lastMonthPending)
+                    : formatCurrency(calculatedTotals.netBalance)
+                  }
                 </p>
               </div>
               <DollarSign className="h-6 w-6 text-blue-600 opacity-50" />
@@ -1305,6 +1376,18 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
                       <TableCell className="text-center px-2">
                         <div className="flex items-center justify-center gap-1">
                           {getStatusBadge(txn.status)}
+                          {/* Delete button for employee payroll records */}
+                          {ledgerType === 'employee' && txn.payroll_record_id && txn.can_delete && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 text-red-600 hover:text-red-800 hover:bg-red-50"
+                              onClick={() => handleDeletePayment(txn.payroll_record_id!, txn.description)}
+                              title="Delete payment record"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -1317,28 +1400,77 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
           {/* Summary Footer */}
           {transactions.length > 0 && (
             <div className="mt-4 pt-4 border-t bg-gray-50 rounded-md p-3">
-              <div className="grid grid-cols-3 gap-4 text-sm">
-                <div className="text-center">
-                  <p className="text-xs text-gray-600">Total Entries</p>
-                  <p className="font-bold">{transactions.length}</p>
+              {ledgerType === 'employee' ? (
+                /* Employee-specific summary with salary breakdown */
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                  <div className="text-center">
+                    <p className="text-xs text-gray-600">Total Entries</p>
+                    <p className="font-bold">{transactions.length}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-gray-600">Date Range</p>
+                    <p className="font-bold text-xs">
+                      {formatDate(transactions[transactions.length - 1]?.date || '')} to {formatDate(transactions[0]?.date || '')}
+                    </p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-gray-600">Total Paid</p>
+                    <p className="font-bold text-blue-900">
+                      {formatCurrency(calculatedTotals.totalCredit)}
+                    </p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-gray-600">Total Salary Paid</p>
+                    <p className="font-bold text-green-600">
+                      {formatCurrency(
+                        transactions
+                          .filter(txn => 
+                            txn.transaction_type === 'Salary Payment' || 
+                            txn.description.toLowerCase().includes('salary')
+                          )
+                          .reduce((sum, txn) => sum + txn.credit_amount, 0)
+                      )}
+                    </p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-gray-600">Total Incentive Paid</p>
+                    <p className="font-bold text-purple-600">
+                      {formatCurrency(
+                        transactions
+                          .filter(txn => 
+                            txn.transaction_type === 'Incentive Payment' || 
+                            txn.description.toLowerCase().includes('incentive')
+                          )
+                          .reduce((sum, txn) => sum + txn.credit_amount, 0)
+                      )}
+                    </p>
+                  </div>
                 </div>
-                <div className="text-center">
-                  <p className="text-xs text-gray-600">Date Range</p>
-                  <p className="font-bold text-xs">
-                    {formatDate(transactions[transactions.length - 1]?.date || '')} to {formatDate(transactions[0]?.date || '')}
-                  </p>
+              ) : (
+                /* Standard summary for non-employee ledgers */
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div className="text-center">
+                    <p className="text-xs text-gray-600">Total Entries</p>
+                    <p className="font-bold">{transactions.length}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-gray-600">Date Range</p>
+                    <p className="font-bold text-xs">
+                      {formatDate(transactions[transactions.length - 1]?.date || '')} to {formatDate(transactions[0]?.date || '')}
+                    </p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-gray-600">Final Balance</p>
+                    <p className="font-bold text-blue-900">
+                      {formatCurrency(
+                        // Both suppliers and customers now display chronologically (oldest first)
+                        // Final balance is always the last transaction's running balance
+                        transactions[transactions.length - 1]?.running_balance || 0
+                      )}
+                    </p>
+                  </div>
                 </div>
-                <div className="text-center">
-                  <p className="text-xs text-gray-600">Final Balance</p>
-                  <p className="font-bold text-blue-900">
-                    {formatCurrency(
-                      // Both suppliers and customers now display chronologically (oldest first)
-                      // Final balance is always the last transaction's running balance
-                      transactions[transactions.length - 1]?.running_balance || 0
-                    )}
-                  </p>
-                </div>
-              </div>
+              )}
             </div>
           )}
         </CardContent>

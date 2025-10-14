@@ -47,51 +47,35 @@ export async function GET(request: NextRequest) {
     });
 
     // Fetch payroll records - try both possible relationships
-    // Fetch payroll records for the employee
-    let { data: payrollRecords, error: payrollError } = await supabaseAdmin
+    // Fetch payroll records for the employee (Professional approach)
+    const { data: payrollRecords, error: payrollError } = await supabaseAdmin
       .from('payroll_records')
       .select(`
         id,
         employee_id,
+        pay_period_start,
+        pay_period_end,
         net_salary,
-        created_at,
+        status,
         processed_at,
-        status
+        payment_type
       `)
       .eq('employee_id', employee_id)
-      .order('created_at', { ascending: true });
+      .order('pay_period_start', { ascending: false });
 
-    console.log('💰 Payroll query result (UUID):', {
+    console.log('💰 Payroll query result (employee_id):', {
       error: payrollError,
       recordCount: payrollRecords?.length || 0,
-      records: payrollRecords?.slice(0, 2)
+      records: payrollRecords?.slice(0, 3).map(r => ({
+        id: r.id,
+        period: `${r.pay_period_start} to ${r.pay_period_end}`,
+        net_salary: r.net_salary,
+        status: r.status,
+        payment_type: r.payment_type
+      }))
     });
 
-    // If no records found with UUID, try with employee_id field
-    if (!payrollRecords || payrollRecords.length === 0) {
-      console.log('No payroll records found with UUID, trying with employee_id field:', employeeData.employee_id);
-      const { data: payrollRecords2, error: payrollError2 } = await supabaseAdmin
-        .from('payroll_records')
-        .select(`
-          id,
-          employee_id,
-          net_salary,
-          created_at,
-          processed_at,
-          status
-        `)
-        .eq('employee_id', employeeData.employee_id)
-        .order('created_at', { ascending: true });
-      
-      console.log('💰 Payroll query result (employee_id):', {
-        error: payrollError2,
-        recordCount: payrollRecords2?.length || 0,
-        records: payrollRecords2?.slice(0, 2)
-      });
-      
-      payrollRecords = payrollRecords2;
-      payrollError = payrollError2;
-    }
+
 
     if (payrollError) {
       console.error('Error fetching payroll records:', payrollError);
@@ -101,10 +85,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch employee expenses from the expenses table
-    // Look for salary/benefit expenses that mention this employee by name
+    // Fetch incentives and overtime from expenses table
     const employeeName = employeeData.name || '';
-    const employeeNameParts = employeeName.toLowerCase().split(' ');
+    console.log('🔍 Looking for incentives/overtime expenses for employee:', employeeName);
     
     let { data: expenseRecords } = await supabaseAdmin
       .from('expenses')
@@ -116,111 +99,47 @@ export async function GET(request: NextRequest) {
         description,
         category,
         status,
-        payment_method,
-        expense_type
+        expense_type,
+        entity_type,
+        entity_id
       `)
       .eq('category', 'Salaries & Benefits')
-      .order('date', { ascending: true });
+      .order('date', { ascending: false });
 
-    // Filter expenses that mention this employee's name in the description
-    if (expenseRecords && employeeNameParts.length > 0) {
-      const originalCount = expenseRecords.length;
-      
+    // Filter expenses for this employee (both by entity_id and name matching)
+    if (expenseRecords && expenseRecords.length > 0) {
       expenseRecords = expenseRecords.filter(expense => {
-        const desc = expense.description?.toLowerCase() || '';
+        // First priority: Direct entity_id match
+        if (expense.entity_type === 'employee' && expense.entity_id === employee_id) {
+          return true;
+        }
         
-        // Multiple matching strategies
-        const nameMatches = employeeNameParts.some((namePart: string) => {
+        // Second priority: Name matching in description for older records
+        const desc = expense.description?.toLowerCase() || '';
+        const empName = employeeName.toLowerCase();
+        
+        // Check if description contains employee name parts
+        const nameMatches = empName.split(' ').some((namePart: string) => {
           if (namePart.length < 3) return false;
-          
-          const partLower = namePart.toLowerCase();
-          
-          // Exact match
-          if (desc.includes(partLower)) return true;
-          
-          // Check for partial matches (first 4 characters for longer names)
-          if (partLower.length >= 4 && desc.includes(partLower.substring(0, 4))) return true;
-          
-          return false;
+          return desc.includes(namePart.toLowerCase());
         });
         
-        // Special case: check for "anil" if name contains "anilkumar"
-        const specialNameMatch = employeeName.toLowerCase().includes('anil') && desc.includes('anil');
+        // Special cases for common name variations
+        const anilMatch = empName.includes('anil') && desc.includes('anil');
         
-        // Check employee ID (last part of UUID) in case it's used in descriptions
-        const employeeIdMatch = desc.includes(employee_id.slice(-8));
-        
-        return nameMatches || specialNameMatch || employeeIdMatch;
+        return nameMatches || anilMatch;
       });
       
-      console.log('🔍 Name matching results:', {
+      console.log('💰 Employee expense filtering results:', {
         employeeName,
-        employeeNameParts,
-        originalExpenseCount: originalCount,
-        filteredExpenseCount: expenseRecords.length,
-        firstFewDescriptions: expenseRecords.slice(0, 3).map(e => e.description)
+        filteredCount: expenseRecords.length,
+        matchedDescriptions: expenseRecords.map(e => e.description).slice(0, 5)
       });
-      
-      // If no matches found, show some sample expense descriptions for debugging
-      if (expenseRecords.length === 0 && originalCount > 0) {
-        const sampleExpenses = await supabaseAdmin
-          .from('expenses')
-          .select('description, amount, date')
-          .eq('category', 'Salaries & Benefits')
-          .order('date', { ascending: false })
-          .limit(10);
-          
-        console.log('🔍 Available salary expense descriptions for debugging:', 
-          sampleExpenses.data?.map(e => `${e.date}: ${e.description} (₹${e.amount})`)
-        );
-        
-        // TEMPORARY: For Anilkumar specifically, show all salary expenses as fallback
-        if (employeeName.toLowerCase().includes('anil')) {
-          console.log('🔄 Using all salary expenses as fallback for Anilkumar');
-          expenseRecords = await supabaseAdmin
-            .from('expenses')
-            .select(`
-              id,
-              amount,
-              date,
-              created_at,
-              description,
-              category,
-              status,
-              payment_method,
-              expense_type
-            `)
-            .eq('category', 'Salaries & Benefits')
-            .order('date', { ascending: true })
-            .then(result => result.data || []);
-        }
-      }
     }
 
-    console.log('💰 Expense records found:', {
-      employeeName,
-      totalExpenses: expenseRecords?.length || 0,
-      sampleDescriptions: expenseRecords?.slice(0, 3).map(e => e.description)
-    });
-
-    // Expense records processing completed
-
-    console.log(`Found ${payrollRecords?.length || 0} payroll records and ${expenseRecords?.length || 0} expense records`);
-
-    // Note: We're now using real expense data instead of generating sample payroll records
-    console.log('Using real expense data from expenses table instead of sample payroll records');
+    console.log(`Found ${payrollRecords?.length || 0} payroll records and ${expenseRecords?.length || 0} incentive/OT expenses for employee: ${employee_id}`);
 
     const transactions = {
-      salary_obligations: [] as Array<{
-        id: string;
-        type: string;
-        description: string;
-        reference: string;
-        amount: number;
-        date: string;
-        transaction_type: string;
-        status: string;
-      }>,
       salary_payments: [] as Array<{
         id: string;
         type: string;
@@ -230,6 +149,8 @@ export async function GET(request: NextRequest) {
         date: string;
         transaction_type: string;
         status: string;
+        payroll_record_id?: string;
+        can_delete?: boolean;
       }>,
       expense_reimbursements: [] as Array<{
         id: string;
@@ -243,13 +164,84 @@ export async function GET(request: NextRequest) {
       }>
     };
 
-    // Note: payroll_records processing removed since we're using real expense data instead
+    // PRIMARY: Process payroll records (net_salary only)
+    if (payrollRecords && payrollRecords.length > 0) {
+      console.log('✅ Using payroll_records as primary data source');
+      
+      payrollRecords.forEach((record) => {
+        // Only net salary payment
+        if (record.net_salary && record.net_salary > 0) {
+          // Format payment type for display
+          const paymentType = record.payment_type || 'salary';
+          const formattedPaymentType = paymentType.charAt(0).toUpperCase() + paymentType.slice(1);
+          
+          // Create appropriate description based on payment type
+          let description = '';
+          let transactionType = '';
+          
+          switch (paymentType.toLowerCase()) {
+            case 'salary':
+              description = `Monthly Salary - ${employeeData.name} (${record.pay_period_start} to ${record.pay_period_end})`;
+              transactionType = 'Salary Payment';
+              break;
+            case 'overtime':
+              description = `Overtime Payment - ${employeeData.name} (${record.pay_period_start} to ${record.pay_period_end})`;
+              transactionType = 'Overtime Payment';
+              break;
+            case 'incentive':
+              description = `Incentive Payment - ${employeeData.name} (${record.pay_period_start} to ${record.pay_period_end})`;
+              transactionType = 'Incentive Payment';
+              break;
+            case 'bonus':
+              description = `Bonus Payment - ${employeeData.name} (${record.pay_period_start} to ${record.pay_period_end})`;
+              transactionType = 'Bonus Payment';
+              break;
+            case 'allowance':
+              description = `Allowance Payment - ${employeeData.name} (${record.pay_period_start} to ${record.pay_period_end})`;
+              transactionType = 'Allowance Payment';
+              break;
+            default:
+              description = `${formattedPaymentType} Payment - ${employeeData.name} (${record.pay_period_start} to ${record.pay_period_end})`;
+              transactionType = `${formattedPaymentType} Payment`;
+          }
+          
+          transactions.salary_payments.push({
+            id: record.id.toString(),
+            type: transactionType,
+            description: description,
+            reference: `PAY-${record.id.slice(-6)}`,
+            amount: record.net_salary,
+            date: record.pay_period_start || record.pay_period_end,
+            transaction_type: 'credit',
+            status: record.status === 'paid' ? 'completed' : record.status,
+            payroll_record_id: record.id, // For deletion
+            can_delete: true // Allow deletion
+          });
+        }
+      });
+    }
 
-    // Process expense records as salary payments (credits only - these are actual payments made)
+    
+    // Process ALL employee expenses (salary, incentives, overtime, bonuses)
     if (expenseRecords && expenseRecords.length > 0) {
+      console.log(`✅ Adding ${expenseRecords.length} employee transactions from expenses`);
+      
       expenseRecords.forEach((record) => {
-        const isFixedSalary = record.expense_type === 'Fixed' || record.description?.toLowerCase().includes('salary');
-        const transactionType = isFixedSalary ? 'Salary Payment' : 'Incentive Payment';
+        const desc = record.description?.toLowerCase() || '';
+        let transactionType = 'Employee Payment';
+        
+        // Determine transaction type based on description
+        if (desc.includes('salary')) {
+          transactionType = 'Salary Payment';
+        } else if (desc.includes('incentive')) {
+          transactionType = 'Incentive Payment';
+        } else if (desc.includes('overtime') || desc.includes('ot')) {
+          transactionType = 'Overtime Payment';
+        } else if (desc.includes('bonus')) {
+          transactionType = 'Bonus Payment';
+        } else if (desc.includes('allowance')) {
+          transactionType = 'Allowance Payment';
+        }
         
         transactions.salary_payments.push({
           id: record.id.toString(),
@@ -258,10 +250,15 @@ export async function GET(request: NextRequest) {
           reference: `EXP-${record.id}`,
           amount: record.amount || 0,
           date: record.date || record.created_at?.split('T')[0] || '',
-          transaction_type: 'credit', // Payments made to employee
+          transaction_type: 'credit',
           status: record.status || 'completed'
         });
       });
+    }
+    
+    // Log if no data found
+    if ((!payrollRecords || payrollRecords.length === 0) && (!expenseRecords || expenseRecords.length === 0)) {
+      console.log('❌ No payroll records or incentive expenses found for employee:', employee_id);
     }
 
     // Calculate summary - only showing actual payments made (credits)

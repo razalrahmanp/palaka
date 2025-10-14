@@ -10,7 +10,7 @@ export interface EmployeePaymentParams {
   bankAccountId?: string;
   description: string;
   createdBy: string;
-  paymentType: 'salary' | 'bonus' | 'allowance' | 'overtime' | 'reimbursement';
+  paymentType: 'salary' | 'bonus' | 'allowance' | 'overtime' | 'incentive' | 'reimbursement';
   payrollRecordId?: string;
 }
 
@@ -103,8 +103,8 @@ export async function createEmployeePaymentIntegration(params: EmployeePaymentPa
       payrollUpdateId = salaryPayroll.id;
       console.log('✅ Created new salary payroll record:', payrollUpdateId);
 
-    } else if (['bonus', 'allowance', 'overtime', 'reimbursement'].includes(paymentType)) {
-      // Create a separate bonus/allowance payroll record
+    } else if (['bonus', 'allowance', 'overtime', 'incentive', 'reimbursement'].includes(paymentType)) {
+      // Create a separate bonus/allowance/incentive payroll record
       const payPeriodStart = new Date(paymentDate);
       const payPeriodEnd = new Date(paymentDate);
       
@@ -124,7 +124,7 @@ export async function createEmployeePaymentIntegration(params: EmployeePaymentPa
           leave_days: 0,
           overtime_hours: paymentType === 'overtime' ? 8 : 0,
           overtime_amount: paymentType === 'overtime' ? amount : 0,
-          bonus: paymentType === 'bonus' ? amount : 0,
+          bonus: (paymentType === 'bonus' || paymentType === 'incentive') ? amount : 0,
           status: 'paid',
           processed_by: createdBy,
           processed_at: new Date().toISOString()

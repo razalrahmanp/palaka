@@ -9,6 +9,8 @@ interface LedgerSummary {
   phone?: string;
   total_transactions: number;
   total_amount: number;
+  debit?: number;
+  credit?: number;
   balance_due: number;
   last_transaction_date?: string;
   status?: string;
@@ -528,27 +530,39 @@ async function getEmployeeLedgers(search: string, hideZeroBalances: boolean): Pr
 
     console.log(`Found ${allEmployees.length} employees`);
     
-    // Convert employees to ledger format with actual transaction totals
+    // Convert employees to ledger format with proper debit/credit accounting
     const ledgers: LedgerSummary[] = [];
     
     for (const employee of allEmployees) {
-      // Get actual transaction totals from expenses table
+      // Get actual payments made to employee from expenses table (these are credits)
       const { data: employeeExpenses } = await supabaseAdmin
         .from('expenses')
-        .select('amount, date')
+        .select('amount, date, description')
         .eq('entity_type', 'employee')
         .eq('entity_id', employee.id);
       
-      // Get payroll records
+      // Get payroll records (these are also credits - payments made)
       const { data: payrollRecords } = await supabaseAdmin
         .from('payroll_records')
         .select('net_salary, processed_at')
         .eq('employee_id', employee.id);
       
-      // Calculate totals from actual transactions
-      const expenseTotal = employeeExpenses?.reduce((sum, exp) => sum + (exp.amount || 0), 0) || 0;
-      const payrollTotal = payrollRecords?.reduce((sum, pr) => sum + (pr.net_salary || 0), 0) || 0;
-      const totalAmount = expenseTotal + payrollTotal;
+      // Calculate credit amounts (actual payments made to employee)
+      const expensePayments = employeeExpenses?.reduce((sum, exp) => sum + (exp.amount || 0), 0) || 0;
+      const payrollPayments = payrollRecords?.reduce((sum, pr) => sum + (pr.net_salary || 0), 0) || 0;
+      const totalCredit = expensePayments + payrollPayments;
+      
+      // Calculate debit amounts (expected salary based on employee salary and months worked)
+      // For now, use a conservative estimate based on months since hire date and current date
+      const hireDate = new Date(employee.created_at);
+      const currentDate = new Date();
+      const monthsWorked = Math.max(1, Math.floor((currentDate.getTime() - hireDate.getTime()) / (1000 * 60 * 60 * 24 * 30)));
+      const monthlySalary = parseFloat(employee.salary) || 25000;
+      const expectedTotalSalary = Math.min(monthsWorked, 12) * monthlySalary; // Cap at 12 months for realistic estimates
+      const totalDebit = expectedTotalSalary;
+      
+      // Balance = Debit - Credit (what we still owe the employee)
+      const balanceDue = Math.max(0, totalDebit - totalCredit);
       
       // Get latest transaction date
       const allDates = [
@@ -569,10 +583,13 @@ async function getEmployeeLedgers(search: string, hideZeroBalances: boolean): Pr
         email: employee.email,
         phone: employee.phone,
         total_transactions: transactionCount,
-        total_amount: totalAmount,
-        balance_due: totalAmount, // Total amount owed to employee
+        total_amount: totalDebit, // Expected total salary (debit)
+        debit: totalDebit, // Expected salary amount
+        credit: totalCredit, // Actual payments made
+        paid_amount: totalCredit, // Total payments made (credit)
+        balance_due: balanceDue, // Outstanding amount we owe
         last_transaction_date: lastTransactionDate,
-        status: 'active'
+        status: balanceDue > 0 ? 'pending' : 'settled'
       });
     }
 
@@ -1219,14 +1236,26 @@ async function getEmployeeLedgersPaginated(
       .select('employee_id, net_salary, processed_at')
       .in('employee_id', employeeIds);
 
-    // Build ledgers with transaction data
+    // Build ledgers with proper debit/credit accounting
     const ledgers: LedgerSummary[] = employees.map(employee => {
       const empExpenses = expenses?.filter(e => e.entity_id === employee.id) || [];
       const empPayrolls = payrolls?.filter(p => p.employee_id === employee.id) || [];
       
-      const totalExpenses = empExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-      const totalPayroll = empPayrolls.reduce((sum, p) => sum + (p.net_salary || 0), 0);
-      const totalAmount = totalExpenses + totalPayroll;
+      // Calculate credit amounts (actual payments made to employee)
+      const totalExpensePayments = empExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+      const totalPayrollPayments = empPayrolls.reduce((sum, p) => sum + (p.net_salary || 0), 0);
+      const totalCredit = totalExpensePayments + totalPayrollPayments;
+      
+      // Calculate debit amounts (expected salary)
+      const hireDate = new Date(employee.created_at);
+      const currentDate = new Date();
+      const monthsWorked = Math.max(1, Math.floor((currentDate.getTime() - hireDate.getTime()) / (1000 * 60 * 60 * 24 * 30)));
+      const monthlySalary = parseFloat(employee.salary) || 25000;
+      const expectedTotalSalary = Math.min(monthsWorked, 12) * monthlySalary; // Cap at 12 months
+      const totalDebit = expectedTotalSalary;
+      
+      // Balance = Debit - Credit (what we still owe)
+      const balanceDue = Math.max(0, totalDebit - totalCredit);
       
       const allDates = [
         ...empExpenses.map(e => e.date),
@@ -1244,11 +1273,13 @@ async function getEmployeeLedgersPaginated(
         email: employee.email,
         phone: employee.phone,
         total_transactions: empExpenses.length + empPayrolls.length,
-        total_amount: totalAmount,
-        paid_amount: totalPayroll,
-        balance_due: totalAmount,
+        total_amount: totalDebit, // Expected total salary (debit)
+        debit: totalDebit, // Expected salary amount
+        credit: totalCredit, // Actual payments made
+        paid_amount: totalCredit, // Total payments made (credit)
+        balance_due: balanceDue, // Outstanding amount we owe
         last_transaction_date: lastTransactionDate,
-        status: 'active'
+        status: balanceDue > 0 ? 'pending' : 'settled'
       };
     });
 

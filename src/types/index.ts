@@ -614,6 +614,7 @@ export const subcategoryMap = {
   "Daily Wages - Cleaning": { category: "Salaries & Benefits", type: "Variable", accountCode: "6440" }, // Cleaning & Janitorial
   "Contract Labor": { category: "Salaries & Benefits", type: "Variable", accountCode: "6510" }, // Professional Services
   "Overtime Payment": { category: "Salaries & Benefits", type: "Variable", accountCode: "6240" }, // Overtime Pay
+  "Incentive Pay": { category: "Salaries & Benefits", type: "Variable", accountCode: "6241" }, // Incentive Pay
   "Temporary Staff": { category: "Salaries & Benefits", type: "Variable", accountCode: "6200" }, // Salaries & Wages
   
   // Vendor/Supplier Payments (using existing accounts)

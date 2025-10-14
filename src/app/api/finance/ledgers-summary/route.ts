@@ -54,6 +54,13 @@ interface LedgerSummary {
   return_count?: number;
   approved_returns?: number;
   pending_returns?: number;
+  // Employee payment type breakdowns
+  salary_amount?: number;
+  incentive_amount?: number;
+  bonus_amount?: number;
+  overtime_amount?: number;
+  allowance_amount?: number;
+  reimbursement_amount?: number;
 }
 
 export async function GET(request: NextRequest) {
@@ -655,10 +662,10 @@ async function getInvestorLedgers(search: string, hideZeroBalances: boolean): Pr
       .select('partner_id, amount, investment_date, description, payment_method')
       .in('partner_id', partnerIds);
 
-    // Fetch withdrawals
+    // Fetch withdrawals (include withdrawal_type to discriminate capital from profit/interest)
     const { data: withdrawals, error: withdrawalError } = await supabaseAdmin
       .from('withdrawals')
-      .select('partner_id, amount, withdrawal_date, description, payment_method')
+      .select('partner_id, amount, withdrawal_date, description, payment_method, withdrawal_type')
       .in('partner_id', partnerIds);
 
     console.log(`Found ${investments?.length || 0} investments, ${withdrawals?.length || 0} withdrawals`);
@@ -676,9 +683,22 @@ async function getInvestorLedgers(search: string, hideZeroBalances: boolean): Pr
       const partnerWithdrawals = withdrawals?.filter(wd => wd.partner_id === partner.id) || [];
       const totalWithdrawals = partnerWithdrawals.reduce((sum, wd) => sum + (wd.amount || 0), 0);
       
-      // Calculate net equity
-      const initialInvestment = partner.initial_investment || 0;
-      const netEquity = initialInvestment + totalInvestments - totalWithdrawals;
+      // Break down withdrawals by type
+      const capitalWithdrawals = partnerWithdrawals
+        .filter(wd => wd.withdrawal_type === 'capital_withdrawal' || !wd.withdrawal_type)
+        .reduce((sum, wd) => sum + (wd.amount || 0), 0);
+      
+      const profitDistributions = partnerWithdrawals
+        .filter(wd => wd.withdrawal_type === 'profit_distribution')
+        .reduce((sum, wd) => sum + (wd.amount || 0), 0);
+      
+      const interestPayments = partnerWithdrawals
+        .filter(wd => wd.withdrawal_type === 'interest_payment')
+        .reduce((sum, wd) => sum + (wd.amount || 0), 0);
+      
+      // Calculate current balance (investments minus only capital withdrawals)
+      // (profit distributions and interest payments don't reduce investment balance)
+      const currentBalance = totalInvestments - capitalWithdrawals;
       
       // Get total transactions count
       const totalTransactions = partnerInvestments.length + partnerWithdrawals.length;
@@ -699,14 +719,17 @@ async function getInvestorLedgers(search: string, hideZeroBalances: boolean): Pr
         phone: partner.phone,
         total_transactions: totalTransactions,
         total_amount: totalInvestments + totalWithdrawals,
-        balance_due: netEquity,
+        balance_due: currentBalance, // Use currentBalance to match transaction ledger
         last_transaction_date: lastTransactionDate,
         status: partner.is_active ? 'active' : 'inactive',
         partner_type: partner.partner_type,
         equity_percentage: partner.equity_percentage,
         total_investments: totalInvestments,
         total_withdrawals: totalWithdrawals,
-        net_equity: netEquity
+        capital_withdrawals: capitalWithdrawals,
+        profit_distributions: profitDistributions,
+        interest_payments: interestPayments,
+        net_equity: currentBalance // Use currentBalance for consistency
       };
     });
 
@@ -772,8 +795,9 @@ async function getLoansLedgers(search: string, hideZeroBalances: boolean): Promi
       const totalPayments = loanPayments.reduce((sum, pay) => sum + (pay.total_amount || 0), 0);
       const totalPrincipalPaid = loanPayments.reduce((sum, pay) => sum + (pay.principal_amount || 0), 0);
       
-      // Calculate remaining balance
-      const remainingBalance = loan.current_balance || loan.opening_balance - totalPrincipalPaid;
+      // Calculate remaining balance (original amount - principal paid)
+      const originalAmount = loan.original_loan_amount || 0;
+      const currentBalance = originalAmount - totalPrincipalPaid;
       
       // Get last payment date
       const lastPayment = loanPayments[0]; // Already sorted by date desc
@@ -781,21 +805,22 @@ async function getLoansLedgers(search: string, hideZeroBalances: boolean): Promi
       
       return {
         id: loan.id,
-        name: `${loan.loan_name}${loan.bank_name ? ` (${loan.bank_name})` : ''}`,
+        name: `${loan.loan_name}${loan.bank_name ? ` - ${loan.bank_name}` : ''}`,
         type: 'loans' as const,
         total_transactions: loanPayments.length,
-        total_amount: loan.original_loan_amount || 0,
-        balance_due: remainingBalance,
+        total_amount: originalAmount,
+        debit: originalAmount, // Original loan amount
+        credit: totalPayments, // Total payments made
+        balance_due: currentBalance, // Remaining balance
         last_transaction_date: lastPaymentDate,
-        status: loan.status,
+        status: currentBalance > 0 ? 'active' : 'closed',
         loan_type: loan.loan_type,
-        original_amount: loan.original_loan_amount,
-        current_balance: remainingBalance,
+        original_amount: originalAmount,
+        current_balance: currentBalance,
         emi_amount: loan.emi_amount,
         interest_rate: loan.interest_rate,
         loan_tenure_months: loan.loan_tenure_months,
-        total_paid: totalPayments,
-        phone: loan.loan_number
+        total_paid: totalPayments
       };
     });
 
@@ -1223,28 +1248,36 @@ async function getEmployeeLedgersPaginated(
     // Get employee IDs for fetching related data
     const employeeIds = employees.map(e => e.id);
 
-    // Fetch expenses for these employees
-    const { data: expenses } = await supabaseAdmin
-      .from('expenses')
-      .select('entity_id, amount, date')
-      .eq('entity_type', 'employee')
-      .in('entity_id', employeeIds);
-
-    // Fetch payroll records
+    // Fetch payroll records (PRIMARY data source - synced with expenses)
     const { data: payrolls } = await supabaseAdmin
       .from('payroll_records')
-      .select('employee_id, net_salary, processed_at')
+      .select('employee_id, net_salary, pay_period_start, payment_type, status')
       .in('employee_id', employeeIds);
+
+    console.log(`Fetched ${payrolls?.length || 0} payroll records for ${employeeIds.length} employees`);
 
     // Build ledgers with proper debit/credit accounting
     const ledgers: LedgerSummary[] = employees.map(employee => {
-      const empExpenses = expenses?.filter(e => e.entity_id === employee.id) || [];
       const empPayrolls = payrolls?.filter(p => p.employee_id === employee.id) || [];
       
-      // Calculate credit amounts (actual payments made to employee)
-      const totalExpensePayments = empExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-      const totalPayrollPayments = empPayrolls.reduce((sum, p) => sum + (p.net_salary || 0), 0);
-      const totalCredit = totalExpensePayments + totalPayrollPayments;
+      // Calculate credit amounts by payment type
+      const salaryPayments = empPayrolls.filter(p => p.payment_type === 'salary');
+      const incentivePayments = empPayrolls.filter(p => p.payment_type === 'incentive');
+      const bonusPayments = empPayrolls.filter(p => p.payment_type === 'bonus');
+      const overtimePayments = empPayrolls.filter(p => p.payment_type === 'overtime');
+      const allowancePayments = empPayrolls.filter(p => p.payment_type === 'allowance');
+      const reimbursementPayments = empPayrolls.filter(p => p.payment_type === 'reimbursement');
+      
+      const totalSalary = salaryPayments.reduce((sum, p) => sum + (p.net_salary || 0), 0);
+      const totalIncentive = incentivePayments.reduce((sum, p) => sum + (p.net_salary || 0), 0);
+      const totalBonus = bonusPayments.reduce((sum, p) => sum + (p.net_salary || 0), 0);
+      const totalOvertime = overtimePayments.reduce((sum, p) => sum + (p.net_salary || 0), 0);
+      const totalAllowance = allowancePayments.reduce((sum, p) => sum + (p.net_salary || 0), 0);
+      const totalReimbursement = reimbursementPayments.reduce((sum, p) => sum + (p.net_salary || 0), 0);
+      
+      // Calculate total credit (actual payments made to employee from payroll_records)
+      // This now includes salary, incentives, overtime, bonuses, allowances - all from payroll_records
+      const totalCredit = totalSalary + totalIncentive + totalBonus + totalOvertime + totalAllowance + totalReimbursement;
       
       // Calculate debit amounts (expected salary)
       const hireDate = new Date(employee.created_at);
@@ -1257,10 +1290,10 @@ async function getEmployeeLedgersPaginated(
       // Balance = Debit - Credit (what we still owe)
       const balanceDue = Math.max(0, totalDebit - totalCredit);
       
-      const allDates = [
-        ...empExpenses.map(e => e.date),
-        ...empPayrolls.map(p => p.processed_at?.split('T')[0])
-      ].filter(Boolean);
+      // Get last transaction date from payroll records
+      const allDates = empPayrolls
+        .map(p => p.pay_period_start)
+        .filter(Boolean);
       
       const lastTransactionDate = allDates.length > 0 
         ? allDates.sort().reverse()[0] 
@@ -1272,18 +1305,32 @@ async function getEmployeeLedgersPaginated(
         type: 'employee' as const,
         email: employee.email,
         phone: employee.phone,
-        total_transactions: empExpenses.length + empPayrolls.length,
+        total_transactions: empPayrolls.length,
         total_amount: totalDebit, // Expected total salary (debit)
         debit: totalDebit, // Expected salary amount
-        credit: totalCredit, // Actual payments made
+        credit: totalCredit, // Actual payments made (from payroll_records)
         paid_amount: totalCredit, // Total payments made (credit)
         balance_due: balanceDue, // Outstanding amount we owe
         last_transaction_date: lastTransactionDate,
-        status: balanceDue > 0 ? 'pending' : 'settled'
+        status: balanceDue > 0 ? 'pending' : 'settled',
+        // Payment type breakdowns
+        salary_amount: totalSalary,
+        incentive_amount: totalIncentive,
+        bonus_amount: totalBonus,
+        overtime_amount: totalOvertime,
+        allowance_amount: totalAllowance,
+        reimbursement_amount: totalReimbursement
       };
     });
 
-    return { data: ledgers, total };
+    // Filter out zero balances if requested
+    const filteredLedgers = hideZeroBalances 
+      ? ledgers.filter(l => (l.balance_due && l.balance_due > 0) || (l.credit && l.credit > 0))
+      : ledgers;
+
+    console.log(`Returning ${filteredLedgers.length} employee ledgers (hideZero: ${hideZeroBalances})`);
+
+    return { data: filteredLedgers, total: filteredLedgers.length };
 
   } catch (error) {
     console.error('Error in getEmployeeLedgersPaginated:', error);
@@ -1345,7 +1392,7 @@ async function getInvestorLedgersPaginated(
     // Fetch withdrawals
     const { data: withdrawals } = await supabaseAdmin
       .from('withdrawals')
-      .select('partner_id, amount, withdrawal_date')
+      .select('partner_id, amount, withdrawal_date, withdrawal_type')
       .in('partner_id', partnerIds);
 
     // Build ledgers with transaction data
@@ -1356,8 +1403,22 @@ async function getInvestorLedgersPaginated(
       const totalInvestments = partnerInvestments.reduce((sum, inv) => sum + (inv.amount || 0), 0);
       const totalWithdrawals = partnerWithdrawals.reduce((sum, wd) => sum + (wd.amount || 0), 0);
       
-      const initialInvestment = partner.initial_investment || 0;
-      const netEquity = initialInvestment + totalInvestments - totalWithdrawals;
+      // Break down withdrawals by type
+      const capitalWithdrawals = partnerWithdrawals
+        .filter(wd => wd.withdrawal_type === 'capital_withdrawal' || !wd.withdrawal_type)
+        .reduce((sum, wd) => sum + (wd.amount || 0), 0);
+      
+      const profitDistributions = partnerWithdrawals
+        .filter(wd => wd.withdrawal_type === 'profit_distribution')
+        .reduce((sum, wd) => sum + (wd.amount || 0), 0);
+      
+      const interestPayments = partnerWithdrawals
+        .filter(wd => wd.withdrawal_type === 'interest_payment')
+        .reduce((sum, wd) => sum + (wd.amount || 0), 0);
+      
+      // Current balance = total investments - only capital withdrawals
+      // (profit distributions and interest payments don't reduce investment balance)
+      const currentBalance = totalInvestments - capitalWithdrawals;
       
       const allTransactionDates = [
         ...partnerInvestments.map(inv => inv.investment_date),
@@ -1376,10 +1437,13 @@ async function getInvestorLedgersPaginated(
         equity_percentage: partner.equity_percentage,
         total_transactions: partnerInvestments.length + partnerWithdrawals.length,
         total_amount: totalInvestments + totalWithdrawals,
-        balance_due: netEquity,
+        balance_due: currentBalance, // Use currentBalance instead of netEquity
         total_investments: totalInvestments,
         total_withdrawals: totalWithdrawals,
-        net_equity: netEquity,
+        capital_withdrawals: capitalWithdrawals,
+        profit_distributions: profitDistributions,
+        interest_payments: interestPayments,
+        net_equity: currentBalance, // Use currentBalance for net_equity too
         last_transaction_date: lastTransactionDate,
         status: 'active'
       };
@@ -1429,20 +1493,41 @@ async function getLoansLedgersPaginated(
       return { data: [], total: 0 };
     }
 
-    const ledgers: LedgerSummary[] = loans.map(loan => ({
-      id: loan.id,
-      name: `${loan.loan_name} - ${loan.bank_name}`,
-      type: 'loans' as const,
-      loan_type: loan.loan_type,
-      original_amount: loan.original_loan_amount,
-      current_balance: loan.opening_balance,
-      emi_amount: loan.emi_amount,
-      interest_rate: loan.interest_rate,
-      total_transactions: 0,
-      total_amount: loan.original_loan_amount || 0,
-      balance_due: loan.opening_balance || 0,
-      status: 'active'
-    }));
+    const loanIds = loans.map(l => l.id);
+
+    // Fetch liability payments for these loans
+    const { data: payments } = await supabaseAdmin
+      .from('liability_payments')
+      .select('loan_id, principal_amount, interest_amount, total_amount')
+      .in('loan_id', loanIds);
+
+    const ledgers: LedgerSummary[] = loans.map(loan => {
+      // Calculate payments for this loan
+      const loanPayments = payments?.filter(pay => pay.loan_id === loan.id) || [];
+      const totalPrincipalPaid = loanPayments.reduce((sum, pay) => sum + (pay.principal_amount || 0), 0);
+      const totalPayments = loanPayments.reduce((sum, pay) => sum + (pay.total_amount || 0), 0);
+      
+      // Calculate remaining balance (original amount - principal paid)
+      const originalAmount = loan.original_loan_amount || 0;
+      const currentBalance = originalAmount - totalPrincipalPaid;
+      
+      return {
+        id: loan.id,
+        name: `${loan.loan_name} - ${loan.bank_name}`,
+        type: 'loans' as const,
+        loan_type: loan.loan_type,
+        original_amount: originalAmount,
+        current_balance: currentBalance,
+        emi_amount: loan.emi_amount,
+        interest_rate: loan.interest_rate,
+        total_transactions: loanPayments.length,
+        total_amount: originalAmount,
+        debit: originalAmount, // Original loan amount
+        credit: totalPayments, // Total payments made
+        balance_due: currentBalance, // Remaining balance
+        status: currentBalance > 0 ? 'active' : 'closed'
+      };
+    });
 
     return { data: ledgers, total };
 

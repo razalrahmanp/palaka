@@ -59,10 +59,12 @@ interface Transaction {
   description: string;
   reference_number?: string;
   transaction_type: string;
+  withdrawal_type?: 'capital_withdrawal' | 'interest_payment' | 'profit_distribution';
   debit_amount: number;
   credit_amount: number;
   running_balance: number;
   source_document?: string;
+  category?: string;
   status?: string;
   payroll_record_id?: string;
   can_delete?: boolean;
@@ -123,8 +125,13 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
   const [createLiabilityOpen, setCreateLiabilityOpen] = useState(false);
   const [loanSetupOpen, setLoanSetupOpen] = useState(false);
   const [showFundTransfer, setShowFundTransfer] = useState(false);
+  const [createDepositOpen, setCreateDepositOpen] = useState(false);
+  const [resetBankBalanceOpen, setResetBankBalanceOpen] = useState(false);
   const [refreshLoading, setRefreshLoading] = useState(false);
-
+  const [bankBalance, setBankBalance] = useState<number>(0);
+  const [newBankBalance, setNewBankBalance] = useState<string>('');
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState<string>('');
+  const [bankAccounts, setBankAccounts] = useState<Array<{id: string, name: string, current_balance: number}>>([]);
   useEffect(() => {
     fetchLedgerDetails();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -166,6 +173,18 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
         // Try to fetch real data first, fallback to mock data
         fetchedTransactions = await fetchEmployeeTransactions(ledgerId);
         console.log('✅ Employee transactions fetched:', fetchedTransactions.length);
+      } else if (ledgerType === 'investors') {
+        console.log('🔍 Fetching investor/partner transactions for ledger:', { ledgerId, ledgerType });
+        fetchedTransactions = await fetchPartnerTransactions(ledgerId);
+        console.log('✅ Partner transactions fetched:', fetchedTransactions.length);
+      } else if (ledgerType === 'loans') {
+        console.log('🔍 Fetching loan transactions for ledger:', { ledgerId, ledgerType });
+        fetchedTransactions = await fetchLoanTransactions(ledgerId);
+        console.log('✅ Loan transactions fetched:', fetchedTransactions.length);
+      } else if (ledgerType === 'bank') {
+        console.log('🔍 Fetching bank transactions for ledger:', { ledgerId, ledgerType });
+        fetchedTransactions = await fetchBankTransactions(ledgerId);
+        console.log('✅ Bank transactions fetched:', fetchedTransactions.length);
       } else {
         // For other types, use mock data for now
         fetchedTransactions = generateMockTransactions(ledger);
@@ -311,7 +330,14 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
   const calculateTotalsFromTransactions = (txns: Transaction[]) => {
     const totalDebit = txns.reduce((sum, txn) => sum + txn.debit_amount, 0);
     const totalCredit = txns.reduce((sum, txn) => sum + txn.credit_amount, 0);
-    const netBalance = totalDebit - totalCredit;
+    
+    // For investors, use the running balance from the last transaction (which accounts for withdrawal types)
+    // For other ledger types, calculate as totalDebit - totalCredit
+    let netBalance = totalDebit - totalCredit;
+    if (ledgerType === 'investors' && txns.length > 0) {
+      // The last transaction in the array has the most recent running balance
+      netBalance = txns[txns.length - 1].running_balance;
+    }
     
     return {
       totalDebit,
@@ -585,6 +611,374 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
     } catch (error) {
       console.error('Error fetching customer transactions:', error);
       return [];
+    }
+  };
+
+  const fetchPartnerTransactions = async (partnerId: string): Promise<Transaction[]> => {
+    try {
+      console.log('🔍 Fetching partner/investor transactions for:', partnerId);
+      
+      // Add cache-busting timestamp to force fresh data
+      const timestamp = Date.now();
+      const response = await fetch(`/api/finance/partner-transactions?partner_id=${partnerId}&_t=${timestamp}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to fetch partner transactions:', response.statusText);
+        return [];
+      }
+      
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        const transactions: Transaction[] = [];
+        
+        // Convert investments and withdrawals to transaction format
+        result.data.transactions.forEach((txn: {
+          id: string;
+          date: string;
+          type: 'investment' | 'withdrawal';
+          withdrawal_type?: 'capital_withdrawal' | 'interest_payment' | 'profit_distribution';
+          amount: number;
+          description: string;
+          payment_method: string;
+          reference_number?: string;
+          category?: string;
+          subcategory?: string;
+        }) => {
+          // Determine transaction type label based on withdrawal_type
+          let transactionTypeLabel = 'Payment';
+          if (txn.type === 'investment') {
+            transactionTypeLabel = 'Invoice';
+          } else if (txn.withdrawal_type === 'capital_withdrawal') {
+            transactionTypeLabel = 'Capital Withdrawal';
+          } else if (txn.withdrawal_type === 'profit_distribution') {
+            transactionTypeLabel = 'Profit Distribution';
+          } else if (txn.withdrawal_type === 'interest_payment') {
+            transactionTypeLabel = 'Interest Payment';
+          }
+          
+          transactions.push({
+            id: txn.id,
+            date: txn.date,
+            description: txn.description || (txn.type === 'investment' ? 'Investment' : 'Withdrawal'),
+            reference_number: txn.reference_number || 'N/A',
+            transaction_type: transactionTypeLabel,
+            withdrawal_type: txn.withdrawal_type,
+            debit_amount: txn.type === 'investment' ? txn.amount : 0,
+            credit_amount: txn.type === 'withdrawal' ? txn.amount : 0,
+            running_balance: 0, // Will be calculated below
+            source_document: txn.category ? `${txn.category}${txn.subcategory ? ' - ' + txn.subcategory : ''}` : undefined,
+            category: txn.category,
+            status: 'completed'
+          });
+        });
+        
+        // Sort transactions by date (oldest first for chronological display)
+        transactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        
+        // Calculate running balance
+        // For partners: investments increase balance
+        // Only capital withdrawals decrease balance (profit & interest don't reduce investment)
+        let runningBalance = 0;
+        transactions.forEach(txn => {
+          if (txn.debit_amount > 0) {
+            // Investment - increases balance
+            runningBalance += txn.debit_amount;
+          } else if (txn.credit_amount > 0) {
+            // Withdrawal - only reduce balance if it's a capital withdrawal
+            if (txn.withdrawal_type === 'capital_withdrawal' || !txn.withdrawal_type) {
+              runningBalance -= txn.credit_amount;
+            }
+            // Profit distributions and interest payments don't reduce the running balance
+          }
+          txn.running_balance = runningBalance;
+        });
+        
+        const totalInvestments = transactions.reduce((sum, t) => sum + t.debit_amount, 0);
+        const totalWithdrawals = transactions.reduce((sum, t) => sum + t.credit_amount, 0);
+        const capitalWithdrawals = transactions
+          .filter(t => t.credit_amount > 0 && (t.withdrawal_type === 'capital_withdrawal' || !t.withdrawal_type))
+          .reduce((sum, t) => sum + t.credit_amount, 0);
+        const netBalance = totalInvestments - capitalWithdrawals;
+        
+        console.log(`✅ Found ${transactions.length} partner transactions`);
+        console.log(`💰 Partner Financial Summary:`, {
+          totalInvestments: totalInvestments.toFixed(2),
+          totalWithdrawals: totalWithdrawals.toFixed(2),
+          capitalWithdrawals: capitalWithdrawals.toFixed(2),
+          profitAndInterest: (totalWithdrawals - capitalWithdrawals).toFixed(2),
+          netBalance: netBalance.toFixed(2),
+          finalRunningBalance: (transactions[transactions.length - 1]?.running_balance || 0).toFixed(2)
+        });
+        
+        return transactions;
+      }
+      
+      return [];
+    } catch (error) {
+      console.error('Error fetching partner transactions:', error);
+      return [];
+    }
+  };
+
+  const fetchLoanTransactions = async (loanId: string): Promise<Transaction[]> => {
+    try {
+      console.log('🔍 Fetching loan transactions for:', loanId);
+      
+      // Add cache-busting timestamp to force fresh data
+      const timestamp = Date.now();
+      const response = await fetch(`/api/finance/loan-transactions?loan_id=${loanId}&_t=${timestamp}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to fetch loan transactions:', response.statusText);
+        return [];
+      }
+      
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        const transactions: Transaction[] = [];
+        
+        // Get loan details
+        const openingBalance = result.data.summary.opening_balance || result.data.summary.original_amount || 0;
+        const loanStartDate = result.data.summary.loan_start_date;
+        
+        // Add opening balance entry (loan disbursement)
+        if (openingBalance > 0 && loanStartDate) {
+          transactions.push({
+            id: 'opening-balance',
+            date: loanStartDate,
+            description: `${result.data.summary.loan_name} - Loan Disbursement`,
+            reference_number: result.data.summary.loan_type || 'Loan',
+            transaction_type: 'Loan Received',
+            debit_amount: openingBalance, // Loan received increases liability (debit in loan ledger)
+            credit_amount: 0,
+            running_balance: openingBalance,
+            source_document: `${result.data.summary.bank_name || 'Bank'} | EMI: ₹${(result.data.summary.emi_amount || 0).toLocaleString()} | Rate: ${result.data.summary.interest_rate || 0}%`,
+            status: 'completed'
+          });
+        }
+        
+        // Convert loan payments to transaction format
+        result.data.transactions.forEach((payment: {
+          id: string;
+          date: string;
+          description: string;
+          reference_number?: string;
+          principal_amount: number;
+          interest_amount: number;
+          total_amount: number;
+          payment_method: string;
+        }) => {
+          transactions.push({
+            id: payment.id,
+            date: payment.date,
+            description: payment.description || `EMI Payment - ${payment.payment_method}`,
+            reference_number: payment.reference_number || 'N/A',
+            transaction_type: 'EMI Payment',
+            debit_amount: 0,
+            credit_amount: payment.total_amount, // Payments reduce the loan (credit)
+            running_balance: 0, // Will be calculated below
+            source_document: `Principal: ₹${payment.principal_amount.toLocaleString()} | Interest: ₹${payment.interest_amount.toLocaleString()}`,
+            category: payment.payment_method,
+            status: 'completed'
+          });
+        });
+        
+        // Sort transactions by date (oldest first for chronological display)
+        transactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        
+        // Calculate running balance (loan starts with opening balance, decreases with principal payments)
+        let runningBalance = 0;
+        
+        transactions.forEach(txn => {
+          if (txn.id === 'opening-balance') {
+            // Opening balance transaction
+            runningBalance = txn.debit_amount;
+            txn.running_balance = runningBalance;
+          } else {
+            // Payment transaction - extract principal amount from source_document
+            const principalMatch = txn.source_document?.match(/Principal: ₹([\d,]+)/);
+            const principalAmount = principalMatch ? parseFloat(principalMatch[1].replace(/,/g, '')) : 0;
+            
+            // Only principal reduces the loan balance, interest is just an expense
+            runningBalance -= principalAmount;
+            txn.running_balance = runningBalance;
+          }
+        });
+        
+        console.log(`✅ Found ${transactions.length} loan transactions (including opening balance)`);
+        console.log(`💰 Loan Summary:`, {
+          originalAmount: openingBalance.toFixed(2),
+          totalPaid: result.data.summary.total_paid.toFixed(2),
+          principalPaid: result.data.summary.total_principal_paid.toFixed(2),
+          interestPaid: result.data.summary.total_interest_paid.toFixed(2),
+          currentBalance: result.data.summary.current_balance.toFixed(2),
+          finalRunningBalance: runningBalance.toFixed(2)
+        });
+        
+        return transactions;
+      }
+      
+      return [];
+    } catch (error) {
+      console.error('Error fetching loan transactions:', error);
+      return [];
+    }
+  };
+
+  const fetchBankTransactions = async (bankAccountId: string): Promise<Transaction[]> => {
+    try {
+      console.log('📊 Fetching bank transactions for account:', bankAccountId);
+      
+      // Fetch bank transactions from API
+      const response = await fetch(`/api/finance/bank-transactions?bank_account_id=${bankAccountId}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+      });
+
+      if (!response.ok) {
+        console.error('Failed to fetch bank transactions:', response.statusText);
+        return [];
+      }
+
+      const result = await response.json();
+      
+      if (!result.success || !result.data) {
+        console.error('Invalid response from bank transactions API');
+        return [];
+      }
+
+      console.log(`📦 Found ${result.data.transactions?.length || 0} bank transactions`);
+
+      const transactions: Transaction[] = [];
+      const { summary, transactions: bankTxns } = result.data;
+      
+      // Get actual bank balance from summary
+      const actualBankBalance = summary.current_balance || 0;
+      setBankBalance(actualBankBalance);
+      
+      // Start from 0 opening balance and build running balance from transactions
+      let runningBalance = 0; // Always start from 0
+
+      // Process each bank transaction
+      interface BankTransaction {
+        id: string;
+        date: string;
+        type: string;
+        amount: number;
+        description: string;
+        reference?: string;
+        transaction_id?: string;
+        category?: string;
+      }
+
+      bankTxns?.forEach((tx: BankTransaction) => {
+        // For bank ledger display:
+        // Deposits (money IN) = DEBIT (shows in debit column, increases balance)
+        // Withdrawals (money OUT) = CREDIT (shows in credit column, decreases balance)
+        const amount = tx.amount || 0;
+        const isDeposit = tx.type === 'deposit';
+        
+        if (isDeposit) {
+          runningBalance += amount;
+        } else {
+          runningBalance -= amount;
+        }
+
+        transactions.push({
+          id: tx.id,
+          date: tx.date,
+          description: tx.description || (isDeposit ? 'Deposit' : 'Withdrawal'),
+          reference_number: tx.reference || tx.transaction_id || '-',
+          transaction_type: isDeposit ? 'Deposit' : 'Withdrawal',
+          debit_amount: isDeposit ? amount : 0,  // Deposits are debits (money in)
+          credit_amount: isDeposit ? 0 : amount, // Withdrawals are credits (money out)
+          running_balance: runningBalance,
+          source_document: tx.category || 'Bank Transaction',
+          status: 'completed'
+        });
+      });
+
+      console.log(`✅ Processed ${transactions.length} bank transactions`);
+      console.log(`💰 Bank Summary:`, {
+        currentBalance: runningBalance.toFixed(2),
+        totalTransactions: bankTxns?.length || 0
+      });
+
+      return transactions;
+    } catch (error) {
+      console.error('Error fetching bank transactions:', error);
+      return [];
+    }
+  };
+
+  const fetchBankAccounts = async () => {
+    try {
+      const response = await fetch('/api/finance/bank-accounts', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+      });
+
+      if (!response.ok) {
+        console.error('Failed to fetch bank accounts');
+        return;
+      }
+
+      const result = await response.json();
+      if (result.success && result.data) {
+        setBankAccounts(result.data);
+      }
+    } catch (error) {
+      console.error('Error fetching bank accounts:', error);
+    }
+  };
+
+  const handleResetBankBalance = async () => {
+    try {
+      const accountId = selectedBankAccountId || ledgerId;
+      const balance = parseFloat(newBankBalance);
+
+      if (!accountId || isNaN(balance)) {
+        alert('Please enter a valid balance amount');
+        return;
+      }
+
+      const response = await fetch('/api/finance/update-bank-balance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bank_account_id: accountId,
+          new_balance: balance
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        alert('Bank balance updated successfully!');
+        setBankBalance(balance);
+        setResetBankBalanceOpen(false);
+        setNewBankBalance('');
+        fetchLedgerDetails(); // Refresh the ledger
+      } else {
+        alert(`Failed to update bank balance: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error updating bank balance:', error);
+      alert('An error occurred while updating bank balance');
     }
   };
 
@@ -1279,12 +1673,17 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-blue-600 font-medium mb-1">
-                  {ledgerType === 'employee' ? 'Pending Salary' : 'Outstanding Amount'}
+                  {ledgerType === 'employee' ? 'Pending Salary' : 
+                   ledgerType === 'investors' ? 'Current Balance' :
+                   ledgerType === 'bank' ? 'Bank Balance' : 
+                   'Outstanding Amount'}
                 </p>
                 <p className="text-lg font-bold text-blue-900">
                   {ledgerType === 'employee' && employeeSalaryInfo 
                     ? formatCurrency(employeeSalaryInfo.currentMonthPending + employeeSalaryInfo.lastMonthPending)
-                    : formatCurrency(calculatedTotals.netBalance)
+                    : ledgerType === 'bank'
+                    ? formatCurrency(bankBalance)
+                    : formatCurrency(Math.abs(calculatedTotals.netBalance))
                   }
                 </p>
               </div>
@@ -1506,6 +1905,9 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
                   <TableHead className="px-2 py-2">Date</TableHead>
                   <TableHead className="px-2 py-2">Description</TableHead>
                   <TableHead className="px-2 py-2">Type</TableHead>
+                  {ledgerType === 'investors' && (
+                    <TableHead className="px-2 py-2">Category</TableHead>
+                  )}
                   <TableHead className="px-2 py-2">Reference</TableHead>
                   <TableHead className="text-right px-2 py-2">Debit</TableHead>
                   <TableHead className="text-right px-2 py-2">Credit</TableHead>
@@ -1516,7 +1918,7 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
               <TableBody>
                 {transactions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={ledgerType === 'investors' ? 9 : 8} className="text-center py-8 text-gray-500">
                       No transactions found for this account
                     </TableCell>
                   </TableRow>
@@ -1542,6 +1944,21 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
                           {txn.transaction_type}
                         </Badge>
                       </TableCell>
+                      {ledgerType === 'investors' && (
+                        <TableCell className="px-2">
+                          {txn.withdrawal_type ? (
+                            <Badge variant="outline" className="text-xs">
+                              {txn.withdrawal_type === 'capital_withdrawal' && 'Capital Withdrawal'}
+                              {txn.withdrawal_type === 'interest_payment' && 'Interest Payment'}
+                              {txn.withdrawal_type === 'profit_distribution' && 'Profit Distribution'}
+                            </Badge>
+                          ) : txn.credit_amount > 0 ? (
+                            <Badge variant="outline" className="text-xs">Capital Withdrawal</Badge>
+                          ) : (
+                            <span className="text-gray-400 text-xs">Investment</span>
+                          )}
+                        </TableCell>
+                      )}
                       <TableCell className="font-mono text-xs px-2 text-gray-600">
                         {txn.reference_number || '-'}
                       </TableCell>
@@ -1707,6 +2124,35 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
 
       {/* Financial Action Buttons - Right Corner - Always Visible */}
       <div className="fixed top-20 right-4 z-50 flex flex-col gap-2">
+        
+        {/* Reset Bank Balance Button - Only for bank accounts */}
+        {ledgerType === 'bank' && (
+          <Button
+            size="sm"
+            className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-yellow-600 hover:bg-yellow-700 border-0"
+            onClick={() => {
+              setSelectedBankAccountId(ledgerId);
+              setNewBankBalance(bankBalance.toString());
+              fetchBankAccounts();
+              setResetBankBalanceOpen(true);
+            }}
+            title="Reset Bank Balance"
+          >
+            <DollarSign className="h-4 w-4 text-white" />
+          </Button>
+        )}
+        
+        {/* Add Deposit Button - Only for bank accounts */}
+        {ledgerType === 'bank' && (
+          <Button
+            size="sm"
+            className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-teal-600 hover:bg-teal-700 border-0"
+            onClick={() => setCreateDepositOpen(true)}
+            title="Add Deposit"
+          >
+            <DollarSign className="h-4 w-4 text-white" />
+          </Button>
+        )}
         
         <Button
           size="sm"
@@ -2162,6 +2608,147 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
             </Button>
             <Button className="bg-indigo-600 hover:bg-indigo-700">
               Transfer Funds
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Deposit Dialog */}
+      <Dialog open={createDepositOpen} onOpenChange={setCreateDepositOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+              <DollarSign className="h-5 w-5 text-teal-600" />
+              Add Bank Deposit
+            </DialogTitle>
+            <DialogDescription>
+              Record a deposit transaction to this bank account
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Deposit Date</Label>
+              <Input type="date" defaultValue={new Date().toISOString().split('T')[0]} />
+            </div>
+            <div className="space-y-2">
+              <Label>Amount (₹)</Label>
+              <Input type="number" placeholder="0.00" step="0.01" />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Input placeholder="e.g., Cash deposit, Customer payment, etc." />
+            </div>
+            <div className="space-y-2">
+              <Label>Reference Number</Label>
+              <Input placeholder="Reference or transaction ID (optional)" />
+            </div>
+            <div className="space-y-2">
+              <Label>Category</Label>
+              <Select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sales_payment">Sales Payment</SelectItem>
+                  <SelectItem value="cash_deposit">Cash Deposit</SelectItem>
+                  <SelectItem value="loan_received">Loan Received</SelectItem>
+                  <SelectItem value="investment">Investment</SelectItem>
+                  <SelectItem value="refund">Refund</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Notes (Optional)</Label>
+              <Textarea placeholder="Additional notes about this deposit..." rows={3} />
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDepositOpen(false)}>
+              Cancel
+            </Button>
+            <Button className="bg-teal-600 hover:bg-teal-700">
+              Add Deposit
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset Bank Balance Dialog */}
+      <Dialog open={resetBankBalanceOpen} onOpenChange={setResetBankBalanceOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+              <DollarSign className="h-5 w-5 text-yellow-600" />
+              Reset Bank Balance
+            </DialogTitle>
+            <DialogDescription>
+              Update the current balance for the selected bank account
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Bank Account</Label>
+              <Select 
+                value={selectedBankAccountId} 
+                onValueChange={setSelectedBankAccountId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select bank account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {bankAccounts.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.name} (Current: ₹{account.current_balance?.toLocaleString() || '0'})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Current Balance</Label>
+              <div className="p-3 bg-gray-100 rounded-md">
+                <p className="text-lg font-bold text-gray-900">
+                  ₹{bankBalance.toLocaleString()}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>New Balance (₹)</Label>
+              <Input 
+                type="number" 
+                placeholder="Enter new balance" 
+                step="0.01"
+                value={newBankBalance}
+                onChange={(e) => setNewBankBalance(e.target.value)}
+              />
+              <p className="text-xs text-gray-500">
+                This will update the bank account balance to match your actual bank statement
+              </p>
+            </div>
+
+            <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+              <p className="text-sm text-yellow-800">
+                <strong>Note:</strong> This will directly update the bank account balance. 
+                The final balance and bank balance will match after this operation.
+              </p>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetBankBalanceOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              className="bg-yellow-600 hover:bg-yellow-700"
+              onClick={handleResetBankBalance}
+            >
+              Update Balance
             </Button>
           </DialogFooter>
         </DialogContent>

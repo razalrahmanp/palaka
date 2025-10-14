@@ -158,7 +158,22 @@ export async function GET(req: Request) {
           }
         }
 
-        const totalCalculatedBalance = transactionBalance + paymentsBalance + linkedBankBalance;
+        // For Finance tab display, we should use the current_balance from database
+        // The bank ledger will show transaction history separately
+        // calculated_balance is kept for reference/debugging purposes only
+        const totalCalculatedBalance = transactionBalance;
+
+        // Debug logging for HDFC
+        if (account.name.includes('HDFC')) {
+          console.log('HDFC Balance Calculation:', {
+            account_type: account.account_type,
+            current_balance_from_db: account.current_balance,
+            transactionBalance,
+            paymentsBalance,
+            linkedBankBalance,
+            totalCalculatedBalance
+          });
+        }
 
         return {
           ...account,

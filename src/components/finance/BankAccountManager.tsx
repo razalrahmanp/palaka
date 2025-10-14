@@ -249,6 +249,19 @@ export function BankAccountManager() {
       if (response.ok) {
         const result = await response.json();
         const accounts = result.data || [];
+        
+        // Debug logging for HDFC
+        const hdfc = accounts.find((acc: BankAccount) => acc.name.includes('HDFC'));
+        if (hdfc) {
+          console.log('HDFC Account Data from API:', {
+            name: hdfc.name,
+            current_balance: hdfc.current_balance,
+            calculated_balance: hdfc.calculated_balance,
+            transaction_balance: hdfc.transaction_balance,
+            payments_balance: hdfc.payments_balance
+          });
+        }
+        
         setBankAccounts(accounts);
 
       }
@@ -394,19 +407,19 @@ export function BankAccountManager() {
       id: account.id,
       name: account.name,
       type: 'bank' as const,
-      balance: account.current_balance
+      balance: account.calculated_balance ?? account.current_balance
     })),
     ...upiAccounts.map(account => ({
       id: account.id,
       name: account.name,
       type: 'upi' as const,
-      balance: account.current_balance
+      balance: account.calculated_balance ?? account.current_balance
     })),
     ...cashAccounts.map(account => ({
       id: account.id,
       name: account.name,
       type: 'cash' as const,
-      balance: account.current_balance
+      balance: account.calculated_balance ?? account.current_balance
     }))
   ];
 
@@ -554,17 +567,42 @@ export function BankAccountManager() {
   };
 
   const getTotalBalance = () => {
-    const bankTotal = bankAccounts.reduce((total, account) => {
-      const balance = account.calculated_balance ?? account.current_balance;
-      return total + balance;
-    }, 0);
-    
-    const cashTotal = cashAccounts.reduce((total, account) => {
-      const balance = account.calculated_balance ?? account.current_balance;
-      return total + balance;
-    }, 0);
-    
-    return bankTotal + cashTotal;
+    // Only sum balances from currently displayed accounts based on active tab
+    if (activeTab === 'bank') {
+      return bankAccounts.reduce((total, account) => {
+        // Use calculated_balance if available (from bank_transactions), otherwise current_balance
+        const balance = account.calculated_balance ?? account.current_balance ?? 0;
+        return total + balance;
+      }, 0);
+    } else if (activeTab === 'upi') {
+      return upiAccounts.reduce((total, account) => {
+        const balance = account.calculated_balance ?? account.current_balance ?? 0;
+        return total + balance;
+      }, 0);
+    } else if (activeTab === 'cash') {
+      return cashAccounts.reduce((total, account) => {
+        const balance = account.calculated_balance ?? account.current_balance ?? 0;
+        return total + balance;
+      }, 0);
+    } else {
+      // For 'all' tab, sum all account types
+      const bankTotal = bankAccounts.reduce((total, account) => {
+        const balance = account.calculated_balance ?? account.current_balance ?? 0;
+        return total + balance;
+      }, 0);
+      
+      const upiTotal = upiAccounts.reduce((total, account) => {
+        const balance = account.calculated_balance ?? account.current_balance ?? 0;
+        return total + balance;
+      }, 0);
+      
+      const cashTotal = cashAccounts.reduce((total, account) => {
+        const balance = account.calculated_balance ?? account.current_balance ?? 0;
+        return total + balance;
+      }, 0);
+      
+      return bankTotal + upiTotal + cashTotal;
+    }
   };
 
   const getTotalPaymentMethods = () => {

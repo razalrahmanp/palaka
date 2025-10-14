@@ -62,6 +62,20 @@ interface LedgerSummary {
   approved_returns?: number;
   pending_returns?: number;
   last_transaction_date?: string;
+  // Employee payment type breakdowns
+  salary_amount?: number;
+  incentive_amount?: number;
+  bonus_amount?: number;
+  overtime_amount?: number;
+  allowance_amount?: number;
+  reimbursement_amount?: number;
+  // Investor/Partner specific fields
+  total_investments?: number;
+  total_withdrawals?: number;
+  capital_withdrawals?: number;
+  profit_distributions?: number;
+  interest_payments?: number;
+  net_equity?: number;
 }
 
 interface PaginationInfo {
@@ -396,9 +410,29 @@ export function ProfessionalLedgerSystem() {
                         <TableRow className="bg-gray-50">
                           <TableHead>Type</TableHead>
                           <TableHead>Account Name</TableHead>
-                          <TableHead>Contact</TableHead>
-                          <TableHead className="text-right">Debit (₹)</TableHead>
-                          <TableHead className="text-right">Credit (₹)</TableHead>
+                          {activeTab !== 'loans' && <TableHead>Contact</TableHead>}
+                          {activeTab === 'employee' && (
+                            <>
+                              <TableHead className="text-right">Salary (₹)</TableHead>
+                              <TableHead className="text-right">Incentive (₹)</TableHead>
+                              <TableHead className="text-right">Bonus (₹)</TableHead>
+                              <TableHead className="text-right">Overtime (₹)</TableHead>
+                            </>
+                          )}
+                          {activeTab === 'investors' && (
+                            <>
+                              <TableHead className="text-right">Investments (₹)</TableHead>
+                              <TableHead className="text-right">Capital Withdrawals (₹)</TableHead>
+                              <TableHead className="text-right">Profit Distribution (₹)</TableHead>
+                              <TableHead className="text-right">Interest Payment (₹)</TableHead>
+                            </>
+                          )}
+                          {activeTab !== 'investors' && (
+                            <>
+                              <TableHead className="text-right">Debit (₹)</TableHead>
+                              <TableHead className="text-right">Credit (₹)</TableHead>
+                            </>
+                          )}
                           <TableHead className="text-right">Balance (₹)</TableHead>
                           <TableHead className="text-center">Status</TableHead>
                         </TableRow>
@@ -421,18 +455,56 @@ export function ProfessionalLedgerSystem() {
                                 <p className="text-xs text-gray-500">ID: {ledger.id.toString().slice(0, 8)}</p>
                               </div>
                             </TableCell>
-                            <TableCell>
-                              <div className="text-sm">
-                                {ledger.email && <p className="text-gray-600">{ledger.email}</p>}
-                                {ledger.phone && <p className="text-gray-500">{ledger.phone}</p>}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right font-mono text-green-700 font-semibold">
-                              {formatCurrency(ledger.debit || ledger.total_amount || 0)}
-                            </TableCell>
-                            <TableCell className="text-right font-mono text-red-700 font-semibold">
-                              {formatCurrency(ledger.credit || ledger.paid_amount || 0)}
-                            </TableCell>
+                            {activeTab !== 'loans' && (
+                              <TableCell>
+                                <div className="text-sm">
+                                  {ledger.email && <p className="text-gray-600">{ledger.email}</p>}
+                                  {ledger.phone && <p className="text-gray-500">{ledger.phone}</p>}
+                                </div>
+                              </TableCell>
+                            )}
+                            {activeTab === 'employee' && (
+                              <>
+                                <TableCell className="text-right font-mono text-sm">
+                                  {formatCurrency(ledger.salary_amount || 0)}
+                                </TableCell>
+                                <TableCell className="text-right font-mono text-sm text-purple-700 font-medium">
+                                  {formatCurrency(ledger.incentive_amount || 0)}
+                                </TableCell>
+                                <TableCell className="text-right font-mono text-sm text-blue-700 font-medium">
+                                  {formatCurrency(ledger.bonus_amount || 0)}
+                                </TableCell>
+                                <TableCell className="text-right font-mono text-sm text-amber-700 font-medium">
+                                  {formatCurrency(ledger.overtime_amount || 0)}
+                                </TableCell>
+                              </>
+                            )}
+                            {activeTab === 'investors' && (
+                              <>
+                                <TableCell className="text-right font-mono text-green-700 font-semibold">
+                                  {formatCurrency(ledger.total_investments || 0)}
+                                </TableCell>
+                                <TableCell className="text-right font-mono text-orange-700 font-semibold">
+                                  {formatCurrency(ledger.capital_withdrawals || 0)}
+                                </TableCell>
+                                <TableCell className="text-right font-mono text-blue-600 font-medium">
+                                  {formatCurrency(ledger.profit_distributions || 0)}
+                                </TableCell>
+                                <TableCell className="text-right font-mono text-purple-600 font-medium">
+                                  {formatCurrency(ledger.interest_payments || 0)}
+                                </TableCell>
+                              </>
+                            )}
+                            {activeTab !== 'investors' && (
+                              <>
+                                <TableCell className="text-right font-mono text-green-700 font-semibold">
+                                  {formatCurrency(ledger.debit || ledger.total_amount || 0)}
+                                </TableCell>
+                                <TableCell className="text-right font-mono text-red-700 font-semibold">
+                                  {formatCurrency(ledger.credit || ledger.paid_amount || 0)}
+                                </TableCell>
+                              </>
+                            )}
                             <TableCell className="text-right font-mono font-bold text-lg">
                               <span className={ledger.balance_due > 0 ? 'text-orange-600' : ledger.balance_due < 0 ? 'text-blue-600' : 'text-gray-600'}>
                                 {formatCurrency(ledger.balance_due || 0)}

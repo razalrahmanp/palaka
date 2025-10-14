@@ -65,6 +65,7 @@ interface Investment {
   category?: string;
   description?: string;
   reference_number?: string;
+  upi_reference?: string;
   payment_method: string;
   created_at: string;
   // Enhanced fields
@@ -959,9 +960,9 @@ export function PaymentDeletionManager() {
               <TableHead>Date</TableHead>
               <TableHead>Investment Type</TableHead>
               <TableHead>Amount</TableHead>
-              <TableHead>Bank Account</TableHead>
-              <TableHead>Expected Return</TableHead>
-              <TableHead>Maturity Date</TableHead>
+              <TableHead>Description</TableHead>
+              <TableHead>Reference</TableHead>
+              <TableHead>Payment Method</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -999,13 +1000,19 @@ export function PaymentDeletionManager() {
                     {formatCurrency(investment.amount)}
                   </TableCell>
                   <TableCell>
-                    {investment.bank_account_name || 'N/A'}
-                  </TableCell>
-                  <TableCell className="text-green-600">
-                    {investment.expected_return ? formatCurrency(investment.expected_return) : 'N/A'}
+                    <div className="max-w-xs truncate" title={investment.description || 'N/A'}>
+                      {investment.description || 'N/A'}
+                    </div>
                   </TableCell>
                   <TableCell>
-                    {investment.maturity_date ? formatDate(investment.maturity_date) : 'N/A'}
+                    <span className="text-sm text-gray-600">
+                      {investment.reference_number || investment.upi_reference || 'N/A'}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="capitalize">
+                      {investment.payment_method || 'cash'}
+                    </Badge>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">

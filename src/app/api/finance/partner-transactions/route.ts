@@ -5,6 +5,7 @@ interface PartnerTransaction {
   id: string;
   date: string;
   type: 'investment' | 'withdrawal';
+  withdrawal_type?: 'capital_withdrawal' | 'interest_payment' | 'profit_distribution';
   amount: number;
   description: string;
   payment_method: string;
@@ -84,12 +85,12 @@ export async function GET(request: NextRequest) {
       .from('withdrawals')
       .select(`
         id, amount, withdrawal_date, description, payment_method, 
-        reference_number, upi_reference, created_at,
+        reference_number, upi_reference, created_at, withdrawal_type,
         withdrawal_categories(category_name),
         withdrawal_subcategories(subcategory_name)
       `)
       .eq('partner_id', partnerId)
-      .order('withdrawal_date', { ascending: false });
+      .order('withdrawal_date', { ascending: false});
 
     if (withdrawalError) {
       console.error('Error fetching withdrawals:', withdrawalError);
@@ -99,6 +100,7 @@ export async function GET(request: NextRequest) {
           id: `wd_${wd.id}`,
           date: wd.withdrawal_date,
           type: 'withdrawal',
+          withdrawal_type: wd.withdrawal_type || 'capital_withdrawal', // default to capital
           amount: wd.amount || 0,
           description: wd.description || 'Withdrawal',
           payment_method: wd.payment_method || 'cash',
@@ -122,6 +124,13 @@ export async function GET(request: NextRequest) {
     const totalWithdrawals = transactions
       .filter(t => t.type === 'withdrawal')
       .reduce((sum, t) => sum + t.amount, 0);
+    
+    // Calculate capital withdrawals only (for net equity calculation)
+    // Only capital withdrawals reduce investment balance
+    // Profit distributions and interest payments don't reduce the investment
+    const capitalWithdrawals = withdrawals
+      ?.filter(wd => wd.withdrawal_type === 'capital_withdrawal' || !wd.withdrawal_type) // default to capital for null
+      .reduce((sum, wd) => sum + (wd.amount || 0), 0) || 0;
 
     // Fetch opening balance for this partner
     const { data: openingBalance, error: openingBalanceError } = await supabaseAdmin
@@ -137,7 +146,8 @@ export async function GET(request: NextRequest) {
       openingBalanceAmount = (openingBalance.debit_amount || 0) - (openingBalance.credit_amount || 0);
     }
 
-    const netEquity = totalInvestments - totalWithdrawals;
+    // Net equity = total investments - only capital withdrawals
+    const netEquity = totalInvestments - capitalWithdrawals;
     const balanceDue = openingBalanceAmount + netEquity; // Opening balance + current equity
 
     // Paginate results
@@ -158,6 +168,8 @@ export async function GET(request: NextRequest) {
         summary: {
           total_investments: totalInvestments,
           total_withdrawals: totalWithdrawals,
+          capital_withdrawals: capitalWithdrawals,
+          profit_and_interest_withdrawals: totalWithdrawals - capitalWithdrawals,
           net_equity: netEquity,
           opening_balance: openingBalanceAmount,
           balance_due: balanceDue,

@@ -36,6 +36,7 @@ import {
   Building2,
   ArrowRightLeft,
 } from 'lucide-react';
+import { FloatingActionMenu, createFinanceActions } from './FloatingActionMenu';
 
 interface LedgerDetail {
   id: string;
@@ -2133,87 +2134,46 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
         </Button>
       </div>
 
-      {/* Financial Action Buttons - Right Corner - Always Visible */}
-      <div className="fixed top-20 right-4 z-50 flex flex-col gap-2">
-        
-        {/* Reset Bank Balance Button - Only for bank accounts */}
-        {ledgerType === 'bank' && (
-          <Button
-            size="sm"
-            className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-yellow-600 hover:bg-yellow-700 border-0"
-            onClick={() => {
-              setSelectedBankAccountId(ledgerId);
-              setNewBankBalance(bankBalance.toString());
-              fetchBankAccounts();
-              setResetBankBalanceOpen(true);
-            }}
-            title="Reset Bank Balance"
-          >
-            <DollarSign className="h-4 w-4 text-white" />
-          </Button>
-        )}
-        
-        {/* Add Deposit Button - Only for bank accounts */}
-        {ledgerType === 'bank' && (
-          <Button
-            size="sm"
-            className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-teal-600 hover:bg-teal-700 border-0"
-            onClick={() => setCreateDepositOpen(true)}
-            title="Add Deposit"
-          >
-            <DollarSign className="h-4 w-4 text-white" />
-          </Button>
-        )}
-        
-        <Button
-          size="sm"
-          className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-red-600 hover:bg-red-700 border-0"
-          onClick={() => setCreateExpenseOpen(true)}
-          title="Add Expense"
-        >
-          <Plus className="h-4 w-4 text-white" />
-        </Button>
-        <Button
-          size="sm"
-          className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-green-600 hover:bg-green-700 border-0"
-          onClick={() => setCreateInvestmentOpen(true)}
-          title="Investment"
-        >
-          <TrendingUp className="h-4 w-4 text-white" />
-        </Button>
-        <Button
-          size="sm"
-          className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-purple-600 hover:bg-purple-700 border-0"
-          onClick={() => setCreateWithdrawalOpen(true)}
-          title="Withdrawal"
-        >
-          <TrendingDown className="h-4 w-4 text-white" />
-        </Button>
-        <Button
-          size="sm"
-          className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-blue-600 hover:bg-blue-700 border-0"
-          onClick={() => setCreateLiabilityOpen(true)}
-          title="Liabilities"
-        >
-          <CreditCard className="h-4 w-4 text-white" />
-        </Button>
-        <Button
-          size="sm"
-          className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-orange-600 hover:bg-orange-700 border-0"
-          onClick={() => setLoanSetupOpen(true)}
-          title="Loan Setup"
-        >
-          <Building2 className="h-4 w-4 text-white" />
-        </Button>
-        <Button
-          size="sm"
-          className="w-10 h-10 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-indigo-600 hover:bg-indigo-700 border-0"
-          onClick={() => setShowFundTransfer(true)}
-          title="Fund Transfer"
-        >
-          <ArrowRightLeft className="h-4 w-4 text-white" />
-        </Button>
-      </div>
+      {/* Floating Action Menu - Right Corner - Always Visible */}
+      <FloatingActionMenu
+        actions={[
+          // Bank-specific actions (only for bank ledgers)
+          ...(ledgerType === 'bank' ? [
+            {
+              id: 'reset-balance',
+              label: 'Reset Bank Balance',
+              icon: <DollarSign className="h-5 w-5 text-white" />,
+              onClick: () => {
+                setSelectedBankAccountId(ledgerId);
+                setNewBankBalance(bankBalance.toString());
+                fetchBankAccounts();
+                setResetBankBalanceOpen(true);
+              },
+              color: 'bg-yellow-600',
+              hoverColor: 'hover:bg-yellow-700',
+            },
+            {
+              id: 'add-deposit',
+              label: 'Add Deposit',
+              icon: <Plus className="h-5 w-5 text-white" />,
+              onClick: () => setCreateDepositOpen(true),
+              color: 'bg-teal-600',
+              hoverColor: 'hover:bg-teal-700',
+            },
+          ] : []),
+          // Common finance actions
+          ...createFinanceActions({
+            onCreateExpense: () => setCreateExpenseOpen(true),
+            onCreateInvestment: () => setCreateInvestmentOpen(true),
+            onCreateWithdrawal: () => setCreateWithdrawalOpen(true),
+            onCreateLiability: () => setCreateLiabilityOpen(true),
+            onLoanSetup: () => setLoanSetupOpen(true),
+            onFundTransfer: () => setShowFundTransfer(true),
+            onRefund: () => {}, // No refund in ledger view
+          }).filter(action => action.id !== 'refund'), // Remove refund action
+        ]}
+        refreshAction={handleRefresh}
+      />
 
       {/* Dialog Modals */}
       

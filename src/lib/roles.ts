@@ -14,7 +14,7 @@ export const ROLES: Record<UserRole, Permission[]> = {
         'invoice:create', 'payment:manage',
         'employee:manage',
         'salary:manage',
-        'performance_review:create', 'performance_review:read',
+        'performance_review:create', 'performance_review:read', 'performance:manage',
         'analytics:read', 'dashboard:read', 'report:read'
     ],
     "Executive": [
@@ -67,7 +67,9 @@ export const ROLES: Record<UserRole, Permission[]> = {
         'employee:manage',
         'salary:manage',
         'performance_review:create',
-        'performance_review:read'
+        'performance_review:read',
+        'performance:manage',
+        'dashboard:read'
     ],
     "Employee": [
         'employee:read_own',

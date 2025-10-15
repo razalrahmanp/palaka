@@ -2,8 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { NavLink } from './NavLink';
-import { Home, Users, Receipt, Warehouse, ShoppingCart, Wrench, Truck, DollarSign, Bell, Settings, Star, Users2, Building2, Package, FileText, TrendingUp, BookOpen } from 'lucide-react';
-import { hasPermission, hasAnyPermission } from '@/lib/auth';
+import { 
+  Home, Users, Receipt, Warehouse, ShoppingCart, Wrench, Truck, 
+  DollarSign, Bell, Settings, Star, Users2, Building2, Package, 
+  FileText, TrendingUp, BookOpen 
+} from 'lucide-react';
+import { hasPermission, hasAnyPermission, getCurrentUser } from '@/lib/auth';
 
 // Nav item definition
 interface NavItem {
@@ -13,30 +17,71 @@ interface NavItem {
   permission: string | string[];
 }
 
-// Menu definitions
-const navItems: NavItem[] = [
+// Helper function to check if user is system admin
+const isSystemAdmin = (): boolean => {
+  const user = getCurrentUser();
+  return user?.role === 'System Administrator';
+};
+
+// Helper function to check if user is HR Manager
+const isHRManager = (): boolean => {
+  const user = getCurrentUser();
+  return user?.role === 'HR Manager';
+};
+
+// Helper function to check if user should see HR section
+const canSeeHRSection = (): boolean => {
+  return isSystemAdmin() || isHRManager() || hrNavItems.some(i => hasPermission(i.permission as string));
+};
+
+// Menu definitions organized by logical groups
+
+// Dashboard
+const dashboardItems: NavItem[] = [
   { href: "/dashboard", icon: Home, label: "Dashboard", permission: 'dashboard:read' },
+];
+
+// Sales & CRM
+const salesItems: NavItem[] = [
   { href: "/crm", icon: Users, label: "CRM", permission: ['customer:read','customer:read_own'] },
-  { href: "/sales", icon: ShoppingCart, label: "Sales", permission: ['sales_order:read','sales_order:read_own'] },
+  { href: "/sales", icon: ShoppingCart, label: "Sales Orders", permission: ['sales_order:read','sales_order:read_own'] },
   { href: "/billing", icon: Receipt, label: "Billing", permission: 'product:read' },
   { href: "/invoices", icon: FileText, label: "Invoices", permission: ['invoice:create','invoice:read'] },
-  { href: "/ledgers", icon: BookOpen, label: "Ledgers", permission: ['invoice:create','payment:manage'] },
-  { href: "/inventory", icon: Warehouse, label: "Inventory", permission: 'inventory:read' },
+];
+
+// Purchases & Procurement
+const purchaseItems: NavItem[] = [
   { href: "/vendors", icon: Building2, label: "Vendors", permission: 'purchase_order:read' },
+  { href: "/procurement", icon: Truck, label: "Purchase Orders", permission: 'purchase_order:read' },
+];
+
+// Inventory & Manufacturing
+const inventoryItems: NavItem[] = [
+  { href: "/inventory", icon: Warehouse, label: "Inventory", permission: 'inventory:read' },
   { href: "/manufacturing", icon: Wrench, label: "Manufacturing", permission: 'bom:manage' },
-  { href: "/procurement", icon: Truck, label: "Procurement", permission: 'purchase_order:read' },
   { href: "/logistics", icon: Truck, label: "Logistics", permission: ['delivery:read','delivery:read_own'] },
+];
+
+// Banking & Finance
+const financeItems: NavItem[] = [
   { href: "/finance", icon: DollarSign, label: "Finance", permission: ['invoice:create','payment:manage'] },
+  { href: "/ledgers", icon: BookOpen, label: "Ledgers", permission: ['invoice:create','payment:manage'] },
   { href: "/loans-investments", icon: TrendingUp, label: "Loans & Investments", permission: ['invoice:create','payment:manage'] },
 ];
 
+// Human Resources
 const hrNavItems: NavItem[] = [
   { href: "/hr/employees", icon: Users2, label: "Employees", permission: 'employee:manage' },
   { href: "/hr/performance", icon: Star, label: "Performance", permission: 'performance_review:read' },
 ];
 
+// Reports & Analytics (placeholder for future expansion)
+const reportItems: NavItem[] = [
+  { href: "/alerts", icon: Bell, label: "Reports & Alerts", permission: 'analytics:read' },
+];
+
+// System
 const adminNavItems: NavItem[] = [
-  { href: "/alerts", icon: Bell, label: "Alerts", permission: 'analytics:read' },
   { href: "/settings", icon: Settings, label: "Settings", permission: 'user:manage' },
 ];
 
@@ -76,18 +121,18 @@ export const Sidebar = ({ isOpen, onToggle }: SidebarProps) => {
 
   return (
     <aside
-      className={`fixed md:fixed top-0 left-0 z-50 h-full bg-gradient-to-b from-white to-gray-50 border-r border-gray-200 shadow-xl transition-all duration-300 ease-in-out
+      className={`fixed md:fixed top-0 left-0 z-50 h-screen flex flex-col bg-gradient-to-b from-white to-gray-50 border-r border-gray-200 shadow-xl transition-all duration-300 ease-in-out
         ${isOpen ? 'w-64 md:translate-x-0' : 'w-0 md:-translate-x-64'}
       `}
     >
-    {/* Header */}
-    <div className="flex items-center justify-between h-16 px-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+    {/* Header - Fixed at top */}
+    <div className="flex-shrink-0 flex items-center justify-between h-16 px-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white">
       <div className="flex items-center">
         <Package className="h-8 w-8 text-white" />
         <span className="ml-3 text-xl font-bold">Palaka ERP</span>
       </div>
       {/* Toggle button for both desktop and mobile */}
-      <button onClick={onToggle} className="text-white">
+      <button onClick={onToggle} className="text-white hover:bg-white/10 rounded p-1 transition-colors">
         {isOpen ? (
           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -100,64 +145,214 @@ export const Sidebar = ({ isOpen, onToggle }: SidebarProps) => {
       </button>
     </div>
     
-    <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-      {/* Core Modules */}
-      <div className="mb-6">
-        <p className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Core Modules</p>
-        <div className="space-y-1">
-          {navItems
-            .filter(i =>
-              Array.isArray(i.permission)
-                ? hasAnyPermission(i.permission)
-                : hasPermission(i.permission)
-            )
-            .map(i => (
-              <NavLink
-                key={i.href}
-                href={i.href}
-                icon={i.icon}
-              >
-                {i.label}
-              </NavLink>
-            ))}
+    {/* Scrollable Navigation Area */}
+    <nav className="flex-1 p-4 space-y-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+      {/* Dashboard */}
+      {dashboardItems.some(i => 
+        Array.isArray(i.permission)
+          ? hasAnyPermission(i.permission)
+          : hasPermission(i.permission)
+      ) && (
+        <div className="mb-6">
+          <div className="space-y-1">
+            {dashboardItems
+              .filter(i =>
+                Array.isArray(i.permission)
+                  ? hasAnyPermission(i.permission)
+                  : hasPermission(i.permission)
+              )
+              .map(i => (
+                <NavLink
+                  key={i.href}
+                  href={i.href}
+                  icon={i.icon}
+                >
+                  {i.label}
+                </NavLink>
+              ))}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Human Resources */}
-      <div className="mb-6">
-        <p className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Human Resources</p>
-        <div className="space-y-1">
-          {hrNavItems
-            .filter(i => hasPermission(i.permission as string))
-            .map(i => (
-              <NavLink
-                key={i.href}
-                href={i.href}
-                icon={i.icon}
-              >
-                {i.label}
-              </NavLink>
-            ))}
+      {/* Sales & CRM */}
+      {salesItems.some(i => 
+        Array.isArray(i.permission)
+          ? hasAnyPermission(i.permission)
+          : hasPermission(i.permission)
+      ) && (
+        <div className="mb-6">
+          <p className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Sales & CRM</p>
+          <div className="space-y-1">
+            {salesItems
+              .filter(i =>
+                Array.isArray(i.permission)
+                  ? hasAnyPermission(i.permission)
+                  : hasPermission(i.permission)
+              )
+              .map(i => (
+                <NavLink
+                  key={i.href}
+                  href={i.href}
+                  icon={i.icon}
+                >
+                  {i.label}
+                </NavLink>
+              ))}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Purchases & Procurement */}
+      {purchaseItems.some(i => 
+        Array.isArray(i.permission)
+          ? hasAnyPermission(i.permission)
+          : hasPermission(i.permission)
+      ) && (
+        <div className="mb-6">
+          <p className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Purchases</p>
+          <div className="space-y-1">
+            {purchaseItems
+              .filter(i =>
+                Array.isArray(i.permission)
+                  ? hasAnyPermission(i.permission)
+                  : hasPermission(i.permission)
+              )
+              .map(i => (
+                <NavLink
+                  key={i.href}
+                  href={i.href}
+                  icon={i.icon}
+                >
+                  {i.label}
+                </NavLink>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* Inventory & Manufacturing */}
+      {inventoryItems.some(i => 
+        Array.isArray(i.permission)
+          ? hasAnyPermission(i.permission)
+          : hasPermission(i.permission)
+      ) && (
+        <div className="mb-6">
+          <p className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Inventory & Manufacturing</p>
+          <div className="space-y-1">
+            {inventoryItems
+              .filter(i =>
+                Array.isArray(i.permission)
+                  ? hasAnyPermission(i.permission)
+                  : hasPermission(i.permission)
+              )
+              .map(i => (
+                <NavLink
+                  key={i.href}
+                  href={i.href}
+                  icon={i.icon}
+                >
+                  {i.label}
+                </NavLink>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* Banking & Finance */}
+      {financeItems.some(i => 
+        Array.isArray(i.permission)
+          ? hasAnyPermission(i.permission)
+          : hasPermission(i.permission)
+      ) && (
+        <div className="mb-6">
+          <p className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Banking & Finance</p>
+          <div className="space-y-1">
+            {financeItems
+              .filter(i =>
+                Array.isArray(i.permission)
+                  ? hasAnyPermission(i.permission)
+                  : hasPermission(i.permission)
+              )
+              .map(i => (
+                <NavLink
+                  key={i.href}
+                  href={i.href}
+                  icon={i.icon}
+                >
+                  {i.label}
+                </NavLink>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* Human Resources - Show if user has HR permissions OR is System Admin OR is HR Manager */}
+      {canSeeHRSection() && (
+        <div className="mb-6">
+          <p className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Human Resources</p>
+          <div className="space-y-1">
+            {hrNavItems
+              .filter(i => hasPermission(i.permission as string) || isSystemAdmin() || isHRManager())
+              .map(i => (
+                <NavLink
+                  key={i.href}
+                  href={i.href}
+                  icon={i.icon}
+                >
+                  {i.label}
+                </NavLink>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* Reports & Analytics */}
+      {reportItems.some(i => 
+        Array.isArray(i.permission)
+          ? hasAnyPermission(i.permission)
+          : hasPermission(i.permission)
+      ) && (
+        <div className="mb-6">
+          <p className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Reports & Analytics</p>
+          <div className="space-y-1">
+            {reportItems
+              .filter(i =>
+                Array.isArray(i.permission)
+                  ? hasAnyPermission(i.permission)
+                  : hasPermission(i.permission)
+              )
+              .map(i => (
+                <NavLink
+                  key={i.href}
+                  href={i.href}
+                  icon={i.icon}
+                >
+                  {i.label}
+                </NavLink>
+              ))}
+          </div>
+        </div>
+      )}
 
       {/* System Management */}
-      <div className="mb-6">
-        <p className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">System</p>
-        <div className="space-y-1">
-          {adminNavItems
-            .filter(i => hasPermission(i.permission as string))
-            .map(i => (
-              <NavLink
-                key={i.href}
-                href={i.href}
-                icon={i.icon}
-              >
-                {i.label}
-              </NavLink>
-            ))}
+      {adminNavItems.some(i => hasPermission(i.permission as string)) && (
+        <div className="mb-6">
+          <p className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">System</p>
+          <div className="space-y-1">
+            {adminNavItems
+              .filter(i => hasPermission(i.permission as string))
+              .map(i => (
+                <NavLink
+                  key={i.href}
+                  href={i.href}
+                  icon={i.icon}
+                >
+                  {i.label}
+                </NavLink>
+              ))}
+          </div>
         </div>
-      </div>
+      )}
     </nav>
   </aside>
   );

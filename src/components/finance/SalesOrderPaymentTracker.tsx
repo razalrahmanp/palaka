@@ -231,19 +231,32 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
         }
       }
 
-      // If payment method is cash, create cash account transaction
-      if (formData.cash_account_id && formData.method === 'cash') {
+      // If payment method is cash, create cash transaction directly
+      if (formData.method === 'cash') {
         try {
-          await fetch('/api/finance/bank_accounts/transactions', {
+          // Create cash transaction record
+          await fetch('/api/finance/cash-transactions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              bank_account_id: formData.cash_account_id,
-              type: 'deposit',
+              transaction_type: 'receipt',
               amount: parseFloat(formData.amount),
               description: `Cash Payment received for Order ${orderId}`,
               reference: formData.reference || `Order-${orderId}`,
-              transaction_date: formData.payment_date
+              transaction_date: formData.payment_date,
+              source: 'sales_order_payment'
+            })
+          });
+
+          // Update cash balance
+          await fetch('/api/finance/cash-balance', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              amount: parseFloat(formData.amount),
+              transaction_type: 'deposit',
+              description: `Cash received for Order ${orderId}`,
+              date: formData.payment_date
             })
           });
         } catch (cashError) {
@@ -261,30 +274,56 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
 
           // Create down payment transaction (customer payment)
           if (downPaymentAmount > 0) {
-            // The down payment logic will depend on the down payment method
-            let downPaymentAccountId = '';
-            
             if (formData.bajaj_downpayment_method === 'cash') {
-              downPaymentAccountId = formData.cash_account_id;
-            } else if (formData.bajaj_downpayment_method === 'upi') {
-              downPaymentAccountId = formData.upi_account_id;
-            } else {
-              downPaymentAccountId = formData.bank_account_id;
-            }
-
-            if (downPaymentAccountId) {
-              await fetch('/api/finance/bank_accounts/transactions', {
+              // For cash down payment, create cash transaction directly
+              await fetch('/api/finance/cash-transactions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  bank_account_id: downPaymentAccountId,
-                  type: 'deposit',
+                  transaction_type: 'receipt',
                   amount: downPaymentAmount,
-                  description: `Bajaj Finance Down Payment for Order ${orderId}`,
+                  description: `Bajaj Finance Down Payment (Cash) for Order ${orderId}`,
                   reference: `BAJAJ-DP-${formData.reference || orderId}`,
-                  transaction_date: formData.payment_date
+                  transaction_date: formData.payment_date,
+                  source: 'bajaj_down_payment'
                 })
               });
+
+              // Update cash balance
+              await fetch('/api/finance/cash-balance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  amount: downPaymentAmount,
+                  transaction_type: 'deposit',
+                  description: `Bajaj Down Payment for Order ${orderId}`,
+                  date: formData.payment_date
+                })
+              });
+            } else {
+              // For non-cash payments (UPI, Bank, etc.), use account ID
+              let downPaymentAccountId = '';
+              
+              if (formData.bajaj_downpayment_method === 'upi') {
+                downPaymentAccountId = formData.upi_account_id;
+              } else {
+                downPaymentAccountId = formData.bank_account_id;
+              }
+
+              if (downPaymentAccountId) {
+                await fetch('/api/finance/bank_accounts/transactions', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    bank_account_id: downPaymentAccountId,
+                    type: 'deposit',
+                    amount: downPaymentAmount,
+                    description: `Bajaj Finance Down Payment for Order ${orderId}`,
+                    reference: `BAJAJ-DP-${formData.reference || orderId}`,
+                    transaction_date: formData.payment_date
+                  })
+                });
+              }
             }
           }
 
@@ -350,8 +389,9 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
       }
       
       // Check down payment account based on method
+      // Cash doesn't require account selection
       if (formData.bajaj_downpayment_method === 'cash') {
-        return !!formData.cash_account_id;
+        return true; // Cash payments auto-update cash balance
       } else if (formData.bajaj_downpayment_method === 'upi') {
         return !!formData.upi_account_id;
       } else if (['cheque', 'bank_transfer', 'card'].includes(formData.bajaj_downpayment_method)) {
@@ -496,35 +536,18 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
               </div>
             )}
 
+            {/* Cash payment doesn't require account selection - auto-updates cash balance */}
             {formData.method === 'cash' && (
-              <div>
-                <Label htmlFor="cash_account">Cash Account *</Label>
-                <Select 
-                  value={formData.cash_account_id} 
-                  onValueChange={(value) => handleInputChange('cash_account_id', value)}
-                >
-                  <SelectTrigger id="cash_account">
-                    <SelectValue placeholder="Select cash account" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {cashAccounts.map((account) => (
-                      <SelectItem key={account.id} value={account.id}>
-                        <div className="flex items-center gap-2">
-                          <DollarSign className="h-4 w-4" />
-                          <span>{account.name}</span>
-                          <span className="text-gray-500 text-xs">
-                            (Balance: {account.currency} {account.current_balance.toFixed(2)})
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {cashAccounts.length === 0 && (
-                  <p className="text-xs text-orange-600 mt-1">
-                    No cash accounts found. Please add a cash account first.
-                  </p>
-                )}
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div className="flex items-center gap-2 text-green-700">
+                  <DollarSign className="h-4 w-4" />
+                  <span className="text-sm font-medium">
+                    Cash payment will automatically update cash balance
+                  </span>
+                </div>
+                <p className="text-xs text-green-600 mt-2">
+                  No account selection needed. Cash transactions and balance will be updated automatically.
+                </p>
               </div>
             )}
 
@@ -621,30 +644,18 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
                   </div>
                 )}
 
+                {/* Cash down payment doesn't require account selection */}
                 {formData.bajaj_downpayment_method === 'cash' && (
-                  <div>
-                    <Label htmlFor="bajaj_dp_cash_account">Down Payment Cash Account *</Label>
-                    <Select 
-                      value={formData.cash_account_id} 
-                      onValueChange={(value) => handleInputChange('cash_account_id', value)}
-                    >
-                      <SelectTrigger id="bajaj_dp_cash_account">
-                        <SelectValue placeholder="Select cash account for down payment" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {cashAccounts.map((account) => (
-                          <SelectItem key={account.id} value={account.id}>
-                            <div className="flex items-center gap-2">
-                              <DollarSign className="h-4 w-4" />
-                              <span>{account.name}</span>
-                              <span className="text-gray-500 text-xs">
-                                (Balance: {account.currency} {account.current_balance.toFixed(2)})
-                              </span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <div className="flex items-center gap-2 text-green-700">
+                      <DollarSign className="h-4 w-4" />
+                      <span className="text-sm font-medium">
+                        Cash down payment will automatically update cash balance
+                      </span>
+                    </div>
+                    <p className="text-xs text-green-600 mt-2">
+                      No account selection needed. Cash transactions and balance will be updated automatically.
+                    </p>
                   </div>
                 )}
 

@@ -93,7 +93,6 @@ export async function GET(
       payment_date,
       bank_account_id,
       upi_account_id,
-      cash_account_id,
       reference
     } = body;
 
@@ -106,13 +105,11 @@ export async function GET(
       );
     }
 
-    // Validate account selection for applicable payment methods
-    if (['bank_transfer', 'cheque', 'upi', 'cash'].includes(method)) {
-      const accountId = method === 'upi' ? upi_account_id : 
-                       method === 'cash' ? cash_account_id : 
-                       bank_account_id;
+    // Validate account selection for applicable payment methods (except cash - which auto-updates)
+    if (['bank_transfer', 'cheque', 'upi'].includes(method)) {
+      const accountId = method === 'upi' ? upi_account_id : bank_account_id;
       if (!accountId || accountId.trim() === '') {
-        console.log('Validation failed: Missing account for method', { method, bank_account_id, upi_account_id, cash_account_id });
+        console.log('Validation failed: Missing account for method', { method, bank_account_id, upi_account_id });
         return NextResponse.json(
           { error: `Account selection is required for ${method} payments` },
           { status: 400 }
@@ -221,11 +218,8 @@ export async function GET(
       if (upi_account_id && upi_account_id.trim() !== '') {
         paymentData.bank_account_id = upi_account_id;
       }
-    } else if (method === 'cash') {
-      if (cash_account_id && cash_account_id.trim() !== '') {
-        paymentData.bank_account_id = cash_account_id;
-      }
     }
+    // Note: cash method doesn't store account_id as it updates cash balance directly
 
     console.log('Final payment data to insert:', paymentData);
 
@@ -369,6 +363,80 @@ export async function GET(
         }
       } catch (bankError) {
         console.error('Error processing bank transaction:', bankError);
+        // Don't fail the payment, just log the error
+      }
+    }
+
+    // Handle cash transactions for cash payments
+    if (method === 'cash') {
+      try {
+        console.log('💰 Processing cash payment - creating cash transaction and updating balance...');
+        
+        // 1. Get the default cash account (use first CASH account found)
+        const { data: cashAccounts, error: cashAccountError } = await supabase
+          .from('bank_accounts')
+          .select('id, name')
+          .eq('account_type', 'CASH')
+          .order('created_at', { ascending: true })
+          .limit(1);
+
+        if (cashAccountError || !cashAccounts || cashAccounts.length === 0) {
+          console.error('❌ Failed to find default cash account:', cashAccountError);
+          throw new Error('Default cash account not found');
+        }
+
+        const cashAccount = cashAccounts[0];
+        console.log('✅ Found default cash account:', cashAccount.id, cashAccount.name);
+
+        // 2. Create cash transaction record (CREDIT for incoming payment)
+        const { data: cashTransaction, error: cashTransactionError } = await supabase
+          .from('cash_transactions')
+          .insert({
+            transaction_date: payment_date || new Date().toISOString().split('T')[0],
+            amount: parseFloat(amount), // Positive for incoming payment
+            transaction_type: 'CREDIT',
+            description: `Cash payment received for Order ${orderId}`,
+            reference_number: reference || undefined,
+            source_type: 'sales_payment',
+            source_id: payment.id,
+            cash_account_id: cashAccount.id
+          })
+          .select()
+          .single();
+
+        if (cashTransactionError) {
+          console.error('❌ Failed to create cash transaction:', cashTransactionError);
+        } else {
+          console.log('✅ Created cash transaction:', cashTransaction.id);
+
+          // 3. Update cash balance
+          const { data: currentBalance } = await supabase
+            .from('cash_balances')
+            .select('current_balance')
+            .eq('cash_account_id', cashAccount.id)
+            .single();
+
+          const newBalance = (currentBalance?.current_balance || 0) + parseFloat(amount);
+
+          const { error: balanceUpdateError } = await supabase
+            .from('cash_balances')
+            .upsert({
+              cash_account_id: cashAccount.id,
+              current_balance: newBalance,
+              last_transaction_id: cashTransaction.id,
+              last_updated: new Date().toISOString()
+            }, {
+              onConflict: 'cash_account_id'
+            });
+
+          if (balanceUpdateError) {
+            console.error('❌ Failed to update cash balance:', balanceUpdateError);
+          } else {
+            console.log(`✅ Updated cash balance: ${currentBalance?.current_balance || 0} + ${amount} = ${newBalance}`);
+          }
+        }
+      } catch (cashError) {
+        console.error('❌ Error processing cash transaction:', cashError);
         // Don't fail the payment, just log the error
       }
     }

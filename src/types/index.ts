@@ -29,7 +29,7 @@ export type Permission =
   | 'invoice:create' | 'payment:manage'
   | 'employee:manage' | 'employee:read_own' | 'employee:update_own'
   | 'salary:manage' | 'salary:read_own'
-  | 'performance_review:create' | 'performance_review:update' | 'performance_review:read'
+  | 'performance_review:create' | 'performance_review:update' | 'performance_review:read' | 'performance:manage'
   | 'analytics:read' | 'dashboard:read' | 'report:read';
 
 export interface User {

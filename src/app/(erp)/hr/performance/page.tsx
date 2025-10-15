@@ -303,28 +303,24 @@ const PerformancePage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-purple-50 p-6 space-y-8">
+    <div className="min-h-screen bg-gray-50 p-6 space-y-6">
       {/* Header Section */}
-      <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-xl p-6">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-violet-600 bg-clip-text text-transparent">
+            <h1 className="text-3xl font-bold text-gray-900">
               Performance Management
             </h1>
             <p className="text-gray-600 mt-2">Manage employee performance reviews and goals</p>
           </div>
-          <div className="flex items-center space-x-3">
-            <div className="h-8 w-8 bg-gradient-to-br from-purple-500 to-violet-600 rounded-lg flex items-center justify-center">
-              <Star className="h-5 w-5 text-white" />
-            </div>
-            <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-              <DialogTrigger asChild>
-                <Button className="bg-gradient-to-r from-purple-600 to-violet-700 hover:from-purple-700 hover:to-violet-800 text-white shadow-lg flex items-center gap-2">
-                  <Plus className="h-4 w-4" />
-                  Create Review
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl bg-white/95 backdrop-blur-sm">
+          <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+            <DialogTrigger asChild>
+              <Button className="bg-purple-600 hover:bg-purple-700 text-white shadow-sm flex items-center gap-2">
+                <Plus className="h-4 w-4" />
+                Create Review
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>Create Performance Review</DialogTitle>
             </DialogHeader>
@@ -372,70 +368,71 @@ const PerformancePage = () => {
           </DialogContent>
         </Dialog>
       </div>
+      </div>
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <Card>
-          <CardContent className="p-4">
+        <Card className="bg-white shadow-sm hover:shadow-md transition-shadow">
+          <CardContent className="p-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
+              <div className="p-3 bg-blue-50 rounded-lg">
                 <FileText className="h-5 w-5 text-blue-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-600">Total Reviews</p>
-                <p className="text-2xl font-bold">{reviewStats.total}</p>
+                <p className="text-sm text-gray-600 font-medium">Total Reviews</p>
+                <p className="text-2xl font-bold text-gray-900">{reviewStats.total}</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
+        <Card className="bg-white shadow-sm hover:shadow-md transition-shadow">
+          <CardContent className="p-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-green-100 rounded-lg">
+              <div className="p-3 bg-green-50 rounded-lg">
                 <CheckCircle className="h-5 w-5 text-green-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-600">Completed</p>
-                <p className="text-2xl font-bold">{reviewStats.completed}</p>
+                <p className="text-sm text-gray-600 font-medium">Completed</p>
+                <p className="text-2xl font-bold text-gray-900">{reviewStats.completed}</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
+        <Card className="bg-white shadow-sm hover:shadow-md transition-shadow">
+          <CardContent className="p-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-yellow-100 rounded-lg">
+              <div className="p-3 bg-yellow-50 rounded-lg">
                 <Clock className="h-5 w-5 text-yellow-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-600">In Progress</p>
-                <p className="text-2xl font-bold">{reviewStats.inProgress}</p>
+                <p className="text-sm text-gray-600 font-medium">In Progress</p>
+                <p className="text-2xl font-bold text-gray-900">{reviewStats.inProgress}</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
+        <Card className="bg-white shadow-sm hover:shadow-md transition-shadow">
+          <CardContent className="p-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-red-100 rounded-lg">
+              <div className="p-3 bg-red-50 rounded-lg">
                 <AlertTriangle className="h-5 w-5 text-red-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-600">Overdue</p>
-                <p className="text-2xl font-bold">{reviewStats.overdue}</p>
+                <p className="text-sm text-gray-600 font-medium">Overdue</p>
+                <p className="text-2xl font-bold text-gray-900">{reviewStats.overdue}</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
+        <Card className="bg-white shadow-sm hover:shadow-md transition-shadow">
+          <CardContent className="p-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-purple-100 rounded-lg">
+              <div className="p-3 bg-purple-50 rounded-lg">
                 <Star className="h-5 w-5 text-purple-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-600">Avg Score</p>
-                <p className="text-2xl font-bold">{reviewStats.avgScore.toFixed(1)}</p>
+                <p className="text-sm text-gray-600 font-medium">Avg Score</p>
+                <p className="text-2xl font-bold text-gray-900">{reviewStats.avgScore.toFixed(1)}</p>
               </div>
             </div>
           </CardContent>
@@ -443,8 +440,8 @@ const PerformancePage = () => {
       </div>
 
       {/* Filters */}
-      <Card>
-        <CardContent className="p-4">
+      <Card className="bg-white shadow-sm">
+        <CardContent className="p-6">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
               <div className="relative">
@@ -487,26 +484,26 @@ const PerformancePage = () => {
       {/* Reviews List */}
       <div className="space-y-4">
         {filteredReviews.length === 0 ? (
-          <Card>
+          <Card className="bg-white shadow-sm">
             <CardContent className="text-center py-12">
-              <BarChart3 className="mx-auto h-16 w-16 mb-4 opacity-50 text-gray-400" />
-              <h3 className="text-lg font-medium mb-2">No reviews found</h3>
+              <BarChart3 className="mx-auto h-16 w-16 mb-4 text-gray-300" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No reviews found</h3>
               <p className="text-gray-600">No reviews match your current filters</p>
             </CardContent>
           </Card>
         ) : (
           filteredReviews.map((review) => (
-            <Card key={review.id} className="hover:shadow-md transition-shadow">
+            <Card key={review.id} className="bg-white shadow-sm hover:shadow-md transition-shadow border border-gray-200">
               <CardContent className="p-6">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-semibold">
+                    <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-indigo-500 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm">
                       {review.employeeName.split(' ').map(n => n[0]).join('')}
                     </div>
                     <div>
-                      <h3 className="text-lg font-semibold">{review.employeeName}</h3>
+                      <h3 className="text-lg font-semibold text-gray-900">{review.employeeName}</h3>
                       <p className="text-sm text-gray-600">{review.position} • {review.department}</p>
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center gap-2 mt-2">
                         <Badge className={getStatusColor(review.status)}>
                           {review.status.toUpperCase()}
                         </Badge>
@@ -518,21 +515,21 @@ const PerformancePage = () => {
                   </div>
                   <div className="flex items-center gap-4">
                     {review.overallScore > 0 && (
-                      <div className="text-right">
-                        <div className="flex items-center gap-1">
-                          <Star className="h-4 w-4 text-yellow-500 fill-current" />
-                          <span className="font-semibold">{review.overallScore.toFixed(1)}</span>
+                      <div className="text-right bg-gray-50 px-4 py-2 rounded-lg">
+                        <div className="flex items-center gap-1 justify-end">
+                          <Star className="h-5 w-5 text-yellow-500 fill-current" />
+                          <span className="text-2xl font-bold text-gray-900">{review.overallScore.toFixed(1)}</span>
                           <span className="text-gray-500">/5.0</span>
                         </div>
-                        <p className="text-xs text-gray-500">Overall Score</p>
+                        <p className="text-xs text-gray-500 mt-1">Overall Score</p>
                       </div>
                     )}
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" onClick={() => handleViewReview(review)}>
+                    <div className="flex flex-col gap-2">
+                      <Button variant="outline" size="sm" onClick={() => handleViewReview(review)} className="justify-start">
                         <Eye className="h-4 w-4 mr-2" />
                         View
                       </Button>
-                      <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" className="justify-start">
                         <Edit className="h-4 w-4 mr-2" />
                         Edit
                       </Button>
@@ -542,17 +539,17 @@ const PerformancePage = () => {
 
                 {/* Goals Progress */}
                 {review.goals.length > 0 && (
-                  <div className="space-y-3">
-                    <h4 className="text-sm font-medium text-gray-700">Goals Progress</h4>
+                  <div className="space-y-3 mt-4 pt-4 border-t border-gray-100">
+                    <h4 className="text-sm font-semibold text-gray-700">Goals Progress</h4>
                     {review.goals.slice(0, 2).map((goal) => (
-                      <div key={goal.id} className="space-y-2">
+                      <div key={goal.id} className="space-y-2 bg-gray-50 p-3 rounded-lg">
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium">{goal.title}</span>
+                          <span className="text-sm font-medium text-gray-900">{goal.title}</span>
                           <div className="flex items-center gap-2">
-                            <Badge variant="outline" className={getGoalStatusColor(goal.status)}>
+                            <Badge variant="outline" className={`${getGoalStatusColor(goal.status)} text-xs`}>
                               {goal.status.replace('-', ' ').toUpperCase()}
                             </Badge>
-                            <span className="text-sm text-gray-600">
+                            <span className="text-sm font-semibold text-gray-900">
                               {goal.achieved}/{goal.target}
                             </span>
                           </div>
@@ -564,7 +561,7 @@ const PerformancePage = () => {
                       </div>
                     ))}
                     {review.goals.length > 2 && (
-                      <p className="text-sm text-gray-500">+{review.goals.length - 2} more goals</p>
+                      <p className="text-sm text-gray-500 pl-3">+{review.goals.length - 2} more goals</p>
                     )}
                   </div>
                 )}
@@ -718,8 +715,6 @@ const PerformancePage = () => {
           )}
         </DialogContent>
       </Dialog>
-        </div>
-      </div>
     </div>
   );
 }

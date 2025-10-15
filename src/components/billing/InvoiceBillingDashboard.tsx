@@ -732,8 +732,8 @@ export function InvoiceBillingDashboard({
               discountAmount: discountAmount,
               discountPercentage: discountPercentage,
               tax: Number(item.tax || 0),
-              return_status: (index === 0 ? 'full' : (item.return_status as 'none' | 'partial' | 'full')) || 'none', // TEST: Show full return on first item
-              returned_quantity: index === 0 ? 3 : Number(item.returned_quantity || 0) // TEST: Show 3 returned on first item
+              return_status: (item.return_status as 'none' | 'partial' | 'full') || 'none',
+              returned_quantity: Number(item.returned_quantity || 0)
             };
           });
           

@@ -398,6 +398,10 @@ export function SalesOrderInvoiceManager() {
   const [selectedExpenseForDelete, setSelectedExpenseForDelete] = useState<Expense | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   
+  // Expense category search state
+  const [categorySearchTerm, setCategorySearchTerm] = useState('');
+  const [entitySearchTerm, setEntitySearchTerm] = useState('');
+  
   const [expenseForm, setExpenseForm] = useState({
     date: new Date().toISOString().split('T')[0],
     description: '',
@@ -1471,10 +1475,17 @@ export function SalesOrderInvoiceManager() {
   };
 
   const getEntityOptions = () => {
+    const lowerSearchTerm = entitySearchTerm.toLowerCase();
+    
     switch (expenseForm.entity_type) {
       case 'truck':
         return trucks
           .filter(truck => truck.id && truck.id.trim() !== '')
+          .filter(truck => {
+            if (!entitySearchTerm) return true;
+            const searchString = `${truck.plate_number} ${truck.model} ${truck.fuel_type}`.toLowerCase();
+            return searchString.includes(lowerSearchTerm);
+          })
           .map(truck => ({
             value: truck.id,
             label: `${truck.plate_number} - ${truck.model} (${truck.fuel_type})`
@@ -1482,6 +1493,11 @@ export function SalesOrderInvoiceManager() {
       case 'employee':
         return employees
           .filter(employee => employee.id && employee.id.trim() !== '')
+          .filter(employee => {
+            if (!entitySearchTerm) return true;
+            const searchString = `${employee.name} ${employee.position} ${employee.employee_id || ''}`.toLowerCase();
+            return searchString.includes(lowerSearchTerm);
+          })
           .map(employee => ({
             value: employee.id,
             label: `${employee.name} - ${employee.position} (₹${employee.salary?.toLocaleString('en-IN')})`
@@ -1489,6 +1505,11 @@ export function SalesOrderInvoiceManager() {
       case 'supplier':
         return suppliers
           .filter(supplier => supplier.id && supplier.id.trim() !== '')
+          .filter(supplier => {
+            if (!entitySearchTerm) return true;
+            const searchString = `${supplier.name} ${supplier.contact || ''}`.toLowerCase();
+            return searchString.includes(lowerSearchTerm);
+          })
           .map(supplier => ({
             value: supplier.id,
             label: `${supplier.name} - ${supplier.contact}`
@@ -1496,6 +1517,17 @@ export function SalesOrderInvoiceManager() {
       default:
         return [];
     }
+  };
+
+  // Filter expense categories based on search term
+  const getFilteredCategories = () => {
+    const lowerSearchTerm = categorySearchTerm.toLowerCase();
+    
+    return Object.entries(subcategoryMap).filter(([category, details]) => {
+      if (!categorySearchTerm) return true;
+      const searchString = `${category} ${details.category} ${details.accountCode}`.toLowerCase();
+      return searchString.includes(lowerSearchTerm);
+    });
   };
 
   const getSelectedEntityDetails = () => {
@@ -6042,59 +6074,93 @@ export function SalesOrderInvoiceManager() {
                     <Label htmlFor="category" className="text-sm font-medium">
                       Expense Category *
                     </Label>
-                    <Select value={expenseForm.category} onValueChange={handleCategoryChange} disabled={isCreatingExpense}>
+                    <Select 
+                      value={expenseForm.category} 
+                      onValueChange={(value) => {
+                        handleCategoryChange(value);
+                        setCategorySearchTerm(''); // Reset search when category selected
+                      }} 
+                      disabled={isCreatingExpense}
+                    >
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select expense category" />
                       </SelectTrigger>
-                      <SelectContent className="max-h-60">
-                        {/* Cash Management categories first */}
-                        <div className="border-b pb-2 mb-2">
-                          <div className="px-2 py-1 text-xs font-semibold text-green-600 bg-green-50">
-                            CASH MANAGEMENT
-                          </div>
-                          {Object.entries(subcategoryMap)
-                            .filter(([category, details]) => category && details.category === "Cash Management")
-                            .map(([category, details]) => (
-                              <SelectItem key={category} value={category}>
-                                <div className="flex flex-col">
-                                  <span className="text-green-700 font-medium">{category}</span>
-                                  <span className="text-xs text-green-500">Asset Transfer: {details.accountCode}</span>
-                                </div>
-                              </SelectItem>
-                            ))}
+                      <SelectContent className="max-h-96">
+                        {/* Search input */}
+                        <div className="sticky top-0 z-10 bg-white border-b p-2">
+                          <Input
+                            placeholder="Search categories..."
+                            value={categorySearchTerm}
+                            onChange={(e) => setCategorySearchTerm(e.target.value)}
+                            className="h-8"
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => e.stopPropagation()}
+                          />
                         </div>
 
-                        {/* Owner's Drawings categories */}
-                        <div className="border-b pb-2 mb-2">
-                          <div className="px-2 py-1 text-xs font-semibold text-purple-600 bg-purple-50">
-                            OWNER&apos;S DRAWINGS
+                        {/* Cash Management categories */}
+                        {getFilteredCategories().filter(([, details]) => details.category === "Cash Management").length > 0 && (
+                          <div className="border-b pb-2 mb-2">
+                            <div className="px-2 py-1 text-xs font-semibold text-green-600 bg-green-50">
+                              CASH MANAGEMENT
+                            </div>
+                            {getFilteredCategories()
+                              .filter(([, details]) => details.category === "Cash Management")
+                              .map(([category, details]) => (
+                                <SelectItem key={category} value={category}>
+                                  <div className="flex flex-col">
+                                    <span className="text-green-700 font-medium">{category}</span>
+                                    <span className="text-xs text-green-500">Asset Transfer: {details.accountCode}</span>
+                                  </div>
+                                </SelectItem>
+                              ))}
                           </div>
-                          {Object.entries(subcategoryMap)
-                            .filter(([category, details]) => category && details.category === "Owner's Drawings")
-                            .map(([category, details]) => (
-                              <SelectItem key={category} value={category}>
-                                <div className="flex flex-col">
-                                  <span className="text-purple-700 font-medium">{category}</span>
-                                  <span className="text-xs text-purple-500">Equity Account: {details.accountCode}</span>
-                                </div>
-                              </SelectItem>
-                            ))}
-                        </div>
+                        )}
+
+                        {/* Owner's Drawings categories */}
+                        {getFilteredCategories().filter(([, details]) => details.category === "Owner's Drawings").length > 0 && (
+                          <div className="border-b pb-2 mb-2">
+                            <div className="px-2 py-1 text-xs font-semibold text-purple-600 bg-purple-50">
+                              OWNER&apos;S DRAWINGS
+                            </div>
+                            {getFilteredCategories()
+                              .filter(([, details]) => details.category === "Owner's Drawings")
+                              .map(([category, details]) => (
+                                <SelectItem key={category} value={category}>
+                                  <div className="flex flex-col">
+                                    <span className="text-purple-700 font-medium">{category}</span>
+                                    <span className="text-xs text-purple-500">Equity Account: {details.accountCode}</span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                          </div>
+                        )}
                         
                         {/* Business expense categories */}
-                        <div className="px-2 py-1 text-xs font-semibold text-blue-600 bg-blue-50 mb-2">
-                          BUSINESS EXPENSES
-                        </div>
-                        {Object.entries(subcategoryMap)
-                          .filter(([category, details]) => category && details.category !== "Owner's Drawings" && details.category !== "Cash Management")
-                          .map(([category, details]) => (
-                            <SelectItem key={category} value={category}>
-                              <div className="flex flex-col">
-                                <span>{category}</span>
-                                <span className="text-xs text-gray-500">Code: {details.accountCode} | Type: {details.type}</span>
-                              </div>
-                            </SelectItem>
-                          ))}
+                        {getFilteredCategories().filter(([, details]) => details.category !== "Owner's Drawings" && details.category !== "Cash Management").length > 0 && (
+                          <>
+                            <div className="px-2 py-1 text-xs font-semibold text-blue-600 bg-blue-50 mb-2">
+                              BUSINESS EXPENSES
+                            </div>
+                            {getFilteredCategories()
+                              .filter(([, details]) => details.category !== "Owner's Drawings" && details.category !== "Cash Management")
+                              .map(([category, details]) => (
+                                <SelectItem key={category} value={category}>
+                                  <div className="flex flex-col">
+                                    <span>{category}</span>
+                                    <span className="text-xs text-gray-500">Code: {details.accountCode} | Type: {details.type}</span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                          </>
+                        )}
+
+                        {/* No results message */}
+                        {getFilteredCategories().length === 0 && (
+                          <div className="p-4 text-center text-sm text-gray-500">
+                            No categories found matching &quot;{categorySearchTerm}&quot;
+                          </div>
+                        )}
                       </SelectContent>
                     </Select>
                     {expenseForm.category && subcategoryMap[expenseForm.category as keyof typeof subcategoryMap] && (
@@ -6131,17 +6197,46 @@ export function SalesOrderInvoiceManager() {
                         Select {expenseForm.entity_type === 'truck' ? 'Truck' : 
                                expenseForm.entity_type === 'employee' ? 'Employee' : 'Supplier'} *
                       </Label>
-                      <Select value={expenseForm.entity_id} onValueChange={handleEntityChange}>
+                      <Select 
+                        value={expenseForm.entity_id} 
+                        onValueChange={(value) => {
+                          handleEntityChange(value);
+                          setEntitySearchTerm(''); // Reset search when entity selected
+                        }}
+                      >
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder={`Select ${expenseForm.entity_type === 'truck' ? 'truck' : 
                                                             expenseForm.entity_type === 'employee' ? 'employee' : 'supplier'}`} />
                         </SelectTrigger>
-                        <SelectContent className="max-h-60">
+                        <SelectContent className="max-h-96">
+                          {/* Search input */}
+                          <div className="sticky top-0 z-10 bg-white border-b p-2">
+                            <Input
+                              placeholder={`Search ${expenseForm.entity_type === 'truck' ? 'trucks' : 
+                                                    expenseForm.entity_type === 'employee' ? 'employees' : 'suppliers'}...`}
+                              value={entitySearchTerm}
+                              onChange={(e) => setEntitySearchTerm(e.target.value)}
+                              className="h-8"
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => e.stopPropagation()}
+                            />
+                          </div>
+
+                          {/* Entity options */}
                           {getEntityOptions().map(option => (
                             <SelectItem key={option.value} value={option.value}>
                               {option.label}
                             </SelectItem>
                           ))}
+
+                          {/* No results message */}
+                          {getEntityOptions().length === 0 && (
+                            <div className="p-4 text-center text-sm text-gray-500">
+                              No {expenseForm.entity_type === 'truck' ? 'trucks' : 
+                                  expenseForm.entity_type === 'employee' ? 'employees' : 'suppliers'} found
+                              {entitySearchTerm && ` matching "${entitySearchTerm}"`}
+                            </div>
+                          )}
                         </SelectContent>
                       </Select>
                       {expenseForm.entity_id && getSelectedEntityDetails() && (

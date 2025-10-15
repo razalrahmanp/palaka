@@ -132,6 +132,12 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
   const [newBankBalance, setNewBankBalance] = useState<string>('');
   const [selectedBankAccountId, setSelectedBankAccountId] = useState<string>('');
   const [bankAccounts, setBankAccounts] = useState<Array<{id: string, name: string, current_balance: number}>>([]);
+  
+  // Delete payment dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [paymentToDelete, setPaymentToDelete] = useState<{id: string, description: string} | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  
   useEffect(() => {
     fetchLedgerDetails();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -983,12 +989,16 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
   };
 
   const handleDeletePayment = async (payrollRecordId: string, description: string) => {
-    if (!confirm(`Are you sure you want to delete this payment?\n\n"${description}"\n\nThis will remove the payroll record, expense record, and reverse any bank/cash transactions.`)) {
-      return;
-    }
+    // Open the delete confirmation dialog
+    setPaymentToDelete({ id: payrollRecordId, description });
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDeletePayment = async () => {
+    if (!paymentToDelete) return;
 
     try {
-      setLoading(true);
+      setIsDeleting(true);
       
       const response = await fetch('/api/finance/delete-employee-payment', {
         method: 'POST',
@@ -996,7 +1006,7 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          payroll_record_id: payrollRecordId,
+          payroll_record_id: paymentToDelete.id,
           confirm: true
         }),
       });
@@ -1004,8 +1014,9 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
       const result = await response.json();
 
       if (result.success) {
-        // Show success message
-        alert(`Payment deleted successfully!\n\nDeleted:\n- Payroll record: ${result.summary.payroll_record_deleted ? '✅' : '❌'}\n- Expense record: ${result.summary.expense_record_deleted ? '✅' : '❌'}\n- Bank/Cash transaction: ${result.summary.bank_transaction_deleted || result.summary.cash_transaction_deleted ? '✅' : '❌'}\n- Balance reversed: ${result.summary.balance_reversed ? '✅' : '❌'}`);
+        // Close dialog
+        setDeleteDialogOpen(false);
+        setPaymentToDelete(null);
         
         // Refresh the ledger data
         await fetchLedgerDetails();
@@ -1016,7 +1027,7 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
       console.error('Error deleting payment:', error);
       alert('Failed to delete payment. Please try again.');
     } finally {
-      setLoading(false);
+      setIsDeleting(false);
     }
   };
 
@@ -2749,6 +2760,96 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
               onClick={handleResetBankBalance}
             >
               Update Balance
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Payment Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="h-5 w-5" />
+              Delete Payment Record
+            </DialogTitle>
+            <DialogDescription className="pt-2">
+              This action cannot be undone. This will permanently delete the payment record and reverse all related transactions.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {paymentToDelete && (
+              <>
+                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-2">Payment Details</h4>
+                  <p className="text-sm text-gray-600 break-words">
+                    {paymentToDelete.description}
+                  </p>
+                </div>
+
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <h4 className="text-sm font-semibold text-red-700 mb-2">
+                    ⚠️ What will be deleted:
+                  </h4>
+                  <ul className="space-y-1 text-sm text-red-700">
+                    <li className="flex items-center gap-2">
+                      <span className="text-red-500">•</span>
+                      Payroll record from database
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-red-500">•</span>
+                      Associated expense record
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-red-500">•</span>
+                      Bank or cash transaction entry
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-red-500">•</span>
+                      Journal entries and ledger balances will be reversed
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="p-4 bg-yellow-50 border border-yellow-300 rounded-lg">
+                  <p className="text-sm text-yellow-800">
+                    <strong>Important:</strong> Make sure this payment was recorded incorrectly before deleting it. 
+                    This operation will completely remove all traces of this payment from the system.
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setDeleteDialogOpen(false);
+                setPaymentToDelete(null);
+              }}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={confirmDeletePayment}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete Payment
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

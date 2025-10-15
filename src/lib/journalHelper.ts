@@ -722,11 +722,13 @@ export async function createExpenseJournalEntry(params: CreateExpenseJournalEntr
       console.log(`Creating expense account ${expenseAccountCode} for category: ${category}`);
       
       // Determine account type and name based on account code
-      let accountType = 'Expense';
+      let accountType = 'EXPENSE';
+      let accountSubtype = 'OPERATING_EXPENSE';
       let accountName = `${category} Expenses`;
       
       if (expenseAccountCode.startsWith('5')) {
-        accountType = 'Cost of Goods Sold';
+        accountType = 'EXPENSE';
+        accountSubtype = 'COST_OF_GOODS_SOLD';
         accountName = `${category} - COGS`;
       }
       
@@ -736,6 +738,8 @@ export async function createExpenseJournalEntry(params: CreateExpenseJournalEntr
           account_code: expenseAccountCode,
           account_name: accountName,
           account_type: accountType,
+          account_subtype: accountSubtype,
+          normal_balance: 'DEBIT',
           parent_account_id: null,
           is_active: true,
           current_balance: 0

@@ -561,46 +561,23 @@ export function BankAccountManager() {
   };
 
   const getDisplayBalance = (account: BankAccount | UpiAccount | CashAccount) => {
-    // Use calculated_balance if available, otherwise fall back to current_balance
-    const balance = account.calculated_balance ?? account.current_balance;
-    return formatCurrency(balance);
+  // Always use current_balance from the database
+  return formatCurrency(account.current_balance);
   };
 
   const getTotalBalance = () => {
-    // Only sum balances from currently displayed accounts based on active tab
+    // Only sum current_balance from the database for all account types
     if (activeTab === 'bank') {
-      return bankAccounts.reduce((total, account) => {
-        // Use calculated_balance if available (from bank_transactions), otherwise current_balance
-        const balance = account.calculated_balance ?? account.current_balance ?? 0;
-        return total + balance;
-      }, 0);
+      return bankAccounts.reduce((total, account) => total + (account.current_balance ?? 0), 0);
     } else if (activeTab === 'upi') {
-      return upiAccounts.reduce((total, account) => {
-        const balance = account.calculated_balance ?? account.current_balance ?? 0;
-        return total + balance;
-      }, 0);
+      return upiAccounts.reduce((total, account) => total + (account.current_balance ?? 0), 0);
     } else if (activeTab === 'cash') {
-      return cashAccounts.reduce((total, account) => {
-        const balance = account.calculated_balance ?? account.current_balance ?? 0;
-        return total + balance;
-      }, 0);
+      return cashAccounts.reduce((total, account) => total + (account.current_balance ?? 0), 0);
     } else {
       // For 'all' tab, sum all account types
-      const bankTotal = bankAccounts.reduce((total, account) => {
-        const balance = account.calculated_balance ?? account.current_balance ?? 0;
-        return total + balance;
-      }, 0);
-      
-      const upiTotal = upiAccounts.reduce((total, account) => {
-        const balance = account.calculated_balance ?? account.current_balance ?? 0;
-        return total + balance;
-      }, 0);
-      
-      const cashTotal = cashAccounts.reduce((total, account) => {
-        const balance = account.calculated_balance ?? account.current_balance ?? 0;
-        return total + balance;
-      }, 0);
-      
+      const bankTotal = bankAccounts.reduce((total, account) => total + (account.current_balance ?? 0), 0);
+      const upiTotal = upiAccounts.reduce((total, account) => total + (account.current_balance ?? 0), 0);
+      const cashTotal = cashAccounts.reduce((total, account) => total + (account.current_balance ?? 0), 0);
       return bankTotal + upiTotal + cashTotal;
     }
   };

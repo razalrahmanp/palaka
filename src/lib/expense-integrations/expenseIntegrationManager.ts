@@ -111,19 +111,22 @@ export function getEntityTypeFromCategory(category: string, subcategory: string)
  * Determines the expense/payment type based on subcategory
  */
 export function getExpenseTypeFromSubcategory(subcategory: string): string {
+  const lowerSubcategory = subcategory.toLowerCase();
+  
   // Vehicle expense types
-  if (subcategory.includes('Fuel')) return 'fuel';
-  if (subcategory.includes('Maintenance')) return 'maintenance';
-  if (subcategory.includes('Insurance')) return 'insurance';
-  if (subcategory.includes('Registration')) return 'registration';
-  if (subcategory.includes('Repair')) return 'repair';
+  if (lowerSubcategory.includes('fuel')) return 'fuel';
+  if (lowerSubcategory.includes('maintenance')) return 'maintenance';
+  if (lowerSubcategory.includes('insurance')) return 'insurance';
+  if (lowerSubcategory.includes('registration')) return 'registration';
+  if (lowerSubcategory.includes('repair')) return 'repair';
 
-  // Employee payment types
-  if (subcategory.includes('Salary')) return 'salary';
-  if (subcategory.includes('Bonus')) return 'bonus';
-  if (subcategory.includes('Allowance')) return 'allowance';
-  if (subcategory.includes('Overtime')) return 'overtime';
-  if (subcategory.includes('Incentive')) return 'incentive';
+  // Employee payment types (check plural forms too)
+  if (lowerSubcategory.includes('salary') || lowerSubcategory.includes('salaries')) return 'salary';
+  if (lowerSubcategory.includes('bonus')) return 'bonus';
+  if (lowerSubcategory.includes('allowance')) return 'allowance';
+  if (lowerSubcategory.includes('overtime')) return 'overtime';
+  if (lowerSubcategory.includes('incentive')) return 'incentive';
+  if (lowerSubcategory.includes('reimbursement')) return 'reimbursement';
 
   // Default
   return 'other';
@@ -199,6 +202,13 @@ export async function processExpenseIntegration(params: EntityExpenseParams): Pr
 
       case 'employee': {
         const paymentType = getExpenseTypeFromSubcategory(subcategory) as 'salary' | 'bonus' | 'allowance' | 'overtime' | 'incentive' | 'reimbursement';
+        
+        console.log('💼 Employee expense detected:', {
+          subcategory,
+          determinedPaymentType: paymentType,
+          employeeId: entityId,
+          amount
+        });
         
         const employeeParams: EmployeePaymentParams = {
           expenseId,

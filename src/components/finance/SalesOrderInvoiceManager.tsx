@@ -1416,22 +1416,37 @@ export function SalesOrderInvoiceManager() {
 
   // Entity selection logic
   const getEntityTypeForCategory = (category: string): string => {
-    if (category.toLowerCase().includes('vehicle fuel') || category.toLowerCase().includes('vehicle maintenance') || category.toLowerCase().includes('vehicle') && category.toLowerCase().includes('fleet')) {
+    const lowerCategory = category.toLowerCase();
+    
+    console.log('🔍 Checking entity type for category:', category);
+    
+    if (lowerCategory.includes('vehicle fuel') || lowerCategory.includes('vehicle maintenance') || 
+        (lowerCategory.includes('vehicle') && lowerCategory.includes('fleet'))) {
+      console.log('✅ Detected TRUCK entity type');
       return 'truck';
     }
-    if (category.toLowerCase().includes('salary') || category.toLowerCase().includes('salaries') || 
-        category.toLowerCase().includes('wages') || category.toLowerCase().includes('incentive') || 
-        category.toLowerCase().includes('bonus') || category.toLowerCase().includes('overtime')) {
+    
+    if (lowerCategory.includes('salary') || lowerCategory.includes('salaries') || 
+        lowerCategory.includes('wages') || lowerCategory.includes('incentive') || 
+        lowerCategory.includes('bonus') || lowerCategory.includes('overtime')) {
+      console.log('✅ Detected EMPLOYEE entity type');
       return 'employee';
     }
-    if (category.toLowerCase().includes('vendor') || category.toLowerCase().includes('supplier')) {
+    
+    if (lowerCategory.includes('vendor') || lowerCategory.includes('supplier')) {
+      console.log('✅ Detected SUPPLIER entity type');
       return 'supplier';
     }
+    
+    console.log('ℹ️ No specific entity type detected');
     return '';
   };
 
   const handleCategoryChange = (category: string) => {
     const entityType = getEntityTypeForCategory(category);
+    
+    console.log('📝 Category changed to:', category);
+    console.log('📝 Entity type set to:', entityType);
     
     // Handle special case for Cash to Bank Deposit
     if (category === 'Cash to Bank Deposit') {
@@ -2791,6 +2806,12 @@ export function SalesOrderInvoiceManager() {
       }
 
       console.log('Creating expense with data:', expenseData);
+      console.log('🎯 Entity Integration:', {
+        entity_type: expenseData.entity_type,
+        entity_id: expenseData.entity_id,
+        category: expenseForm.category,
+        payroll_record_id: expenseData.payroll_record_id
+      });
 
       const response = await fetch('/api/finance/expenses', {
         method: 'POST',

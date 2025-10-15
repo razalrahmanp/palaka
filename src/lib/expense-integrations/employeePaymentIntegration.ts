@@ -40,12 +40,21 @@ export async function createEmployeePaymentIntegration(params: EmployeePaymentPa
 
   try {
     console.log('👥 Creating employee payment integration for expense:', expenseId);
+    console.log('📋 Payment details:', {
+      employeeId,
+      amount,
+      paymentDate,
+      paymentType,
+      payrollRecordId: payrollRecordId || 'none',
+      createdBy
+    });
 
     let payrollUpdateId = null;
     let bonusRecordId = null;
 
     // Handle different payment types
     if (paymentType === 'salary' && payrollRecordId) {
+      console.log('🔄 Updating existing payroll record:', payrollRecordId);
       // Update existing payroll record status
       const { data: updatedPayroll, error: payrollError } = await supabase
         .from('payroll_records')
@@ -67,6 +76,7 @@ export async function createEmployeePaymentIntegration(params: EmployeePaymentPa
       console.log('✅ Updated payroll record status to paid:', payrollUpdateId);
 
     } else if (paymentType === 'salary' && !payrollRecordId) {
+      console.log('➕ Creating NEW salary payroll record');
       // Create a new salary payroll record
       const payPeriodStart = new Date(paymentDate);
       const payPeriodEnd = new Date(paymentDate);
@@ -88,6 +98,7 @@ export async function createEmployeePaymentIntegration(params: EmployeePaymentPa
           overtime_hours: 0,
           overtime_amount: 0,
           bonus: 0,
+          payment_type: 'salary',
           status: 'paid',
           processed_by: createdBy,
           processed_at: new Date().toISOString()
@@ -104,6 +115,7 @@ export async function createEmployeePaymentIntegration(params: EmployeePaymentPa
       console.log('✅ Created new salary payroll record:', payrollUpdateId);
 
     } else if (['bonus', 'allowance', 'overtime', 'incentive', 'reimbursement'].includes(paymentType)) {
+      console.log(`➕ Creating NEW ${paymentType} payroll record`);
       // Create a separate bonus/allowance/incentive payroll record
       const payPeriodStart = new Date(paymentDate);
       const payPeriodEnd = new Date(paymentDate);
@@ -125,6 +137,7 @@ export async function createEmployeePaymentIntegration(params: EmployeePaymentPa
           overtime_hours: paymentType === 'overtime' ? 8 : 0,
           overtime_amount: paymentType === 'overtime' ? amount : 0,
           bonus: (paymentType === 'bonus' || paymentType === 'incentive') ? amount : 0,
+          payment_type: paymentType,
           status: 'paid',
           processed_by: createdBy,
           processed_at: new Date().toISOString()
@@ -139,6 +152,8 @@ export async function createEmployeePaymentIntegration(params: EmployeePaymentPa
 
       bonusRecordId = bonusPayroll.id;
       console.log(`✅ Created ${paymentType} payroll record:`, bonusRecordId);
+    } else {
+      console.log('⚠️ No payroll record action taken. Payment type:', paymentType, 'Payroll record ID:', payrollRecordId);
     }
 
     // Update expense record to link with employee payment

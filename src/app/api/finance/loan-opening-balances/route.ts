@@ -131,12 +131,17 @@ export async function GET() {
         bank_name,
         loan_account_code,
         loan_type,
+        loan_number,
         original_loan_amount,
+        opening_balance,
         current_balance,
         interest_rate,
+        loan_tenure_months,
         emi_amount,
         loan_start_date,
         loan_end_date,
+        status,
+        description,
         created_at
       `)
       .order('created_at', { ascending: false });

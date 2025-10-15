@@ -33,8 +33,8 @@ export async function GET(request: NextRequest) {
         // Get payment count and methods from payments table
         const { data: payments, error: paymentsError } = await supabase
           .from("payments")
-          .select("payment_method")
-          .eq("account_id", account.id);
+          .select("method")
+          .eq("bank_account_id", account.id);
 
         if (paymentsError) {
           console.error(`Error fetching payments for account ${account.id}:`, paymentsError);
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
 
         const payment_count = payments?.length || 0;
         const payment_methods = payments ? 
-          [...new Set(payments.map(p => p.payment_method).filter(Boolean))] : [];
+          [...new Set(payments.map(p => p.method).filter(Boolean))] : [];
 
         return {
           ...account,

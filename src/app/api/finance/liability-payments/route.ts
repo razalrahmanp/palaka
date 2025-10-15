@@ -568,24 +568,127 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Liability payment ID is required' }, { status: 400 });
     }
 
-    // Delete the liability payment
-    const { error } = await supabase
+    console.log('🗑️ Starting liability payment deletion:', id);
+
+    // 1. Get the liability payment details before deletion
+    const { data: payment, error: fetchError } = await supabase
+      .from('liability_payments')
+      .select('loan_id, principal_amount, bank_account_id, payment_method, total_amount')
+      .eq('id', id)
+      .single();
+
+    if (fetchError) {
+      console.error('❌ Error fetching liability payment:', fetchError);
+      return NextResponse.json({ error: fetchError.message }, { status: 500 });
+    }
+
+    if (!payment) {
+      return NextResponse.json({ error: 'Liability payment not found' }, { status: 404 });
+    }
+
+    console.log('📋 Payment details:', {
+      loan_id: payment.loan_id,
+      principal_amount: payment.principal_amount,
+      bank_account_id: payment.bank_account_id,
+      payment_method: payment.payment_method,
+      total_amount: payment.total_amount
+    });
+
+    // 2. Restore loan balance if loan_id exists and principal was paid
+    if (payment.loan_id && payment.principal_amount > 0) {
+      console.log('🏦 Restoring loan balance for loan_id:', payment.loan_id);
+      
+      const { data: loan, error: loanFetchError } = await supabase
+        .from('loan_opening_balances')
+        .select('current_balance')
+        .eq('id', payment.loan_id)
+        .single();
+
+      if (loanFetchError) {
+        console.error('❌ Error fetching loan:', loanFetchError);
+      } else if (loan) {
+        const restoredBalance = (loan.current_balance || 0) + payment.principal_amount;
+        const { error: balanceUpdateError } = await supabase
+          .from('loan_opening_balances')
+          .update({ current_balance: restoredBalance })
+          .eq('id', payment.loan_id);
+
+        if (balanceUpdateError) {
+          console.error('❌ Error restoring loan balance:', balanceUpdateError);
+        } else {
+          console.log('✅ Loan balance restored:', { 
+            oldBalance: loan.current_balance, 
+            restoredBalance,
+            principalRestored: payment.principal_amount 
+          });
+        }
+      }
+    }
+
+    // 3. Restore bank balance if bank account was used (not cash)
+    if (payment.bank_account_id && payment.payment_method !== 'cash') {
+      console.log('💰 Restoring bank balance for bank_account_id:', payment.bank_account_id);
+      
+      const { data: bankAccount, error: bankError } = await supabase
+        .from("bank_accounts")
+        .select("current_balance")
+        .eq("id", payment.bank_account_id)
+        .single();
+      
+      if (!bankError && bankAccount) {
+        const restoredBalance = (bankAccount.current_balance || 0) + payment.total_amount;
+        const { error: bankUpdateError } = await supabase
+          .from("bank_accounts")
+          .update({ current_balance: restoredBalance })
+          .eq("id", payment.bank_account_id);
+        
+        if (bankUpdateError) {
+          console.error('❌ Error restoring bank balance:', bankUpdateError);
+        } else {
+          console.log('✅ Bank balance restored:', {
+            bankAccountId: payment.bank_account_id,
+            oldBalance: bankAccount.current_balance,
+            restoredBalance,
+            amountRestored: payment.total_amount
+          });
+        }
+      }
+    }
+
+    // 4. Delete related journal entries (if any)
+    const { error: journalDeleteError } = await supabase
+      .from('journal_entries')
+      .delete()
+      .eq('reference_id', id)
+      .eq('reference_type', 'liability_payment');
+
+    if (journalDeleteError) {
+      console.warn('⚠️ Warning: Could not delete related journal entries:', journalDeleteError);
+      // Don't fail the operation, just log the warning
+    } else {
+      console.log('✅ Related journal entries deleted');
+    }
+
+    // 5. Delete the liability payment
+    const { error: deleteError } = await supabase
       .from('liability_payments')
       .delete()
       .eq('id', id);
 
-    if (error) {
-      console.error('Error deleting liability payment:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (deleteError) {
+      console.error('❌ Error deleting liability payment:', deleteError);
+      return NextResponse.json({ error: deleteError.message }, { status: 500 });
     }
+
+    console.log('✅ Liability payment deleted successfully:', id);
 
     return NextResponse.json({
       success: true,
-      message: 'Liability payment deleted successfully'
+      message: 'Liability payment deleted successfully and balances restored'
     });
 
   } catch (error) {
-    console.error('Unexpected error in liability payment deletion:', error);
+    console.error('❌ Unexpected error in liability payment deletion:', error);
     return NextResponse.json({ 
       error: 'Internal server error' 
     }, { status: 500 });

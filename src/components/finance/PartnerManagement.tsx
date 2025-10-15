@@ -19,16 +19,15 @@ import {
   TrendingDown, 
   Edit3, 
   Trash2, 
-  Eye, 
   Search,
-  Filter,
   UserPlus,
   AlertCircle,
   Building2,
   Loader2,
   CreditCard,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  X
 } from 'lucide-react';
 
 interface Partner {
@@ -102,11 +101,14 @@ interface LiabilityPayment {
   upi_reference?: string;
   reference_number?: string;
   created_at: string;
-  bank_accounts?: {
-    id: string;
-    name: string;
-    account_number: string;
-  };
+  bank_account_name?: string;
+  loan_name?: string;
+  loan_bank_name?: string;
+  loan_type?: string;
+  loan_number?: string;
+  loan_account_code?: string;
+  loan_current_balance?: number;
+  loan_emi_amount?: number;
 }
 //   loan_start_date: string;
 //   loan_end_date?: string;
@@ -133,6 +135,7 @@ export function PartnerManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [selectedPartner, setSelectedPartner] = useState<PartnerSummary | null>(null);
+  const [searchExpanded, setSearchExpanded] = useState(false);
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -140,6 +143,47 @@ export function PartnerManagement() {
   const [activeTab, setActiveTab] = useState('partners');
   const [expandedPartner, setExpandedPartner] = useState<number | null>(null);
   const [expandedLoan, setExpandedLoan] = useState<string | null>(null);
+  
+  // Dialog states
+  const [showAddInvestorModal, setShowAddInvestorModal] = useState(false);
+  const [createInvestmentOpen, setCreateInvestmentOpen] = useState(false);
+  const [createWithdrawalOpen, setCreateWithdrawalOpen] = useState(false);
+  const [withdrawalLoading, setWithdrawalLoading] = useState(false);
+  
+  // Investment form state
+  const [investmentForm, setInvestmentForm] = useState({
+    investor_id: '',
+    category: '',
+    amount: '',
+    payment_method: 'cash',
+    bank_account_id: '',
+    upi_reference: '',
+    reference_number: '',
+    description: '',
+    date: new Date().toISOString().split('T')[0]
+  });
+  
+  // Withdrawal form state
+  const [withdrawalForm, setWithdrawalForm] = useState({
+    partner_id: '',
+    category_id: '',
+    subcategory_id: '',
+    amount: '',
+    withdrawal_type: 'profit_distribution',
+    payment_method: 'cash',
+    bank_account_id: '',
+    upi_reference: '',
+    reference_number: '',
+    description: '',
+    date: new Date().toISOString().split('T')[0]
+  });
+  
+  // Additional data states
+  const [investmentCategories, setInvestmentCategories] = useState<{id: string; category_name: string; description?: string}[]>([]);
+  const [withdrawalCategories, setWithdrawalCategories] = useState<{id: string; category_name: string; description?: string}[]>([]);
+  const [withdrawalSubcategories, setWithdrawalSubcategories] = useState<{id: string; category_id: string; subcategory_name: string; description?: string}[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<{id: string; account_name: string; account_number: string; account_type?: string}[]>([]);
+  
   const [editForm, setEditForm] = useState({
     name: '',
     email: '',
@@ -175,11 +219,31 @@ export function PartnerManagement() {
       const liabilityPaymentsResponse = await fetch('/api/finance/liability-payments');
       const liabilityPaymentsData = await liabilityPaymentsResponse.json();
 
+      // Fetch bank accounts
+      const bankAccountsResponse = await fetch('/api/finance/bank-accounts');
+      const bankAccountsData = await bankAccountsResponse.json();
+
+      // Fetch investment categories
+      const investmentCategoriesResponse = await fetch('/api/equity/investment-categories');
+      const investmentCategoriesData = await investmentCategoriesResponse.json();
+
+      // Fetch withdrawal categories
+      const withdrawalCategoriesResponse = await fetch('/api/equity/withdrawal-categories');
+      const withdrawalCategoriesData = await withdrawalCategoriesResponse.json();
+
+      // Fetch withdrawal subcategories
+      const withdrawalSubcategoriesResponse = await fetch('/api/equity/withdrawal-subcategories');
+      const withdrawalSubcategoriesData = await withdrawalSubcategoriesResponse.json();
+
       setPartners(partnersData.partners || []);
       setInvestments(investmentsData.investments || []);
       setWithdrawals(withdrawalsData.withdrawals || []);
       setLoans(loansData.loanBalances || []);
-      setLiabilityPayments(liabilityPaymentsData.payments || []);
+      setLiabilityPayments(liabilityPaymentsData.success ? (liabilityPaymentsData.data || []) : []);
+      setBankAccounts(bankAccountsData.accounts || []);
+      setInvestmentCategories(investmentCategoriesData.success ? (investmentCategoriesData.data || []) : []);
+      setWithdrawalCategories(withdrawalCategoriesData.success ? (withdrawalCategoriesData.data || []) : []);
+      setWithdrawalSubcategories(withdrawalSubcategoriesData.success ? (withdrawalSubcategoriesData.data || []) : []);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -203,6 +267,28 @@ export function PartnerManagement() {
                        partner.partner_type === filterType;
     
     return matchesSearch && matchesType;
+  });
+
+  // Filter loans based on search
+  const filteredLoans = loans.filter(loan => {
+    if (!searchTerm) return true;
+    const searchLower = searchTerm.toLowerCase();
+    return loan.loan_name.toLowerCase().includes(searchLower) ||
+           loan.bank_name?.toLowerCase().includes(searchLower) ||
+           loan.loan_type.toLowerCase().includes(searchLower) ||
+           loan.loan_number?.toLowerCase().includes(searchLower) ||
+           loan.loan_account_code.toLowerCase().includes(searchLower);
+  });
+
+  // Filter liability payments based on search
+  const filteredLiabilityPayments = liabilityPayments.filter(payment => {
+    if (!searchTerm) return true;
+    const searchLower = searchTerm.toLowerCase();
+    return payment.loan_name?.toLowerCase().includes(searchLower) ||
+           payment.loan_bank_name?.toLowerCase().includes(searchLower) ||
+           payment.description.toLowerCase().includes(searchLower) ||
+           payment.liability_type.toLowerCase().includes(searchLower) ||
+           payment.payment_method.toLowerCase().includes(searchLower);
   });
 
   // Get transactions for selected partner
@@ -317,6 +403,193 @@ export function PartnerManagement() {
     }
   };
 
+  // Handle add new investor
+  const handleAddNewInvestor = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const formData = new FormData(form);
+    
+    const investorData = {
+      name: formData.get('name') as string,
+      email: formData.get('email') as string || null,
+      phone: formData.get('phone') as string || null,
+      partner_type: formData.get('partner_type') as string || 'partner',
+      initial_investment: parseFloat(formData.get('initial_investment') as string) || 0,
+      equity_percentage: parseFloat(formData.get('equity_percentage') as string) || 0,
+      is_active: formData.get('is_active') === 'on',
+      notes: formData.get('notes') as string || null,
+    };
+
+    if (!investorData.name.trim()) {
+      alert('Please enter a valid investor name');
+      return;
+    }
+
+    if (investorData.equity_percentage < 0 || investorData.equity_percentage > 100) {
+      alert('Equity percentage must be between 0 and 100');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/equity/investors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(investorData),
+      });
+
+      if (response.ok) {
+        form.reset();
+        setShowAddInvestorModal(false);
+        fetchData();
+        alert('New partner/investor added successfully!');
+      } else {
+        const error = await response.json();
+        alert(`Failed to add partner/investor: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error adding partner/investor:', error);
+      alert('Error adding partner/investor. Please try again.');
+    }
+  };
+
+  // Handle create investment
+  const handleCreateInvestment = async () => {
+    // Validation
+    if (!investmentForm.investor_id) {
+      alert('Please select an investor');
+      return;
+    }
+
+    if (!investmentForm.amount || parseFloat(investmentForm.amount) <= 0) {
+      alert('Please enter a valid amount greater than 0');
+      return;
+    }
+
+    if (!investmentForm.description.trim()) {
+      alert('Please enter a description for the investment');
+      return;
+    }
+
+    if (!investmentForm.category) {
+      alert('Please select an investment category');
+      return;
+    }
+
+    const requiresBankAccount = ['bank_transfer', 'card', 'cheque', 'online'].includes(investmentForm.payment_method);
+    if (requiresBankAccount && !investmentForm.bank_account_id) {
+      alert('Please select a bank account for this payment method');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/equity/investments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...investmentForm,
+          amount: parseFloat(investmentForm.amount)
+        }),
+      });
+
+      if (response.ok) {
+        setCreateInvestmentOpen(false);
+        setInvestmentForm({
+          investor_id: '',
+          category: '',
+          amount: '',
+          payment_method: 'cash',
+          bank_account_id: '',
+          upi_reference: '',
+          reference_number: '',
+          description: '',
+          date: new Date().toISOString().split('T')[0]
+        });
+        fetchData();
+        alert('Investment recorded successfully!');
+      } else {
+        const error = await response.json();
+        alert(`Failed to record investment: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error recording investment:', error);
+      alert('Error recording investment. Please try again.');
+    }
+  };
+
+  // Handle create withdrawal
+  const handleCreateWithdrawal = async () => {
+    // Validation
+    if (!withdrawalForm.partner_id) {
+      alert('Please select a partner');
+      return;
+    }
+
+    if (!withdrawalForm.amount || parseFloat(withdrawalForm.amount) <= 0) {
+      alert('Please enter a valid amount greater than 0');
+      return;
+    }
+
+    if (!withdrawalForm.description.trim()) {
+      alert('Please enter a description for the withdrawal');
+      return;
+    }
+
+    if (!withdrawalForm.category_id) {
+      alert('Please select a withdrawal category');
+      return;
+    }
+
+    const requiresBankAccount = ['bank_transfer', 'online', 'cheque'].includes(withdrawalForm.payment_method);
+    if (requiresBankAccount && !withdrawalForm.bank_account_id) {
+      alert('Please select a bank account for this payment method');
+      return;
+    }
+
+    if (withdrawalForm.payment_method === 'upi' && !withdrawalForm.bank_account_id) {
+      alert('Please select a UPI account');
+      return;
+    }
+
+    setWithdrawalLoading(true);
+    try {
+      const response = await fetch('/api/equity/withdrawals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...withdrawalForm,
+          amount: parseFloat(withdrawalForm.amount)
+        }),
+      });
+
+      if (response.ok) {
+        setCreateWithdrawalOpen(false);
+        setWithdrawalForm({
+          partner_id: '',
+          category_id: '',
+          subcategory_id: '',
+          amount: '',
+          withdrawal_type: 'profit_distribution',
+          payment_method: 'cash',
+          bank_account_id: '',
+          upi_reference: '',
+          reference_number: '',
+          description: '',
+          date: new Date().toISOString().split('T')[0]
+        });
+        fetchData();
+        alert('Withdrawal recorded successfully!');
+      } else {
+        const error = await response.json();
+        alert(`Failed to record withdrawal: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error recording withdrawal:', error);
+      alert('Error recording withdrawal. Please try again.');
+    } finally {
+      setWithdrawalLoading(false);
+    }
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -340,239 +613,288 @@ export function PartnerManagement() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Partner Management</h2>
-          <p className="text-gray-600">Manage partners, investments, withdrawals and loans</p>
-        </div>
-        <Button 
-          onClick={() => {/* Add new partner logic */}}
-          className="bg-blue-600 hover:bg-blue-700"
-        >
-          <UserPlus className="h-4 w-4 mr-2" />
-          Add New Partner
-        </Button>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <Card>
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center space-x-2">
-              <Users className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
-              <div>
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Total Partners</p>
-                <p className="text-xl sm:text-2xl font-bold">{partners.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center space-x-2">
-              <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
-              <div>
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Total Investments</p>
-                <p className="text-lg sm:text-2xl font-bold text-green-600">
-                  {formatCurrency(partners.reduce((sum, p) => sum + p.total_investments, 0))}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center space-x-2">
-              <TrendingDown className="h-4 w-4 sm:h-5 sm:w-5 text-red-600" />
-              <div>
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Total Withdrawals</p>
-                <p className="text-lg sm:text-2xl font-bold text-red-600">
-                  {formatCurrency(partners.reduce((sum, p) => sum + p.total_withdrawals, 0))}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center space-x-2">
-              <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600" />
-              <div>
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Net Balance</p>
-                <p className="text-lg sm:text-2xl font-bold text-purple-600">
-                  {formatCurrency(partners.reduce((sum, p) => sum + p.current_balance, 0))}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center space-x-2">
-              <Building2 className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600" />
-              <div>
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Total Loans</p>
-                <p className="text-lg sm:text-2xl font-bold text-orange-600">
-                  {formatCurrency(loans.reduce((sum, loan) => sum + loan.current_balance, 0))}
-                </p>
-                <p className="text-xs text-gray-500">{loans.length} active loans</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center space-x-2">
-              <CreditCard className="h-4 w-4 sm:h-5 sm:w-5 text-indigo-600" />
-              <div>
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Liability Payments</p>
-                <p className="text-lg sm:text-2xl font-bold text-indigo-600">
-                  {formatCurrency(liabilityPayments.reduce((sum, payment) => sum + payment.total_amount, 0))}
-                </p>
-                <p className="text-xs text-gray-500">{liabilityPayments.length} payments</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Main Tabs Interface */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="partners">Partners</TabsTrigger>
-          <TabsTrigger value="loans">Loans</TabsTrigger>
-          <TabsTrigger value="liability-payments">Liability Payments</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="partners" className="space-y-4">
-          {/* Partners Filters and Search */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex flex-col sm:flex-row gap-4">
-                <div className="flex-1">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input
-                      placeholder="Search partners by name, email, or phone..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                </div>
-                
-                <div className="sm:w-48">
+    <div className="space-y-3">
+      {/* Professional Header with Expandable Search */}
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-lg shadow-lg p-3 sm:p-4 text-white">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight">Loans & Investments</h1>
+            <p className="text-blue-100 mt-0.5 text-[11px] sm:text-xs hidden sm:block">Comprehensive partner and loan portfolio management</p>
+          </div>
+          
+          {/* Expandable Search & Filter */}
+          <div className="flex items-center gap-2">
+            {searchExpanded ? (
+              <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-lg px-3 py-1.5 border border-white/20 animate-in slide-in-from-right duration-200">
+                <Search className="h-4 w-4 text-white/80 flex-shrink-0" />
+                <Input
+                  placeholder="Search..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  autoFocus
+                  className="border-0 h-7 px-0 focus-visible:ring-0 text-sm bg-transparent text-white placeholder:text-white/60 w-40 sm:w-64"
+                />
+                <div className="w-24 flex-shrink-0">
                   <Select value={filterType} onValueChange={setFilterType}>
-                    <SelectTrigger>
-                      <Filter className="h-4 w-4 mr-2" />
+                    <SelectTrigger className="h-7 text-xs border-white/20 focus:ring-0 bg-white/10 text-white">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Partners</SelectItem>
-                      <SelectItem value="active">Active Only</SelectItem>
-                      <SelectItem value="inactive">Inactive Only</SelectItem>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
                       <SelectItem value="investor">Investors</SelectItem>
                       <SelectItem value="partner">Partners</SelectItem>
                       <SelectItem value="owner">Owners</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setSearchExpanded(false);
+                    setSearchTerm('');
+                    setFilterType('all');
+                  }}
+                  className="h-7 w-7 p-0 hover:bg-white/10 text-white"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
-            </CardContent>
-          </Card>
+            ) : (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setSearchExpanded(true)}
+                className="h-9 w-9 p-0 hover:bg-white/10 text-white"
+              >
+                <Search className="h-5 w-5" />
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
 
-          {/* Partners Table */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Partners Overview</CardTitle>
-            </CardHeader>
-            <CardContent>
+      {/* Ultra Compact Summary Cards */}
+      <div className="grid grid-cols-3 lg:grid-cols-6 gap-2">
+        {/* Total Partners */}
+        <Card className="border-l-4 border-l-blue-500 shadow-sm">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5">
+              <div className="p-1 bg-blue-50 rounded">
+                <Users className="h-3 w-3 text-blue-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[9px] font-medium text-gray-500 truncate leading-tight">Partners</p>
+                <p className="text-sm font-bold text-gray-900 truncate leading-tight">{partners.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        {/* Total Investments */}
+        <Card className="border-l-4 border-l-green-500 shadow-sm">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5">
+              <div className="p-1 bg-green-50 rounded">
+                <TrendingUp className="h-3 w-3 text-green-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[9px] font-medium text-gray-500 truncate leading-tight">Investments</p>
+                <p className="text-[11px] font-bold text-green-600 truncate leading-tight">
+                  {formatCurrency(partners.reduce((sum, p) => sum + p.total_investments, 0)).replace('₹', '₹')}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        {/* Total Withdrawals */}
+        <Card className="border-l-4 border-l-red-500 shadow-sm">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5">
+              <div className="p-1 bg-red-50 rounded">
+                <TrendingDown className="h-3 w-3 text-red-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[9px] font-medium text-gray-500 truncate leading-tight">Withdrawals</p>
+                <p className="text-[11px] font-bold text-red-600 truncate leading-tight">
+                  {formatCurrency(partners.reduce((sum, p) => sum + p.total_withdrawals, 0)).replace('₹', '₹')}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        {/* Net Balance */}
+        <Card className="border-l-4 border-l-purple-500 shadow-sm">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5">
+              <div className="p-1 bg-purple-50 rounded">
+                <DollarSign className="h-3 w-3 text-purple-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[9px] font-medium text-gray-500 truncate leading-tight">Net Balance</p>
+                <p className="text-[11px] font-bold text-purple-600 truncate leading-tight">
+                  {formatCurrency(partners.reduce((sum, p) => sum + p.current_balance, 0)).replace('₹', '₹')}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        {/* Total Loans */}
+        <Card className="border-l-4 border-l-orange-500 shadow-sm">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5">
+              <div className="p-1 bg-orange-50 rounded">
+                <Building2 className="h-3 w-3 text-orange-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[9px] font-medium text-gray-500 truncate leading-tight">Loans</p>
+                <p className="text-[11px] font-bold text-orange-600 truncate leading-tight">
+                  {formatCurrency(loans.reduce((sum, loan) => sum + loan.current_balance, 0)).replace('₹', '₹')}
+                </p>
+                <p className="text-[8px] text-gray-400 truncate leading-tight">{loans.length} active</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        {/* Liability Payments */}
+        <Card className="border-l-4 border-l-indigo-500 shadow-sm">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5">
+              <div className="p-1 bg-indigo-50 rounded">
+                <CreditCard className="h-3 w-3 text-indigo-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[9px] font-medium text-gray-500 truncate leading-tight">Payments</p>
+                <p className="text-[11px] font-bold text-indigo-600 truncate leading-tight">
+                  {formatCurrency(liabilityPayments.reduce((sum, payment) => sum + payment.total_amount, 0)).replace('₹', '₹')}
+                </p>
+                <p className="text-[8px] text-gray-400 truncate leading-tight">{liabilityPayments.length} records</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Compact Tabs Interface */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-3 h-9 bg-white border border-gray-200 p-0.5 rounded-lg shadow-sm">
+          <TabsTrigger 
+            value="partners" 
+            className="data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-md rounded-md transition-all text-xs py-1.5 h-8"
+          >
+            <Users className="h-3 w-3 mr-1.5" />
+            <span>Partners</span>
+          </TabsTrigger>
+          <TabsTrigger 
+            value="loans"
+            className="data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-md rounded-md transition-all text-xs py-1.5 h-8"
+          >
+            <Building2 className="h-3 w-3 mr-1.5" />
+            <span>Loans</span>
+          </TabsTrigger>
+          <TabsTrigger 
+            value="liability-payments"
+            className="data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-md rounded-md transition-all text-xs py-1.5 h-8"
+          >
+            <CreditCard className="h-3 w-3 mr-1.5" />
+            <span>Payments</span>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="partners" className="space-y-2 mt-3">
+          {/* Partners Table - No Card Header */}
+          <Card className="shadow-sm border-gray-200">
+            <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Partner</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Contact</TableHead>
-                      <TableHead>Equity %</TableHead>
-                      <TableHead>Investments</TableHead>
-                      <TableHead>Withdrawals</TableHead>
-                      <TableHead>Current Balance</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
+                    <TableRow className="bg-gray-50">
+                      <TableHead className="text-xs font-semibold py-2">Partner</TableHead>
+                      <TableHead className="text-xs font-semibold py-2 hidden md:table-cell">Type</TableHead>
+                      <TableHead className="text-xs font-semibold py-2 hidden lg:table-cell">Contact</TableHead>
+                      <TableHead className="text-xs sm:text-sm font-semibold hidden xl:table-cell">Equity %</TableHead>
+                      <TableHead className="text-xs sm:text-sm font-semibold text-right">Investments</TableHead>
+                      <TableHead className="text-xs sm:text-sm font-semibold text-right">Withdrawals</TableHead>
+                      <TableHead className="text-xs sm:text-sm font-semibold text-right">Balance</TableHead>
+                      <TableHead className="text-xs sm:text-sm font-semibold hidden sm:table-cell">Status</TableHead>
+                      <TableHead className="text-xs sm:text-sm font-semibold">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredPartners.map((partner) => (
                       <React.Fragment key={partner.id}>
                         <TableRow 
-                          className="cursor-pointer hover:bg-gray-50"
+                          className="cursor-pointer hover:bg-gray-50 transition-colors"
                           onClick={() => togglePartnerExpansion(partner.id)}
                         >
-                          <TableCell>
+                          <TableCell className="py-3">
                             <div className="flex items-center gap-2">
-                              <div>
-                                <div className="font-medium">{partner.name}</div>
-                                <div className="text-sm text-gray-500">
-                                  ID: {partner.id}
+                              <div className="min-w-0 flex-1">
+                                <div className="font-medium text-sm truncate">{partner.name}</div>
+                                <div className="text-xs text-gray-500 flex items-center gap-2">
+                                  <span>ID: {partner.id}</span>
+                                  <span className="md:hidden">
+                                    <Badge variant="outline" className="text-[10px] px-1 py-0">
+                                      {partner.partner_type}
+                                    </Badge>
+                                  </span>
                                 </div>
                               </div>
                               {expandedPartner === partner.id ? (
-                                <ChevronUp className="h-4 w-4 text-gray-400 transition-transform duration-200" />
+                                <ChevronUp className="h-4 w-4 text-gray-400 flex-shrink-0" />
                               ) : (
-                                <ChevronDown className="h-4 w-4 text-gray-400 transition-transform duration-200" />
+                                <ChevronDown className="h-4 w-4 text-gray-400 flex-shrink-0" />
                               )}
                             </div>
                           </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">
+                          <TableCell className="py-3 hidden md:table-cell">
+                            <Badge variant="outline" className="text-xs">
                               {partner.partner_type}
                             </Badge>
                           </TableCell>
-                          <TableCell>
-                            <div className="text-sm">
-                              {partner.email && <div>{partner.email}</div>}
-                              {partner.phone && <div>{partner.phone}</div>}
+                          <TableCell className="py-3 hidden lg:table-cell">
+                            <div className="text-xs space-y-0.5">
+                              {partner.phone && <div className="truncate">{partner.phone}</div>}
                             </div>
                           </TableCell>
-                          <TableCell>
-                            <span className="font-medium">{partner.equity_percentage}%</span>
+                          <TableCell className="py-3 hidden xl:table-cell">
+                            <span className="font-medium text-sm">{partner.equity_percentage}%</span>
                           </TableCell>
-                          <TableCell>
-                            <div className="text-green-600 font-medium">
+                          <TableCell className="py-3 text-right">
+                            <div className="text-green-600 font-semibold text-xs sm:text-sm whitespace-nowrap">
                               {formatCurrency(partner.total_investments)}
                             </div>
                           </TableCell>
-                          <TableCell>
-                            <div className="text-red-600 font-medium">
+                          <TableCell className="py-3 text-right">
+                            <div className="text-red-600 font-semibold text-xs sm:text-sm whitespace-nowrap">
                               {formatCurrency(partner.total_withdrawals)}
                             </div>
                           </TableCell>
-                          <TableCell>
-                            <div className={`font-medium ${partner.current_balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          <TableCell className="py-3 text-right">
+                            <div className={`font-semibold text-xs sm:text-sm whitespace-nowrap ${partner.current_balance >= 0 ? 'text-purple-600' : 'text-red-600'}`}>
                               {formatCurrency(partner.current_balance)}
                             </div>
                           </TableCell>
-                          <TableCell>
-                            <Badge variant={partner.is_active ? "default" : "secondary"}>
+                          <TableCell className="py-3 hidden sm:table-cell">
+                            <Badge variant={partner.is_active ? "default" : "secondary"} className="text-xs">
                               {partner.is_active ? 'Active' : 'Inactive'}
                             </Badge>
                           </TableCell>
-                          <TableCell>
-                            <div className="flex space-x-2" onClick={(e) => e.stopPropagation()}>
+                          <TableCell className="py-3">
+                            <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                               <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => handleEditPartner(partner)}
+                                className="h-8 w-8 p-0"
                               >
-                                <Edit3 className="h-4 w-4" />
+                                <Edit3 className="h-3.5 w-3.5" />
                               </Button>
                               <Button
                                 size="sm"
@@ -581,9 +903,9 @@ export function PartnerManagement() {
                                   setSelectedPartner(partner);
                                   setDeleteDialogOpen(true);
                                 }}
-                                className="text-red-600 hover:text-red-700"
+                                className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Trash2 className="h-3.5 w-3.5" />
                               </Button>
                             </div>
                           </TableCell>
@@ -754,7 +1076,7 @@ export function PartnerManagement() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {loans.length > 0 ? loans.map((loan) => (
+                    {filteredLoans.length > 0 ? filteredLoans.map((loan) => (
                       <React.Fragment key={loan.id}>
                         <TableRow 
                           className="cursor-pointer hover:bg-gray-50"
@@ -929,7 +1251,7 @@ export function PartnerManagement() {
                                                   <Badge variant="secondary">{payment.payment_method}</Badge>
                                                 </TableCell>
                                                 <TableCell>
-                                                  {payment.bank_accounts?.name || 'N/A'}
+                                                  {payment.bank_account_name || 'N/A'}
                                                 </TableCell>
                                                 <TableCell className="max-w-xs truncate" title={payment.description}>
                                                   {payment.description}
@@ -984,6 +1306,7 @@ export function PartnerManagement() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Date</TableHead>
+                      <TableHead>Loan Name</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Principal Amount</TableHead>
                       <TableHead>Interest Amount</TableHead>
@@ -991,13 +1314,20 @@ export function PartnerManagement() {
                       <TableHead>Payment Method</TableHead>
                       <TableHead>Bank Account</TableHead>
                       <TableHead>Description</TableHead>
-                      <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {liabilityPayments.length > 0 ? liabilityPayments.map((payment) => (
+                    {filteredLiabilityPayments.length > 0 ? filteredLiabilityPayments.map((payment) => (
                       <TableRow key={payment.id}>
                         <TableCell>{formatDate(payment.date)}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="font-medium">{payment.loan_name || 'N/A'}</span>
+                            {payment.loan_bank_name && (
+                              <span className="text-xs text-muted-foreground">{payment.loan_bank_name}</span>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <Badge variant="outline">
                             {payment.liability_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
@@ -1016,17 +1346,10 @@ export function PartnerManagement() {
                           <Badge variant="secondary">{payment.payment_method}</Badge>
                         </TableCell>
                         <TableCell>
-                          {payment.bank_accounts?.name || 'N/A'}
+                          {payment.bank_account_name || 'N/A'}
                         </TableCell>
                         <TableCell className="max-w-xs truncate" title={payment.description}>
                           {payment.description}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Button size="sm" variant="outline" className="h-8 w-8 p-0">
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          </div>
                         </TableCell>
                       </TableRow>
                     )) : (
@@ -1200,6 +1523,560 @@ export function PartnerManagement() {
                 </>
               ) : (
                 'Delete Partner'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Floating Action Buttons */}
+      <div className="fixed bottom-6 right-6 flex flex-col gap-3 z-50">
+        <Button
+          onClick={() => setShowAddInvestorModal(true)}
+          className="h-14 w-14 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700"
+          title="Add New Partner/Investor"
+        >
+          <UserPlus className="h-6 w-6" />
+        </Button>
+        <Button
+          onClick={() => setCreateInvestmentOpen(true)}
+          className="h-14 w-14 rounded-full shadow-lg bg-green-600 hover:bg-green-700"
+          title="Record Investment"
+        >
+          <TrendingUp className="h-6 w-6" />
+        </Button>
+        <Button
+          onClick={() => setCreateWithdrawalOpen(true)}
+          className="h-14 w-14 rounded-full shadow-lg bg-purple-600 hover:bg-purple-700"
+          title="Record Withdrawal"
+        >
+          <TrendingDown className="h-6 w-6" />
+        </Button>
+      </div>
+
+      {/* Add New Investor Modal */}
+      <Dialog open={showAddInvestorModal} onOpenChange={setShowAddInvestorModal}>
+        <DialogContent className="max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Add New Partner/Investor</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleAddNewInvestor} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <label className="block text-sm font-medium mb-2">
+                  Partner/Investor Name *
+                </label>
+                <Input
+                  type="text"
+                  name="name"
+                  required
+                  placeholder="Enter full name"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Email Address</label>
+                <Input
+                  type="email"
+                  name="email"
+                  placeholder="email@example.com"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Phone Number</label>
+                <Input
+                  type="tel"
+                  name="phone"
+                  placeholder="+91 9876543210"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Partner Type</label>
+                <Select name="partner_type" defaultValue="partner">
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="partner">Business Partner</SelectItem>
+                    <SelectItem value="investor">Investor</SelectItem>
+                    <SelectItem value="owner">Owner</SelectItem>
+                    <SelectItem value="stakeholder">Stakeholder</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Initial Investment (₹)
+                </label>
+                <Input
+                  type="number"
+                  name="initial_investment"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  defaultValue="0"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Equity Percentage (%)
+                </label>
+                <Input
+                  type="number"
+                  name="equity_percentage"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  placeholder="0.00"
+                  defaultValue="0"
+                />
+              </div>
+
+              <div className="col-span-2">
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    name="is_active"
+                    defaultChecked
+                    className="rounded focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-medium">Active Partner</span>
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Notes & Comments</label>
+              <Textarea
+                name="notes"
+                rows={3}
+                placeholder="Additional notes about the partner/investor..."
+              />
+            </div>
+
+            <DialogFooter className="flex justify-end space-x-2 pt-4 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowAddInvestorModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
+                Add Partner/Investor
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Investment Dialog - Copy from SalesOrderInvoiceManager */}
+      <Dialog open={createInvestmentOpen} onOpenChange={setCreateInvestmentOpen}>
+        <DialogContent className="max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold text-green-700 flex items-center gap-2">
+              <TrendingUp className="h-5 w-5" />
+              Record Partner Investment
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="partner" className="text-sm font-medium">
+                Partner/Investor *
+              </Label>
+              <Select 
+                value={investmentForm.investor_id} 
+                onValueChange={(value) => setInvestmentForm(prev => ({ ...prev, investor_id: value }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select partner/investor" />
+                </SelectTrigger>
+                <SelectContent>
+                  {partners.map((partner) => (
+                    <SelectItem key={partner.id} value={partner.id.toString()}>
+                      {partner.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="category" className="text-sm font-medium">
+                Investment Category *
+              </Label>
+              <Select 
+                value={investmentForm.category} 
+                onValueChange={(value) => setInvestmentForm(prev => ({ ...prev, category: value }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select investment category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {investmentCategories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.category_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="amount" className="text-sm font-medium">
+                Investment Amount (₹) *
+              </Label>
+              <Input
+                id="amount"
+                type="number"
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+                value={investmentForm.amount}
+                onChange={(e) => setInvestmentForm(prev => ({ ...prev, amount: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="payment_method" className="text-sm font-medium">
+                Payment Method *
+              </Label>
+              <Select 
+                value={investmentForm.payment_method} 
+                onValueChange={(value) => setInvestmentForm(prev => ({ ...prev, payment_method: value }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select payment method" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                  <SelectItem value="card">Card Payment</SelectItem>
+                  <SelectItem value="cheque">Cheque</SelectItem>
+                  <SelectItem value="online">Online Transfer</SelectItem>
+                  <SelectItem value="upi">UPI</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {['bank_transfer', 'card', 'cheque', 'online'].includes(investmentForm.payment_method) && (
+              <div className="space-y-2">
+                <Label htmlFor="bank_account" className="text-sm font-medium">
+                  Bank Account *
+                </Label>
+                <Select 
+                  value={investmentForm.bank_account_id} 
+                  onValueChange={(value) => setInvestmentForm(prev => ({ ...prev, bank_account_id: value }))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select bank account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {bankAccounts.map((account) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {account.account_name} ({account.account_number})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="description" className="text-sm font-medium">
+                Description *
+              </Label>
+              <Textarea
+                id="description"
+                placeholder="Describe the investment purpose..."
+                value={investmentForm.description}
+                onChange={(e) => setInvestmentForm(prev => ({ ...prev, description: e.target.value }))}
+                rows={3}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="investment_date" className="text-sm font-medium">
+                Investment Date *
+              </Label>
+              <Input
+                id="investment_date"
+                type="date"
+                value={investmentForm.date}
+                onChange={(e) => setInvestmentForm(prev => ({ ...prev, date: e.target.value }))}
+              />
+            </div>
+
+            <Alert className="bg-green-50 border-green-200 text-green-700">
+              <AlertDescription>
+                <span className="font-medium">💡 Investment Info:</span> This will increase the partner&apos;s equity stake and be recorded in Capital Account (3100).
+              </AlertDescription>
+            </Alert>
+          </div>
+
+          <DialogFooter className="flex gap-2 pt-4">
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => setCreateInvestmentOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button 
+              type="button" 
+              onClick={handleCreateInvestment}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              <TrendingUp className="h-4 w-4 mr-2" />
+              Record Investment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Withdrawal Dialog */}
+      <Dialog open={createWithdrawalOpen} onOpenChange={setCreateWithdrawalOpen}>
+        <DialogContent className="max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold text-purple-700 flex items-center gap-2">
+              <TrendingDown className="h-5 w-5" />
+              Record Partner Withdrawal
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="partner" className="text-sm font-medium">
+                Partner/Owner *
+              </Label>
+              <Select 
+                value={withdrawalForm.partner_id} 
+                onValueChange={(value) => setWithdrawalForm(prev => ({ ...prev, partner_id: value }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select partner/owner" />
+                </SelectTrigger>
+                <SelectContent>
+                  {partners.map((partner) => (
+                    <SelectItem key={partner.id} value={partner.id.toString()}>
+                      {partner.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="category" className="text-sm font-medium">
+                Withdrawal Category *
+              </Label>
+              <Select 
+                value={withdrawalForm.category_id} 
+                onValueChange={(value) => setWithdrawalForm(prev => ({ ...prev, category_id: value, subcategory_id: '' }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select withdrawal category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {withdrawalCategories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.category_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {withdrawalForm.category_id && withdrawalSubcategories.filter(sc => sc.category_id === withdrawalForm.category_id).length > 0 && (
+              <div className="space-y-2">
+                <Label htmlFor="subcategory" className="text-sm font-medium">
+                  Subcategory (Optional)
+                </Label>
+                <Select 
+                  value={withdrawalForm.subcategory_id || 'none'} 
+                  onValueChange={(value) => setWithdrawalForm(prev => ({ ...prev, subcategory_id: value === 'none' ? '' : value }))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select subcategory (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No specific subcategory</SelectItem>
+                    {withdrawalSubcategories
+                      .filter(sc => sc.category_id === withdrawalForm.category_id)
+                      .map((subcategory) => (
+                        <SelectItem key={subcategory.id} value={subcategory.id}>
+                          {subcategory.subcategory_name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="amount" className="text-sm font-medium">
+                Withdrawal Amount (₹) *
+              </Label>
+              <Input
+                id="amount"
+                type="number"
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+                value={withdrawalForm.amount}
+                onChange={(e) => setWithdrawalForm(prev => ({ ...prev, amount: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="withdrawal_type" className="text-sm font-medium">
+                Withdrawal Type *
+              </Label>
+              <Select 
+                value={withdrawalForm.withdrawal_type} 
+                onValueChange={(value) => setWithdrawalForm(prev => ({ ...prev, withdrawal_type: value }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select withdrawal type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="capital_withdrawal">
+                    💰 Capital Withdrawal
+                  </SelectItem>
+                  <SelectItem value="interest_payment">
+                    📈 Interest Payment
+                  </SelectItem>
+                  <SelectItem value="profit_distribution">
+                    🎯 Profit Distribution
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="payment_method" className="text-sm font-medium">
+                Payment Method *
+              </Label>
+              <Select 
+                value={withdrawalForm.payment_method} 
+                onValueChange={(value) => setWithdrawalForm(prev => ({ ...prev, payment_method: value }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select payment method" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">💵 Cash</SelectItem>
+                  <SelectItem value="bank_transfer">🏦 Bank Transfer</SelectItem>
+                  <SelectItem value="upi">📱 UPI</SelectItem>
+                  <SelectItem value="online">💻 Online Payment</SelectItem>
+                  <SelectItem value="cheque">📄 Cheque</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {withdrawalForm.payment_method && withdrawalForm.payment_method !== 'cash' && (
+              <div className="space-y-2">
+                <Label htmlFor="bank_account" className="text-sm font-medium">
+                  {withdrawalForm.payment_method === 'upi' ? 'UPI Account *' : 'Bank Account *'}
+                </Label>
+                <Select 
+                  value={withdrawalForm.bank_account_id} 
+                  onValueChange={(value) => setWithdrawalForm(prev => ({ ...prev, bank_account_id: value }))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {bankAccounts
+                      .filter(account => {
+                        if (withdrawalForm.payment_method === 'upi') {
+                          return account.account_type === 'UPI';
+                        }
+                        return account.account_type === 'BANK';
+                      })
+                      .map((account) => (
+                        <SelectItem key={account.id} value={account.id}>
+                          {account.account_name} ({account.account_number})
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="description" className="text-sm font-medium">
+                Description *
+              </Label>
+              <Textarea
+                id="description"
+                placeholder="Describe the withdrawal purpose..."
+                value={withdrawalForm.description}
+                onChange={(e) => setWithdrawalForm(prev => ({ ...prev, description: e.target.value }))}
+                rows={3}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="withdrawal_date" className="text-sm font-medium">
+                Withdrawal Date *
+              </Label>
+              <Input
+                id="withdrawal_date"
+                type="date"
+                value={withdrawalForm.date}
+                onChange={(e) => setWithdrawalForm(prev => ({ ...prev, date: e.target.value }))}
+              />
+            </div>
+
+            <Alert className={`${
+              withdrawalForm.withdrawal_type === 'capital_withdrawal'
+                ? 'bg-purple-50 border-purple-200 text-purple-700'
+                : 'bg-green-50 border-green-200 text-green-700'
+            }`}>
+              <AlertDescription>
+                <span className="font-medium">💡 {
+                  withdrawalForm.withdrawal_type === 'capital_withdrawal' ? 'Capital Withdrawal Info:' :
+                  withdrawalForm.withdrawal_type === 'interest_payment' ? 'Interest Payment Info:' :
+                  'Profit Distribution Info:'
+                }</span> {
+                  withdrawalForm.withdrawal_type === 'capital_withdrawal' 
+                    ? 'This will reduce the partner\'s equity.'
+                    : 'This will NOT reduce the partner\'s investment balance.'
+                }
+              </AlertDescription>
+            </Alert>
+          </div>
+
+          <DialogFooter className="flex gap-2 pt-4">
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => setCreateWithdrawalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button 
+              type="button" 
+              onClick={handleCreateWithdrawal}
+              disabled={withdrawalLoading}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              {withdrawalLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <TrendingDown className="h-4 w-4 mr-2" />
+                  Record Withdrawal
+                </>
               )}
             </Button>
           </DialogFooter>

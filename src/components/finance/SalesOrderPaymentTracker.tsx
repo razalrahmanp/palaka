@@ -95,7 +95,7 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
   // Fetch bank accounts for the form
   const fetchBankAccounts = useCallback(async () => {
     try {
-      const response = await fetch('/api/finance/bank_accounts?type=BANK');
+      const response = await fetch('/api/finance/bank-accounts?type=BANK');
       if (response.ok) {
         const data = await response.json();
         setBankAccounts(data.data || []);
@@ -108,7 +108,7 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
   // Fetch UPI accounts for the form
   const fetchUpiAccounts = useCallback(async () => {
     try {
-      const response = await fetch('/api/finance/bank_accounts?type=UPI');
+      const response = await fetch('/api/finance/bank-accounts?type=UPI');
       if (response.ok) {
         const data = await response.json();
         setUpiAccounts(data.data || []);
@@ -122,7 +122,7 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
   const fetchCashAccounts = useCallback(async () => {
     try {
       console.log('Fetching cash accounts...');
-      const response = await fetch('/api/finance/bank_accounts?type=CASH');
+      const response = await fetch('/api/finance/bank-accounts?type=CASH');
       if (response.ok) {
         const data = await response.json();
         console.log('Cash accounts fetched:', data.data);

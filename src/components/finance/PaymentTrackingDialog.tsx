@@ -103,7 +103,7 @@ export function PaymentTrackingDialog({
 
   const fetchBankAccounts = useCallback(async () => {
     try {
-      const response = await fetch('/api/finance/bank_accounts?type=BANK');
+      const response = await fetch('/api/finance/bank-accounts?type=BANK');
       if (response.ok) {
         const result = await response.json();
         setBankAccounts(result.data || []);
@@ -115,7 +115,7 @@ export function PaymentTrackingDialog({
 
   const fetchUpiAccounts = useCallback(async () => {
     try {
-      const response = await fetch('/api/finance/bank_accounts?type=UPI');
+      const response = await fetch('/api/finance/bank-accounts?type=UPI');
       if (response.ok) {
         const result = await response.json();
         setUpiAccounts(result.data || []);
@@ -127,7 +127,7 @@ export function PaymentTrackingDialog({
 
   const fetchCashAccounts = useCallback(async () => {
     try {
-      const response = await fetch('/api/finance/bank_accounts?type=CASH');
+      const response = await fetch('/api/finance/bank-accounts?type=CASH');
       if (response.ok) {
         const result = await response.json();
         setCashAccounts(result.data || []);

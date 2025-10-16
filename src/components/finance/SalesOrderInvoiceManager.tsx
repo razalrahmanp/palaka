@@ -1070,7 +1070,7 @@ export function SalesOrderInvoiceManager() {
           return res;
         }),
         fetch('/api/finance/expenses'),
-        fetch('/api/finance/bank-accounts'),
+        fetch('/api/finance/bank-accounts?type=BANK'),
         fetch('/api/finance/loan-opening-balances'),
         fetch('/api/trucks'),
         fetch('/api/employees?select=id,name,employee_id,position,salary,department'),
@@ -1114,8 +1114,17 @@ export function SalesOrderInvoiceManager() {
       let bankAccountsData = [];
       if (bankAccountsRes.ok) {
         bankAccountsData = await bankAccountsRes.json();
+        console.log('✅ Bank Accounts API Response:', bankAccountsData);
+        console.log('Bank Accounts API status:', bankAccountsRes.status);
+        console.log('Bank Accounts data structure:', {
+          isArray: Array.isArray(bankAccountsData),
+          hasData: bankAccountsData?.data,
+          dataLength: bankAccountsData?.data?.length,
+          rawData: bankAccountsData
+        });
       } else {
         console.error('Failed to fetch bank accounts:', bankAccountsRes.statusText);
+        console.error('Bank accounts status:', bankAccountsRes.status);
         // Continue without bank accounts - user will see "No bank accounts available"
       }
 
@@ -1197,13 +1206,12 @@ export function SalesOrderInvoiceManager() {
       const expenses = Array.isArray(expensesData) ? expensesData : (expensesData?.data || []);
       const bankAccounts = Array.isArray(bankAccountsData) ? bankAccountsData : (bankAccountsData?.data || []);
 
-      // console.log('📊 PROCESSED DATA SUMMARY:');
-      // console.log('Processed Invoices:', invoices.length, 'invoices');
-      // console.log('Processed Payments:', payments.length, 'payments');
-      // console.log('Expected payments from DB:', '246 payments');
-      // console.log('Missing payments:', payments.length < 246 ? (246 - payments.length) + ' payments missing' : 'All payments loaded');
-      // console.log('Processed Expenses:', expenses.length, 'expenses');
-      // console.log('Processed Bank Accounts:', bankAccounts.length, 'accounts');
+      console.log('📊 PROCESSED DATA SUMMARY:');
+      console.log('Processed Invoices:', invoices.length, 'invoices');
+      console.log('Processed Payments:', payments.length, 'payments');
+      console.log('Processed Expenses:', expenses.length, 'expenses');
+      console.log('Processed Bank Accounts:', bankAccounts.length, 'accounts');
+      console.log('Bank Accounts Array:', bankAccounts);
       
       // // Sample payment data for verification
       // if (payments.length > 0) {
@@ -1264,9 +1272,9 @@ export function SalesOrderInvoiceManager() {
   const fetchAllAccounts = async () => {
     try {
       const [bankRes, upiRes, cashRes] = await Promise.all([
-        fetch('/api/finance/bank_accounts?type=BANK'),
-        fetch('/api/finance/bank_accounts?type=UPI'), 
-        fetch('/api/finance/bank_accounts?type=CASH')
+        fetch('/api/finance/bank-accounts?type=BANK'),
+        fetch('/api/finance/bank-accounts?type=UPI'), 
+        fetch('/api/finance/bank-accounts?type=CASH')
       ]);
 
       const bankData = bankRes.ok ? await bankRes.json() : { data: [] };

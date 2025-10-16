@@ -29,14 +29,16 @@ import {
   TrendingDown,
   DollarSign,
   Trash2,
-  Plus,
   RotateCcw,
   Receipt,
   CreditCard,
   Building2,
   ArrowRightLeft,
+  ClipboardList,
+  Edit2,
 } from 'lucide-react';
-import { FloatingActionMenu, createFinanceActions } from './FloatingActionMenu';
+import { FloatingActionMenu } from './FloatingActionMenu';
+import ObligationEntryDialog from './ObligationEntryDialog';
 
 interface LedgerDetail {
   id: string;
@@ -138,6 +140,18 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [paymentToDelete, setPaymentToDelete] = useState<{id: string, description: string} | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Obligation entry dialog state
+  const [obligationDialogOpen, setObligationDialogOpen] = useState(false);
+  const [editingObligation, setEditingObligation] = useState<{
+    id: string;
+    obligation_date: string;
+    obligation_type: string;
+    amount: number;
+    description: string;
+    reference_number: string;
+    notes: string;
+  } | null>(null);
   
   useEffect(() => {
     fetchLedgerDetails();
@@ -435,6 +449,28 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
     try {
       console.log('🔍 Fetching real employee transactions for:', employeeId);
       
+      // Fetch employee salary information and user_id first
+      let monthlySalary = 25000; // Default fallback
+      let userId: string | null = null;
+      try {
+        const employeeSalaryResponse = await fetch(`/api/employees/${employeeId}`);
+        if (employeeSalaryResponse.ok) {
+          const employeeData = await employeeSalaryResponse.json();
+          if (employeeData.success && employeeData.data) {
+            if (employeeData.data.salary) {
+              monthlySalary = parseFloat(employeeData.data.salary);
+              console.log(`✅ Fetched monthly salary: ₹${monthlySalary} for employee ${employeeId}`);
+            }
+            if (employeeData.data.user_id) {
+              userId = employeeData.data.user_id;
+              console.log(`✅ Found user_id: ${userId} for employee ${employeeId}`);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching employee salary:', error);
+      }
+      
       // Fetch employee transactions from payroll_records only
       // Add cache-busting timestamp to force fresh data
       const timestamp = Date.now();
@@ -446,6 +482,14 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
         }
       });
       
+      const convertedTransactions: Transaction[] = [];
+      
+      // Track payments by month and type for calculating obligations
+      const paymentsByMonth: Record<string, {
+        incentive: number;
+        overtime: number;
+      }> = {};
+
       if (response.ok) {
         const data = await response.json();
         console.log('🔍 API Response received:', { 
@@ -464,7 +508,7 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
             console.log('✅ Found real employee transactions:', allTransactions.length);
             
             // Convert API response format to our Transaction format
-            const convertedTransactions: Transaction[] = allTransactions.map((txn: {
+            allTransactions.forEach((txn: {
               id: string;
               date: string;
               description: string;
@@ -475,45 +519,102 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
               status?: string;
               payroll_record_id?: string;
               can_delete?: boolean;
-            }) => ({
-              id: txn.id,
-              date: txn.date,
-              description: txn.description,
-              reference_number: txn.reference,
-              transaction_type: txn.type,
-              debit_amount: txn.transaction_type === 'debit' ? txn.amount : 0,
-              credit_amount: txn.transaction_type === 'credit' ? txn.amount : 0,
-              running_balance: 0, // Will be calculated later
-              source_document: `Expense Record - Salaries & Benefits`,
-              status: txn.status || 'completed',
-              payroll_record_id: txn.payroll_record_id,
-              can_delete: txn.can_delete
-            }));
-            
-            // Sort by date (newest first)
-            convertedTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-            
-            // Calculate running balance
-            let runningBalance = 0;
-            convertedTransactions.forEach(txn => {
-              runningBalance += (txn.credit_amount - txn.debit_amount);
-              txn.running_balance = runningBalance;
+              payment_type?: string;
+            }) => {
+              convertedTransactions.push({
+                id: txn.id,
+                date: txn.date,
+                description: txn.description,
+                reference_number: txn.reference,
+                transaction_type: txn.type,
+                debit_amount: txn.transaction_type === 'debit' ? txn.amount : 0,
+                credit_amount: txn.transaction_type === 'credit' ? txn.amount : 0,
+                running_balance: 0, // Will be calculated later
+                source_document: `Expense Record - Salaries & Benefits`,
+                status: txn.status || 'completed',
+                payroll_record_id: txn.payroll_record_id,
+                can_delete: txn.can_delete
+              });
+
+              // Track incentive and overtime payments by month for obligations
+              if (txn.transaction_type === 'credit' && txn.date) {
+                const paymentDate = new Date(txn.date);
+                const monthKey = `${paymentDate.getFullYear()}-${paymentDate.getMonth()}`; // e.g., "2024-11"
+                
+                if (!paymentsByMonth[monthKey]) {
+                  paymentsByMonth[monthKey] = { incentive: 0, overtime: 0 };
+                }
+
+                const paymentType = txn.payment_type?.toLowerCase() || '';
+                const txnType = txn.type?.toLowerCase() || '';
+                
+                // Check both payment_type field and transaction type description
+                if (paymentType === 'incentive' || txnType.includes('incentive')) {
+                  paymentsByMonth[monthKey].incentive += txn.amount;
+                } else if (paymentType === 'overtime' || txnType.includes('overtime')) {
+                  paymentsByMonth[monthKey].overtime += txn.amount;
+                }
+              }
             });
-            
-            return convertedTransactions;
+
+            console.log('💰 Payments by month:', paymentsByMonth);
           }
         }
       }
       
-      console.log('❌ API call failed or returned no data');
-      const errorText = await response.text().catch(() => 'Could not read response');
-      console.log('🔍 API Response details:', { 
-        responseOk: response.ok, 
-        status: response.status,
-        employeeId,
-        errorText: errorText.substring(0, 200)
+      // Fetch employee obligations from database
+      console.log('🔍 Fetching employee obligations from database...');
+      const obligationsResponse = await fetch(
+        `/api/finance/employee-obligations?employee_id=${employeeId}`,
+        { cache: 'no-store' }
+      );
+
+      if (obligationsResponse.ok) {
+        const obligationsData = await obligationsResponse.json();
+        if (obligationsData.success && obligationsData.data) {
+          console.log(`✅ Found ${obligationsData.data.length} obligations`);
+          
+          // Convert obligations to transaction format
+          obligationsData.data.forEach((obligation: {
+            id: string;
+            obligation_date: string;
+            obligation_type: string;
+            amount: number;
+            description: string;
+            reference_number: string;
+          }) => {
+            const typeLabel = obligation.obligation_type.charAt(0).toUpperCase() + 
+                            obligation.obligation_type.slice(1);
+            
+            convertedTransactions.push({
+              id: obligation.id,
+              date: obligation.obligation_date,
+              description: obligation.description || `${typeLabel} Obligation`,
+              reference_number: obligation.reference_number || `OBL-${obligation.id.slice(0, 8)}`,
+              transaction_type: `${typeLabel} Obligation`,
+              debit_amount: obligation.amount, // Increases what company owes
+              credit_amount: 0,
+              running_balance: 0, // Will be calculated later
+              source_document: `Employee Obligation Entry`,
+              status: 'completed'
+            });
+          });
+        }
+      }
+      
+      // Sort by date (oldest first for proper accounting)
+      convertedTransactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      
+      // Calculate running balance
+      // For employee ledger (liability): Debit increases what we owe, Credit decreases
+      let runningBalance = 0;
+      convertedTransactions.forEach(txn => {
+        runningBalance += (txn.debit_amount - txn.credit_amount);
+        txn.running_balance = runningBalance;
       });
-      return [];
+      
+      console.log(`✅ Generated ${convertedTransactions.length} transactions (including monthly obligations)`);
+      return convertedTransactions;
       
     } catch (error) {
       console.error('Error fetching employee transactions:', error);
@@ -768,8 +869,8 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
             description: `${result.data.summary.loan_name} - Loan Disbursement`,
             reference_number: result.data.summary.loan_type || 'Loan',
             transaction_type: 'Loan Received',
-            debit_amount: openingBalance, // Loan received increases liability (debit in loan ledger)
-            credit_amount: 0,
+            debit_amount: 0, // Loan received is a credit (liability increases)
+            credit_amount: openingBalance,
             running_balance: openingBalance,
             source_document: `${result.data.summary.bank_name || 'Bank'} | EMI: ₹${(result.data.summary.emi_amount || 0).toLocaleString()} | Rate: ${result.data.summary.interest_rate || 0}%`,
             status: 'completed'
@@ -793,8 +894,8 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
             description: payment.description || `EMI Payment - ${payment.payment_method}`,
             reference_number: payment.reference_number || 'N/A',
             transaction_type: 'EMI Payment',
-            debit_amount: 0,
-            credit_amount: payment.total_amount, // Payments reduce the loan (credit)
+            debit_amount: payment.total_amount, // Payments reduce the loan (debit in liability)
+            credit_amount: 0,
             running_balance: 0, // Will be calculated below
             source_document: `Principal: ₹${payment.principal_amount.toLocaleString()} | Interest: ₹${payment.interest_amount.toLocaleString()}`,
             category: payment.payment_method,
@@ -1030,6 +1131,65 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  // Obligation handlers
+  const handleEditObligation = async (obligationId: string) => {
+    try {
+      // Fetch the obligation details
+      const response = await fetch(`/api/finance/employee-obligations?employee_id=${ledgerId}`);
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        const obligation = result.data.find((o: { id: string }) => o.id === obligationId);
+        if (obligation) {
+          setEditingObligation({
+            id: obligation.id,
+            obligation_date: obligation.obligation_date,
+            obligation_type: obligation.obligation_type,
+            amount: obligation.amount,
+            description: obligation.description || '',
+            reference_number: obligation.reference_number || '',
+            notes: obligation.notes || ''
+          });
+          setObligationDialogOpen(true);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching obligation:', error);
+      alert('Failed to load obligation details');
+    }
+  };
+
+  const handleDeleteObligation = async (obligationId: string, description: string) => {
+    if (!confirm(`Are you sure you want to delete this obligation?\n\n${description}\n\nThis action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/finance/employee-obligations?id=${obligationId}`, {
+        method: 'DELETE'
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        // Refresh the ledger data
+        await fetchLedgerDetails();
+      } else {
+        alert(`Failed to delete obligation: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error deleting obligation:', error);
+      alert('Failed to delete obligation. Please try again.');
+    }
+  };
+
+  const handleObligationSuccess = () => {
+    // Reset editing state
+    setEditingObligation(null);
+    // Refresh ledger
+    fetchLedgerDetails();
   };
 
 
@@ -2001,6 +2161,31 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
                               <Trash2 className="h-3 w-3" />
                             </Button>
                           )}
+                          {/* Edit and Delete buttons for obligations */}
+                          {ledgerType === 'employee' && txn.transaction_type && 
+                           (txn.transaction_type.includes('Obligation') || 
+                            txn.source_document === 'Employee Obligation Entry') && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                                onClick={() => handleEditObligation(txn.id)}
+                                title="Edit obligation"
+                              >
+                                <Edit2 className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 text-red-600 hover:text-red-800 hover:bg-red-50"
+                                onClick={() => handleDeleteObligation(txn.id, txn.description)}
+                                title="Delete obligation"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -2137,6 +2322,25 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
       {/* Floating Action Menu - Right Corner - Always Visible */}
       <FloatingActionMenu
         actions={[
+          // Employee-specific actions (only for employee ledgers)
+          ...(ledgerType === 'employee' ? [
+            {
+              id: 'add-obligation',
+              label: 'Add Obligation',
+              icon: <ClipboardList className="h-5 w-5 text-white" />,
+              onClick: () => setObligationDialogOpen(true),
+              color: 'bg-emerald-600',
+              hoverColor: 'hover:bg-emerald-700',
+            },
+            {
+              id: 'transfer',
+              label: 'Fund Transfer',
+              icon: <ArrowRightLeft className="h-5 w-5 text-white" />,
+              onClick: () => setShowFundTransfer(true),
+              color: 'bg-indigo-600',
+              hoverColor: 'hover:bg-indigo-700',
+            },
+          ] : []),
           // Bank-specific actions (only for bank ledgers)
           ...(ledgerType === 'bank' ? [
             {
@@ -2153,24 +2357,14 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
               hoverColor: 'hover:bg-yellow-700',
             },
             {
-              id: 'add-deposit',
-              label: 'Add Deposit',
-              icon: <Plus className="h-5 w-5 text-white" />,
-              onClick: () => setCreateDepositOpen(true),
-              color: 'bg-teal-600',
-              hoverColor: 'hover:bg-teal-700',
+              id: 'transfer',
+              label: 'Fund Transfer',
+              icon: <ArrowRightLeft className="h-5 w-5 text-white" />,
+              onClick: () => setShowFundTransfer(true),
+              color: 'bg-indigo-600',
+              hoverColor: 'hover:bg-indigo-700',
             },
           ] : []),
-          // Common finance actions
-          ...createFinanceActions({
-            onCreateExpense: () => setCreateExpenseOpen(true),
-            onCreateInvestment: () => setCreateInvestmentOpen(true),
-            onCreateWithdrawal: () => setCreateWithdrawalOpen(true),
-            onCreateLiability: () => setCreateLiabilityOpen(true),
-            onLoanSetup: () => setLoanSetupOpen(true),
-            onFundTransfer: () => setShowFundTransfer(true),
-            onRefund: () => {}, // No refund in ledger view
-          }).filter(action => action.id !== 'refund'), // Remove refund action
         ]}
         refreshAction={handleRefresh}
       />
@@ -2814,6 +3008,24 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Obligation Entry Dialog */}
+      {ledgerType === 'employee' && (
+        <ObligationEntryDialog
+          open={obligationDialogOpen}
+          onOpenChange={(open) => {
+            setObligationDialogOpen(open);
+            if (!open) {
+              // Clear editing state when dialog closes
+              setEditingObligation(null);
+            }
+          }}
+          employeeId={ledgerId}
+          employeeName={ledgerDetail?.name}
+          initialData={editingObligation || undefined}
+          onSuccess={handleObligationSuccess}
+        />
+      )}
     </div>
   );
 }

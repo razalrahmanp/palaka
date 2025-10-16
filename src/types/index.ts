@@ -647,6 +647,53 @@ export const subcategoryMap = {
   "Internet": { category: "Administrative", type: "Fixed", accountCode: "6104" },
   "Utilities": { category: "Administrative", type: "Fixed", accountCode: "6101" },
 
+  // ============= CAPITAL EXPENDITURE & ASSET PURCHASES =============
+  // Capital Expenditure
+  "Land Purchase": { category: "Property Purchase", type: "Fixed", accountCode: "1210" },
+  "Building Purchase": { category: "Building Purchase", type: "Fixed", accountCode: "1220" },
+  "Building Construction": { category: "Building Purchase", type: "Fixed", accountCode: "1220" },
+  "Leasehold Improvements": { category: "Asset Improvement", type: "Fixed", accountCode: "1290" },
+  
+  // Machinery & Equipment
+  "Machinery Purchase": { category: "Machinery Purchase", type: "Fixed", accountCode: "1230" },
+  "Production Equipment": { category: "Equipment Purchase", type: "Fixed", accountCode: "1230" },
+  "Manufacturing Equipment": { category: "Machinery Purchase", type: "Fixed", accountCode: "1230" },
+  "Equipment Installation": { category: "Asset Installation", type: "Fixed", accountCode: "1230" },
+  "Equipment Upgrade": { category: "Asset Improvement", type: "Fixed", accountCode: "1230" },
+  
+  // Vehicles
+  "Vehicle Purchase": { category: "Vehicle Purchase", type: "Fixed", accountCode: "1240" },
+  "Delivery Vehicle Purchase": { category: "Vehicle Purchase", type: "Fixed", accountCode: "1240" },
+  "Company Car Purchase": { category: "Vehicle Purchase", type: "Fixed", accountCode: "1240" },
+  "Truck Purchase": { category: "Vehicle Purchase", type: "Fixed", accountCode: "1240" },
+  
+  // Furniture & Fixtures
+  "Office Furniture Purchase": { category: "Furniture Purchase", type: "Fixed", accountCode: "1250" },
+  "Showroom Furniture": { category: "Furniture Purchase", type: "Fixed", accountCode: "1250" },
+  "Factory Furniture": { category: "Furniture Purchase", type: "Fixed", accountCode: "1250" },
+  
+  // Computer Equipment
+  "Computer Purchase": { category: "Computer Equipment Purchase", type: "Fixed", accountCode: "1260" },
+  "Laptop Purchase": { category: "Computer Equipment Purchase", type: "Fixed", accountCode: "1260" },
+  "Server Purchase": { category: "Computer Equipment Purchase", type: "Fixed", accountCode: "1260" },
+  "Network Equipment": { category: "Computer Equipment Purchase", type: "Fixed", accountCode: "1260" },
+  
+  // Software (Capitalized)
+  "Software License Purchase": { category: "Software Purchase", type: "Fixed", accountCode: "1270" },
+  "ERP System": { category: "Software Purchase", type: "Fixed", accountCode: "1270" },
+  "Accounting Software": { category: "Software Purchase", type: "Fixed", accountCode: "1270" },
+  
+  // Office Equipment
+  "Office Equipment Purchase": { category: "Equipment Purchase", type: "Fixed", accountCode: "1280" },
+  "Printer Purchase": { category: "Computer Equipment Purchase", type: "Fixed", accountCode: "1280" },
+  "Scanner Purchase": { category: "Computer Equipment Purchase", type: "Fixed", accountCode: "1280" },
+  "Photocopier Purchase": { category: "Equipment Purchase", type: "Fixed", accountCode: "1280" },
+  
+  // General Capital Expenditure
+  "Capital Expenditure - General": { category: "Capital Expenditure", type: "Fixed", accountCode: "1200" },
+  "Asset Purchase - General": { category: "Asset Purchase", type: "Fixed", accountCode: "1200" },
+  "Fixed Asset Addition": { category: "Capital Expenditure", type: "Fixed", accountCode: "1200" },
+
   // ============= CUSTOMER REFUNDS =============
   "Invoice Refund": { category: "Customer Refunds", type: "Direct", accountCode: "4200" },
   "Return Refund": { category: "Customer Refunds", type: "Direct", accountCode: "4201" },

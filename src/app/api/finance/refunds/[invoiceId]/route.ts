@@ -104,7 +104,15 @@ export async function POST(
       return_id
     } = body;
 
-    console.log('📥 Received refund request:', { 
+    console.log('� FULL REQUEST BODY:', JSON.stringify(body, null, 2));
+    console.log('🔗 RETURN_ID RECEIVED:', { 
+      return_id, 
+      type: typeof return_id,
+      isNull: return_id === null,
+      isUndefined: return_id === undefined,
+      truthyValue: !!return_id
+    });
+    console.log('�📥 Received refund request:', { 
       refund_amount, 
       refund_type, 
       reason, 
@@ -232,9 +240,9 @@ export async function POST(
     if (bank_account_id && refund_method !== 'cash') {
       try {
         // Get bank account details
-        const { data: bankAccount, error: bankError } = await supabase
+        const { data: bankAccount, error: bankError} = await supabase
           .from('bank_accounts')
-          .select('id, account_name, current_balance, account_type')
+          .select('id, name, current_balance, account_type')
           .eq('id', bank_account_id)
           .single();
 

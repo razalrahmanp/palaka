@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import React from 'react';
-import { BarChart3, TrendingUp, Calculator, CreditCard, BookOpen } from 'lucide-react';
+import { BarChart3, TrendingUp, Calculator, CreditCard, Users,  Calendar, Clock } from 'lucide-react';
 import ReportsDashboard from '@/components/finance/ReportsDashboard';
 import { FloatingActionMenu } from '@/components/finance/FloatingActionMenu';
 import { useRouter } from 'next/navigation';
@@ -17,12 +17,6 @@ export default function ReportsPage() {
       route: '/reports/profit-loss',
     },
     {
-      id: 'balance-sheet',
-      name: 'Balance Sheet',
-      icon: BarChart3,
-      route: '/reports/balance-sheet',
-    },
-    {
       id: 'trial-balance',
       name: 'Trial Balance',
       icon: Calculator,
@@ -35,11 +29,29 @@ export default function ReportsPage() {
       route: '/reports/cash-flow',
     },
     {
-      id: 'account-balances',
-      name: 'Account Balances',
-      icon: BookOpen,
-      route: '/reports/account-balances',
+      id: 'balance-sheet',
+      name: 'Balance Sheet',
+      icon: BarChart3,
+      route: '/reports/balance-sheet',
     },
+    {
+      id: 'accounts-payable-receivable',
+      name: 'Accounts Payable & Receivable',
+      icon: Users,
+      route: '/reports/accounts-payable-receivable',
+    },
+    {
+      id: 'day-sheet',
+      name: 'Day Sheet',
+      icon: Calendar,
+      route: '/reports/day-sheet',
+    },
+    {
+      id: 'aging-report',
+      name: 'Aging Report',
+      icon: Clock,
+      route: '/reports/aging-report',
+    }
   ];
 
   const floatingActions = reportTypes.map((report) => ({

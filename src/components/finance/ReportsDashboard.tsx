@@ -23,6 +23,12 @@ import {
   Calendar,
   ArrowUpRight,
   ArrowDownRight,
+  ChevronDown,
+  ChevronUp,
+  Building2,
+  UserCheck,
+  Banknote,
+  HandCoins,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -35,6 +41,16 @@ interface DashboardStats {
   totalLiabilities: number;
   totalEquity: number;
   cashBalance: number;
+}
+
+interface LiabilityBreakdown {
+  category: string;
+  accountCode: string;
+  totalLiable: number;
+  totalPaid: number;
+  balance: number;
+  percentage: number;
+  type?: string; // supplier, employee, loans, investors
 }
 
 interface RecentTransaction {
@@ -60,7 +76,14 @@ export default function ReportsDashboard() {
     cashBalance: 0,
   });
   const [recentTransactions, setRecentTransactions] = useState<RecentTransaction[]>([]);
+  const [liabilityBreakdown, setLiabilityBreakdown] = useState<LiabilityBreakdown[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
+    supplier: true,
+    employee: true,
+    loans: true,
+    investors: true,
+  });
 
   useEffect(() => {
     fetchDashboardData();
@@ -70,21 +93,144 @@ export default function ReportsDashboard() {
     try {
       setLoading(true);
       
+      // FIXED: Use Ledgers Summary API instead of Trial Balance for accurate payment data
+      // Trial Balance uses general_ledger which may not reflect actual payments
+      // Ledgers Summary uses actual transaction tables (vendor_bills.paid_amount, etc.)
+      
+      const liabilitiesBreakdown: LiabilityBreakdown[] = [];
+      let totalLiabilitiesAmount = 0;
+      let totalPaidAmount = 0;
+      
+      // Fetch Supplier Ledgers (Payables)
+      const suppliersResponse = await fetch('/api/finance/ledgers-summary?type=supplier&limit=1000');
+      if (suppliersResponse.ok) {
+        const suppliersData = await suppliersResponse.json();
+        const suppliers = suppliersData.data || [];
+        
+        suppliers.forEach((supplier: any) => {
+          const debit = supplier.total_amount || 0; // Total bills
+          const credit = supplier.paid_amount || 0; // Total payments
+          const balance = debit - credit; // Outstanding
+          
+          if (balance > 0) { // Only show accounts with outstanding balance
+            liabilitiesBreakdown.push({
+              category: supplier.name,
+              accountCode: supplier.id.toString().substring(0, 4),
+              totalLiable: debit,
+              totalPaid: credit,
+              balance: balance,
+              percentage: 0, // Will calculate after
+              type: 'supplier',
+            });
+          }
+          
+          totalLiabilitiesAmount += debit;
+          totalPaidAmount += credit;
+        });
+      }
+      
+      // Fetch Employee Ledgers (Salaries Payable)
+      const employeesResponse = await fetch('/api/finance/ledgers-summary?type=employee&limit=1000');
+      if (employeesResponse.ok) {
+        const employeesData = await employeesResponse.json();
+        const employees = employeesData.data || [];
+        
+        employees.forEach((employee: any) => {
+          const debit = employee.total_amount || 0; // Total salary owed
+          const credit = employee.paid_amount || 0; // Total paid
+          const balance = debit - credit;
+          
+          if (balance > 0) {
+            liabilitiesBreakdown.push({
+              category: employee.name,
+              accountCode: employee.id.toString().substring(0, 4),
+              totalLiable: debit,
+              totalPaid: credit,
+              balance: balance,
+              percentage: 0,
+              type: 'employee',
+            });
+          }
+          
+          totalLiabilitiesAmount += debit;
+          totalPaidAmount += credit;
+        });
+      }
+      
+      // Fetch Loan Ledgers (Loan Payables)
+      const loansResponse = await fetch('/api/finance/ledgers-summary?type=loans&limit=1000');
+      if (loansResponse.ok) {
+        const loansData = await loansResponse.json();
+        const loans = loansData.data || [];
+        
+        loans.forEach((loan: any) => {
+          // For loans, total_amount should include all loan drawings
+          // paid_amount should include all liability_payments for this loan
+          const debit = loan.total_amount || loan.original_amount || 0; // Total loan amount (all drawings)
+          const credit = loan.paid_amount || 0; // Total repaid (from liability_payments)
+          const balance = loan.current_balance || (debit - credit);
+          
+          if (balance > 0 || debit > 0) { // Show all loans even if balance is 0
+            liabilitiesBreakdown.push({
+              category: loan.name,
+              accountCode: loan.id.toString().substring(0, 4),
+              totalLiable: debit,
+              totalPaid: credit,
+              balance: balance,
+              percentage: 0,
+              type: 'loans',
+            });
+          }
+          
+          totalLiabilitiesAmount += debit;
+          totalPaidAmount += credit;
+        });
+      }
+      
+      // Calculate total outstanding balance
+      const totalOutstanding = totalLiabilitiesAmount - totalPaidAmount;
+      
+      // Calculate percentages based on outstanding balance
+      liabilitiesBreakdown.forEach(item => {
+        item.percentage = totalOutstanding > 0 ? (item.balance / totalOutstanding) * 100 : 0;
+      });
+      
+      // Sort by balance descending (highest liability first)
+      liabilitiesBreakdown.sort((a, b) => b.balance - a.balance);
+      
+      console.log('Liabilities Breakdown (from Ledgers API):', liabilitiesBreakdown);
+      console.log('Total Liabilities:', totalLiabilitiesAmount);
+      console.log('Total Paid:', totalPaidAmount);
+      console.log('Total Outstanding:', totalOutstanding);
+      
+      setLiabilityBreakdown(liabilitiesBreakdown);
+      
+      // Fetch Trial Balance for Assets/Equity summary
+      const trialBalanceResponse = await fetch('/api/finance/reports/trial-balance?as_of_date=' + format(new Date(), 'yyyy-MM-dd'));
+      if (trialBalanceResponse.ok) {
+        const trialBalanceData = await trialBalanceResponse.json();
+        
+        setStats(prev => ({
+          ...prev,
+          totalLiabilities: totalOutstanding, // Use outstanding balance, not total
+          totalAssets: trialBalanceData.summary?.total_debits || 0,
+          totalEquity: (trialBalanceData.summary?.total_debits || 0) - totalOutstanding,
+        }));
+      }
+      
       // Fetch dashboard KPIs
       const kpiResponse = await fetch('/api/dashboard/kpis');
       if (kpiResponse.ok) {
         const kpiData = await kpiResponse.json();
         
-        setStats({
+        setStats(prev => ({
+          ...prev,
           totalRevenue: kpiData.data?.mtdRevenue || 0,
           totalExpenses: kpiData.data?.totalExpenses || 0,
           netProfit: kpiData.data?.totalProfit || 0,
           profitMargin: kpiData.data?.profitMargin || 0,
-          totalAssets: 0, // Will need a separate endpoint
-          totalLiabilities: 0, // Will need a separate endpoint
-          totalEquity: 0, // Will need a separate endpoint
           cashBalance: kpiData.data?.bankBalance || 0,
-        });
+        }));
       }
 
       // Fetch recent transactions (from account balances endpoint)
@@ -121,15 +267,7 @@ export default function ReportsDashboard() {
       currency: 'INR',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
+    }).format(Math.abs(amount));
   };
 
   if (loading) {
@@ -314,75 +452,185 @@ export default function ReportsDashboard() {
         </Card>
       </div>
 
-      {/* Recent Transactions - Accounting Style */}
+      {/* Liabilities Breakdown - Advanced Analysis */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-blue-600" />
-              <CardTitle>Recent Account Activity</CardTitle>
+              <FileText className="h-5 w-5 text-red-600" />
+              <CardTitle>Liabilities Analysis</CardTitle>
             </div>
-            <Badge variant="outline">Last 10 Entries</Badge>
+            <Badge variant="outline" className="bg-red-50">
+              Total: {formatCurrency(stats.totalLiabilities)}
+            </Badge>
           </div>
+          <p className="text-sm text-gray-600 mt-1">
+            Comprehensive breakdown of all liabilities with payment tracking, grouped by category
+          </p>
         </CardHeader>
         <CardContent>
-          <div className="rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-gray-50">
-                  <TableHead className="font-semibold">Date</TableHead>
-                  <TableHead className="font-semibold">Account Code</TableHead>
-                  <TableHead className="font-semibold">Description</TableHead>
-                  <TableHead className="text-right font-semibold">Debit (Dr)</TableHead>
-                  <TableHead className="text-right font-semibold">Credit (Cr)</TableHead>
-                  <TableHead className="text-right font-semibold">Balance</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recentTransactions.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-gray-500">
-                      No recent transactions available
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  recentTransactions.map((transaction) => (
-                    <TableRow key={transaction.id} className="hover:bg-gray-50">
-                      <TableCell className="font-mono text-sm">
-                        {formatDate(transaction.date)}
-                      </TableCell>
-                      <TableCell className="font-mono text-sm font-medium">
-                        {transaction.account}
-                      </TableCell>
-                      <TableCell className="text-sm">{transaction.description}</TableCell>
-                      <TableCell className="text-right font-mono text-sm">
-                        {transaction.debit > 0 ? (
-                          <span className="text-green-600 font-medium">
-                            {formatCurrency(transaction.debit)}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm">
-                        {transaction.credit > 0 ? (
-                          <span className="text-red-600 font-medium">
-                            {formatCurrency(transaction.credit)}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm font-semibold">
-                        <Badge variant={transaction.balance >= 0 ? 'default' : 'destructive'}>
-                          {formatCurrency(Math.abs(transaction.balance))}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+          {liabilityBreakdown.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              No liability accounts found
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Group liabilities by type */}
+              {['supplier', 'employee', 'loans', 'investors'].map((groupType) => {
+                const groupLiabilities = liabilityBreakdown.filter((l) => l.type === groupType);
+                if (groupLiabilities.length === 0) return null;
+
+                const groupInfo = {
+                  supplier: { name: 'Suppliers (Trade Payables)', icon: Building2, color: 'purple' },
+                  employee: { name: 'Employees (Salary Payable)', icon: UserCheck, color: 'green' },
+                  loans: { name: 'Loans & Borrowings', icon: Banknote, color: 'red' },
+                  investors: { name: 'Investors & Partners', icon: HandCoins, color: 'yellow' },
+                }[groupType] || { name: groupType, icon: FileText, color: 'gray' };
+
+                const Icon = groupInfo.icon;
+                const groupTotal = groupLiabilities.reduce((sum, l) => sum + l.balance, 0);
+                const groupPaid = groupLiabilities.reduce((sum, l) => sum + l.totalPaid, 0);
+                const groupLiable = groupLiabilities.reduce((sum, l) => sum + l.totalLiable, 0);
+                const paymentProgress = groupLiable > 0 ? (groupPaid / groupLiable) * 100 : 0;
+
+                return (
+                  <Card key={groupType} className="overflow-hidden border-2">
+                    <div
+                      className={`bg-${groupInfo.color}-50 border-b-2 border-${groupInfo.color}-200 p-4 cursor-pointer hover:bg-${groupInfo.color}-100 transition-colors`}
+                      onClick={() =>
+                        setExpandedGroups((prev) => ({ ...prev, [groupType]: !prev[groupType] }))
+                      }
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Icon className={`h-6 w-6 text-${groupInfo.color}-600`} />
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-900">{groupInfo.name}</h3>
+                            <p className="text-sm text-gray-600">{groupLiabilities.length} Accounts</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-6">
+                          <div className="text-right">
+                            <p className="text-xs text-gray-500">Outstanding Balance</p>
+                            <p className="text-lg font-bold text-red-600">{formatCurrency(groupTotal)}</p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {paymentProgress.toFixed(1)}% paid
+                            </p>
+                          </div>
+                          {expandedGroups[groupType] ? (
+                            <ChevronUp className="h-5 w-5 text-gray-500" />
+                          ) : (
+                            <ChevronDown className="h-5 w-5 text-gray-500" />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {expandedGroups[groupType] && (
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-gray-50">
+                              <TableHead className="font-semibold">Account Code</TableHead>
+                              <TableHead className="font-semibold">Account Name</TableHead>
+                              <TableHead className="text-right font-semibold">Total Liable (Cr)</TableHead>
+                              <TableHead className="text-right font-semibold">Total Paid (Dr)</TableHead>
+                              <TableHead className="text-right font-semibold">Outstanding Balance</TableHead>
+                              <TableHead className="text-right font-semibold">% of Total</TableHead>
+                              <TableHead className="text-center font-semibold">Status</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {groupLiabilities
+                              .sort((a, b) => b.balance - a.balance)
+                              .map((liability, index) => (
+                                <TableRow key={index} className="hover:bg-gray-50">
+                                  <TableCell className="font-mono text-sm font-medium text-blue-600">
+                                    {liability.accountCode}
+                                  </TableCell>
+                                  <TableCell className="text-sm font-medium">
+                                    {liability.category}
+                                  </TableCell>
+                                  <TableCell className="text-right font-mono text-sm">
+                                    <span className="text-red-600 font-semibold">
+                                      {formatCurrency(liability.totalLiable)}
+                                    </span>
+                                  </TableCell>
+                                  <TableCell className="text-right font-mono text-sm">
+                                    <span className="text-green-600 font-semibold">
+                                      {formatCurrency(liability.totalPaid)}
+                                    </span>
+                                  </TableCell>
+                                  <TableCell className="text-right font-mono text-sm">
+                                    <span className="font-bold text-gray-900">
+                                      {formatCurrency(liability.balance)}
+                                    </span>
+                                  </TableCell>
+                                  <TableCell className="text-right text-sm text-gray-600">
+                                    {liability.percentage.toFixed(1)}%
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    <Badge
+                                      variant="outline"
+                                      className={
+                                        liability.totalPaid === 0
+                                          ? 'bg-red-50 text-red-700 border-red-300'
+                                          : liability.balance === 0
+                                          ? 'bg-green-50 text-green-700 border-green-300'
+                                          : 'bg-orange-50 text-orange-700 border-orange-300'
+                                      }
+                                    >
+                                      {liability.totalPaid === 0
+                                        ? 'Unpaid'
+                                        : liability.balance === 0
+                                        ? 'Paid'
+                                        : 'Partial'}
+                                    </Badge>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Overall Payment Progress */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium">Overall Payment Progress</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-600">
+                {((liabilityBreakdown.reduce((s, l) => s + l.totalPaid, 0) /
+                  liabilityBreakdown.reduce((s, l) => s + l.totalLiable, 0)) *
+                  100 || 0).toFixed(1)}%
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-3">
+              <div
+                className="bg-gradient-to-r from-green-500 to-green-600 h-3 rounded-full transition-all"
+                style={{
+                  width: `${
+                    ((liabilityBreakdown.reduce((s, l) => s + l.totalPaid, 0) /
+                      liabilityBreakdown.reduce((s, l) => s + l.totalLiable, 0)) *
+                      100 || 0)
+                  }%`,
+                }}
+              ></div>
+            </div>
+            <div className="flex items-center justify-between text-xs text-gray-500 mt-2">
+              <span>Paid: {formatCurrency(liabilityBreakdown.reduce((s, l) => s + l.totalPaid, 0))}</span>
+              <span>Outstanding: {formatCurrency(stats.totalLiabilities)}</span>
+            </div>
           </div>
         </CardContent>
       </Card>

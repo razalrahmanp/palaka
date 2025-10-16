@@ -489,6 +489,11 @@ export async function GET(
     }
 
     // Get return history for this sales order
+    console.log('🔍 Fetching returns for invoice:', {
+      invoiceId,
+      salesOrderId: invoice.sales_order_id
+    });
+
     const { data: returns, error: returnsError } = await supabase
       .from('returns')
       .select(`
@@ -507,7 +512,7 @@ export async function GET(
           sales_order_item_id,
           sales_order_items (
             name,
-            quantity as original_quantity
+            quantity
           )
         )
       `)
@@ -521,6 +526,11 @@ export async function GET(
         { status: 500 }
       );
     }
+
+    console.log('📦 Returns fetched from database:', {
+      count: returns?.length || 0,
+      returns: returns
+    });
 
     return NextResponse.json({
       invoice_id: invoiceId,

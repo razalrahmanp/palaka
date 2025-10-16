@@ -1,17 +1,13 @@
 'use client';
 
 import { Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import TrialBalanceReport from '@/components/finance/reports/TrialBalanceReport';
 
 function TrialBalanceContent() {
-  const searchParams = useSearchParams();
-  const asOfDateParam = searchParams.get('as_of_date');
-  
-  // Default to today if no date provided
-  const asOfDate = asOfDateParam ? new Date(asOfDateParam) : new Date();
+  const router = useRouter();
 
-  return <TrialBalanceReport asOfDate={asOfDate} />;
+  return <TrialBalanceReport onBack={() => router.back()} />;
 }
 
 export default function TrialBalancePage() {

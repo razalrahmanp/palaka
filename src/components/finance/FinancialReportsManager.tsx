@@ -34,7 +34,6 @@ import {
   TrendingUp,
   Calculator,
   CreditCard,
-  BookOpen,
   FileSpreadsheet,
   FileText,
   Calendar as CalendarIcon,
@@ -142,13 +141,6 @@ export default function FinancialReportsManager() {
       description: 'Operating, investing, financing activities',
       icon: CreditCard,
       usesPeriod: true,
-    },
-    {
-      id: 'account-balances',
-      name: 'Account Balances',
-      description: 'Current balances for all accounts',
-      icon: BookOpen,
-      usesPeriod: false,
     },
   ];
 
@@ -526,7 +518,6 @@ export default function FinancialReportsManager() {
         {activeReport === 'balance-sheet' && renderBalanceSheetReport()}
         {activeReport === 'trial-balance' && renderTrialBalanceReport()}
         {activeReport === 'cash-flow' && renderCashFlowReport()}
-        {activeReport === 'account-balances' && renderAccountBalancesReport()}
       </div>
     );
   };
@@ -986,65 +977,6 @@ export default function FinancialReportsManager() {
                       item.type === 'inflow' ? 'text-green-600' : 'text-red-600'
                     }`}>
                       {formatCurrency(Math.abs(item.amount))}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  };
-
-  const renderAccountBalancesReport = () => {
-    if (!reportData?.data) return null;
-
-    return (
-      <div className="space-y-6">
-        {/* Summary */}
-        {reportData.summary && (
-          <Card>
-            <CardContent className="p-4">
-              <div className="grid grid-cols-2 gap-4 text-center">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Accounts</p>
-                  <p className="text-xl font-bold">{reportData.summary.total_accounts || 0}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Accounts with Balance</p>
-                  <p className="text-xl font-bold text-blue-600">{reportData.summary.accounts_with_balance || 0}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Account Balances */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Account Balances</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Account Code</TableHead>
-                  <TableHead>Account Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead className="text-right">Current Balance</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {reportData.data.map((item: any, index: number) => (
-                  <TableRow key={index}>
-                    <TableCell className="font-mono">{item.account_code}</TableCell>
-                    <TableCell>{item.account_name}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{item.account_type}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right font-mono">
-                      {formatCurrency(item.current_balance || 0)}
                     </TableCell>
                   </TableRow>
                 ))}

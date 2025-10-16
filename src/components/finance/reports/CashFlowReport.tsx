@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowLeft, Download, Printer, Calendar as CalendarIcon } from 'lucide-react';
+import { ArrowLeft, Download, Printer, Calendar as CalendarIcon, Info } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
@@ -22,6 +22,13 @@ import autoTable from 'jspdf-autotable';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import 'jspdf-autotable';
 
 declare module 'jspdf' {
@@ -65,6 +72,8 @@ export default function CashFlowReport({ startDate: initialStartDate, endDate: i
   const [reportData, setReportData] = useState<CashFlowData | null>(null);
   const [startDate, setStartDate] = useState<Date>(initialStartDate);
   const [endDate, setEndDate] = useState<Date>(initialEndDate);
+  const [showCalculationDialog, setShowCalculationDialog] = useState(false);
+  const [selectedSection, setSelectedSection] = useState<'operating' | 'investing' | 'financing' | null>(null);
 
   useEffect(() => {
     fetchReport();
@@ -100,6 +109,108 @@ export default function CashFlowReport({ startDate: initialStartDate, endDate: i
       maximumFractionDigits: 0,
     }).format(Math.abs(amount));
   };
+
+  const getCalculationDetails = (section: 'operating' | 'investing' | 'financing') => {
+    const details = {
+      operating: {
+        title: 'Operating Activities Calculation',
+        description: 'Cash flows from day-to-day business operations',
+        formula: 'Net Operating Cash Flow = Cash from Customers - Cash to Suppliers - Operating Expenses - Employee Salaries',
+        dataSources: [
+          {
+            item: 'Cash received from customers',
+            table: 'payments',
+            field: 'date (date type)',
+            calculation: 'SUM of all customer payments in date range',
+            notes: 'Customer payments received via all payment methods'
+          },
+          {
+            item: 'Cash paid to suppliers',
+            table: 'vendor_payment_history',
+            field: 'payment_date',
+            calculation: 'SUM of all vendor payments in date range',
+            notes: 'Payments made to suppliers for goods/services'
+          },
+          {
+            item: 'Cash paid for operating expenses',
+            table: 'expenses',
+            field: 'date',
+            calculation: 'SUM of expenses (EXCLUDING Manufacturing, Salaries & Benefits, Salaries, Capital Expenditure, Asset Purchase, Equipment)',
+            notes: 'Operating expenses like rent, utilities, admin costs, etc.'
+          },
+          {
+            item: 'Cash paid to employees',
+            table: 'payroll_records',
+            field: 'processed_at',
+            calculation: 'SUM of net_salary for all processed payroll',
+            notes: 'Employee salary payments'
+          }
+        ],
+        currentValues: reportData?.sections?.OPERATING || []
+      },
+      investing: {
+        title: 'Investing Activities Calculation',
+        description: 'Cash flows from purchase and sale of long-term assets',
+        formula: 'Net Investing Cash Flow = Cash from Asset Sales - Cash Paid for Asset Purchases',
+        dataSources: [
+          {
+            item: 'Cash received from sale of assets',
+            table: 'asset_disposals',
+            field: 'disposal_date',
+            calculation: 'SUM of sale_price where disposal_type = "sale"',
+            notes: 'Proceeds from selling fixed assets (machinery, vehicles, property, etc.)'
+          },
+          {
+            item: 'Cash paid for purchase of assets',
+            table: 'expenses',
+            field: 'date',
+            calculation: 'SUM of expenses where category IN (Capital Expenditure, Asset Purchase, Equipment Purchase, Vehicle Purchase, Property Purchase, Building Purchase, Machinery Purchase, Furniture Purchase, Computer Equipment Purchase, Software Purchase, Asset Improvement, Asset Installation)',
+            notes: 'Capital expenditure on fixed assets'
+          }
+        ],
+        currentValues: reportData?.sections?.INVESTING || []
+      },
+      financing: {
+        title: 'Financing Activities Calculation',
+        description: 'Cash flows from loans, investments, and owner transactions',
+        formula: 'Net Financing Cash Flow = Cash from Loans + Cash from Investors - Loan Repayments - Dividends/Withdrawals',
+        dataSources: [
+          {
+            item: 'Cash received from loans',
+            table: 'loan_opening_balances',
+            field: 'loan_start_date',
+            calculation: 'SUM of original_loan_amount for loans disbursed in date range',
+            notes: 'New loans received from banks/financial institutions'
+          },
+          {
+            item: 'Cash received from investors',
+            table: 'investments',
+            field: 'investment_date',
+            calculation: 'SUM of amount for all partner investments',
+            notes: 'Capital contributions from partners/investors'
+          },
+          {
+            item: 'Cash paid for loan repayments',
+            table: 'liability_payments',
+            field: 'date',
+            calculation: 'SUM of total_amount (principal + interest)',
+            notes: 'Loan repayments (principal and interest)'
+          },
+          {
+            item: 'Cash paid as dividends/withdrawals',
+            table: 'withdrawals',
+            field: 'withdrawal_date',
+            calculation: 'SUM of amount for all partner withdrawals',
+            notes: 'Partner drawings, profit distributions'
+          }
+        ],
+        currentValues: reportData?.sections?.FINANCING || []
+      }
+    };
+
+    return details[section];
+  };
+
 
   const exportToExcel = () => {
     if (!reportData) return;
@@ -249,20 +360,51 @@ export default function CashFlowReport({ startDate: initialStartDate, endDate: i
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Floating Action Buttons - Left Side */}
+      <div className="fixed left-6 top-24 z-20 flex flex-col gap-3">
+        <Button
+          variant="default"
+          size="icon"
+          onClick={() => router.back()}
+          className="h-12 w-12 rounded-full shadow-lg bg-gray-700 hover:bg-gray-800"
+          title="Back"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <Button
+          variant="default"
+          size="icon"
+          onClick={exportToExcel}
+          className="h-12 w-12 rounded-full shadow-lg bg-green-600 hover:bg-green-700"
+          title="Export to Excel"
+        >
+          <Download className="h-5 w-5" />
+        </Button>
+        <Button
+          variant="default"
+          size="icon"
+          onClick={exportToPDF}
+          className="h-12 w-12 rounded-full shadow-lg bg-red-600 hover:bg-red-700"
+          title="Export to PDF"
+        >
+          <Download className="h-5 w-5" />
+        </Button>
+        <Button
+          variant="default"
+          size="icon"
+          onClick={() => window.print()}
+          className="h-12 w-12 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700"
+          title="Print"
+        >
+          <Printer className="h-5 w-5" />
+        </Button>
+      </div>
+
       {/* Header */}
       <div className="bg-white border-b sticky top-0 z-10">
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => router.back()}
-                className="gap-2"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Back
-              </Button>
               <div>
                 <h1 className="text-2xl font-semibold text-gray-900">Cash Flow Statement</h1>
                 <Popover>
@@ -316,20 +458,6 @@ export default function CashFlowReport({ startDate: initialStartDate, endDate: i
                   </PopoverContent>
                 </Popover>
               </div>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={exportToExcel}>
-                <Download className="h-4 w-4 mr-2" />
-                Excel
-              </Button>
-              <Button variant="outline" size="sm" onClick={exportToPDF}>
-                <Download className="h-4 w-4 mr-2" />
-                PDF
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => window.print()}>
-                <Printer className="h-4 w-4 mr-2" />
-                Print
-              </Button>
             </div>
           </div>
         </div>
@@ -388,7 +516,21 @@ export default function CashFlowReport({ startDate: initialStartDate, endDate: i
         {reportData.sections?.OPERATING && reportData.sections.OPERATING.length > 0 && (
           <Card>
             <CardHeader className="bg-green-600 text-white">
-              <CardTitle>OPERATING ACTIVITIES</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle>OPERATING ACTIVITIES</CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0 text-white hover:bg-green-700"
+                  onClick={() => {
+                    setSelectedSection('operating');
+                    setShowCalculationDialog(true);
+                  }}
+                  title="View calculation details"
+                >
+                  <Info className="h-5 w-5" />
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
@@ -423,7 +565,21 @@ export default function CashFlowReport({ startDate: initialStartDate, endDate: i
         {reportData.sections?.INVESTING && reportData.sections.INVESTING.length > 0 && (
           <Card>
             <CardHeader className="bg-blue-600 text-white">
-              <CardTitle>INVESTING ACTIVITIES</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle>INVESTING ACTIVITIES</CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0 text-white hover:bg-blue-700"
+                  onClick={() => {
+                    setSelectedSection('investing');
+                    setShowCalculationDialog(true);
+                  }}
+                  title="View calculation details"
+                >
+                  <Info className="h-5 w-5" />
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
@@ -458,7 +614,21 @@ export default function CashFlowReport({ startDate: initialStartDate, endDate: i
         {reportData.sections?.FINANCING && reportData.sections.FINANCING.length > 0 && (
           <Card>
             <CardHeader className="bg-orange-600 text-white">
-              <CardTitle>FINANCING ACTIVITIES</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle>FINANCING ACTIVITIES</CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0 text-white hover:bg-orange-700"
+                  onClick={() => {
+                    setSelectedSection('financing');
+                    setShowCalculationDialog(true);
+                  }}
+                  title="View calculation details"
+                >
+                  <Info className="h-5 w-5" />
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
@@ -515,6 +685,106 @@ export default function CashFlowReport({ startDate: initialStartDate, endDate: i
           </CardContent>
         </Card>
       </div>
+
+      {/* Calculation Details Dialog */}
+      <Dialog open={showCalculationDialog} onOpenChange={setShowCalculationDialog}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          {selectedSection && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-2xl font-bold">
+                  {getCalculationDetails(selectedSection).title}
+                </DialogTitle>
+                <DialogDescription className="text-base">
+                  {getCalculationDetails(selectedSection).description}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-6 mt-4">
+                {/* Formula */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-blue-900 mb-2">Formula:</h3>
+                  <p className="text-blue-800 font-mono text-sm">
+                    {getCalculationDetails(selectedSection).formula}
+                  </p>
+                </div>
+
+                {/* Current Values */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-gray-900 mb-3">Current Values:</h3>
+                  <div className="space-y-2">
+                    {getCalculationDetails(selectedSection).currentValues.map((item: any, idx: number) => (
+                      <div key={idx} className="flex justify-between items-center py-2 border-b border-gray-200 last:border-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono text-gray-500">{item.account_code}</span>
+                          <span className="text-sm font-medium">{item.account_name}</span>
+                        </div>
+                        <span className={`text-sm font-mono font-semibold ${item.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {formatCurrency(item.amount)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Data Sources Table */}
+                <div>
+                  <h3 className="font-semibold text-gray-900 mb-3">Data Sources & Calculations:</h3>
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-100">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Line Item</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Database Table</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Date Field</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Calculation</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {getCalculationDetails(selectedSection).dataSources.map((source: any, idx: number) => (
+                          <tr key={idx} className="hover:bg-gray-50">
+                            <td className="px-4 py-3">
+                              <div className="text-sm font-medium text-gray-900">{source.item}</div>
+                              <div className="text-xs text-gray-500 mt-1">{source.notes}</div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <code className="text-xs bg-gray-100 px-2 py-1 rounded text-blue-700 font-mono">
+                                {source.table}
+                              </code>
+                            </td>
+                            <td className="px-4 py-3">
+                              <code className="text-xs bg-gray-100 px-2 py-1 rounded text-purple-700 font-mono">
+                                {source.field}
+                              </code>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="text-xs text-gray-700 font-mono">{source.calculation}</div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Additional Notes */}
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-amber-900 mb-2 flex items-center gap-2">
+                    <Info className="h-4 w-4" />
+                    Important Notes:
+                  </h3>
+                  <ul className="text-sm text-amber-800 space-y-1 list-disc list-inside">
+                    <li>All amounts are filtered by date range: {format(startDate, 'dd MMM yyyy')} - {format(endDate, 'dd MMM yyyy')}</li>
+                    <li>Calculations use database SUM aggregation for accuracy</li>
+                    <li>Negative amounts represent cash outflows (payments)</li>
+                    <li>Positive amounts represent cash inflows (receipts)</li>
+                  </ul>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

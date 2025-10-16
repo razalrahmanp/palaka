@@ -309,6 +309,7 @@ export function SalesOrderInvoiceManager() {
   const [refundDialogOpen, setRefundDialogOpen] = useState(false);
   const [selectedInvoiceForRefund, setSelectedInvoiceForRefund] = useState<Invoice | null>(null);
   const [prefilledRefundAmount, setPrefilledRefundAmount] = useState<number | undefined>(undefined);
+  const [selectedReturnId, setSelectedReturnId] = useState<string | undefined>(undefined); // Store return_id for refund creation
   const [refundedItems, setRefundedItems] = useState<Set<string>>(new Set());
   const [returnExchangeDialogOpen, setReturnExchangeDialogOpen] = useState(false);
   const [selectedItemForReturn, setSelectedItemForReturn] = useState<SalesOrderItem | null>(null);
@@ -1656,14 +1657,21 @@ export function SalesOrderInvoiceManager() {
   // Fetch return details for an invoice
   const fetchReturnDetails = async (invoiceId: string): Promise<ReturnDetail[]> => {
     try {
+      console.log('🌐 Fetching return details from API for invoice:', invoiceId);
       const response = await fetch(`/api/finance/invoices/${invoiceId}/returns`);
       if (!response.ok) {
         throw new Error('Failed to fetch return details');
       }
       const data = await response.json();
+      console.log('🌐 API Response received:', {
+        fullResponse: data,
+        returnsArray: data.returns,
+        returnsCount: data.returns?.length || 0,
+        firstReturnId: data.returns?.[0]?.id || 'NO_RETURNS'
+      });
       return data.returns || [];
     } catch (error) {
-      console.error('Error fetching return details:', error);
+      console.error('❌ Error fetching return details:', error);
       return [];
     }
   };
@@ -4472,9 +4480,29 @@ export function SalesOrderInvoiceManager() {
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem 
                                     onClick={async () => {
+                                      console.log('🎯 [Dropdown] Refund button clicked for invoice:', invoice.id);
                                       setSelectedInvoiceForRefund(invoice);
                                       const refundAmount = await calculateRefundAmount(invoice.id);
                                       setPrefilledRefundAmount(refundAmount);
+                                      
+                                      // Fetch return details to get return_id for linking refund
+                                      console.log('🔍 [Dropdown] Fetching return details for invoice:', invoice.id);
+                                      const returnDetails = await fetchReturnDetails(invoice.id);
+                                      console.log('📦 [Dropdown] Return details fetched:', {
+                                        count: returnDetails.length,
+                                        details: returnDetails,
+                                        firstReturnId: returnDetails.length > 0 ? returnDetails[0].id : 'NO_RETURNS'
+                                      });
+                                      
+                                      const returnId = returnDetails.length > 0 ? returnDetails[0].id : undefined;
+                                      setSelectedReturnId(returnId);
+                                      console.log('🔗 [Dropdown] Return ID set for refund dialog:', {
+                                        returnId,
+                                        type: typeof returnId,
+                                        isUndefined: returnId === undefined,
+                                        willBeSent: returnId !== undefined
+                                      });
+                                      
                                       setRefundDialogOpen(true);
                                     }}
                                     className="text-blue-700"
@@ -4580,9 +4608,29 @@ export function SalesOrderInvoiceManager() {
                                                       size="sm"
                                                       variant="outline"
                                                       onClick={async () => {
+                                                        console.log('🎯 [Item] Refund button clicked for invoice:', invoice.id);
                                                         setSelectedInvoiceForRefund(invoice);
                                                         const refundAmount = await calculateRefundAmount(invoice.id);
                                                         setPrefilledRefundAmount(refundAmount);
+                                                        
+                                                        // Fetch return details to get return_id for linking refund
+                                                        console.log('🔍 [Item] Fetching return details for invoice:', invoice.id);
+                                                        const returnDetails = await fetchReturnDetails(invoice.id);
+                                                        console.log('📦 [Item] Return details fetched:', {
+                                                          count: returnDetails.length,
+                                                          details: returnDetails,
+                                                          firstReturnId: returnDetails.length > 0 ? returnDetails[0].id : 'NO_RETURNS'
+                                                        });
+                                                        
+                                                        const returnId = returnDetails.length > 0 ? returnDetails[0].id : undefined;
+                                                        setSelectedReturnId(returnId);
+                                                        console.log('🔗 [Item] Return ID set for refund dialog:', {
+                                                          returnId,
+                                                          type: typeof returnId,
+                                                          isUndefined: returnId === undefined,
+                                                          willBeSent: returnId !== undefined
+                                                        });
+                                                        
                                                         setRefundDialogOpen(true);
                                                       }}
                                                       className="h-6 px-2 text-xs border-orange-200 hover:border-orange-300 hover:bg-orange-50 text-orange-700"
@@ -5908,9 +5956,29 @@ export function SalesOrderInvoiceManager() {
                       <Button
                         size="sm"
                         onClick={async () => {
+                          console.log('🎯 Refund button clicked for invoice:', invoice.id);
                           setSelectedInvoiceForRefund(invoice);
                           const refundAmount = await calculateRefundAmount(invoice.id);
                           setPrefilledRefundAmount(refundAmount);
+                          
+                          // Fetch return details to get return_id for linking refund
+                          console.log('🔍 Fetching return details for invoice:', invoice.id);
+                          const returnDetails = await fetchReturnDetails(invoice.id);
+                          console.log('📦 Return details fetched:', {
+                            count: returnDetails.length,
+                            details: returnDetails,
+                            firstReturnId: returnDetails.length > 0 ? returnDetails[0].id : 'NO_RETURNS'
+                          });
+                          
+                          const returnId = returnDetails.length > 0 ? returnDetails[0].id : undefined;
+                          setSelectedReturnId(returnId);
+                          console.log('🔗 Return ID set for refund dialog:', {
+                            returnId,
+                            type: typeof returnId,
+                            isUndefined: returnId === undefined,
+                            willBeSent: returnId !== undefined
+                          });
+                          
                           setInvoiceSelectionOpen(false);
                           setRefundDialogOpen(true);
                         }}
@@ -5937,6 +6005,7 @@ export function SalesOrderInvoiceManager() {
           setRefundDialogOpen(false);
           setSelectedInvoiceForRefund(null);
           setPrefilledRefundAmount(undefined);
+          setSelectedReturnId(undefined); // Clear return_id when dialog closes
         }}
         invoice={selectedInvoiceForRefund}
         onRefundCreated={async () => {
@@ -5946,6 +6015,7 @@ export function SalesOrderInvoiceManager() {
           }
         }}
         prefilledAmount={prefilledRefundAmount}
+        returnId={selectedReturnId} // Pass return_id to link refund with return
       />
 
       {/* Return/Exchange Dialog */}
@@ -6089,15 +6159,90 @@ export function SalesOrderInvoiceManager() {
                               ))}
                           </div>
                         )}
+
+                        {/* Capital Expenditure & Asset Purchases */}
+                        {getFilteredCategories().filter(([, details]) => 
+                          details.category === "Capital Expenditure" || 
+                          details.category === "Asset Purchase" ||
+                          details.category === "Equipment Purchase" ||
+                          details.category === "Vehicle Purchase" ||
+                          details.category === "Property Purchase" ||
+                          details.category === "Building Purchase" ||
+                          details.category === "Machinery Purchase" ||
+                          details.category === "Furniture Purchase" ||
+                          details.category === "Computer Equipment Purchase" ||
+                          details.category === "Software Purchase" ||
+                          details.category === "Asset Improvement" ||
+                          details.category === "Asset Installation"
+                        ).length > 0 && (
+                          <div className="border-b pb-2 mb-2">
+                            <div className="px-2 py-1 text-xs font-semibold text-orange-600 bg-orange-50">
+                              💰 CAPITAL EXPENDITURE & ASSET PURCHASES
+                            </div>
+                            {getFilteredCategories()
+                              .filter(([, details]) => 
+                                details.category === "Capital Expenditure" || 
+                                details.category === "Asset Purchase" ||
+                                details.category === "Equipment Purchase" ||
+                                details.category === "Vehicle Purchase" ||
+                                details.category === "Property Purchase" ||
+                                details.category === "Building Purchase" ||
+                                details.category === "Machinery Purchase" ||
+                                details.category === "Furniture Purchase" ||
+                                details.category === "Computer Equipment Purchase" ||
+                                details.category === "Software Purchase" ||
+                                details.category === "Asset Improvement" ||
+                                details.category === "Asset Installation"
+                              )
+                              .map(([category, details]) => (
+                                <SelectItem key={category} value={category}>
+                                  <div className="flex flex-col">
+                                    <span className="text-orange-700 font-medium">{category}</span>
+                                    <span className="text-xs text-orange-500">Fixed Asset: {details.accountCode} | {details.category}</span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                          </div>
+                        )}
                         
                         {/* Business expense categories */}
-                        {getFilteredCategories().filter(([, details]) => details.category !== "Owner's Drawings" && details.category !== "Cash Management").length > 0 && (
+                        {getFilteredCategories().filter(([, details]) => 
+                          details.category !== "Owner's Drawings" && 
+                          details.category !== "Cash Management" &&
+                          details.category !== "Capital Expenditure" && 
+                          details.category !== "Asset Purchase" &&
+                          details.category !== "Equipment Purchase" &&
+                          details.category !== "Vehicle Purchase" &&
+                          details.category !== "Property Purchase" &&
+                          details.category !== "Building Purchase" &&
+                          details.category !== "Machinery Purchase" &&
+                          details.category !== "Furniture Purchase" &&
+                          details.category !== "Computer Equipment Purchase" &&
+                          details.category !== "Software Purchase" &&
+                          details.category !== "Asset Improvement" &&
+                          details.category !== "Asset Installation"
+                        ).length > 0 && (
                           <>
                             <div className="px-2 py-1 text-xs font-semibold text-blue-600 bg-blue-50 mb-2">
                               BUSINESS EXPENSES
                             </div>
                             {getFilteredCategories()
-                              .filter(([, details]) => details.category !== "Owner's Drawings" && details.category !== "Cash Management")
+                              .filter(([, details]) => 
+                                details.category !== "Owner's Drawings" && 
+                                details.category !== "Cash Management" &&
+                                details.category !== "Capital Expenditure" && 
+                                details.category !== "Asset Purchase" &&
+                                details.category !== "Equipment Purchase" &&
+                                details.category !== "Vehicle Purchase" &&
+                                details.category !== "Property Purchase" &&
+                                details.category !== "Building Purchase" &&
+                                details.category !== "Machinery Purchase" &&
+                                details.category !== "Furniture Purchase" &&
+                                details.category !== "Computer Equipment Purchase" &&
+                                details.category !== "Software Purchase" &&
+                                details.category !== "Asset Improvement" &&
+                                details.category !== "Asset Installation"
+                              )
                               .map(([category, details]) => (
                                 <SelectItem key={category} value={category}>
                                   <div className="flex flex-col">

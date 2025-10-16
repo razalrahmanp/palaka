@@ -73,9 +73,19 @@ interface RefundDialogProps {
   invoice: Invoice | null;
   onRefundCreated: () => void;
   prefilledAmount?: number;
+  returnId?: string; // Optional return_id to link refund to a return
 }
 
-export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefilledAmount }: RefundDialogProps) {
+export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefilledAmount, returnId }: RefundDialogProps) {
+  console.log('🎨 RefundDialog rendered with props:', {
+    isOpen,
+    invoiceId: invoice?.id,
+    prefilledAmount,
+    returnId,
+    returnIdType: typeof returnId,
+    returnIdPresent: returnId !== undefined
+  });
+  
   const [loading, setLoading] = useState(false);
   const [currentView, setCurrentView] = useState<'create' | 'list'>('list');
   const [refunds, setRefunds] = useState<RefundRequest[]>([]);
@@ -229,10 +239,21 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefil
       const requestBody = {
         ...formData,
         refund_amount: refundAmount,
-        requested_by: currentUser.id
+        requested_by: currentUser.id,
+        return_id: returnId || null // ✅ Include return_id if provided
       };
 
-      console.log('📋 Complete request body:', requestBody);
+      console.log('� CRITICAL DEBUG - Request Body Construction:', {
+        returnIdProp: returnId,
+        returnIdType: typeof returnId,
+        returnIdInBody: requestBody.return_id,
+        returnIdInBodyType: typeof requestBody.return_id,
+        willBeNull: requestBody.return_id === null,
+        willBeUndefined: requestBody.return_id === undefined,
+        fullBody: requestBody
+      });
+      console.log('�📋 Complete request body JSON:', JSON.stringify(requestBody, null, 2));
+      console.log('🔗 Return ID being sent:', returnId);
 
       const response = await fetch(`/api/finance/refunds/${invoice.id}`, {
         method: 'POST',

@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowLeft, Download, Printer, Calendar as CalendarIcon } from 'lucide-react';
+import { ArrowLeft, Download, Printer, Calendar as CalendarIcon, ChevronDown, ChevronRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
@@ -35,6 +35,10 @@ interface BalanceSheetItem {
   account_code: string;
   account_name: string;
   amount: number;
+  is_subtype_header?: boolean;
+  is_account_item?: boolean;
+  subtype?: string;
+  account_count?: number;
 }
 
 interface BalanceSheetData {
@@ -60,6 +64,19 @@ export default function BalanceSheetReport({ asOfDate: initialAsOfDate }: Balanc
   const [loading, setLoading] = useState(true);
   const [reportData, setReportData] = useState<BalanceSheetData | null>(null);
   const [asOfDate, setAsOfDate] = useState<Date>(initialAsOfDate);
+  
+  // Expand/Collapse state for subtypes
+  const [expandedSubtypes, setExpandedSubtypes] = useState<Set<string>>(new Set());
+
+  const toggleSubtype = (subtypeCode: string) => {
+    const newExpanded = new Set(expandedSubtypes);
+    if (newExpanded.has(subtypeCode)) {
+      newExpanded.delete(subtypeCode);
+    } else {
+      newExpanded.add(subtypeCode);
+    }
+    setExpandedSubtypes(newExpanded);
+  };
 
   useEffect(() => {
     fetchReport();
@@ -242,20 +259,51 @@ export default function BalanceSheetReport({ asOfDate: initialAsOfDate }: Balanc
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Floating Action Buttons - Left Side */}
+      <div className="fixed left-6 top-24 z-20 flex flex-col gap-3">
+        <Button
+          variant="default"
+          size="icon"
+          onClick={() => router.back()}
+          className="h-12 w-12 rounded-full shadow-lg bg-gray-700 hover:bg-gray-800"
+          title="Back"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <Button
+          variant="default"
+          size="icon"
+          onClick={exportToExcel}
+          className="h-12 w-12 rounded-full shadow-lg bg-green-600 hover:bg-green-700"
+          title="Export to Excel"
+        >
+          <Download className="h-5 w-5" />
+        </Button>
+        <Button
+          variant="default"
+          size="icon"
+          onClick={exportToPDF}
+          className="h-12 w-12 rounded-full shadow-lg bg-red-600 hover:bg-red-700"
+          title="Export to PDF"
+        >
+          <Download className="h-5 w-5" />
+        </Button>
+        <Button
+          variant="default"
+          size="icon"
+          onClick={() => window.print()}
+          className="h-12 w-12 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700"
+          title="Print"
+        >
+          <Printer className="h-5 w-5" />
+        </Button>
+      </div>
+
       {/* Header */}
       <div className="bg-white border-b sticky top-0 z-10">
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => router.back()}
-                className="gap-2"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Back
-              </Button>
               <div>
                 <h1 className="text-2xl font-semibold text-gray-900">Balance Sheet</h1>
                 <Popover>
@@ -290,20 +338,6 @@ export default function BalanceSheetReport({ asOfDate: initialAsOfDate }: Balanc
                   </PopoverContent>
                 </Popover>
               </div>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={exportToExcel}>
-                <Download className="h-4 w-4 mr-2" />
-                Excel
-              </Button>
-              <Button variant="outline" size="sm" onClick={exportToPDF}>
-                <Download className="h-4 w-4 mr-2" />
-                PDF
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => window.print()}>
-                <Printer className="h-4 w-4 mr-2" />
-                Print
-              </Button>
             </div>
           </div>
         </div>
@@ -382,13 +416,56 @@ export default function BalanceSheetReport({ asOfDate: initialAsOfDate }: Balanc
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {reportData.sections.ASSETS.map((item, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-mono text-sm">{item.account_code}</TableCell>
-                      <TableCell>{item.account_name}</TableCell>
-                      <TableCell className="text-right font-mono">{formatCurrency(item.amount)}</TableCell>
-                    </TableRow>
-                  ))}
+                  {reportData.sections.ASSETS.map((item, idx) => {
+                    const isSubtypeHeader = item.is_subtype_header;
+                    const isAccountItem = item.is_account_item;
+                    
+                    // Hide account items if subtype is not expanded
+                    if (isAccountItem && reportData.sections?.ASSETS) {
+                      // Find parent subtype code
+                      const parentIdx = reportData.sections.ASSETS.slice(0, idx).reverse().findIndex(i => i.is_subtype_header);
+                      if (parentIdx !== -1) {
+                        const parentItem = reportData.sections.ASSETS[idx - parentIdx - 1];
+                        if (!expandedSubtypes.has(parentItem.account_code)) {
+                          return null;
+                        }
+                      }
+                    }
+                    
+                    return (
+                      <TableRow 
+                        key={idx}
+                        className={
+                          isSubtypeHeader ? 'bg-green-100 font-bold cursor-pointer hover:bg-green-200' :
+                          isAccountItem ? 'hover:bg-gray-50' :
+                          ''
+                        }
+                        onClick={() => {
+                          if (isSubtypeHeader) {
+                            toggleSubtype(item.account_code);
+                          }
+                        }}
+                      >
+                        <TableCell className="font-mono text-sm">
+                          {isSubtypeHeader && (
+                            <span className="inline-flex items-center gap-1">
+                              {expandedSubtypes.has(item.account_code) ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                              {item.account_code}
+                            </span>
+                          )}
+                          {!isSubtypeHeader && item.account_code}
+                        </TableCell>
+                        <TableCell className={isAccountItem ? 'text-sm text-gray-600' : ''}>
+                          {item.account_name}
+                        </TableCell>
+                        <TableCell className="text-right font-mono">{formatCurrency(item.amount)}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                   <TableRow className="bg-green-50 font-semibold">
                     <TableCell colSpan={2}>Total Assets</TableCell>
                     <TableCell className="text-right font-mono text-green-700">
@@ -417,13 +494,55 @@ export default function BalanceSheetReport({ asOfDate: initialAsOfDate }: Balanc
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {reportData.sections.LIABILITIES.map((item, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-mono text-sm">{item.account_code}</TableCell>
-                      <TableCell>{item.account_name}</TableCell>
-                      <TableCell className="text-right font-mono">{formatCurrency(item.amount)}</TableCell>
-                    </TableRow>
-                  ))}
+                  {reportData.sections.LIABILITIES.map((item, idx) => {
+                    const isSubtypeHeader = item.is_subtype_header;
+                    const isAccountItem = item.is_account_item;
+                    
+                    // Hide account items if subtype is not expanded
+                    if (isAccountItem && reportData.sections?.LIABILITIES) {
+                      const parentIdx = reportData.sections.LIABILITIES.slice(0, idx).reverse().findIndex(i => i.is_subtype_header);
+                      if (parentIdx !== -1) {
+                        const parentItem = reportData.sections.LIABILITIES[idx - parentIdx - 1];
+                        if (!expandedSubtypes.has(parentItem.account_code)) {
+                          return null;
+                        }
+                      }
+                    }
+                    
+                    return (
+                      <TableRow 
+                        key={idx}
+                        className={
+                          isSubtypeHeader ? 'bg-red-100 font-bold cursor-pointer hover:bg-red-200' :
+                          isAccountItem ? 'hover:bg-gray-50' :
+                          ''
+                        }
+                        onClick={() => {
+                          if (isSubtypeHeader) {
+                            toggleSubtype(item.account_code);
+                          }
+                        }}
+                      >
+                        <TableCell className="font-mono text-sm">
+                          {isSubtypeHeader && (
+                            <span className="inline-flex items-center gap-1">
+                              {expandedSubtypes.has(item.account_code) ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                              {item.account_code}
+                            </span>
+                          )}
+                          {!isSubtypeHeader && item.account_code}
+                        </TableCell>
+                        <TableCell className={isAccountItem ? 'text-sm text-gray-600' : ''}>
+                          {item.account_name}
+                        </TableCell>
+                        <TableCell className="text-right font-mono">{formatCurrency(item.amount)}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                   <TableRow className="bg-red-50 font-semibold">
                     <TableCell colSpan={2}>Total Liabilities</TableCell>
                     <TableCell className="text-right font-mono text-red-700">
@@ -452,13 +571,55 @@ export default function BalanceSheetReport({ asOfDate: initialAsOfDate }: Balanc
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {reportData.sections.EQUITY.map((item, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-mono text-sm">{item.account_code}</TableCell>
-                      <TableCell>{item.account_name}</TableCell>
-                      <TableCell className="text-right font-mono">{formatCurrency(item.amount)}</TableCell>
-                    </TableRow>
-                  ))}
+                  {reportData.sections.EQUITY.map((item, idx) => {
+                    const isSubtypeHeader = item.is_subtype_header;
+                    const isAccountItem = item.is_account_item;
+                    
+                    // Hide account items if subtype is not expanded
+                    if (isAccountItem && reportData.sections?.EQUITY) {
+                      const parentIdx = reportData.sections.EQUITY.slice(0, idx).reverse().findIndex(i => i.is_subtype_header);
+                      if (parentIdx !== -1) {
+                        const parentItem = reportData.sections.EQUITY[idx - parentIdx - 1];
+                        if (!expandedSubtypes.has(parentItem.account_code)) {
+                          return null;
+                        }
+                      }
+                    }
+                    
+                    return (
+                      <TableRow 
+                        key={idx}
+                        className={
+                          isSubtypeHeader ? 'bg-blue-100 font-bold cursor-pointer hover:bg-blue-200' :
+                          isAccountItem ? 'hover:bg-gray-50' :
+                          ''
+                        }
+                        onClick={() => {
+                          if (isSubtypeHeader) {
+                            toggleSubtype(item.account_code);
+                          }
+                        }}
+                      >
+                        <TableCell className="font-mono text-sm">
+                          {isSubtypeHeader && (
+                            <span className="inline-flex items-center gap-1">
+                              {expandedSubtypes.has(item.account_code) ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                              {item.account_code}
+                            </span>
+                          )}
+                          {!isSubtypeHeader && item.account_code}
+                        </TableCell>
+                        <TableCell className={isAccountItem ? 'text-sm text-gray-600' : ''}>
+                          {item.account_name}
+                        </TableCell>
+                        <TableCell className="text-right font-mono">{formatCurrency(item.amount)}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                   <TableRow className="bg-blue-50 font-semibold">
                     <TableCell colSpan={2}>Total Equity</TableCell>
                     <TableCell className="text-right font-mono text-blue-700">

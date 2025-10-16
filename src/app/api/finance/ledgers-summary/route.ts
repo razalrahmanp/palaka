@@ -541,26 +541,19 @@ async function getEmployeeLedgers(search: string, hideZeroBalances: boolean): Pr
     const ledgers: LedgerSummary[] = [];
     
     for (const employee of allEmployees) {
-      // Get actual payments made to employee from expenses table (these are credits)
-      const { data: employeeExpenses } = await supabaseAdmin
-        .from('expenses')
-        .select('amount, date, description')
-        .eq('entity_type', 'employee')
-        .eq('entity_id', employee.id);
-      
-      // Get payroll records (these are also credits - payments made)
+      // Get payroll records by payment type
       const { data: payrollRecords } = await supabaseAdmin
         .from('payroll_records')
-        .select('net_salary, processed_at')
+        .select('net_salary, payment_type, processed_at')
         .eq('employee_id', employee.id);
       
-      // Calculate credit amounts (actual payments made to employee)
-      const expensePayments = employeeExpenses?.reduce((sum, exp) => sum + (exp.amount || 0), 0) || 0;
-      const payrollPayments = payrollRecords?.reduce((sum, pr) => sum + (pr.net_salary || 0), 0) || 0;
-      const totalCredit = expensePayments + payrollPayments;
+      // Calculate credit amounts by payment type
+      const salaryPayments = payrollRecords?.filter(p => p.payment_type === 'salary') || [];
+      const totalSalary = salaryPayments.reduce((sum, p) => sum + (p.net_salary || 0), 0);
+      
+      const totalCredit = payrollRecords?.reduce((sum, pr) => sum + (pr.net_salary || 0), 0) || 0;
       
       // Calculate debit amounts (expected salary based on employee salary and months worked)
-      // For now, use a conservative estimate based on months since hire date and current date
       const hireDate = new Date(employee.created_at);
       const currentDate = new Date();
       const monthsWorked = Math.max(1, Math.floor((currentDate.getTime() - hireDate.getTime()) / (1000 * 60 * 60 * 24 * 30)));
@@ -568,12 +561,12 @@ async function getEmployeeLedgers(search: string, hideZeroBalances: boolean): Pr
       const expectedTotalSalary = Math.min(monthsWorked, 12) * monthlySalary; // Cap at 12 months for realistic estimates
       const totalDebit = expectedTotalSalary;
       
-      // Balance = Debit - Credit (what we still owe the employee)
-      const balanceDue = Math.max(0, totalDebit - totalCredit);
+      // Balance = Debit - Salary only (excludes incentive, bonus, overtime from balance calculation)
+      // Can be negative if salary paid exceeds expected salary
+      const balanceDue = totalDebit - totalSalary;
       
-      // Get latest transaction date
+      // Get latest transaction date from payroll records
       const allDates = [
-        ...(employeeExpenses?.map(exp => exp.date) || []),
         ...(payrollRecords?.map(pr => pr.processed_at?.split('T')[0]) || [])
       ].filter(Boolean);
       
@@ -581,7 +574,7 @@ async function getEmployeeLedgers(search: string, hideZeroBalances: boolean): Pr
         ? allDates.sort().reverse()[0] 
         : employee.created_at;
       
-      const transactionCount = (employeeExpenses?.length || 0) + (payrollRecords?.length || 0);
+      const transactionCount = payrollRecords?.length || 0;
       
       ledgers.push({
         id: employee.id,
@@ -812,6 +805,7 @@ async function getLoansLedgers(search: string, hideZeroBalances: boolean): Promi
         debit: originalAmount, // Original loan amount
         credit: totalPayments, // Total payments made
         balance_due: currentBalance, // Remaining balance
+        paid_amount: totalPayments, // Total payments (for consistency with other ledger types)
         last_transaction_date: lastPaymentDate,
         status: currentBalance > 0 ? 'active' : 'closed',
         loan_type: loan.loan_type,
@@ -1287,8 +1281,9 @@ async function getEmployeeLedgersPaginated(
       const expectedTotalSalary = Math.min(monthsWorked, 12) * monthlySalary; // Cap at 12 months
       const totalDebit = expectedTotalSalary;
       
-      // Balance = Debit - Credit (what we still owe)
-      const balanceDue = Math.max(0, totalDebit - totalCredit);
+      // Balance = Debit - Salary only (excludes incentive, bonus, overtime from balance calculation)
+      // Can be negative if salary paid exceeds expected salary
+      const balanceDue = totalDebit - totalSalary;
       
       // Get last transaction date from payroll records
       const allDates = empPayrolls
@@ -1525,6 +1520,7 @@ async function getLoansLedgersPaginated(
         debit: originalAmount, // Original loan amount
         credit: totalPayments, // Total payments made
         balance_due: currentBalance, // Remaining balance
+        paid_amount: totalPayments, // Total payments (for consistency with other ledger types)
         status: currentBalance > 0 ? 'active' : 'closed'
       };
     });
@@ -1612,17 +1608,50 @@ async function getSalesReturnsLedgers(
       return [];
     }
 
-    const ledgers: LedgerSummary[] = returns.map(ret => ({
-      id: ret.id,
-      name: `Sales Return ${ret.id.slice(0, 8)}`,
-      type: 'sales_returns' as const,
-      total_transactions: 1,
-      total_amount: ret.return_value || 0,
-      balance_due: 0,
-      paid_amount: ret.return_value || 0,
-      return_value: ret.return_value || 0,
-      status: ret.status
-    }));
+    // Fetch all invoice refunds to calculate actual refunded amounts
+    const { data: allRefunds } = await supabaseAdmin
+      .from('invoice_refunds')
+      .select('return_id, refund_amount, status')
+      .in('status', ['pending', 'approved', 'processed']);
+
+    console.log('📊 SALES RETURNS LEDGER DEBUG (non-paginated):');
+    console.log(`  - Returns found: ${returns.length}`);
+    console.log(`  - Refunds found: ${allRefunds?.length || 0}`);
+    console.log(`  - Refunds with return_id: ${allRefunds?.filter(r => r.return_id).length || 0}`);
+
+    // Build refund map: return_id -> total refunded amount
+    const refundMap = new Map<string, number>();
+    if (allRefunds) {
+      allRefunds.forEach(refund => {
+        if (refund.return_id) {
+          const current = refundMap.get(refund.return_id) || 0;
+          refundMap.set(refund.return_id, current + (refund.refund_amount || 0));
+        }
+      });
+    }
+
+    console.log(`  - Refund map size: ${refundMap.size}`);
+    console.log(`  - Refund map entries:`, Array.from(refundMap.entries()).map(([id, amt]) => `${id.slice(0, 8)} → ₹${amt}`));
+
+    const ledgers: LedgerSummary[] = returns.map(ret => {
+      const returnValue = ret.return_value || 0;
+      const refundedAmount = refundMap.get(ret.id) || 0;
+      const balanceDue = returnValue - refundedAmount;
+
+      console.log(`  - Return ${ret.id.slice(0, 8)}: Value=₹${returnValue}, Refunded=₹${refundedAmount}, Balance=₹${balanceDue}`);
+
+      return {
+        id: ret.id,
+        name: `Sales Return ${ret.id.slice(0, 8)}`,
+        type: 'sales_returns' as const,
+        total_transactions: 1,
+        total_amount: returnValue,
+        balance_due: balanceDue,
+        paid_amount: refundedAmount,
+        return_value: returnValue,
+        status: balanceDue <= 0 ? 'settled' : ret.status
+      };
+    });
 
     return hideZeroBalances ? ledgers.filter(l => l.total_amount > 0) : ledgers;
 
@@ -1668,18 +1697,51 @@ async function getSalesReturnsLedgersPaginated(
       return { data: [], total: 0 };
     }
 
-    const ledgers: LedgerSummary[] = returns.map(ret => ({
-      id: ret.id,
-      name: `Sales Return ${ret.id.slice(0, 8)}`,
-      type: 'sales_returns' as const,
-      total_transactions: 1,
-      total_amount: ret.return_value || 0,
-      balance_due: 0,
-      paid_amount: ret.return_value || 0,
-      return_value: ret.return_value || 0,
-      return_type: ret.return_type,
-      status: ret.status
-    }));
+    // Fetch all invoice refunds to calculate actual refunded amounts
+    const { data: allRefunds } = await supabaseAdmin
+      .from('invoice_refunds')
+      .select('return_id, refund_amount, status')
+      .in('status', ['pending', 'approved', 'processed']);
+
+    console.log('📊 SALES RETURNS LEDGER DEBUG (paginated):');
+    console.log(`  - Returns found: ${returns.length}`);
+    console.log(`  - Refunds found: ${allRefunds?.length || 0}`);
+    console.log(`  - Refunds with return_id: ${allRefunds?.filter(r => r.return_id).length || 0}`);
+
+    // Build refund map: return_id -> total refunded amount
+    const refundMap = new Map<string, number>();
+    if (allRefunds) {
+      allRefunds.forEach(refund => {
+        if (refund.return_id) {
+          const current = refundMap.get(refund.return_id) || 0;
+          refundMap.set(refund.return_id, current + (refund.refund_amount || 0));
+        }
+      });
+    }
+
+    console.log(`  - Refund map size: ${refundMap.size}`);
+    console.log(`  - Refund map entries:`, Array.from(refundMap.entries()).map(([id, amt]) => `${id.slice(0, 8)} → ₹${amt}`));
+
+    const ledgers: LedgerSummary[] = returns.map(ret => {
+      const returnValue = ret.return_value || 0;
+      const refundedAmount = refundMap.get(ret.id) || 0;
+      const balanceDue = returnValue - refundedAmount;
+
+      console.log(`  - Return ${ret.id.slice(0, 8)}: Value=₹${returnValue}, Refunded=₹${refundedAmount}, Balance=₹${balanceDue}, Status=${balanceDue <= 0 ? 'settled' : ret.status}`);
+
+      return {
+        id: ret.id,
+        name: `Sales Return ${ret.id.slice(0, 8)}`,
+        type: 'sales_returns' as const,
+        total_transactions: 1,
+        total_amount: returnValue,
+        balance_due: balanceDue,
+        paid_amount: refundedAmount,
+        return_value: returnValue,
+        return_type: ret.return_type,
+        status: balanceDue <= 0 ? 'settled' : ret.status
+      };
+    });
 
     const filteredLedgers = hideZeroBalances 
       ? ledgers.filter(l => l.total_amount > 0)

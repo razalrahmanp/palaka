@@ -55,7 +55,7 @@ export default function PaymentCollectionForm({
     
     setBankAccountsLoading(true);
     try {
-      const response = await fetch('/api/finance/bank_accounts?type=BANK');
+      const response = await fetch('/api/finance/bank-accounts?type=BANK');
       if (response.ok) {
         const data = await response.json();
         setBankAccounts(data || []);

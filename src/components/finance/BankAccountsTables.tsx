@@ -58,7 +58,7 @@ export function BankAccountsTable() {
 
   // fetch bank accounts
   const fetchAccounts = async () => {
-    const res = await fetch("/api/finance/bank_accounts");
+    const res = await fetch("/api/finance/bank-accounts");
     const { data } = await res.json();
     setAccounts(data);
   };
@@ -93,7 +93,7 @@ export function BankAccountsTable() {
       alert("Name and valid balance are required.");
       return;
     }
-    const res = await fetch("/api/finance/bank_accounts", {
+    const res = await fetch("/api/finance/bank-accounts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),

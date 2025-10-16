@@ -245,7 +245,7 @@ export function BankAccountManager() {
 
   const fetchBankAccounts = async () => {
     try {
-      const response = await fetch('/api/finance/bank_accounts?type=BANK');
+      const response = await fetch('/api/finance/bank-accounts?type=BANK');
       if (response.ok) {
         const result = await response.json();
         const accounts = result.data || [];
@@ -274,7 +274,7 @@ export function BankAccountManager() {
 
   const fetchUpiAccounts = async () => {
     try {
-      const response = await fetch('/api/finance/bank_accounts?type=UPI');
+      const response = await fetch('/api/finance/bank-accounts?type=UPI');
       if (response.ok) {
         const result = await response.json();
         setUpiAccounts(result.data || []);
@@ -286,7 +286,7 @@ export function BankAccountManager() {
 
   const fetchCashAccounts = async () => {
     try {
-      const response = await fetch('/api/finance/bank_accounts?type=CASH');
+      const response = await fetch('/api/finance/bank-accounts?type=CASH');
       if (response.ok) {
         const result = await response.json();
         setCashAccounts(result.data || []);
@@ -332,7 +332,7 @@ export function BankAccountManager() {
 
   const addBankAccount = async () => {
     try {
-      const response = await fetch('/api/finance/bank_accounts', {
+      const response = await fetch('/api/finance/bank-accounts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -358,7 +358,7 @@ export function BankAccountManager() {
 
   const addUpiAccount = async () => {
     try {
-      const response = await fetch('/api/finance/bank_accounts', {
+      const response = await fetch('/api/finance/bank-accounts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

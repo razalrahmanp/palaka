@@ -64,7 +64,7 @@ export function PaymentTrackingSidebar({
   useEffect(() => {
     const fetchBankAccounts = async () => {
       try {
-        const response = await fetch('/api/finance/bank_accounts');
+        const response = await fetch('/api/finance/bank-accounts');
         if (response.ok) {
           const data = await response.json();
           setBankAccounts(data.accounts || []);

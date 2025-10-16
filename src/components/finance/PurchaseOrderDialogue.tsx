@@ -52,7 +52,7 @@ export function PurchaseOrderDialog({
 
   // Load bank accounts
 useEffect(() => {
-  fetch("/api/finance/bank_accounts")
+  fetch("/api/finance/bank-accounts")
     .then((res) => res.json())
     .then((res) => {
       console.log("Bank accounts fetched:", res); // 🔍 DEBUG

@@ -180,20 +180,51 @@ export default function TrialBalanceReport({ asOfDate: initialAsOfDate }: TrialB
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Floating Action Buttons - Left Side */}
+      <div className="fixed left-6 top-24 z-20 flex flex-col gap-3">
+        <Button
+          variant="default"
+          size="icon"
+          onClick={() => router.back()}
+          className="h-12 w-12 rounded-full shadow-lg bg-gray-700 hover:bg-gray-800"
+          title="Back"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <Button
+          variant="default"
+          size="icon"
+          onClick={exportToExcel}
+          className="h-12 w-12 rounded-full shadow-lg bg-green-600 hover:bg-green-700"
+          title="Export to Excel"
+        >
+          <Download className="h-5 w-5" />
+        </Button>
+        <Button
+          variant="default"
+          size="icon"
+          onClick={exportToPDF}
+          className="h-12 w-12 rounded-full shadow-lg bg-red-600 hover:bg-red-700"
+          title="Export to PDF"
+        >
+          <Download className="h-5 w-5" />
+        </Button>
+        <Button
+          variant="default"
+          size="icon"
+          onClick={() => window.print()}
+          className="h-12 w-12 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700"
+          title="Print"
+        >
+          <Printer className="h-5 w-5" />
+        </Button>
+      </div>
+
       {/* Header */}
       <div className="bg-white border-b sticky top-0 z-10">
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => router.back()}
-                className="gap-2"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Back
-              </Button>
               <div>
                 <h1 className="text-2xl font-semibold text-gray-900">Trial Balance</h1>
                 <Popover>
@@ -228,20 +259,6 @@ export default function TrialBalanceReport({ asOfDate: initialAsOfDate }: TrialB
                   </PopoverContent>
                 </Popover>
               </div>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={exportToExcel}>
-                <Download className="h-4 w-4 mr-2" />
-                Excel
-              </Button>
-              <Button variant="outline" size="sm" onClick={exportToPDF}>
-                <Download className="h-4 w-4 mr-2" />
-                PDF
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => window.print()}>
-                <Printer className="h-4 w-4 mr-2" />
-                Print
-              </Button>
             </div>
           </div>
         </div>

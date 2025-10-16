@@ -233,8 +233,19 @@ export default function AccountsPayableReceivablePage() {
             }, {}),
             returnIdsWithRefunds: Array.from(refundMap.keys()).length,
             refundMapEntries: Object.fromEntries(refundMap),
-            mapSize: refundMap.size
+            mapSize: refundMap.size,
+            detailedEntries: Array.from(refundMap.entries()).map(([returnId, amount]) => ({
+              return_id: returnId,
+              total_refunded: amount
+            }))
           });
+          
+          console.log('📋 REFUND MAP SUMMARY:');
+          console.log('Total refunds in database:', allRefunds.length);
+          console.log('Refunds with return_id:', allRefunds.filter((r: RefundData) => !!r.return_id).length);
+          console.log('Refunds without return_id:', allRefunds.filter((r: RefundData) => !r.return_id).length);
+          console.log('Unique returns with refunds:', refundMap.size);
+          console.log('Refund map contents:', Object.fromEntries(refundMap));
         } else {
           console.error('❌ Failed to fetch refunds:', allRefundsResponse.status, allRefundsResponse.statusText);
         }

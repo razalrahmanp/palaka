@@ -253,8 +253,8 @@ export function VendorBillsTab({
     const fetchData = async () => {
       try {
         const [bankResponse, upiResponse, expensesResponse] = await Promise.all([
-          fetch('/api/finance/bank_accounts?type=BANK'),
-          fetch('/api/finance/bank_accounts?type=UPI'),
+          fetch('/api/finance/bank-accounts?type=BANK'),
+          fetch('/api/finance/bank-accounts?type=UPI'),
           fetch(buildExpensesApiUrl(vendorId, expenseStartDate, expenseEndDate))
         ]);
         

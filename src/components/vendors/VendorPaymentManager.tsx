@@ -130,8 +130,8 @@ export default function VendorPaymentManager({ vendorId, vendorName }: Props) {
         const [billsRes, paymentsRes, bankRes, upiRes, purchaseOrdersRes, ledgerRes] = await Promise.all([
           fetch(`/api/vendors/${vendorId}/bills`),
           fetch(`/api/vendors/${vendorId}/payments`),
-          fetch('/api/finance/bank_accounts?type=BANK'),
-          fetch('/api/finance/bank_accounts?type=UPI'),
+          fetch('/api/finance/bank-accounts?type=BANK'),
+          fetch('/api/finance/bank-accounts?type=UPI'),
           fetch(`/api/procurement/purchase_orders?supplier_id=${vendorId}`),
           fetch(`/api/finance/ledgers?type=supplier&id=${vendorId}`)
         ])

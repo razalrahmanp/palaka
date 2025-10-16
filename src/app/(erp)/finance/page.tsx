@@ -9,13 +9,12 @@ import {
   // Calculator,
   CreditCard,
   PieChart,
-  BarChart3,
+  // BarChart3,
   RefreshCw
 } from 'lucide-react';
 
 // Import subcomponents
 import { BankAccountManager } from '@/components/finance/BankAccountManager';
-import FinancialReportsManager from '@/components/finance/FinancialReportsManager';
 import { DetailedFinanceOverview } from '@/components/finance/DetailedFinanceOverview';
 
 interface ProfitAnalysis {
@@ -151,7 +150,7 @@ export default function FinancePage() {
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <CardHeader className="pb-0">
-            <TabsList className="grid w-full grid-cols-3 h-12">
+            <TabsList className="grid w-full grid-cols-2 h-12">
               <TabsTrigger value="overview" className="flex items-center gap-2">
                 <PieChart className="h-4 w-4" />
                 Overview
@@ -159,10 +158,6 @@ export default function FinancePage() {
               <TabsTrigger value="bank-accounts" className="flex items-center gap-2">
                 <CreditCard className="h-4 w-4" />
                 Bank Accounts
-              </TabsTrigger>
-              <TabsTrigger value="reports" className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4" />
-                Reports
               </TabsTrigger>
             </TabsList>
           </CardHeader>
@@ -173,10 +168,6 @@ export default function FinancePage() {
 
           <TabsContent value="bank-accounts">
             <BankAccountManager />
-          </TabsContent>
-
-          <TabsContent value="reports">
-            <FinancialReportsManager />
           </TabsContent>
         </Tabs>
       </Card>

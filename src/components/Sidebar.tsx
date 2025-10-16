@@ -5,7 +5,7 @@ import { NavLink } from './NavLink';
 import { 
   Home, Users, Receipt, Warehouse, ShoppingCart, Wrench, Truck, 
   DollarSign, Bell, Settings, Star, Users2, Building2, Package, 
-  FileText, TrendingUp, BookOpen 
+  FileText, TrendingUp, BookOpen, BarChart
 } from 'lucide-react';
 import { hasPermission, hasAnyPermission, getCurrentUser } from '@/lib/auth';
 
@@ -75,9 +75,9 @@ const hrNavItems: NavItem[] = [
   { href: "/hr/performance", icon: Star, label: "Performance", permission: 'performance_review:read' },
 ];
 
-// Reports & Analytics (placeholder for future expansion)
+// Reports & Analytics
 const reportItems: NavItem[] = [
-  { href: "/alerts", icon: Bell, label: "Reports & Alerts", permission: 'analytics:read' },
+  { href: "/reports", icon: BarChart, label: "Reports & Analytics", permission: 'analytics:read' },
 ];
 
 // System

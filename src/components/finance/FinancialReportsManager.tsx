@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
@@ -21,6 +21,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { format } from 'date-fns';
 import { 
   BarChart3,
@@ -33,7 +40,9 @@ import {
   Calendar as CalendarIcon,
   Eye,
   RefreshCw,
-  Clock
+  Clock,
+  X,
+  Download
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -102,6 +111,8 @@ export default function FinancialReportsManager() {
   const [startDate, setStartDate] = useState<Date>(new Date(new Date().getFullYear(), 0, 1));
   const [endDate, setEndDate] = useState<Date>(new Date());
   const [asOfDate, setAsOfDate] = useState<Date>(new Date());
+  const [showParameterModal, setShowParameterModal] = useState(false);
+  const [selectedReportType, setSelectedReportType] = useState<string>('');
 
   const reportTypes = [
     {
@@ -1046,52 +1057,111 @@ export default function FinancialReportsManager() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Financial Reports & Analytics</h2>
-          <p className="text-gray-600">Generate comprehensive financial reports and aging analysis</p>
-        </div>
-        {reportData && (
-          <Button onClick={() => setReportData(null)} variant="outline">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            New Report
-          </Button>
-        )}
-      </div>
-
+    <div className="p-6">
       {/* Tabbed Interface */}
       <Tabs defaultValue="reports" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="reports" className="flex items-center gap-2">
+        <TabsList className="grid w-full grid-cols-2 bg-gray-50 p-1 rounded-lg">
+          <TabsTrigger 
+            value="reports" 
+            className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md"
+          >
             <BarChart3 className="h-4 w-4" />
             Financial Reports
           </TabsTrigger>
-          <TabsTrigger value="aging" className="flex items-center gap-2">
+          <TabsTrigger 
+            value="aging" 
+            className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md"
+          >
             <Clock className="h-4 w-4" />
             Aging Reports
           </TabsTrigger>
         </TabsList>
 
         {/* Financial Reports Tab */}
-        <TabsContent value="reports" className="space-y-6">
+        <TabsContent value="reports" className="space-y-6 mt-6">
           {!reportData ? (
-            <div>
-              {/* Date Range Inputs */}
-              <Card className="mb-6">
-                <CardHeader>
-                  <CardTitle>Report Parameters</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {reportTypes.map((report) => {
+                const IconComponent = report.icon;
+                return (
+                  <Card 
+                    key={report.id} 
+                    className="hover:shadow-md transition-all cursor-pointer border-gray-200 hover:border-blue-400 group"
+                    onClick={() => {
+                      setSelectedReportType(report.id);
+                      setShowParameterModal(true);
+                    }}
+                  >
+                    <CardContent className="p-6">
+                      <div className="flex items-start gap-4">
+                        <div className="p-3 bg-blue-50 rounded-lg group-hover:bg-blue-100 transition-colors">
+                          <IconComponent className="h-6 w-6 text-blue-600" />
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-gray-900 mb-1">
+                            {report.name}
+                          </h3>
+                          <p className="text-sm text-gray-600 leading-relaxed">
+                            {report.description}
+                          </p>
+                          <div className="mt-3">
+                            <span className="text-sm font-medium text-blue-600 group-hover:text-blue-700">
+                              Generate Report →
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          ) : (
+            renderReportContent()
+          )}
+        </TabsContent>
+
+        {/* Aging Reports Tab */}
+        <TabsContent value="aging" className="mt-6">
+          <AgingReports />
+        </TabsContent>
+      </Tabs>
+
+      {/* Parameter Modal - Zoho Style */}
+      <Dialog open={showParameterModal} onOpenChange={setShowParameterModal}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+              {reportTypes.find(r => r.id === selectedReportType)?.icon && 
+                React.createElement(reportTypes.find(r => r.id === selectedReportType)!.icon, { 
+                  className: "h-5 w-5 text-blue-600" 
+                })
+              }
+              {reportTypes.find(r => r.id === selectedReportType)?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Configure report parameters and generate your financial report
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* Date Parameters */}
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4">
+                {reportTypes.find(r => r.id === selectedReportType)?.usesPeriod ? (
+                  <>
                     <div className="space-y-2">
-                      <Label>Start Date (for period reports)</Label>
+                      <Label className="text-sm font-medium text-gray-700">
+                        Start Date
+                      </Label>
                       <Popover>
                         <PopoverTrigger asChild>
-                          <Button variant="outline" className="w-full justify-start text-left font-normal">
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {format(startDate, 'PPP')}
+                          <Button 
+                            variant="outline" 
+                            className="w-full justify-start text-left font-normal hover:bg-gray-50"
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4 text-gray-500" />
+                            <span className="text-gray-900">{format(startDate, 'PPP')}</span>
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0" align="start">
@@ -1105,12 +1175,17 @@ export default function FinancialReportsManager() {
                       </Popover>
                     </div>
                     <div className="space-y-2">
-                      <Label>End Date (for period reports)</Label>
+                      <Label className="text-sm font-medium text-gray-700">
+                        End Date
+                      </Label>
                       <Popover>
                         <PopoverTrigger asChild>
-                          <Button variant="outline" className="w-full justify-start text-left font-normal">
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {format(endDate, 'PPP')}
+                          <Button 
+                            variant="outline" 
+                            className="w-full justify-start text-left font-normal hover:bg-gray-50"
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4 text-gray-500" />
+                            <span className="text-gray-900">{format(endDate, 'PPP')}</span>
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0" align="start">
@@ -1123,71 +1198,124 @@ export default function FinancialReportsManager() {
                         </PopoverContent>
                       </Popover>
                     </div>
-                    <div className="space-y-2">
-                      <Label>As Of Date (for point-in-time reports)</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" className="w-full justify-start text-left font-normal">
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {format(asOfDate, 'PPP')}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={asOfDate}
-                            onSelect={(date) => date && setAsOfDate(date)}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Report Type Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {reportTypes.map((report) => {
-                  const IconComponent = report.icon;
-                  return (
-                    <Card key={report.id} className="hover:shadow-lg transition-shadow cursor-pointer group">
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                          <IconComponent className="h-5 w-5 text-blue-600" />
-                          {report.name}
-                        </CardTitle>
-                        <CardDescription>{report.description}</CardDescription>
-                      </CardHeader>
-                      <CardContent>
+                  </>
+                ) : (
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-gray-700">
+                      As Of Date
+                    </Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
                         <Button 
-                          onClick={() => fetchReport(report.id)}
-                          disabled={loading}
-                          className="w-full"
+                          variant="outline" 
+                          className="w-full justify-start text-left font-normal hover:bg-gray-50"
                         >
-                          {loading && activeReport === report.id ? (
-                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                          ) : (
-                            <Eye className="h-4 w-4 mr-2" />
-                          )}
-                          {loading && activeReport === report.id ? 'Generating...' : 'Generate Report'}
+                          <CalendarIcon className="mr-2 h-4 w-4 text-gray-500" />
+                          <span className="text-gray-900">{format(asOfDate, 'PPP')}</span>
                         </Button>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={asOfDate}
+                          onSelect={(date) => date && setAsOfDate(date)}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                )}
               </div>
             </div>
-          ) : (
-            renderReportContent()
-          )}
-        </TabsContent>
 
-        {/* Aging Reports Tab */}
-        <TabsContent value="aging">
-          <AgingReports />
-        </TabsContent>
-      </Tabs>
+            {/* Action Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-4 border-t">
+              <Button 
+                variant="outline" 
+                onClick={() => setShowParameterModal(false)}
+                className="px-6"
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={() => {
+                  fetchReport(selectedReportType);
+                  setShowParameterModal(false);
+                }}
+                disabled={loading}
+                className="px-6 bg-blue-600 hover:bg-blue-700"
+              >
+                {loading ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Eye className="h-4 w-4 mr-2" />
+                    Generate Report
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Report View Modal - Zoho Style */}
+      <Dialog open={!!reportData} onOpenChange={(open) => !open && setReportData(null)}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader className="border-b pb-4 sticky top-0 bg-white z-10">
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle className="text-2xl font-semibold text-gray-900">
+                  {reportData?.report_type}
+                </DialogTitle>
+                <DialogDescription className="text-base mt-1">
+                  {reportData?.period ? (
+                    <>
+                      Period: {formatDate(reportData.period.start_date)} to {formatDate(reportData.period.end_date)}
+                    </>
+                  ) : reportData?.as_of_date ? (
+                    <>As of: {formatDate(reportData.as_of_date)}</>
+                  ) : null}
+                </DialogDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={exportToExcel}
+                  className="gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  Excel
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={exportToPDF}
+                  className="gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  PDF
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => setReportData(null)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="py-6">
+            {reportData && renderReportContent()}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

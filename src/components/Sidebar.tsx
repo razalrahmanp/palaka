@@ -4,8 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { NavLink } from './NavLink';
 import { 
   Home, Users, Receipt, Warehouse, ShoppingCart, Wrench, Truck, 
-  DollarSign, Bell, Settings, Star, Users2, Building2, Package, 
-  FileText, TrendingUp, BookOpen, BarChart
+  DollarSign, Settings, Star, Users2, Building2, Package, 
+  FileText, TrendingUp, BookOpen, BarChart, ChevronDown, ChevronRight
 } from 'lucide-react';
 import { hasPermission, hasAnyPermission, getCurrentUser } from '@/lib/auth';
 
@@ -92,10 +92,27 @@ interface SidebarProps {
 
 export const Sidebar = ({ isOpen, onToggle }: SidebarProps) => {
   const [isHydrated, setIsHydrated] = useState(false);
+  
+  // State for collapsible sections
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(
+    new Set(['dashboard', 'sales', 'purchases', 'inventory', 'finance', 'hr', 'reports', 'system'])
+  );
 
   useEffect(() => {
     setIsHydrated(true);
   }, []);
+
+  const toggleSection = (section: string) => {
+    setExpandedSections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(section)) {
+        newSet.delete(section);
+      } else {
+        newSet.add(section);
+      }
+      return newSet;
+    });
+  };
 
   if (!isHydrated) {
     // Show minimal sidebar during hydration to prevent mismatch
@@ -103,15 +120,15 @@ export const Sidebar = ({ isOpen, onToggle }: SidebarProps) => {
       <aside className={`fixed md:relative z-30 bg-gradient-to-b from-white to-gray-50 border-r border-gray-200 shadow-xl transition-all duration-300 ${
         isOpen ? 'w-64' : 'w-16 md:w-64'
       } h-full overflow-y-auto`}>
-        <div className="flex items-center h-16 px-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white">
-          <Package className="h-8 w-8 text-white" />
-          <span className="ml-3 text-xl font-bold">Al Rams ERP</span>
+        <div className="flex items-center h-12 px-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+          <Package className="h-6 w-6 text-white" />
+          <span className="ml-2 text-lg font-bold">Palaka ERP</span>
         </div>
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 p-2 space-y-1">
           <div className="flex items-center justify-center py-8">
             <div className="text-center text-gray-500">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-2"></div>
-              <p className="text-sm">Loading...</p>
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600 mx-auto mb-2"></div>
+              <p className="text-xs">Loading...</p>
             </div>
           </div>
         </nav>
@@ -119,238 +136,173 @@ export const Sidebar = ({ isOpen, onToggle }: SidebarProps) => {
     );
   }
 
+  // Collapsible Section Component
+  const CollapsibleSection = ({ 
+    title, 
+    items, 
+    sectionKey 
+  }: { 
+    title: string; 
+    items: NavItem[]; 
+    sectionKey: string;
+  }) => {
+    const isExpanded = expandedSections.has(sectionKey);
+    const visibleItems = items.filter(i =>
+      Array.isArray(i.permission)
+        ? hasAnyPermission(i.permission)
+        : hasPermission(i.permission)
+    );
+
+    if (visibleItems.length === 0) return null;
+
+    return (
+      <div className="mb-1">
+        <button
+          onClick={() => toggleSection(sectionKey)}
+          className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+        >
+          <span className="uppercase tracking-wide">{title}</span>
+          {isExpanded ? (
+            <ChevronDown className="h-3.5 w-3.5 flex-shrink-0" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5 flex-shrink-0" />
+          )}
+        </button>
+        {isExpanded && (
+          <div className="mt-0.5 space-y-0.5">
+            {visibleItems.map(i => (
+              <NavLink key={i.href} href={i.href} icon={i.icon}>
+                {i.label}
+              </NavLink>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <aside
       className={`fixed md:fixed top-0 left-0 z-50 h-screen flex flex-col bg-gradient-to-b from-white to-gray-50 border-r border-gray-200 shadow-xl transition-all duration-300 ease-in-out
         ${isOpen ? 'w-64 md:translate-x-0' : 'w-0 md:-translate-x-64'}
       `}
     >
-    {/* Header - Fixed at top */}
-    <div className="flex-shrink-0 flex items-center justify-between h-16 px-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+    {/* Header - Compact */}
+    <div className="flex-shrink-0 flex items-center justify-between h-12 px-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white">
       <div className="flex items-center">
-        <Package className="h-8 w-8 text-white" />
-        <span className="ml-3 text-xl font-bold">Palaka ERP</span>
+        <Package className="h-6 w-6 text-white" />
+        <span className="ml-2 text-lg font-bold">Palaka ERP</span>
       </div>
-      {/* Toggle button for both desktop and mobile */}
       <button onClick={onToggle} className="text-white hover:bg-white/10 rounded p-1 transition-colors">
         {isOpen ? (
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
           </svg>
         ) : (
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         )}
       </button>
     </div>
     
-    {/* Scrollable Navigation Area */}
-    <nav className="flex-1 p-4 space-y-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
-      {/* Dashboard */}
-      {dashboardItems.some(i => 
+    {/* Compact Collapsible Navigation */}
+    <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+      {/* Dashboard - Always visible */}
+      {dashboardItems.filter(i => 
         Array.isArray(i.permission)
           ? hasAnyPermission(i.permission)
           : hasPermission(i.permission)
-      ) && (
-        <div className="mb-6">
-          <div className="space-y-1">
-            {dashboardItems
-              .filter(i =>
-                Array.isArray(i.permission)
-                  ? hasAnyPermission(i.permission)
-                  : hasPermission(i.permission)
-              )
-              .map(i => (
-                <NavLink
-                  key={i.href}
-                  href={i.href}
-                  icon={i.icon}
-                >
-                  {i.label}
-                </NavLink>
-              ))}
-          </div>
-        </div>
-      )}
+      ).map(i => (
+        <NavLink key={i.href} href={i.href} icon={i.icon}>
+          {i.label}
+        </NavLink>
+      ))}
 
-      {/* Sales & CRM */}
-      {salesItems.some(i => 
-        Array.isArray(i.permission)
-          ? hasAnyPermission(i.permission)
-          : hasPermission(i.permission)
-      ) && (
-        <div className="mb-6">
-          <p className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Sales & CRM</p>
-          <div className="space-y-1">
-            {salesItems
-              .filter(i =>
-                Array.isArray(i.permission)
-                  ? hasAnyPermission(i.permission)
-                  : hasPermission(i.permission)
-              )
-              .map(i => (
-                <NavLink
-                  key={i.href}
-                  href={i.href}
-                  icon={i.icon}
-                >
-                  {i.label}
-                </NavLink>
-              ))}
-          </div>
-        </div>
-      )}
+      {/* Collapsible Sections */}
+      <CollapsibleSection 
+        title="Sales & CRM" 
+        items={salesItems} 
+        sectionKey="sales" 
+      />
 
-      {/* Purchases & Procurement */}
-      {purchaseItems.some(i => 
-        Array.isArray(i.permission)
-          ? hasAnyPermission(i.permission)
-          : hasPermission(i.permission)
-      ) && (
-        <div className="mb-6">
-          <p className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Purchases</p>
-          <div className="space-y-1">
-            {purchaseItems
-              .filter(i =>
-                Array.isArray(i.permission)
-                  ? hasAnyPermission(i.permission)
-                  : hasPermission(i.permission)
-              )
-              .map(i => (
-                <NavLink
-                  key={i.href}
-                  href={i.href}
-                  icon={i.icon}
-                >
-                  {i.label}
-                </NavLink>
-              ))}
-          </div>
-        </div>
-      )}
+      <CollapsibleSection 
+        title="Purchases" 
+        items={purchaseItems} 
+        sectionKey="purchases" 
+      />
 
-      {/* Inventory & Manufacturing */}
-      {inventoryItems.some(i => 
-        Array.isArray(i.permission)
-          ? hasAnyPermission(i.permission)
-          : hasPermission(i.permission)
-      ) && (
-        <div className="mb-6">
-          <p className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Inventory & Manufacturing</p>
-          <div className="space-y-1">
-            {inventoryItems
-              .filter(i =>
-                Array.isArray(i.permission)
-                  ? hasAnyPermission(i.permission)
-                  : hasPermission(i.permission)
-              )
-              .map(i => (
-                <NavLink
-                  key={i.href}
-                  href={i.href}
-                  icon={i.icon}
-                >
-                  {i.label}
-                </NavLink>
-              ))}
-          </div>
-        </div>
-      )}
+      <CollapsibleSection 
+        title="Inventory & Manufacturing" 
+        items={inventoryItems} 
+        sectionKey="inventory" 
+      />
 
-      {/* Banking & Finance */}
-      {financeItems.some(i => 
-        Array.isArray(i.permission)
-          ? hasAnyPermission(i.permission)
-          : hasPermission(i.permission)
-      ) && (
-        <div className="mb-6">
-          <p className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Banking & Finance</p>
-          <div className="space-y-1">
-            {financeItems
-              .filter(i =>
-                Array.isArray(i.permission)
-                  ? hasAnyPermission(i.permission)
-                  : hasPermission(i.permission)
-              )
-              .map(i => (
-                <NavLink
-                  key={i.href}
-                  href={i.href}
-                  icon={i.icon}
-                >
-                  {i.label}
-                </NavLink>
-              ))}
-          </div>
-        </div>
-      )}
+      <CollapsibleSection 
+        title="Banking & Finance" 
+        items={financeItems} 
+        sectionKey="finance" 
+      />
 
-      {/* Human Resources - Show if user has HR permissions OR is System Admin OR is HR Manager */}
+      {/* HR Section - with special permission check */}
       {canSeeHRSection() && (
-        <div className="mb-6">
-          <p className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Human Resources</p>
-          <div className="space-y-1">
-            {hrNavItems
-              .filter(i => hasPermission(i.permission as string) || isSystemAdmin() || isHRManager())
-              .map(i => (
-                <NavLink
-                  key={i.href}
-                  href={i.href}
-                  icon={i.icon}
-                >
-                  {i.label}
-                </NavLink>
-              ))}
-          </div>
+        <div className="mb-1">
+          <button
+            onClick={() => toggleSection('hr')}
+            className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+          >
+            <span className="uppercase tracking-wide">Human Resources</span>
+            {expandedSections.has('hr') ? (
+              <ChevronDown className="h-3.5 w-3.5 flex-shrink-0" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 flex-shrink-0" />
+            )}
+          </button>
+          {expandedSections.has('hr') && (
+            <div className="mt-0.5 space-y-0.5">
+              {hrNavItems
+                .filter(i => hasPermission(i.permission as string) || isSystemAdmin() || isHRManager())
+                .map(i => (
+                  <NavLink key={i.href} href={i.href} icon={i.icon}>
+                    {i.label}
+                  </NavLink>
+                ))}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Reports & Analytics */}
-      {reportItems.some(i => 
-        Array.isArray(i.permission)
-          ? hasAnyPermission(i.permission)
-          : hasPermission(i.permission)
-      ) && (
-        <div className="mb-6">
-          <p className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Reports & Analytics</p>
-          <div className="space-y-1">
-            {reportItems
-              .filter(i =>
-                Array.isArray(i.permission)
-                  ? hasAnyPermission(i.permission)
-                  : hasPermission(i.permission)
-              )
-              .map(i => (
-                <NavLink
-                  key={i.href}
-                  href={i.href}
-                  icon={i.icon}
-                >
-                  {i.label}
-                </NavLink>
-              ))}
-          </div>
-        </div>
-      )}
+      <CollapsibleSection 
+        title="Reports & Analytics" 
+        items={reportItems} 
+        sectionKey="reports" 
+      />
 
-      {/* System Management */}
+      {/* System Section */}
       {adminNavItems.some(i => hasPermission(i.permission as string)) && (
-        <div className="mb-6">
-          <p className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">System</p>
-          <div className="space-y-1">
-            {adminNavItems
-              .filter(i => hasPermission(i.permission as string))
-              .map(i => (
-                <NavLink
-                  key={i.href}
-                  href={i.href}
-                  icon={i.icon}
-                >
-                  {i.label}
-                </NavLink>
-              ))}
-          </div>
+        <div className="mb-1">
+          <button
+            onClick={() => toggleSection('system')}
+            className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+          >
+            <span className="uppercase tracking-wide">System</span>
+            {expandedSections.has('system') ? (
+              <ChevronDown className="h-3.5 w-3.5 flex-shrink-0" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 flex-shrink-0" />
+            )}
+          </button>
+          {expandedSections.has('system') && (
+            <div className="mt-0.5 space-y-0.5">
+              {adminNavItems
+                .filter(i => hasPermission(i.permission as string))
+                .map(i => (
+                  <NavLink key={i.href} href={i.href} icon={i.icon}>
+                    {i.label}
+                  </NavLink>
+                ))}
+            </div>
+          )}
         </div>
       )}
     </nav>

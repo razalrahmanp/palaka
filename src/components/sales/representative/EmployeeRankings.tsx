@@ -36,18 +36,19 @@ interface Rankings {
   service_excellence: SalesRepRanking[]
 }
 
-const EmployeeRankings: React.FC = () => {
+interface EmployeeRankingsProps {
+  timeFilter?: string
+}
+
+const EmployeeRankings: React.FC<EmployeeRankingsProps> = ({ timeFilter = 'all' }) => {
   const [rankings, setRankings] = useState<Rankings | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<keyof Rankings>('most_profitable')
 
-  useEffect(() => {
-    fetchRankings()
-  }, [])
-
   const fetchRankings = async () => {
     try {
-      const response = await fetch('/api/sales/rankings')
+      setLoading(true)
+      const response = await fetch(`/api/sales/rankings?period=${timeFilter}`)
       const data = await response.json()
       setRankings(data.rankings)
     } catch (error) {
@@ -56,6 +57,11 @@ const EmployeeRankings: React.FC = () => {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    fetchRankings()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeFilter])
 
   const getRankIcon = (rank: number) => {
     if (rank === 1) return <Crown className="w-5 h-5 text-yellow-500" />

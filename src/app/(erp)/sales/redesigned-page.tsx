@@ -29,7 +29,8 @@ import {
   CalendarDays,
   ArrowUp,
   ArrowDown,
-  MapPin
+  MapPin,
+  Clock
 } from 'lucide-react';
 import { useSalesDataFixed as useSalesData } from '@/components/sales/SalesDataLoaderFixed';
 import { createSalesHandlers } from '@/components/sales/SalesHandlers';
@@ -340,6 +341,13 @@ export default function RedesignedSalesPage() {
     const pendingOrders = ordersWithPayment.filter(o => o.status === 'draft').length; // using 'draft' as pending equivalent
     const convertedQuotes = quotesFiltered.filter(q => q.status === 'Converted').length;
     
+    // Delivery-based payment tracking
+    const deliveredOrders = ordersWithPayment.filter(o => o.status === 'delivered');
+    const deliveredOrdersRevenue = deliveredOrders.reduce((sum, order) => sum + (order.final_price || order.total || 0), 0);
+    const deliveredOrdersCollected = deliveredOrders.reduce((sum, order) => sum + (order.total_paid || 0), 0);
+    const deliveredOrdersPending = deliveredOrdersRevenue - deliveredOrdersCollected;
+    const deliveredOrdersWithPendingPayment = deliveredOrders.filter(o => (o.payment_status === 'pending' || o.payment_status === 'partial')).length;
+    
     // Profit calculations - using final_price (actual amount received) minus cost
     const totalProfit = ordersWithPayment.reduce((sum, order) => {
       if (!order.items || !Array.isArray(order.items)) return sum;
@@ -407,7 +415,11 @@ export default function RedesignedSalesPage() {
       convertedQuotes,
       totalProfit,
       totalCost,
-      profitMargin
+      profitMargin,
+      deliveredOrdersCollected,
+      deliveredOrdersPending,
+      deliveredOrdersWithPendingPayment,
+      deliveredOrdersCount: deliveredOrders.length
     };
     
     console.log(`📈 Sales stats:`, result);
@@ -470,139 +482,129 @@ export default function RedesignedSalesPage() {
         </div>
       </div>
 
-      {/* Filter Controls */}
-      <div className="mb-4">
-        <div className="bg-white/90 backdrop-blur-xl rounded-2xl border border-white/20 shadow-lg p-4">
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-gray-500" />
-              <span className="text-sm font-medium text-gray-700">Time Period:</span>
-              <Select value={timeFilter} onValueChange={setTimeFilter}>
-                <SelectTrigger className="w-32">
-                  <SelectValue placeholder="All time" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Time</SelectItem>
-                  <SelectItem value="daily">Today</SelectItem>
-                  <SelectItem value="weekly">This Week</SelectItem>
-                  <SelectItem value="monthly">This Month</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="text-sm text-gray-500">
-              Showing {timeFilter === 'all' ? 'all' : timeFilter} sales data
-            </div>
+      {/* Floating Time Period Filter */}
+      <div className="fixed bottom-6 right-6 z-50">
+        <div className="bg-white/95 backdrop-blur-xl rounded-full border border-blue-200 shadow-2xl hover:shadow-blue-200/50 transition-all duration-300">
+          <div className="flex items-center gap-2 px-4 py-2">
+            <Clock className="h-4 w-4 text-blue-600" />
+            <span className="text-xs font-medium text-gray-700">Time Period:</span>
+            <Select value={timeFilter} onValueChange={setTimeFilter}>
+              <SelectTrigger className="w-28 h-8 border-0 bg-transparent text-xs focus:ring-2 focus:ring-blue-500">
+                <SelectValue placeholder="All time" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Time</SelectItem>
+                <SelectItem value="daily">Today</SelectItem>
+                <SelectItem value="weekly">This Week</SelectItem>
+                <SelectItem value="monthly">This Month</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </div>
 
       {/* Compact Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 mb-4">
-        <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300">
-          <CardContent className="p-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-blue-100 text-xs font-medium">Active Quotes</p>
-                <p className="text-xl font-bold mb-1">{stats.totalQuotes}</p>
-                <p className="text-blue-100 text-xs">{stats.pendingQuotes} pending</p>
-              </div>
-              <div className="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center">
-                <FileText className="h-4 w-4" />
-              </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-2 mb-4">
+        <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0 shadow-sm hover:shadow-md transition-all duration-300">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <FileText className="h-3.5 w-3.5 flex-shrink-0" />
+              <p className="text-[11px] font-semibold leading-tight">Active Quotes</p>
             </div>
+            <p className="text-lg font-bold leading-none mb-0.5">{stats.totalQuotes}</p>
+            <p className="text-[10px] leading-tight truncate">{stats.pendingQuotes} pending</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300">
-          <CardContent className="p-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-green-100 text-xs font-medium">Total Orders</p>
-                <p className="text-xl font-bold mb-1">{stats.totalOrders}</p>
-                <p className="text-green-100 text-xs">{stats.confirmedOrders} confirmed</p>
-              </div>
-              <div className="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center">
-                <ShoppingCart className="h-4 w-4" />
-              </div>
+        <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-0 shadow-sm hover:shadow-md transition-all duration-300">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <ShoppingCart className="h-3.5 w-3.5 flex-shrink-0" />
+              <p className="text-[11px] font-semibold leading-tight">Total Orders</p>
             </div>
+            <p className="text-lg font-bold leading-none mb-0.5">{stats.totalOrders}</p>
+            <p className="text-[10px] leading-tight truncate">{stats.confirmedOrders} confirmed</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300">
-          <CardContent className="p-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-purple-100 text-xs font-medium">Revenue</p>
-                <p className="text-xl font-bold mb-1">{formatCurrency(stats.totalRevenue)}</p>
-                <p className="text-purple-100 text-xs">{stats.collectionRate}% collected</p>
-              </div>
-              <div className="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center">
-                <DollarSign className="h-4 w-4" />
-              </div>
+        <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-0 shadow-sm hover:shadow-md transition-all duration-300">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <DollarSign className="h-3.5 w-3.5 flex-shrink-0" />
+              <p className="text-[11px] font-semibold leading-tight">Revenue</p>
             </div>
+            <p className="text-lg font-bold leading-none mb-0.5 truncate">{formatCurrency(stats.totalRevenue)}</p>
+            <p className="text-[10px] leading-tight truncate">{stats.collectionRate}% collected</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300">
-          <CardContent className="p-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-orange-100 text-xs font-medium">Conversion Rate</p>
-                <p className="text-xl font-bold mb-1">{stats.conversionRate}%</p>
-                <p className="text-orange-100 text-xs">Quote to order</p>
-              </div>
-              <div className="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center">
-                <BarChart3 className="h-4 w-4" />
-              </div>
+        <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-0 shadow-sm hover:shadow-md transition-all duration-300">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <BarChart3 className="h-3.5 w-3.5 flex-shrink-0" />
+              <p className="text-[11px] font-semibold leading-tight">Conversion Rate</p>
             </div>
+            <p className="text-lg font-bold leading-none mb-0.5">{stats.conversionRate}%</p>
+            <p className="text-[10px] leading-tight truncate">Quote to order</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-red-500 to-red-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300">
-          <CardContent className="p-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-red-100 text-xs font-medium">Outstanding</p>
-                <p className="text-xl font-bold mb-1">{formatCurrency(stats.totalOutstanding)}</p>
-                <p className="text-red-100 text-xs">{stats.pendingPaymentOrders} pending</p>
-              </div>
-              <div className="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-                </svg>
-              </div>
+        <Card className="bg-gradient-to-br from-red-500 to-red-600 text-white border-0 shadow-sm hover:shadow-md transition-all duration-300">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <svg className="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+              </svg>
+              <p className="text-[11px] font-semibold leading-tight">Outstanding</p>
             </div>
+            <p className="text-lg font-bold leading-none mb-0.5 truncate">{formatCurrency(stats.totalOutstanding)}</p>
+            <p className="text-[10px] leading-tight truncate">{stats.pendingPaymentOrders} pending</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300">
-          <CardContent className="p-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-emerald-100 text-xs font-medium">Collected</p>
-                <p className="text-xl font-bold mb-1">{formatCurrency(stats.totalCollected)}</p>
-                <p className="text-emerald-100 text-xs">{stats.fullyPaidOrders} paid orders</p>
-              </div>
-              <div className="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center">
-                <CreditCard className="h-4 w-4" />
-              </div>
+        <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-0 shadow-sm hover:shadow-md transition-all duration-300">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <CreditCard className="h-3.5 w-3.5 flex-shrink-0" />
+              <p className="text-[11px] font-semibold leading-tight">Collected</p>
             </div>
+            <p className="text-lg font-bold leading-none mb-0.5 truncate">{formatCurrency(stats.totalCollected)}</p>
+            <p className="text-[10px] leading-tight truncate">{stats.fullyPaidOrders} paid orders</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300">
-          <CardContent className="p-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-indigo-100 text-xs font-medium">Net Profit</p>
-                <p className="text-xl font-bold mb-1">{formatCurrency(stats.totalProfit)}</p>
-                <p className="text-indigo-100 text-xs">{stats.profitMargin}% of sales</p>
-              </div>
-              <div className="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center">
-                <TrendingUp className="h-4 w-4" />
-              </div>
+        <Card className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white border-0 shadow-sm hover:shadow-md transition-all duration-300">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <TrendingUp className="h-3.5 w-3.5 flex-shrink-0" />
+              <p className="text-[11px] font-semibold leading-tight">Net Profit</p>
             </div>
+            <p className="text-lg font-bold leading-none mb-0.5 truncate">{formatCurrency(stats.totalProfit)}</p>
+            <p className="text-[10px] leading-tight truncate">{stats.profitMargin}% of sales</p>
+          </CardContent>
+        </Card>
+
+        {/* NEW: Delivered Items - Payment Collected */}
+        <Card className="bg-gradient-to-br from-teal-500 to-teal-600 text-white border-0 shadow-sm hover:shadow-md transition-all duration-300">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Truck className="h-3.5 w-3.5 flex-shrink-0" />
+              <p className="text-[11px] font-semibold leading-tight">Delivered Paid</p>
+            </div>
+            <p className="text-lg font-bold leading-none mb-0.5 truncate">{formatCurrency(stats.deliveredOrdersCollected)}</p>
+            <p className="text-[10px] leading-tight truncate">{stats.deliveredOrdersCount} delivered</p>
+          </CardContent>
+        </Card>
+
+        {/* NEW: Delivered Items - Payment Pending */}
+        <Card className="bg-gradient-to-br from-amber-500 to-amber-600 text-white border-0 shadow-sm hover:shadow-md transition-all duration-300">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Clock className="h-3.5 w-3.5 flex-shrink-0" />
+              <p className="text-[11px] font-semibold leading-tight">Delivered Pending</p>
+            </div>
+            <p className="text-lg font-bold leading-none mb-0.5 truncate">{formatCurrency(stats.deliveredOrdersPending)}</p>
+            <p className="text-[10px] leading-tight truncate">{stats.deliveredOrdersWithPendingPayment} unpaid</p>
           </CardContent>
         </Card>
       </div>

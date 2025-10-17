@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowLeft, Download, Printer, Calendar as CalendarIcon, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Download, Printer, Calendar as CalendarIcon, ChevronDown, ChevronRight, LayoutList, LayoutGrid, Columns } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
@@ -57,6 +57,9 @@ interface ReportData {
   };
   summary?: {
     total_revenue?: number;
+    opening_stock?: number;
+    purchases?: number;
+    closing_stock?: number;
     total_cogs?: number;
     gross_profit?: number;
     total_expenses?: number;
@@ -64,12 +67,16 @@ interface ReportData {
   };
 }
 
+type ViewMode = 'vertical' | 'horizontal' | 'accounting';
+
 export default function ProfitLossReport({ startDate: initialStartDate, endDate: initialEndDate }: ProfitLossReportProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [startDate, setStartDate] = useState<Date>(initialStartDate);
   const [endDate, setEndDate] = useState<Date>(initialEndDate);
+  const [viewMode, setViewMode] = useState<ViewMode>('vertical');
+  const [showViewMenu, setShowViewMenu] = useState(false);
   
   // Expand/Collapse state for categories and subcategories
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
@@ -159,9 +166,15 @@ export default function ProfitLossReport({ startDate: initialStartDate, endDate:
 
     if (reportData.sections?.COST_OF_GOODS_SOLD && reportData.sections.COST_OF_GOODS_SOLD.length > 0) {
       wsData.push(['COST OF GOODS SOLD']);
+      wsData.push(['Formula: Opening Stock + Purchases - Closing Stock']);
+      wsData.push(['']);
       reportData.sections.COST_OF_GOODS_SOLD.forEach((item) => {
         wsData.push([item.account_code, item.account_name, item.amount]);
       });
+      wsData.push(['']);
+      wsData.push(['Opening Stock', '', reportData.summary?.opening_stock || 0]);
+      wsData.push(['Add: Purchases', '', reportData.summary?.purchases || 0]);
+      wsData.push(['Less: Closing Stock', '', -(reportData.summary?.closing_stock || 0)]);
       wsData.push(['Total COGS', '', reportData.summary?.total_cogs || 0]);
       wsData.push(['Gross Profit', '', reportData.summary?.gross_profit || 0]);
       wsData.push(['']);
@@ -241,6 +254,706 @@ export default function ProfitLossReport({ startDate: initialStartDate, endDate:
     doc.save(`Profit_Loss_Statement_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
   };
 
+  // Render functions for different views
+  const renderVerticalView = () => {
+    return (
+      <div className="space-y-6">
+        {/* Revenue Section */}
+        {reportData?.sections?.REVENUE && reportData.sections.REVENUE.length > 0 && (
+          <Card>
+            <CardHeader className="bg-green-50">
+              <CardTitle className="text-green-900">REVENUE</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-32">Account Code</TableHead>
+                    <TableHead>Account Name</TableHead>
+                    <TableHead className="text-right w-40">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {reportData.sections.REVENUE.map((item, index) => {
+                    const isHeader = item.is_category_header;
+                    const isItem = item.is_revenue_item;
+                    
+                    if (isItem && !expandedCategories.has('REV001')) {
+                      return null;
+                    }
+                    
+                    return (
+                      <TableRow 
+                        key={index}
+                        className={
+                          isHeader ? 'bg-green-100 font-bold cursor-pointer hover:bg-green-200' :
+                          isItem ? 'hover:bg-gray-50' : ''
+                        }
+                        onClick={() => {
+                          if (isHeader) {
+                            toggleCategory(item.account_code);
+                          }
+                        }}
+                      >
+                        <TableCell className="font-mono text-sm">
+                          {isHeader && (
+                            <span className="inline-flex items-center gap-1">
+                              {expandedCategories.has(item.account_code) ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                              {item.account_code}
+                            </span>
+                          )}
+                          {!isHeader && item.account_code}
+                        </TableCell>
+                        <TableCell className={isItem ? 'text-sm text-gray-600' : ''}>
+                          {item.account_name}
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          {formatCurrency(item.amount)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  <TableRow className="bg-green-50 font-semibold">
+                    <TableCell colSpan={2}>Total Revenue</TableCell>
+                    <TableCell className="text-right font-mono text-green-700">
+                      {formatCurrency(reportData.summary?.total_revenue || 0)}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* COGS Section */}
+        {reportData?.sections?.COST_OF_GOODS_SOLD && reportData.sections.COST_OF_GOODS_SOLD.length > 0 && (
+          <Card>
+            <CardHeader className="bg-orange-50">
+              <CardTitle className="text-orange-900">COST OF GOODS SOLD</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-32">Account Code</TableHead>
+                    <TableHead>Account Name</TableHead>
+                    <TableHead className="text-right w-40">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {reportData.sections.COST_OF_GOODS_SOLD.map((item, index) => {
+                    const isHeader = item.is_category_header;
+                    const isSubHeader = item.is_subcategory_header;
+                    const isItem = item.is_expense_item;
+                    
+                    let parentCategoryCode = '';
+                    if (isSubHeader || isItem) {
+                      parentCategoryCode = item.account_code.split('-')[0];
+                    }
+                    
+                    if (isSubHeader && !expandedCategories.has(parentCategoryCode)) {
+                      return null;
+                    }
+                    
+                    if (isItem && !expandedSubcategories.has(item.account_code)) {
+                      return null;
+                    }
+                    
+                    return (
+                      <TableRow 
+                        key={index}
+                        className={
+                          isHeader ? 'bg-orange-100 font-bold cursor-pointer hover:bg-orange-200' :
+                          isSubHeader ? 'bg-orange-50 font-semibold cursor-pointer hover:bg-orange-100' :
+                          isItem ? 'hover:bg-gray-50' : ''
+                        }
+                        onClick={() => {
+                          if (isHeader) {
+                            toggleCategory(item.account_code);
+                          } else if (isSubHeader) {
+                            toggleSubcategory(item.account_code);
+                          }
+                        }}
+                      >
+                        <TableCell className="font-mono text-sm">
+                          {isHeader && (
+                            <span className="inline-flex items-center gap-1">
+                              {expandedCategories.has(item.account_code) ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                              {item.account_code}
+                            </span>
+                          )}
+                          {isSubHeader && (
+                            <span className="inline-flex items-center gap-1 ml-4">
+                              {expandedSubcategories.has(item.account_code) ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                              {item.account_code}
+                            </span>
+                          )}
+                          {isItem && <span className="ml-8">{item.account_code}</span>}
+                        </TableCell>
+                        <TableCell className={isItem ? 'text-sm text-gray-600' : ''}>
+                          {item.account_name}
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          {formatCurrency(item.amount)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  <TableRow className="bg-orange-50 font-semibold">
+                    <TableCell colSpan={2}>Total COGS</TableCell>
+                    <TableCell className="text-right font-mono text-orange-700">
+                      {formatCurrency(reportData.summary?.total_cogs || 0)}
+                    </TableCell>
+                  </TableRow>
+                  <TableRow className="bg-blue-50 font-bold">
+                    <TableCell colSpan={2}>Gross Profit</TableCell>
+                    <TableCell className="text-right font-mono text-blue-700">
+                      {formatCurrency(reportData.summary?.gross_profit || 0)}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Expenses Section */}
+        {reportData?.sections?.EXPENSES && reportData.sections.EXPENSES.length > 0 && (
+          <Card>
+            <CardHeader className="bg-red-50">
+              <CardTitle className="text-red-900">EXPENSES</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-32">Account Code</TableHead>
+                    <TableHead>Account Name</TableHead>
+                    <TableHead className="text-right w-40">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {reportData.sections.EXPENSES.map((item, index) => {
+                    const isHeader = item.is_category_header;
+                    const isSubHeader = item.is_subcategory_header;
+                    const isItem = item.is_expense_item;
+                    
+                    let parentCategoryCode = '';
+                    if (isSubHeader || isItem) {
+                      parentCategoryCode = item.account_code.split('-')[0];
+                    }
+                    
+                    if (isSubHeader && !expandedCategories.has(parentCategoryCode)) {
+                      return null;
+                    }
+                    
+                    if (isItem && !expandedSubcategories.has(item.account_code)) {
+                      return null;
+                    }
+                    
+                    return (
+                      <TableRow 
+                        key={index}
+                        className={
+                          isHeader ? 'bg-red-100 font-bold cursor-pointer hover:bg-red-200' :
+                          isSubHeader ? 'bg-red-50 font-semibold cursor-pointer hover:bg-red-100' :
+                          isItem ? 'hover:bg-gray-50' : ''
+                        }
+                        onClick={() => {
+                          if (isHeader) {
+                            toggleCategory(item.account_code);
+                          } else if (isSubHeader) {
+                            toggleSubcategory(item.account_code);
+                          }
+                        }}
+                      >
+                        <TableCell className="font-mono text-sm">
+                          {isHeader && (
+                            <span className="inline-flex items-center gap-1">
+                              {expandedCategories.has(item.account_code) ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                              {item.account_code}
+                            </span>
+                          )}
+                          {isSubHeader && (
+                            <span className="inline-flex items-center gap-1 ml-4">
+                              {expandedSubcategories.has(item.account_code) ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                              {item.account_code}
+                            </span>
+                          )}
+                          {isItem && <span className="ml-8">{item.account_code}</span>}
+                        </TableCell>
+                        <TableCell className={isItem ? 'text-sm text-gray-600' : ''}>
+                          {item.account_name}
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          {formatCurrency(item.amount)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  <TableRow className="bg-red-50 font-semibold">
+                    <TableCell colSpan={2}>Total Expenses</TableCell>
+                    <TableCell className="text-right font-mono text-red-700">
+                      {formatCurrency(reportData.summary?.total_expenses || 0)}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  };
+
+  const renderHorizontalView = () => {
+    return (
+      <div className="grid grid-cols-2 gap-6">
+        {/* Left Column - Revenue */}
+        <Card>
+          <CardHeader className="bg-green-50">
+            <CardTitle className="text-green-900">REVENUE</CardTitle>
+          </CardHeader>
+          <CardContent className="p-4">
+            <div className="space-y-1">
+              {reportData?.sections?.REVENUE?.map((item, index) => {
+                const isHeader = item.is_category_header;
+                const isItem = item.is_revenue_item;
+                
+                if (isItem && !expandedCategories.has('REV001')) {
+                  return null;
+                }
+                
+                return (
+                  <div 
+                    key={index} 
+                    className={`flex justify-between py-1.5 ${
+                      isHeader ? 'font-semibold bg-green-100 px-2 rounded cursor-pointer hover:bg-green-200' : 
+                      'pl-4 border-b border-gray-50'
+                    }`}
+                    onClick={() => {
+                      if (isHeader) {
+                        toggleCategory(item.account_code);
+                      }
+                    }}
+                  >
+                    <span className={`text-sm flex items-center gap-1 ${isItem ? 'text-gray-600' : 'text-gray-700'}`}>
+                      {isHeader && (
+                        expandedCategories.has(item.account_code) ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )
+                      )}
+                      {item.account_name}
+                    </span>
+                    <span className={`text-sm font-mono ${isHeader ? 'text-green-700' : 'text-green-600'}`}>
+                      {formatCurrency(item.amount)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex justify-between py-3 mt-2 font-bold border-t-2 border-green-200">
+              <span>Total Revenue</span>
+              <span className="text-green-700">{formatCurrency(reportData?.summary?.total_revenue || 0)}</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Right Column - COGS & Expenses */}
+        <div className="space-y-6">
+          {/* COGS Section */}
+          {reportData?.sections?.COST_OF_GOODS_SOLD && reportData.sections.COST_OF_GOODS_SOLD.length > 0 && (
+            <Card>
+              <CardHeader className="bg-orange-50">
+                <CardTitle className="text-orange-900">COST OF GOODS SOLD</CardTitle>
+              </CardHeader>
+              <CardContent className="p-4">
+                <div className="space-y-1">
+                  {reportData.sections.COST_OF_GOODS_SOLD.map((item, index) => {
+                    const isHeader = item.is_category_header;
+                    const isSubHeader = item.is_subcategory_header;
+                    const isItem = item.is_expense_item;
+                    
+                    let parentCategoryCode = '';
+                    if (isSubHeader || isItem) {
+                      parentCategoryCode = item.account_code.split('-')[0];
+                    }
+                    
+                    if (isSubHeader && !expandedCategories.has(parentCategoryCode)) {
+                      return null;
+                    }
+                    
+                    if (isItem && !expandedSubcategories.has(item.account_code)) {
+                      return null;
+                    }
+                    
+                    return (
+                      <div 
+                        key={index} 
+                        className={`flex justify-between py-1.5 ${
+                          isHeader ? 'font-semibold bg-orange-100 px-2 rounded cursor-pointer hover:bg-orange-200' :
+                          isSubHeader ? 'font-medium bg-orange-50 px-2 rounded cursor-pointer hover:bg-orange-100 ml-2' :
+                          'pl-6 border-b border-gray-50'
+                        }`}
+                        onClick={() => {
+                          if (isHeader) {
+                            toggleCategory(item.account_code);
+                          } else if (isSubHeader) {
+                            toggleSubcategory(item.account_code);
+                          }
+                        }}
+                      >
+                        <span className={`text-sm flex items-center gap-1 ${isItem ? 'text-gray-600' : 'text-gray-700'}`}>
+                          {(isHeader || isSubHeader) && (
+                            (isHeader ? expandedCategories.has(item.account_code) : expandedSubcategories.has(item.account_code)) ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )
+                          )}
+                          {item.account_name}
+                        </span>
+                        <span className={`text-sm font-mono ${isHeader ? 'text-orange-700' : 'text-orange-600'}`}>
+                          {formatCurrency(item.amount)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex justify-between py-3 mt-2 font-bold border-t-2 border-orange-200">
+                  <span>Total COGS</span>
+                  <span className="text-orange-700">{formatCurrency(reportData?.summary?.total_cogs || 0)}</span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Expenses Section */}
+          <Card>
+            <CardHeader className="bg-red-50">
+              <CardTitle className="text-red-900">EXPENSES</CardTitle>
+            </CardHeader>
+            <CardContent className="p-4">
+              <div className="space-y-1">
+                {reportData?.sections?.EXPENSES?.map((item, index) => {
+                  const isHeader = item.is_category_header;
+                  const isSubHeader = item.is_subcategory_header;
+                  const isItem = item.is_expense_item;
+                  
+                  let parentCategoryCode = '';
+                  if (isSubHeader || isItem) {
+                    parentCategoryCode = item.account_code.split('-')[0];
+                  }
+                  
+                  if (isSubHeader && !expandedCategories.has(parentCategoryCode)) {
+                    return null;
+                  }
+                  
+                  if (isItem && !expandedSubcategories.has(item.account_code)) {
+                    return null;
+                  }
+                  
+                  return (
+                    <div 
+                      key={index} 
+                      className={`flex justify-between py-1.5 ${
+                        isHeader ? 'font-semibold bg-red-100 px-2 rounded cursor-pointer hover:bg-red-200' :
+                        isSubHeader ? 'font-medium bg-red-50 px-2 rounded cursor-pointer hover:bg-red-100 ml-2' :
+                        'pl-6 border-b border-gray-50'
+                      }`}
+                      onClick={() => {
+                        if (isHeader) {
+                          toggleCategory(item.account_code);
+                        } else if (isSubHeader) {
+                          toggleSubcategory(item.account_code);
+                        }
+                      }}
+                    >
+                      <span className={`text-sm flex items-center gap-1 ${isItem ? 'text-gray-600' : 'text-gray-700'}`}>
+                        {(isHeader || isSubHeader) && (
+                          (isHeader ? expandedCategories.has(item.account_code) : expandedSubcategories.has(item.account_code)) ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )
+                        )}
+                        {item.account_name}
+                      </span>
+                      <span className={`text-sm font-mono ${isHeader ? 'text-red-700' : 'text-red-600'}`}>
+                        {formatCurrency(item.amount)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex justify-between py-3 mt-2 font-bold border-t-2 border-red-200">
+                <span>Total Expenses</span>
+                <span className="text-red-700">{formatCurrency(reportData?.summary?.total_expenses || 0)}</span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  };
+
+  const renderAccountingView = () => {
+    return (
+      <Card>
+        <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50">
+          <CardTitle className="text-gray-900">PROFIT & LOSS STATEMENT (Accounting Format)</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-1/2">Account Name</TableHead>
+                <TableHead className="text-right w-1/4">Debit</TableHead>
+                <TableHead className="text-right w-1/4">Credit</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {/* Revenue (Credit side) */}
+              <TableRow className="bg-green-50 font-bold">
+                <TableCell colSpan={3}>REVENUE</TableCell>
+              </TableRow>
+              {reportData?.sections?.REVENUE?.map((item, index) => {
+                const isHeader = item.is_category_header;
+                const isItem = item.is_revenue_item;
+                
+                if (isItem && !expandedCategories.has('REV001')) {
+                  return null;
+                }
+                
+                return (
+                  <TableRow 
+                    key={`rev-${index}`}
+                    className={isHeader ? 'bg-green-100 cursor-pointer hover:bg-green-200' : 'hover:bg-gray-50'}
+                    onClick={() => {
+                      if (isHeader) {
+                        toggleCategory(item.account_code);
+                      }
+                    }}
+                  >
+                    <TableCell className={isItem ? 'pl-8' : ''}>
+                      <span className="inline-flex items-center gap-1">
+                        {isHeader && (
+                          expandedCategories.has(item.account_code) ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )
+                        )}
+                        {item.account_name}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right font-mono">-</TableCell>
+                    <TableCell className={`text-right font-mono ${isHeader ? 'text-green-700 font-semibold' : 'text-green-600'}`}>
+                      {formatCurrency(item.amount)}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              <TableRow className="bg-green-100 font-semibold">
+                <TableCell>Total Revenue</TableCell>
+                <TableCell className="text-right font-mono">-</TableCell>
+                <TableCell className="text-right font-mono text-green-700">{formatCurrency(reportData?.summary?.total_revenue || 0)}</TableCell>
+              </TableRow>
+
+              {/* COGS (Debit side) */}
+              {reportData?.sections?.COST_OF_GOODS_SOLD && reportData.sections.COST_OF_GOODS_SOLD.length > 0 && (
+                <>
+                  <TableRow className="bg-orange-50 font-bold">
+                    <TableCell colSpan={3}>COST OF GOODS SOLD</TableCell>
+                  </TableRow>
+                  {reportData.sections.COST_OF_GOODS_SOLD.map((item, index) => {
+                    const isHeader = item.is_category_header;
+                    const isSubHeader = item.is_subcategory_header;
+                    const isItem = item.is_expense_item;
+                    
+                    let parentCategoryCode = '';
+                    if (isSubHeader || isItem) {
+                      parentCategoryCode = item.account_code.split('-')[0];
+                    }
+                    
+                    if (isSubHeader && !expandedCategories.has(parentCategoryCode)) {
+                      return null;
+                    }
+                    
+                    if (isItem && !expandedSubcategories.has(item.account_code)) {
+                      return null;
+                    }
+                    
+                    return (
+                      <TableRow 
+                        key={`cogs-${index}`}
+                        className={
+                          isHeader ? 'bg-orange-100 cursor-pointer hover:bg-orange-200' :
+                          isSubHeader ? 'bg-orange-50 cursor-pointer hover:bg-orange-100' :
+                          'hover:bg-gray-50'
+                        }
+                        onClick={() => {
+                          if (isHeader) {
+                            toggleCategory(item.account_code);
+                          } else if (isSubHeader) {
+                            toggleSubcategory(item.account_code);
+                          }
+                        }}
+                      >
+                        <TableCell className={isItem ? 'pl-12' : isSubHeader ? 'pl-6' : ''}>
+                          <span className="inline-flex items-center gap-1">
+                            {isHeader && (
+                              expandedCategories.has(item.account_code) ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )
+                            )}
+                            {isSubHeader && (
+                              expandedSubcategories.has(item.account_code) ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )
+                            )}
+                            {item.account_name}
+                          </span>
+                        </TableCell>
+                        <TableCell className={`text-right font-mono ${isHeader ? 'text-orange-700 font-semibold' : 'text-orange-600'}`}>
+                          {formatCurrency(item.amount)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono">-</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  <TableRow className="bg-orange-100 font-semibold">
+                    <TableCell>Total COGS</TableCell>
+                    <TableCell className="text-right font-mono text-orange-700">{formatCurrency(reportData?.summary?.total_cogs || 0)}</TableCell>
+                    <TableCell className="text-right font-mono">-</TableCell>
+                  </TableRow>
+                </>
+              )}
+
+              {/* Expenses (Debit side) */}
+              <TableRow className="bg-red-50 font-bold">
+                <TableCell colSpan={3}>EXPENSES</TableCell>
+              </TableRow>
+              {reportData?.sections?.EXPENSES?.map((item, index) => {
+                const isHeader = item.is_category_header;
+                const isSubHeader = item.is_subcategory_header;
+                const isItem = item.is_expense_item;
+                
+                let parentCategoryCode = '';
+                if (isSubHeader || isItem) {
+                  parentCategoryCode = item.account_code.split('-')[0];
+                }
+                
+                if (isSubHeader && !expandedCategories.has(parentCategoryCode)) {
+                  return null;
+                }
+                
+                if (isItem && !expandedSubcategories.has(item.account_code)) {
+                  return null;
+                }
+                
+                return (
+                  <TableRow 
+                    key={`exp-${index}`}
+                    className={
+                      isHeader ? 'bg-red-100 cursor-pointer hover:bg-red-200' :
+                      isSubHeader ? 'bg-red-50 cursor-pointer hover:bg-red-100' :
+                      'hover:bg-gray-50'
+                    }
+                    onClick={() => {
+                      if (isHeader) {
+                        toggleCategory(item.account_code);
+                      } else if (isSubHeader) {
+                        toggleSubcategory(item.account_code);
+                      }
+                    }}
+                  >
+                    <TableCell className={isItem ? 'pl-12' : isSubHeader ? 'pl-6' : ''}>
+                      <span className="inline-flex items-center gap-1">
+                        {isHeader && (
+                          expandedCategories.has(item.account_code) ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )
+                        )}
+                        {isSubHeader && (
+                          expandedSubcategories.has(item.account_code) ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )
+                        )}
+                        {item.account_name}
+                      </span>
+                    </TableCell>
+                    <TableCell className={`text-right font-mono ${isHeader ? 'text-red-700 font-semibold' : 'text-red-600'}`}>
+                      {formatCurrency(item.amount)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">-</TableCell>
+                  </TableRow>
+                );
+              })}
+              <TableRow className="bg-red-100 font-semibold">
+                <TableCell>Total Expenses</TableCell>
+                <TableCell className="text-right font-mono text-red-700">{formatCurrency(reportData?.summary?.total_expenses || 0)}</TableCell>
+                <TableCell className="text-right font-mono">-</TableCell>
+              </TableRow>
+
+              {/* Net Income/Loss */}
+              <TableRow className="bg-blue-100 font-bold border-t-2 border-blue-300">
+                <TableCell>NET INCOME / (LOSS)</TableCell>
+                <TableCell className="text-right font-mono">
+                  {(reportData?.summary?.net_income || 0) < 0 ? formatCurrency(Math.abs(reportData?.summary?.net_income || 0)) : '-'}
+                </TableCell>
+                <TableCell className="text-right font-mono text-blue-700">
+                  {(reportData?.summary?.net_income || 0) >= 0 ? formatCurrency(reportData?.summary?.net_income || 0) : '-'}
+                </TableCell>
+              </TableRow>
+
+              {/* Total Debits and Credits */}
+              <TableRow className="bg-gray-200 font-bold">
+                <TableCell>TOTALS</TableCell>
+                <TableCell className="text-right font-mono">
+                  {formatCurrency((reportData?.summary?.total_cogs || 0) + (reportData?.summary?.total_expenses || 0) + Math.max(0, reportData?.summary?.net_income || 0))}
+                </TableCell>
+                <TableCell className="text-right font-mono">
+                  {formatCurrency((reportData?.summary?.total_revenue || 0) + Math.max(0, -(reportData?.summary?.net_income || 0)))}
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    );
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -254,6 +967,66 @@ export default function ProfitLossReport({ startDate: initialStartDate, endDate:
     <div className="min-h-screen bg-gray-50">
       {/* Floating Action Buttons - Left Side */}
       <div className="fixed left-6 top-24 z-20 flex flex-col gap-3">
+        {/* View Mode Toggle */}
+        <div 
+          className="relative flex items-center"
+          onMouseEnter={() => setShowViewMenu(true)}
+          onMouseLeave={() => setShowViewMenu(false)}
+        >
+          <Button
+            variant="default"
+            size="icon"
+            className="h-12 w-12 rounded-full shadow-lg bg-purple-600 hover:bg-purple-700"
+            title="Change View"
+          >
+            {viewMode === 'vertical' && <LayoutList className="h-5 w-5" />}
+            {viewMode === 'horizontal' && <LayoutGrid className="h-5 w-5" />}
+            {viewMode === 'accounting' && <Columns className="h-5 w-5" />}
+          </Button>
+          
+          {/* View Options Menu */}
+          {showViewMenu && (
+            <div className="absolute left-14 top-0 bg-white rounded-lg shadow-xl border border-gray-200 py-2 min-w-[200px] z-30">
+              <button
+                onClick={() => {
+                  setViewMode('vertical');
+                  setShowViewMenu(false);
+                }}
+                className={`w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-3 transition-colors ${
+                  viewMode === 'vertical' ? 'bg-purple-50 text-purple-700' : 'text-gray-700'
+                }`}
+              >
+                <LayoutList className="h-4 w-4" />
+                <span className="text-sm font-medium">Vertical View</span>
+              </button>
+              <button
+                onClick={() => {
+                  setViewMode('horizontal');
+                  setShowViewMenu(false);
+                }}
+                className={`w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-3 transition-colors ${
+                  viewMode === 'horizontal' ? 'bg-purple-50 text-purple-700' : 'text-gray-700'
+                }`}
+              >
+                <LayoutGrid className="h-4 w-4" />
+                <span className="text-sm font-medium">Horizontal View</span>
+              </button>
+              <button
+                onClick={() => {
+                  setViewMode('accounting');
+                  setShowViewMenu(false);
+                }}
+                className={`w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-3 transition-colors ${
+                  viewMode === 'accounting' ? 'bg-purple-50 text-purple-700' : 'text-gray-700'
+                }`}
+              >
+                <Columns className="h-4 w-4" />
+                <span className="text-sm font-medium">Accounting View</span>
+              </button>
+            </div>
+          )}
+        </div>
+
         <Button
           variant="default"
           size="icon"
@@ -373,6 +1146,13 @@ export default function ProfitLossReport({ startDate: initialStartDate, endDate:
               <p className="text-2xl font-bold text-orange-600">
                 {formatCurrency(reportData?.summary?.total_cogs || 0)}
               </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Opening: {formatCurrency(reportData?.summary?.opening_stock || 0)}
+                {' + '}
+                Purchases: {formatCurrency(reportData?.summary?.purchases || 0)}
+                {' - '}
+                Closing: {formatCurrency(reportData?.summary?.closing_stock || 0)}
+              </p>
             </CardContent>
           </Card>
           <Card>
@@ -393,280 +1173,10 @@ export default function ProfitLossReport({ startDate: initialStartDate, endDate:
           </Card>
         </div>
 
-        {/* Revenue Section */}
-        {reportData?.sections?.REVENUE && reportData.sections.REVENUE.length > 0 && (
-          <Card>
-            <CardHeader className="bg-green-50">
-              <CardTitle className="text-green-900">REVENUE</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-32">Account Code</TableHead>
-                    <TableHead>Account Name</TableHead>
-                    <TableHead className="text-right w-40">Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {reportData.sections.REVENUE.map((item, index) => {
-                    const isHeader = item.is_category_header;
-                    const isItem = item.is_revenue_item;
-                    
-                    // Hide items if category is not expanded
-                    if (isItem && !expandedCategories.has('REV001')) {
-                      return null;
-                    }
-                    
-                    return (
-                      <TableRow 
-                        key={index}
-                        className={
-                          isHeader ? 'bg-green-100 font-bold cursor-pointer hover:bg-green-200' :
-                          isItem ? 'hover:bg-gray-50' :
-                          ''
-                        }
-                        onClick={() => {
-                          if (isHeader) {
-                            toggleCategory(item.account_code);
-                          }
-                        }}
-                      >
-                        <TableCell className="font-mono text-sm">
-                          {isHeader && (
-                            <span className="inline-flex items-center gap-1">
-                              {expandedCategories.has(item.account_code) ? (
-                                <ChevronDown className="h-4 w-4" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4" />
-                              )}
-                              {item.account_code}
-                            </span>
-                          )}
-                          {!isHeader && item.account_code}
-                        </TableCell>
-                        <TableCell className={isItem ? 'text-sm text-gray-600' : ''}>
-                          {item.account_name}
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
-                          {formatCurrency(item.amount)}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  <TableRow className="bg-green-50 font-semibold">
-                    <TableCell colSpan={2}>Total Revenue</TableCell>
-                    <TableCell className="text-right font-mono text-green-700">
-                      {formatCurrency(reportData.summary?.total_revenue || 0)}
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* COGS Section */}
-        {reportData?.sections?.COST_OF_GOODS_SOLD && reportData.sections.COST_OF_GOODS_SOLD.length > 0 && (
-          <Card>
-            <CardHeader className="bg-orange-50">
-              <CardTitle className="text-orange-900">COST OF GOODS SOLD</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-32">Account Code</TableHead>
-                    <TableHead>Account Name</TableHead>
-                    <TableHead className="text-right w-40">Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {reportData.sections.COST_OF_GOODS_SOLD.map((item, index) => {
-                    const isHeader = item.is_category_header;
-                    const isSubHeader = item.is_subcategory_header;
-                    const isItem = item.is_expense_item;
-                    
-                    // Determine the parent category code for this item
-                    let parentCategoryCode = '';
-                    if (isSubHeader || isItem) {
-                      parentCategoryCode = item.account_code.split('-')[0];
-                    }
-                    
-                    // Hide subcategories if category is not expanded
-                    if (isSubHeader && !expandedCategories.has(parentCategoryCode)) {
-                      return null;
-                    }
-                    
-                    // Hide items if subcategory is not expanded
-                    if (isItem && !expandedSubcategories.has(item.account_code)) {
-                      return null;
-                    }
-                    
-                    return (
-                      <TableRow 
-                        key={index}
-                        className={
-                          isHeader ? 'bg-orange-100 font-bold cursor-pointer hover:bg-orange-200' :
-                          isSubHeader ? 'bg-orange-50 font-semibold cursor-pointer hover:bg-orange-100' :
-                          isItem ? 'hover:bg-gray-50' :
-                          ''
-                        }
-                        onClick={() => {
-                          if (isHeader) {
-                            toggleCategory(item.account_code);
-                          } else if (isSubHeader) {
-                            toggleSubcategory(item.account_code);
-                          }
-                        }}
-                      >
-                        <TableCell className="font-mono text-sm">
-                          {isHeader && (
-                            <span className="inline-flex items-center gap-1">
-                              {expandedCategories.has(item.account_code) ? (
-                                <ChevronDown className="h-4 w-4" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4" />
-                              )}
-                              {item.account_code}
-                            </span>
-                          )}
-                          {isSubHeader && (
-                            <span className="inline-flex items-center gap-1 ml-4">
-                              {expandedSubcategories.has(item.account_code) ? (
-                                <ChevronDown className="h-4 w-4" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4" />
-                              )}
-                              {item.account_code}
-                            </span>
-                          )}
-                          {isItem && <span className="ml-8">{item.account_code}</span>}
-                        </TableCell>
-                        <TableCell className={isItem ? 'text-sm text-gray-600' : ''}>
-                          {item.account_name}
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
-                          {formatCurrency(item.amount)}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  <TableRow className="bg-orange-50 font-semibold">
-                    <TableCell colSpan={2}>Total COGS</TableCell>
-                    <TableCell className="text-right font-mono text-orange-700">
-                      {formatCurrency(reportData.summary?.total_cogs || 0)}
-                    </TableCell>
-                  </TableRow>
-                  <TableRow className="bg-blue-50 font-bold">
-                    <TableCell colSpan={2}>Gross Profit</TableCell>
-                    <TableCell className="text-right font-mono text-blue-700">
-                      {formatCurrency(reportData.summary?.gross_profit || 0)}
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Expenses Section */}
-        {reportData?.sections?.EXPENSES && reportData.sections.EXPENSES.length > 0 && (
-          <Card>
-            <CardHeader className="bg-red-50">
-              <CardTitle className="text-red-900">EXPENSES</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-32">Account Code</TableHead>
-                    <TableHead>Account Name</TableHead>
-                    <TableHead className="text-right w-40">Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {reportData.sections.EXPENSES.map((item, index) => {
-                    const isHeader = item.is_category_header;
-                    const isSubHeader = item.is_subcategory_header;
-                    const isItem = item.is_expense_item;
-                    
-                    // Determine the parent category code for this item
-                    let parentCategoryCode = '';
-                    if (isSubHeader || isItem) {
-                      parentCategoryCode = item.account_code.split('-')[0];
-                    }
-                    
-                    // Hide subcategories if category is not expanded
-                    if (isSubHeader && !expandedCategories.has(parentCategoryCode)) {
-                      return null;
-                    }
-                    
-                    // Hide items if subcategory is not expanded
-                    if (isItem && !expandedSubcategories.has(item.account_code)) {
-                      return null;
-                    }
-                    
-                    return (
-                      <TableRow 
-                        key={index}
-                        className={
-                          isHeader ? 'bg-red-100 font-bold cursor-pointer hover:bg-red-200' :
-                          isSubHeader ? 'bg-red-50 font-semibold cursor-pointer hover:bg-red-100' :
-                          isItem ? 'hover:bg-gray-50' :
-                          ''
-                        }
-                        onClick={() => {
-                          if (isHeader) {
-                            toggleCategory(item.account_code);
-                          } else if (isSubHeader) {
-                            toggleSubcategory(item.account_code);
-                          }
-                        }}
-                      >
-                        <TableCell className="font-mono text-sm">
-                          {isHeader && (
-                            <span className="inline-flex items-center gap-1">
-                              {expandedCategories.has(item.account_code) ? (
-                                <ChevronDown className="h-4 w-4" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4" />
-                              )}
-                              {item.account_code}
-                            </span>
-                          )}
-                          {isSubHeader && (
-                            <span className="inline-flex items-center gap-1 ml-4">
-                              {expandedSubcategories.has(item.account_code) ? (
-                                <ChevronDown className="h-4 w-4" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4" />
-                              )}
-                              {item.account_code}
-                            </span>
-                          )}
-                          {isItem && <span className="ml-8">{item.account_code}</span>}
-                        </TableCell>
-                        <TableCell className={isItem ? 'text-sm text-gray-600' : ''}>
-                          {item.account_name}
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
-                          {formatCurrency(item.amount)}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  <TableRow className="bg-red-50 font-semibold">
-                    <TableCell colSpan={2}>Total Expenses</TableCell>
-                    <TableCell className="text-right font-mono text-red-700">
-                      {formatCurrency(reportData.summary?.total_expenses || 0)}
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        )}
+        {/* Conditional View Rendering */}
+        {viewMode === 'vertical' && renderVerticalView()}
+        {viewMode === 'horizontal' && renderHorizontalView()}
+        {viewMode === 'accounting' && renderAccountingView()}
 
         {/* Net Income Summary */}
         <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200">

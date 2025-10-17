@@ -15,7 +15,12 @@ import {
   RefreshCw,
   AlertTriangle,
   Percent,
-  DollarSign
+  DollarSign,
+  Users,
+  Clock,
+  Trophy,
+  X,
+  ChevronDown
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { getCurrentUser, User } from '@/lib/auth'
@@ -60,10 +65,12 @@ export default function SalesRepresentativePage() {
   const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null)
   const [employees, setEmployees] = useState<Employee[]>([])
   const [isAdmin, setIsAdmin] = useState(false)
+  const [timeFilter, setTimeFilter] = useState('all')
+  const [isRankingsOpen, setIsRankingsOpen] = useState(false)
 
-  const fetchStats = useCallback(async (userId: string) => {
+  const fetchStats = useCallback(async (userId: string, period: string = 'all') => {
     try {
-      const response = await fetch(`/api/sales/representative/${userId}/stats`)
+      const response = await fetch(`/api/sales/representative/${userId}/stats?period=${period}`)
       if (response.ok) {
         const data = await response.json()
         setStats(data)
@@ -105,15 +112,26 @@ export default function SalesRepresentativePage() {
       if (isAdminUser) {
         // Fetch all employees for admin users
         try {
-          const response = await fetch('/api/sales/representatives')
+          const response = await fetch('/api/sales/representatives?withOrders=true')
           if (response.ok) {
             const employeeData = await response.json()
-            setEmployees(employeeData)
+            
+            // Filter to show only employees with sales orders
+            const employeesWithOrders = employeeData.filter((emp: Employee & { has_orders?: boolean }) => emp.has_orders !== false)
+            
+            // Sort employees by name in ascending order
+            const sortedEmployees = employeesWithOrders.sort((a: Employee, b: Employee) => {
+              const nameA = (a.name || a.email || '').toLowerCase()
+              const nameB = (b.name || b.email || '').toLowerCase()
+              return nameA.localeCompare(nameB)
+            })
+            
+            setEmployees(sortedEmployees)
             
             // If there are employees, select the first one by default and fetch their stats
-            if (employeeData.length > 0) {
-              setSelectedEmployee(employeeData[0].id)
-              await fetchStats(employeeData[0].id)
+            if (sortedEmployees.length > 0) {
+              setSelectedEmployee(sortedEmployees[0].id)
+              await fetchStats(sortedEmployees[0].id, timeFilter)
             }
           }
         } catch (error) {
@@ -123,7 +141,7 @@ export default function SalesRepresentativePage() {
       } else {
         // For sales reps, set their own ID as selected and fetch their stats
         setSelectedEmployee(currentUser.id)
-        await fetchStats(currentUser.id)
+        await fetchStats(currentUser.id, timeFilter)
       }
     } catch (error) {
       console.error('Error initializing page:', error)
@@ -132,11 +150,11 @@ export default function SalesRepresentativePage() {
     } finally {
       setLoading(false)
     }
-  }, [fetchStats])
+  }, [fetchStats, timeFilter])
 
   useEffect(() => {
     initializePage()
-  }, [initializePage])
+  }, [initializePage, timeFilter])
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -189,7 +207,7 @@ export default function SalesRepresentativePage() {
             </div>
             <Button 
               variant="outline" 
-              onClick={() => selectedEmployee && fetchStats(selectedEmployee)}
+              onClick={() => selectedEmployee && fetchStats(selectedEmployee, timeFilter)}
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh Data
@@ -197,24 +215,29 @@ export default function SalesRepresentativePage() {
           </div>
         </div>
 
-        {/* Employee Selector for Admin Users */}
+        {/* Floating Employee Selector for Admin Users */}
         {isAdmin && employees.length > 0 && (
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <div className="flex items-center space-x-4">
-              <label htmlFor="employee-select" className="text-sm font-medium text-gray-900">
-                Select Employee:
-              </label>
+          <div className="fixed bottom-6 left-6 z-50">
+            <div className="relative inline-block">
+              {/* Visual button */}
+              <div className="absolute inset-0 p-2.5 bg-gradient-to-br from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 pointer-events-none flex items-center justify-center">
+                <Users className="h-4 w-4" />
+              </div>
+              
+              {/* Actual select positioned over the button */}
               <select
-                id="employee-select"
+                id="employee-select-floating"
+                aria-label="Select Employee"
                 value={selectedEmployee || ''}
                 onChange={async (e) => {
                   const newEmployeeId = e.target.value
                   setSelectedEmployee(newEmployeeId)
                   if (newEmployeeId) {
-                    await fetchStats(newEmployeeId)
+                    await fetchStats(newEmployeeId, timeFilter)
                   }
                 }}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="relative w-10 h-10 opacity-0 cursor-pointer"
+                title="Select Employee"
               >
                 {employees.map((employee) => (
                   <option key={employee.id} value={employee.id}>
@@ -225,6 +248,39 @@ export default function SalesRepresentativePage() {
             </div>
           </div>
         )}
+
+        {/* Floating Time Period Filter */}
+        <div className="fixed bottom-6 right-6 z-50">
+          <div className="relative inline-block">
+            {/* Visual button */}
+            <div className="absolute inset-0 p-2.5 bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 pointer-events-none flex items-center justify-center">
+              <Clock className="h-4 w-4" />
+            </div>
+            
+            {/* Actual select positioned over the button */}
+            <select
+              id="time-period-select-floating"
+              aria-label="Select Time Period"
+              value={timeFilter}
+              onChange={async (e) => {
+                const newPeriod = e.target.value
+                setTimeFilter(newPeriod)
+                if (selectedEmployee) {
+                  await fetchStats(selectedEmployee, newPeriod)
+                }
+              }}
+              className="relative w-10 h-10 opacity-0 cursor-pointer"
+              title="Select Time Period"
+            >
+              <option value="all">All Time</option>
+              <option value="today">Today</option>
+              <option value="week">This Week</option>
+              <option value="month">This Month</option>
+              <option value="quarter">This Quarter</option>
+              <option value="year">This Year</option>
+            </select>
+          </div>
+        </div>
 
         {/* Statistics Cards */}
         {stats && (
@@ -338,8 +394,54 @@ export default function SalesRepresentativePage() {
           </div>
         )}
 
-        {/* Employee Rankings Section */}
-        <EmployeeRankings />
+        {/* Rankings Trigger Button */}
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <button
+            onClick={() => setIsRankingsOpen(true)}
+            className="w-full flex items-center justify-between px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg shadow-lg hover:shadow-xl transition-all duration-300"
+          >
+            <div className="flex items-center gap-3">
+              <Trophy className="h-5 w-5" />
+              <span className="font-semibold">View Employee Rankings</span>
+            </div>
+            <ChevronDown className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Rankings Sidebar Modal */}
+        {isRankingsOpen && (
+          <>
+            {/* Backdrop */}
+            <div 
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 transition-opacity"
+              onClick={() => setIsRankingsOpen(false)}
+            />
+            
+            {/* Sidebar */}
+            <div className="fixed right-0 top-0 h-full w-full md:w-2/3 lg:w-1/2 bg-white shadow-2xl z-50 overflow-y-auto transform transition-transform duration-300">
+              {/* Header */}
+              <div className="sticky top-0 bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-6 shadow-lg z-10">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Trophy className="h-6 w-6" />
+                    <h2 className="text-2xl font-bold">Employee Rankings</h2>
+                  </div>
+                  <button
+                    onClick={() => setIsRankingsOpen(false)}
+                    className="p-2 hover:bg-white/20 rounded-full transition-colors"
+                  >
+                    <X className="h-6 w-6" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="p-6">
+                <EmployeeRankings timeFilter={timeFilter} />
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Main Content Tabs */}
         <Card>
@@ -386,7 +488,7 @@ export default function SalesRepresentativePage() {
                   {selectedEmployee && (
                     <MyOrdersSection 
                       userId={selectedEmployee} 
-                      onRefresh={() => selectedEmployee && fetchStats(selectedEmployee)}
+                      onRefresh={() => selectedEmployee && fetchStats(selectedEmployee, timeFilter)}
                     />
                   )}
                 </TabsContent>
@@ -395,7 +497,7 @@ export default function SalesRepresentativePage() {
                   {selectedEmployee && (
                     <ReturnsExchangesSection 
                       userId={selectedEmployee}
-                      onRefresh={() => selectedEmployee && fetchStats(selectedEmployee)}
+                      onRefresh={() => selectedEmployee && fetchStats(selectedEmployee, timeFilter)}
                     />
                   )}
                 </TabsContent>
@@ -404,7 +506,7 @@ export default function SalesRepresentativePage() {
                   {selectedEmployee && (
                     <ComplaintsSection 
                       userId={selectedEmployee}
-                      onRefresh={() => selectedEmployee && fetchStats(selectedEmployee)}
+                      onRefresh={() => selectedEmployee && fetchStats(selectedEmployee, timeFilter)}
                     />
                   )}
                 </TabsContent>
@@ -413,7 +515,7 @@ export default function SalesRepresentativePage() {
                   {selectedEmployee && (
                     <SalesPerformanceSection 
                       userId={selectedEmployee}
-                      onRefresh={() => selectedEmployee && fetchStats(selectedEmployee)}
+                      onRefresh={() => selectedEmployee && fetchStats(selectedEmployee, timeFilter)}
                     />
                   )}
                 </TabsContent>

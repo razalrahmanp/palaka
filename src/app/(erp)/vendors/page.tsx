@@ -281,107 +281,103 @@ export default function VendorsPage() {
         </div>
       </div>
 
-      {/* Enhanced Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-indigo-50 hover:shadow-xl transition-all duration-300">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center space-x-2 mb-2">
-                  <Package className="h-5 w-5 text-blue-600" />
-                  <p className="text-sm font-semibold text-blue-900">Total Vendors</p>
-                </div>
-                <p className="text-2xl font-bold text-blue-700">{vendors.length}</p>
-                <p className="text-xs text-blue-600 mt-1">
-                  Active: {vendors.filter(v => v.status === 'Active').length}
-                </p>
-              </div>
+      {/* Ultra-Compact Overview Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
+        {/* Total Vendors */}
+        <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-indigo-50 hover:shadow-md transition-all">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Package className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
+              <p className="text-[11px] font-semibold text-blue-900 leading-tight">Total Vendors</p>
             </div>
+            <p className="text-lg font-bold text-blue-700 leading-none mb-0.5">{vendors.length}</p>
+            <p className="text-[10px] text-blue-600 leading-tight">
+              Active: {vendors.filter(v => v.status === 'Active').length}
+            </p>
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-green-50 to-emerald-50 hover:shadow-xl transition-all duration-300">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center space-x-2 mb-2">
-                  <DollarSign className="h-5 w-5 text-green-600" />
-                  <p className="text-sm font-semibold text-green-900">Stock Cost</p>
-                </div>
-                <p className="text-2xl font-bold text-green-700">
-                  {formatCurrency(vendors.reduce((sum, v) => sum + (v.inventory_summary?.total_stock_cost || v.total_cost_inr || 0), 0))}
-                </p>
-                <p className="text-xs text-green-600 mt-1">Current stock cost</p>
-              </div>
+        {/* Total Bill Value */}
+        <Card className="border-0 shadow-sm bg-gradient-to-br from-indigo-50 to-purple-50 hover:shadow-md transition-all">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <ShoppingCart className="h-3.5 w-3.5 text-indigo-600 flex-shrink-0" />
+              <p className="text-[11px] font-semibold text-indigo-900 leading-tight">Total Bills</p>
             </div>
+            <p className="text-lg font-bold text-indigo-700 leading-none mb-0.5 truncate">
+              {formatCurrency(vendors.reduce((sum, v) => sum + (v.total_paid || 0) + (v.total_pending || 0), 0))}
+            </p>
+            <p className="text-[10px] text-indigo-600 leading-tight">Vendor bill value</p>
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-orange-50 to-amber-50 hover:shadow-xl transition-all duration-300">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center space-x-2 mb-2">
-                  <ShoppingCart className="h-5 w-5 text-orange-600" />
-                  <p className="text-sm font-semibold text-orange-900">Stock MRP</p>
-                </div>
-                <p className="text-2xl font-bold text-orange-700">
-                  {formatCurrency(vendors.reduce((sum, v) => sum + (v.inventory_summary?.total_stock_value || v.total_mrp_inr || 0), 0))}
-                </p>
-                <p className="text-xs text-orange-600 mt-1">Current stock value</p>
-              </div>
+        {/* Total Paid */}
+        <Card className="border-0 shadow-sm bg-gradient-to-br from-teal-50 to-cyan-50 hover:shadow-md transition-all">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <DollarSign className="h-3.5 w-3.5 text-teal-600 flex-shrink-0" />
+              <p className="text-[11px] font-semibold text-teal-900 leading-tight">Total Paid</p>
             </div>
+            <p className="text-lg font-bold text-teal-700 leading-none mb-0.5 truncate">
+              {formatCurrency(vendors.reduce((sum, v) => sum + (v.total_paid || 0), 0))}
+            </p>
+            <p className="text-[10px] text-teal-600 leading-tight">Paid to vendors</p>
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-purple-50 to-pink-50 hover:shadow-xl transition-all duration-300">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center space-x-2 mb-2">
-                  <CreditCard className="h-5 w-5 text-purple-600" />
-                  <p className="text-sm font-semibold text-purple-900">Stock Profit</p>
-                </div>
-                <p className="text-2xl font-bold text-purple-700">
-                  {formatCurrency(vendors.reduce((sum, v) => sum + (v.inventory_summary?.total_profit || v.profit_margin_inr || 0), 0))}
-                </p>
-                <p className="text-xs text-purple-600 mt-1">Profit potential</p>
-              </div>
+        {/* Total Pending */}
+        <Card className="border-0 shadow-sm bg-gradient-to-br from-red-50 to-rose-50 hover:shadow-md transition-all">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <CreditCard className="h-3.5 w-3.5 text-red-600 flex-shrink-0" />
+              <p className="text-[11px] font-semibold text-red-900 leading-tight">Total Pending</p>
             </div>
+            <p className="text-lg font-bold text-red-700 leading-none mb-0.5 truncate">
+              {formatCurrency(vendors.reduce((sum, v) => sum + (v.total_pending || 0), 0))}
+            </p>
+            <p className="text-[10px] text-red-600 leading-tight">Owed to vendors</p>
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-teal-50 to-cyan-50 hover:shadow-xl transition-all duration-300">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center space-x-2 mb-2">
-                  <DollarSign className="h-5 w-5 text-teal-600" />
-                  <p className="text-sm font-semibold text-teal-900">Total Paid</p>
-                </div>
-                <p className="text-2xl font-bold text-teal-700">
-                  {formatCurrency(vendors.reduce((sum, v) => sum + (v.total_paid || 0), 0))}
-                </p>
-                <p className="text-xs text-teal-600 mt-1">Paid to vendors</p>
-              </div>
+        {/* Stock Cost */}
+        <Card className="border-0 shadow-sm bg-gradient-to-br from-green-50 to-emerald-50 hover:shadow-md transition-all">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <DollarSign className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
+              <p className="text-[11px] font-semibold text-green-900 leading-tight">Stock Cost</p>
             </div>
+            <p className="text-lg font-bold text-green-700 leading-none mb-0.5 truncate">
+              {formatCurrency(vendors.reduce((sum, v) => sum + (v.inventory_summary?.total_stock_cost || v.total_cost_inr || 0), 0))}
+            </p>
+            <p className="text-[10px] text-green-600 leading-tight">Current stock cost</p>
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-red-50 to-rose-50 hover:shadow-xl transition-all duration-300">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center space-x-2 mb-2">
-                  <Package className="h-5 w-5 text-red-600" />
-                  <p className="text-sm font-semibold text-red-900">Total Pending</p>
-                </div>
-                <p className="text-2xl font-bold text-red-700">
-                  {formatCurrency(vendors.reduce((sum, v) => sum + (v.total_pending || 0), 0))}
-                </p>
-                <p className="text-xs text-red-600 mt-1">Owed to vendors</p>
-              </div>
+        {/* Stock MRP */}
+        <Card className="border-0 shadow-sm bg-gradient-to-br from-orange-50 to-amber-50 hover:shadow-md transition-all">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <ShoppingCart className="h-3.5 w-3.5 text-orange-600 flex-shrink-0" />
+              <p className="text-[11px] font-semibold text-orange-900 leading-tight">Stock MRP</p>
             </div>
+            <p className="text-lg font-bold text-orange-700 leading-none mb-0.5 truncate">
+              {formatCurrency(vendors.reduce((sum, v) => sum + (v.inventory_summary?.total_stock_value || v.total_mrp_inr || 0), 0))}
+            </p>
+            <p className="text-[10px] text-orange-600 leading-tight">Current stock value</p>
+          </CardContent>
+        </Card>
+
+        {/* Stock Profit */}
+        <Card className="border-0 shadow-sm bg-gradient-to-br from-purple-50 to-pink-50 hover:shadow-md transition-all">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Star className="h-3.5 w-3.5 text-purple-600 flex-shrink-0" />
+              <p className="text-[11px] font-semibold text-purple-900 leading-tight">Stock Profit</p>
+            </div>
+            <p className="text-lg font-bold text-purple-700 leading-none mb-0.5 truncate">
+              {formatCurrency(vendors.reduce((sum, v) => sum + (v.inventory_summary?.total_profit || v.profit_margin_inr || 0), 0))}
+            </p>
+            <p className="text-[10px] text-purple-600 leading-tight">Profit potential</p>
           </CardContent>
         </Card>
       </div>

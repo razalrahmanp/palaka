@@ -38,19 +38,67 @@ export async function GET(
 
 async function generateProfitLossReport(startDate: string, endDate: string) {
   try {
-    // Fetch revenue from sales_orders table (using final_price column)
+    // Fetch revenue from sales_orders table (using final_price column) - ALL statuses
+    // Use full timestamp format to match dashboard calculation
     const { data: salesData, error: salesError } = await supabase
       .from('sales_orders')
       .select('id, final_price, grand_total, created_at, customer_id, customers(name), status')
-      .gte('created_at', startDate)
-      .lte('created_at', endDate)
-      .in('status', ['confirmed', 'shipped', 'delivered', 'ready_for_delivery', 'partial_delivery_ready']);
+      .gte('created_at', startDate + 'T00:00:00.000Z')
+      .lte('created_at', endDate + 'T23:59:59.999Z');
     
     if (salesError) {
       console.error('Error fetching sales data:', salesError);
     }
     
-    // Fetch all expenses from expenses table
+    console.log('📊 Profit & Loss Revenue Calculation:', {
+      dateRange: `${startDate} to ${endDate}`,
+      ordersFound: salesData?.length || 0,
+      totalRevenue: salesData?.reduce((sum, sale) => sum + parseFloat(sale.final_price || '0'), 0) || 0,
+      statusFilter: 'ALL STATUSES',
+      sampleOrders: salesData?.slice(0, 3).map(s => ({
+        id: s.id,
+        created_at: s.created_at,
+        status: s.status,
+        final_price: s.final_price
+      }))
+    });
+    
+    // ========== INVENTORY-BASED COGS CALCULATION ==========
+    
+    // 1. Calculate Opening Stock (inventory value at start of period)
+    const openingStock = await calculateInventoryValue(startDate, endDate, 'opening');
+    
+    // 2. Fetch vendor bills for Purchases during period
+    const { data: vendorBillsData, error: vendorBillsError } = await supabase
+      .from('vendor_bills')
+      .select('id, bill_date, bill_number, total_amount, supplier_id, suppliers(name)')
+      .gte('bill_date', startDate)
+      .lte('bill_date', endDate);
+    
+    if (vendorBillsError) {
+      console.error('Error fetching vendor bills data:', vendorBillsError);
+    }
+    
+    const totalPurchases = vendorBillsData?.reduce((sum, bill) => 
+      sum + parseFloat(bill.total_amount || '0'), 0) || 0;
+    
+    // 3. Calculate Closing Stock (inventory value at end of period)
+    const closingStock = await calculateInventoryValue(startDate, endDate, 'closing');
+    
+    // 4. Calculate COGS using inventory formula
+    const totalCOGS = openingStock + totalPurchases - closingStock;
+    
+    console.log('📊 Profit & Loss COGS Calculation (Inventory-Based):', {
+      dateRange: `${startDate} to ${endDate}`,
+      openingStock: openingStock.toFixed(2),
+      purchases: totalPurchases.toFixed(2),
+      closingStock: closingStock.toFixed(2),
+      calculatedCOGS: totalCOGS.toFixed(2),
+      formula: 'Opening Stock + Purchases - Closing Stock',
+      vendorBillsCount: vendorBillsData?.length || 0
+    });
+    
+    // Fetch all expenses from expenses table (excluding Manufacturing/COGS categories)
     const { data: expensesData, error: expensesError } = await supabase
       .from('expenses')
       .select('id, date, category, description, amount, type, subcategory')
@@ -64,15 +112,81 @@ async function generateProfitLossReport(startDate: string, endDate: string) {
     // Calculate total revenue from sales_orders (using final_price)
     const totalRevenue = salesData?.reduce((sum, sale) => sum + parseFloat(sale.final_price || '0'), 0) || 0;
     
-    // Group expenses by category and subcategory
+    // Build COGS section with inventory breakdown
+    const cogsSection: any[] = [];
+    
+    // Add COGS header
+    cogsSection.push({
+      account_code: 'COGS',
+      account_name: 'Cost of Goods Sold',
+      amount: totalCOGS,
+      is_category_header: true,
+      subcategory_count: 3 // Opening Stock, Purchases, Closing Stock
+    });
+    
+    // Add Opening Stock
+    cogsSection.push({
+      account_code: 'COGS-OPEN',
+      account_name: '  Opening Stock',
+      amount: openingStock,
+      is_subcategory_header: true,
+      description: `Inventory value at ${startDate}`,
+      date: startDate,
+      type: 'opening_stock'
+    });
+    
+    // Add Purchases subcategory
+    cogsSection.push({
+      account_code: 'COGS-PURCH',
+      account_name: '  Add: Purchases',
+      amount: totalPurchases,
+      is_subcategory_header: true,
+      item_count: vendorBillsData?.length || 0
+    });
+    
+    // Add all vendor bills under Purchases
+    vendorBillsData?.forEach((bill: any) => {
+      const supplierName = Array.isArray(bill.suppliers) ? bill.suppliers[0]?.name : bill.suppliers?.name;
+      cogsSection.push({
+        account_code: 'COGS-PURCH',
+        account_name: `    Vendor Bill - ${supplierName || 'Unknown Supplier'} (${bill.bill_number})`,
+        amount: parseFloat(bill.total_amount || '0'),
+        description: `Bill ${bill.bill_number}`,
+        type: 'vendor_bill',
+        date: bill.bill_date,
+        category: 'Purchases',
+        subcategory: 'Vendor Bills',
+        is_expense_item: true
+      });
+    });
+    
+    // Add Closing Stock (negative because it reduces COGS)
+    cogsSection.push({
+      account_code: 'COGS-CLOSE',
+      account_name: '  Less: Closing Stock',
+      amount: -closingStock, // Negative to reduce COGS
+      is_subcategory_header: true,
+      description: `Inventory value at ${endDate}`,
+      date: endDate,
+      type: 'closing_stock'
+    });
+    
+    // Group operating expenses by category and subcategory (excluding Manufacturing/COGS)
     const expensesByCategory: Record<string, Record<string, any[]>> = {};
-    let totalCOGS = 0;
     let totalOperatingExpenses = 0;
+    
+    // Define COGS categories to exclude from operating expenses
+    const cogsCategories = ['Raw Materials', 'Direct Labor', 'Manufacturing Overhead', 'Manufacturing', 'Production'];
     
     expensesData?.forEach((expense: any) => {
       const amount = parseFloat(expense.amount || '0');
       const category = expense.category || 'Other';
       const subcategory = expense.subcategory || 'General';
+      
+      // Skip COGS categories - they're now handled by vendor bills
+      if (cogsCategories.includes(category)) {
+        return;
+      }
       
       // Initialize category if not exists
       if (!expensesByCategory[category]) {
@@ -95,19 +209,10 @@ async function generateProfitLossReport(startDate: string, endDate: string) {
         date: expense.date
       });
       
-      // Categorize as COGS or Operating Expense
-      const cogsCategories = ['Raw Materials', 'Direct Labor', 'Manufacturing Overhead', 'Manufacturing', 'Production'];
-      if (cogsCategories.includes(category)) {
-        totalCOGS += amount;
-      } else {
-        totalOperatingExpenses += amount;
-      }
+      totalOperatingExpenses += amount;
     });
     
-    // Build sections with categories and subcategories
-    const cogsCategories = ['Raw Materials', 'Direct Labor', 'Manufacturing Overhead', 'Manufacturing', 'Production'];
-    
-    // Helper function to flatten category/subcategory structure
+    // Helper function to flatten category/subcategory structure for operating expenses
     const flattenExpenses = (categoryFilter: (cat: string) => boolean) => {
       const result: any[] = [];
       Object.entries(expensesByCategory).forEach(([category, subcategories]) => {
@@ -176,12 +281,24 @@ async function generateProfitLossReport(startDate: string, endDate: string) {
           is_revenue_item: true
         })) || [])
       ],
-      COST_OF_GOODS_SOLD: flattenExpenses((cat) => cogsCategories.includes(cat)),
-      EXPENSES: flattenExpenses((cat) => !cogsCategories.includes(cat))
+      COST_OF_GOODS_SOLD: cogsSection, // Use vendor bills instead of expenses
+      EXPENSES: flattenExpenses(() => true) // All operating expenses (non-COGS)
     };
     
     const grossProfit = totalRevenue - totalCOGS;
     const netIncome = grossProfit - totalOperatingExpenses;
+    
+    console.log('📊 Profit & Loss Summary:', {
+      totalRevenue,
+      openingStock,
+      purchases: totalPurchases,
+      closingStock,
+      totalCOGS,
+      grossProfit,
+      totalOperatingExpenses,
+      netIncome,
+      formula: 'COGS = Opening Stock + Purchases - Closing Stock'
+    });
     
     return NextResponse.json({
       report_type: 'Profit & Loss Statement',
@@ -189,12 +306,17 @@ async function generateProfitLossReport(startDate: string, endDate: string) {
       sections,
       summary: {
         total_revenue: totalRevenue,
+        opening_stock: openingStock,
+        purchases: totalPurchases,
+        closing_stock: closingStock,
         total_cogs: totalCOGS,
         gross_profit: grossProfit,
         total_expenses: totalOperatingExpenses,
         net_income: netIncome,
         sales_count: salesData?.length || 0,
-        expense_count: expensesData?.length || 0
+        vendor_bills_count: vendorBillsData?.length || 0,
+        expense_count: expensesData?.length || 0,
+        note: 'COGS = Opening Stock + Purchases - Closing Stock (Inventory-based)'
       },
       data: [
         ...sections.REVENUE,
@@ -836,4 +958,149 @@ async function generateAccountBalancesReport(asOfDate: string) {
       accounts_with_balance: data?.filter(account => Math.abs(account.current_balance || 0) > 0.01).length || 0
     }
   });
+}
+
+/**
+ * Calculate inventory value at a specific date using sales data
+ * 
+ * Method: 
+ * - Opening Stock = Cost of Goods Sold + Closing Stock
+ * - Closing Stock = Current inventory quantities × product cost
+ * 
+ * Formula:
+ * Opening = Sum(sold_items.quantity × products.cost) + Current Stock Value
+ * 
+ * @param startDate - Period start date (YYYY-MM-DD)
+ * @param endDate - Period end date (YYYY-MM-DD)
+ * @param type - 'opening' (start of period) or 'closing' (end of period)
+ * @returns Total inventory value at the target date
+ */
+async function calculateInventoryValue(startDate: string, endDate: string, type: 'opening' | 'closing'): Promise<number> {
+  try {
+    // 1. Get current inventory with product costs
+    const { data: currentInventory, error: invError } = await supabase
+      .from('inventory_items')
+      .select(`
+        id,
+        quantity,
+        product_id,
+        products (
+          cost,
+          name
+        )
+      `);
+    
+    if (invError) {
+      console.error('Error fetching current inventory:', invError);
+      return 0;
+    }
+
+    // Calculate closing stock value (current inventory)
+    let closingStockValue = 0;
+    currentInventory?.forEach((item: any) => {
+      const productCost = Array.isArray(item.products) 
+        ? (item.products[0]?.cost || 0)
+        : (item.products?.cost || 0);
+      
+      closingStockValue += item.quantity * parseFloat(productCost || '0');
+    });
+
+    if (type === 'closing') {
+      console.log(`📦 Closing Stock Calculation (${endDate}):`, {
+        totalItems: currentInventory?.length || 0,
+        totalValue: closingStockValue.toFixed(2),
+        method: 'Current inventory quantities × product cost'
+      });
+
+      return closingStockValue;
+    }
+
+    // For opening stock: Cost of items sold during period + Closing stock
+    
+    // 2. Get sales orders in the period
+    const { data: salesOrders, error: salesError } = await supabase
+      .from('sales_orders')
+      .select('id, created_at, final_price')
+      .gte('created_at', startDate + 'T00:00:00.000Z')
+      .lte('created_at', endDate + 'T23:59:59.999Z');
+
+    if (salesError) {
+      console.error('Error fetching sales orders:', salesError);
+      return closingStockValue; // If no sales data, opening = closing
+    }
+
+    const salesOrderIds = salesOrders?.map(so => so.id) || [];
+    const totalRevenue = salesOrders?.reduce((sum, so) => sum + parseFloat(so.final_price || '0'), 0) || 0;
+
+    // 3. Get all sales order items with product costs
+    // IMPORTANT: Only get items with product_id (regular inventory items)
+    // Exclude custom products (custom_product_id) as they're not in inventory
+    const { data: soldItems, error: soldError } = await supabase
+      .from('sales_order_items')
+      .select(`
+        product_id,
+        quantity,
+        products (
+          cost,
+          name
+        )
+      `)
+      .in('order_id', salesOrderIds)
+      .not('product_id', 'is', null);  // ← ONLY items with product_id
+
+    if (soldError) {
+      console.error('Error fetching sold items:', soldError);
+      return closingStockValue;
+    }
+
+    // 4. Calculate COST value of sold items (regular inventory items only)
+    let costOfSoldItems = 0;
+    const soldItemsDetails: any[] = [];
+
+    soldItems?.forEach((item: any) => {
+      const productCost = Array.isArray(item.products) 
+        ? (item.products[0]?.cost || 0)
+        : (item.products?.cost || 0);
+      
+      const itemCostValue = item.quantity * parseFloat(productCost || '0');
+      costOfSoldItems += itemCostValue;
+
+      soldItemsDetails.push({
+        product: Array.isArray(item.products) ? item.products[0]?.name : item.products?.name,
+        quantity: item.quantity,
+        unit_cost: productCost,
+        total_cost: itemCostValue
+      });
+    });
+
+    // 5. Opening Stock = Cost of Sold Items + Closing Stock
+    const openingStockValue = costOfSoldItems + closingStockValue;
+    
+    // Get count of custom products for logging
+    const { data: allSoldItems } = await supabase
+      .from('sales_order_items')
+      .select('id, product_id, custom_product_id')
+      .in('order_id', salesOrderIds);
+    
+    const customItemsCount = allSoldItems?.filter(item => item.custom_product_id !== null && item.product_id === null).length || 0;
+    
+    console.log(`📦 Opening Stock Calculation (${startDate}):`, {
+      method: 'Cost of Sold Items + Closing Stock (Regular Products Only)',
+      salesOrdersInPeriod: salesOrders?.length || 0,
+      totalRevenue: totalRevenue.toFixed(2),
+      regularProductsSold: soldItems?.length || 0,
+      customProductsSold: customItemsCount,
+      note: customItemsCount > 0 ? `${customItemsCount} custom products excluded from opening stock` : 'All products are regular inventory items',
+      costOfSoldItems: costOfSoldItems.toFixed(2),
+      closingStock: closingStockValue.toFixed(2),
+      openingStock: openingStockValue.toFixed(2),
+      sampleSoldItems: soldItemsDetails.slice(0, 5)
+    });
+    
+    return openingStockValue;
+    
+  } catch (error) {
+    console.error('Error calculating inventory value:', error);
+    return 0;
+  }
 }

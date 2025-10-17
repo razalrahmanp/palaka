@@ -29,6 +29,7 @@ import {
   UserCheck,
   Banknote,
   HandCoins,
+  RotateCcw,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -50,7 +51,7 @@ interface LiabilityBreakdown {
   totalPaid: number;
   balance: number;
   percentage: number;
-  type?: string; // supplier, employee, loans, investors
+  type?: string; // supplier, employee, loans, returns, investors
 }
 
 interface RecentTransaction {
@@ -82,6 +83,7 @@ export default function ReportsDashboard() {
     supplier: true,
     employee: true,
     loans: true,
+    returns: true,
     investors: true,
   });
 
@@ -185,6 +187,57 @@ export default function ReportsDashboard() {
           totalLiabilitiesAmount += debit;
           totalPaidAmount += credit;
         });
+      }
+
+      // Fetch Customer Returns & Refunds (Refund Liabilities)
+      try {
+        const refundMap = new Map<string, number>(); // return_id → total refunded
+        
+        // First, fetch all refunds to build refund tracking map
+        const allRefundsResponse = await fetch('/api/finance/refunds?limit=1000');
+        if (allRefundsResponse.ok) {
+          const allRefundsData = await allRefundsResponse.json();
+          const allRefunds = allRefundsData.refunds || allRefundsData.data || [];
+          
+          // Sum up all refunds per return_id
+          allRefunds
+            .filter((ref: any) => !!ref.return_id)
+            .forEach((ref: any) => {
+              const currentAmount = refundMap.get(ref.return_id) || 0;
+              refundMap.set(ref.return_id, currentAmount + (ref.refund_amount || 0));
+            });
+        }
+        
+        // Fetch all returns
+        const returnsResponse = await fetch('/api/sales/returns?limit=1000');
+        if (returnsResponse.ok) {
+          const returnsData = await returnsResponse.json();
+          const returns = returnsData.returns || [];
+          
+          returns.forEach((returnItem: any) => {
+            const totalReturnValue = returnItem.return_value || 0;
+            const refundedAmount = refundMap.get(returnItem.id) || 0;
+            const balance = totalReturnValue - refundedAmount;
+            
+            // Only show returns with outstanding balance (money still owed to customer)
+            if (balance > 0) {
+              liabilitiesBreakdown.push({
+                category: `${returnItem.customer_name || 'Unknown'} (Return)`,
+                accountCode: returnItem.id.toString().substring(0, 4),
+                totalLiable: totalReturnValue,
+                totalPaid: refundedAmount,
+                balance: balance,
+                percentage: 0,
+                type: 'returns',
+              });
+              
+              totalLiabilitiesAmount += totalReturnValue;
+              totalPaidAmount += refundedAmount;
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching returns/refunds data:', error);
       }
       
       // Calculate total outstanding balance
@@ -476,7 +529,7 @@ export default function ReportsDashboard() {
           ) : (
             <div className="space-y-4">
               {/* Group liabilities by type */}
-              {['supplier', 'employee', 'loans', 'investors'].map((groupType) => {
+              {['supplier', 'employee', 'loans', 'returns', 'investors'].map((groupType) => {
                 const groupLiabilities = liabilityBreakdown.filter((l) => l.type === groupType);
                 if (groupLiabilities.length === 0) return null;
 
@@ -484,6 +537,7 @@ export default function ReportsDashboard() {
                   supplier: { name: 'Suppliers (Trade Payables)', icon: Building2, color: 'purple' },
                   employee: { name: 'Employees (Salary Payable)', icon: UserCheck, color: 'green' },
                   loans: { name: 'Loans & Borrowings', icon: Banknote, color: 'red' },
+                  returns: { name: 'Customer Returns & Refunds', icon: RotateCcw, color: 'amber' },
                   investors: { name: 'Investors & Partners', icon: HandCoins, color: 'yellow' },
                 }[groupType] || { name: groupType, icon: FileText, color: 'gray' };
 

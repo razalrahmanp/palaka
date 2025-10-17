@@ -21,8 +21,14 @@ import {
   AlertTriangle,
   Clock,
   TrendingUp,
+  BarChart3,
+  Calculator,
+  CreditCard,
+  Users,
+  Calendar,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { FloatingActionMenu } from '@/components/finance/FloatingActionMenu';
 
 interface AgingBucket {
   current: number;
@@ -31,6 +37,8 @@ interface AgingBucket {
   days90: number;
   days90Plus: number;
   total: number;
+  orderTotal: number;
+  paidAmount: number;
 }
 
 interface AgingAccount {
@@ -44,7 +52,31 @@ interface AgingAccount {
   days90: number;
   days90Plus: number;
   total: number;
+  orderTotal?: number;
+  billTotal?: number;
+  paidAmount: number;
   oldestInvoice: string;
+}
+
+interface ApiAgingAccount {
+  id?: string;
+  customerId?: string;
+  vendorId?: string;
+  name?: string;
+  customer?: string;
+  vendor?: string;
+  contact: string;
+  current: number;
+  days1to30: number;
+  days31to60: number;
+  days61to90: number;
+  days90plus: number;
+  totalDue: number;
+  orderTotal?: number;
+  billTotal?: number;
+  paidAmount: number;
+  oldestInvoiceDate?: string;
+  oldestBillDate?: string;
 }
 
 export default function AgingReportPage() {
@@ -61,8 +93,6 @@ export default function AgingReportPage() {
   const fetchAgingData = async () => {
     try {
       setLoading(true);
-      // TODO: Replace with actual API endpoint for aging report
-      // This is a placeholder - you'll need to create the actual API
       const [receivablesRes, payablesRes] = await Promise.all([
         fetch('/api/finance/aging-report?type=receivables'),
         fetch('/api/finance/aging-report?type=payables'),
@@ -70,15 +100,46 @@ export default function AgingReportPage() {
 
       if (receivablesRes.ok) {
         const data = await receivablesRes.json();
-        setReceivables(data.accounts || []);
+        // Map API response to frontend interface
+        const mappedReceivables = (data.accounts || []).map((account: ApiAgingAccount) => ({
+          id: account.customerId || account.id,
+          name: account.customer || account.name,
+          email: account.contact?.includes('@') ? account.contact : '',
+          phone: account.contact && !account.contact.includes('@') ? account.contact : '',
+          current: account.current || 0,
+          days30: account.days1to30 || 0,
+          days60: account.days31to60 || 0,
+          days90: account.days61to90 || 0,
+          days90Plus: account.days90plus || 0,
+          total: account.totalDue || 0,
+          orderTotal: account.orderTotal || 0,
+          paidAmount: account.paidAmount || 0,
+          oldestInvoice: account.oldestInvoiceDate || account.oldestBillDate || '',
+        }));
+        setReceivables(mappedReceivables);
       }
       if (payablesRes.ok) {
         const data = await payablesRes.json();
-        setPayables(data.accounts || []);
+        // Map API response to frontend interface
+        const mappedPayables = (data.accounts || []).map((account: ApiAgingAccount) => ({
+          id: account.vendorId || account.id,
+          name: account.vendor || account.name,
+          email: account.contact?.includes('@') ? account.contact : '',
+          phone: account.contact && !account.contact.includes('@') ? account.contact : '',
+          current: account.current || 0,
+          days30: account.days1to30 || 0,
+          days60: account.days31to60 || 0,
+          days90: account.days61to90 || 0,
+          days90Plus: account.days90plus || 0,
+          total: account.totalDue || 0,
+          billTotal: account.billTotal || 0,
+          paidAmount: account.paidAmount || 0,
+          oldestInvoice: account.oldestBillDate || account.oldestInvoiceDate || '',
+        }));
+        setPayables(mappedPayables);
       }
     } catch (error) {
       console.error('Error fetching aging data:', error);
-      // For now, use empty data
       setReceivables([]);
       setPayables([]);
     } finally {
@@ -95,7 +156,7 @@ export default function AgingReportPage() {
     }).format(Math.abs(amount));
   };
 
-  const calculateTotals = (accounts: AgingAccount[]): AgingBucket => {
+  const calculateTotals = (accounts: AgingAccount[]) => {
     return accounts.reduce(
       (totals, account) => ({
         current: totals.current + account.current,
@@ -104,8 +165,10 @@ export default function AgingReportPage() {
         days90: totals.days90 + account.days90,
         days90Plus: totals.days90Plus + account.days90Plus,
         total: totals.total + account.total,
+        orderTotal: totals.orderTotal + (account.orderTotal || account.billTotal || 0),
+        paidAmount: totals.paidAmount + (account.paidAmount || 0),
       }),
-      { current: 0, days30: 0, days60: 0, days90: 0, days90Plus: 0, total: 0 }
+      { current: 0, days30: 0, days60: 0, days90: 0, days90Plus: 0, total: 0, orderTotal: 0, paidAmount: 0 }
     );
   };
 
@@ -130,21 +193,24 @@ export default function AgingReportPage() {
       <Table>
         <TableHeader>
           <TableRow className="bg-gray-50">
-            <TableHead className="w-64">{type === 'receivables' ? 'Customer' : 'Supplier'}</TableHead>
-            <TableHead className="w-48">Contact</TableHead>
-            <TableHead className="text-right w-32">Current</TableHead>
-            <TableHead className="text-right w-32">1-30 Days</TableHead>
-            <TableHead className="text-right w-32">31-60 Days</TableHead>
-            <TableHead className="text-right w-32">61-90 Days</TableHead>
-            <TableHead className="text-right w-32">90+ Days</TableHead>
-            <TableHead className="text-right w-32">Total Due</TableHead>
-            <TableHead className="w-28">Oldest</TableHead>
+            <TableHead className="w-48">{type === 'receivables' ? 'Customer' : 'Supplier'}</TableHead>
+            <TableHead className="w-32">Contact</TableHead>
+            <TableHead className="text-right w-28">{type === 'receivables' ? 'Order Value' : 'Bill Value'}</TableHead>
+            <TableHead className="text-right w-28">Paid</TableHead>
+            <TableHead className="text-right w-28">Pending</TableHead>
+            <TableHead className="text-right w-28">Current</TableHead>
+            <TableHead className="text-right w-28">1-30 Days</TableHead>
+            <TableHead className="text-right w-28">31-60 Days</TableHead>
+            <TableHead className="text-right w-28">61-90 Days</TableHead>
+            <TableHead className="text-right w-28">90+ Days</TableHead>
+            <TableHead className="text-right w-28">Total Due</TableHead>
+            <TableHead className="w-24">Oldest</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {accounts.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={9} className="text-center py-12 text-gray-500">
+              <TableCell colSpan={12} className="text-center py-12 text-gray-500">
                 <Clock className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                 <p className="font-medium">No {type} aging data available</p>
                 <p className="text-sm mt-1">There are no outstanding {type} to analyze</p>
@@ -165,31 +231,40 @@ export default function AgingReportPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-sm text-gray-600">{account.phone || '-'}</TableCell>
-                    <TableCell className="text-right font-mono">
+                    <TableCell className="text-right font-mono text-sm">
+                      {formatCurrency(account.orderTotal || account.billTotal || 0)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-sm text-green-600">
+                      {formatCurrency(account.paidAmount || 0)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-sm font-semibold text-blue-600">
+                      {formatCurrency(account.total || 0)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-sm">
                       {account.current > 0 ? formatCurrency(account.current) : '-'}
                     </TableCell>
-                    <TableCell className="text-right font-mono">
+                    <TableCell className="text-right font-mono text-sm">
                       {account.days30 > 0 ? (
                         <span className="text-yellow-600">{formatCurrency(account.days30)}</span>
                       ) : (
                         '-'
                       )}
                     </TableCell>
-                    <TableCell className="text-right font-mono">
+                    <TableCell className="text-right font-mono text-sm">
                       {account.days60 > 0 ? (
                         <span className="text-orange-600">{formatCurrency(account.days60)}</span>
                       ) : (
                         '-'
                       )}
                     </TableCell>
-                    <TableCell className="text-right font-mono">
+                    <TableCell className="text-right font-mono text-sm">
                       {account.days90 > 0 ? (
                         <span className="text-red-600">{formatCurrency(account.days90)}</span>
                       ) : (
                         '-'
                       )}
                     </TableCell>
-                    <TableCell className="text-right font-mono">
+                    <TableCell className="text-right font-mono text-sm">
                       {account.days90Plus > 0 ? (
                         <span className="text-red-700 font-semibold">{formatCurrency(account.days90Plus)}</span>
                       ) : (
@@ -212,37 +287,46 @@ export default function AgingReportPage() {
                 <TableCell colSpan={2} className="text-right font-bold">
                   TOTALS
                 </TableCell>
-                <TableCell className="text-right font-mono font-bold">
+                <TableCell className="text-right font-mono font-bold text-sm">
+                  {formatCurrency(totals.orderTotal || 0)}
+                </TableCell>
+                <TableCell className="text-right font-mono font-bold text-sm text-green-600">
+                  {formatCurrency(totals.paidAmount || 0)}
+                </TableCell>
+                <TableCell className="text-right font-mono font-bold text-sm text-blue-600">
+                  {formatCurrency(totals.total)}
+                </TableCell>
+                <TableCell className="text-right font-mono font-bold text-sm">
                   {formatCurrency(totals.current)}
                   <div className="text-xs text-gray-600 font-normal">
                     {getAgingPercentage(totals.current, totals.total)}%
                   </div>
                 </TableCell>
-                <TableCell className="text-right font-mono font-bold text-yellow-600">
+                <TableCell className="text-right font-mono font-bold text-sm text-yellow-600">
                   {formatCurrency(totals.days30)}
                   <div className="text-xs text-gray-600 font-normal">
                     {getAgingPercentage(totals.days30, totals.total)}%
                   </div>
                 </TableCell>
-                <TableCell className="text-right font-mono font-bold text-orange-600">
+                <TableCell className="text-right font-mono font-bold text-sm text-orange-600">
                   {formatCurrency(totals.days60)}
                   <div className="text-xs text-gray-600 font-normal">
                     {getAgingPercentage(totals.days60, totals.total)}%
                   </div>
                 </TableCell>
-                <TableCell className="text-right font-mono font-bold text-red-600">
+                <TableCell className="text-right font-mono font-bold text-sm text-red-600">
                   {formatCurrency(totals.days90)}
                   <div className="text-xs text-gray-600 font-normal">
                     {getAgingPercentage(totals.days90, totals.total)}%
                   </div>
                 </TableCell>
-                <TableCell className="text-right font-mono font-bold text-red-700">
+                <TableCell className="text-right font-mono font-bold text-sm text-red-700">
                   {formatCurrency(totals.days90Plus)}
                   <div className="text-xs text-gray-600 font-normal">
                     {getAgingPercentage(totals.days90Plus, totals.total)}%
                   </div>
                 </TableCell>
-                <TableCell className="text-right font-mono font-bold text-lg">
+                <TableCell className="text-right font-mono font-bold text-lg text-blue-600">
                   {formatCurrency(totals.total)}
                 </TableCell>
                 <TableCell></TableCell>
@@ -424,6 +508,65 @@ export default function AgingReportPage() {
           </Card>
         )}
       </div>
+
+      <FloatingActionMenu actions={[
+        {
+          id: 'profit-loss',
+          label: 'Profit & Loss Statement',
+          icon: React.createElement(TrendingUp, { className: "h-5 w-5 text-white" }),
+          onClick: () => router.push('/reports/profit-loss'),
+          color: 'bg-blue-600',
+          hoverColor: 'hover:bg-blue-700',
+        },
+        {
+          id: 'trial-balance',
+          label: 'Trial Balance',
+          icon: React.createElement(Calculator, { className: "h-5 w-5 text-white" }),
+          onClick: () => router.push('/reports/trial-balance'),
+          color: 'bg-blue-600',
+          hoverColor: 'hover:bg-blue-700',
+        },
+        {
+          id: 'cash-flow',
+          label: 'Cash Flow Statement',
+          icon: React.createElement(CreditCard, { className: "h-5 w-5 text-white" }),
+          onClick: () => router.push('/reports/cash-flow'),
+          color: 'bg-blue-600',
+          hoverColor: 'hover:bg-blue-700',
+        },
+        {
+          id: 'balance-sheet',
+          label: 'Balance Sheet',
+          icon: React.createElement(BarChart3, { className: "h-5 w-5 text-white" }),
+          onClick: () => router.push('/reports/balance-sheet'),
+          color: 'bg-blue-600',
+          hoverColor: 'hover:bg-blue-700',
+        },
+        {
+          id: 'accounts-payable-receivable',
+          label: 'Accounts Payable & Receivable',
+          icon: React.createElement(Users, { className: "h-5 w-5 text-white" }),
+          onClick: () => router.push('/reports/accounts-payable-receivable'),
+          color: 'bg-blue-600',
+          hoverColor: 'hover:bg-blue-700',
+        },
+        {
+          id: 'day-sheet',
+          label: 'Day Sheet',
+          icon: React.createElement(Calendar, { className: "h-5 w-5 text-white" }),
+          onClick: () => router.push('/reports/day-sheet'),
+          color: 'bg-blue-600',
+          hoverColor: 'hover:bg-blue-700',
+        },
+        {
+          id: 'aging-report',
+          label: 'Aging Report',
+          icon: React.createElement(Clock, { className: "h-5 w-5 text-white" }),
+          onClick: () => router.push('/reports/aging-report'),
+          color: 'bg-blue-600',
+          hoverColor: 'hover:bg-blue-700',
+        },
+      ]} />
     </div>
   );
 }

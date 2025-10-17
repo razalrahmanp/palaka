@@ -34,10 +34,7 @@ import {
   TrendingUp,
   TrendingDown,
   RotateCcw,
-  Package,
-  LayoutGrid,
-  ChevronDown,
-  ChevronUp
+  Package
 } from 'lucide-react';
 
 // Interfaces
@@ -93,23 +90,11 @@ export function ProfessionalLedgerSystem() {
   const router = useRouter();
   
   // State management
-  const [activeTab, setActiveTab] = useState('all');
+  const [activeTab, setActiveTab] = useState('customer');
   const [ledgers, setLedgers] = useState<LedgerSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [hideZeroBalances, setHideZeroBalances] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
-    customer: true,
-    supplier: true,
-    employee: true,
-    investors: true,
-    loans: true,
-    bank: true,
-    sales_returns: false,
-    purchase_returns: false,
-  });
-  // Track expanded state for nested sub-groups (type -> category)
-  const [expandedSubgroups, setExpandedSubgroups] = useState<Record<string, Record<string, boolean>>>({});
   
   // Pagination
   const [pagination, setPagination] = useState<PaginationInfo>({
@@ -196,57 +181,6 @@ export function ProfessionalLedgerSystem() {
     setPagination(prev => ({ ...prev, page: 1 }));
     setSearchTerm('');
     setHideZeroBalances(false);
-  };
-
-  // Group ledgers by type and then by category (if available)
-  const groupLedgersByType = () => {
-    const grouped: Record<string, Record<string, LedgerSummary[]>> = {
-      customer: {},
-      supplier: {},
-      employee: {},
-      investors: {},
-      loans: {},
-      bank: {},
-      sales_returns: {},
-      purchase_returns: {},
-    };
-
-    ledgers.forEach((ledger) => {
-      const type = ledger.type;
-      // Prefer a proper category field when present, fall back to account id/account prefix
-  // Safely derive a category: prefer explicit category fields, fallback to liability_category or a name prefix
-  let category: string | undefined = undefined;
-  const ledgerObj = ledger as unknown as Record<string, unknown>;
-  if (typeof ledgerObj.category === 'string') category = ledgerObj.category;
-  if (!category && typeof ledgerObj.liability_category === 'string') category = ledgerObj.liability_category;
-  if (!category && typeof ledger.name === 'string') category = ledger.name.split('-')[0].trim() || undefined;
-  if (!category) category = 'Uncategorized';
-
-      if (!grouped[type]) grouped[type] = {};
-      if (!grouped[type][category]) grouped[type][category] = [];
-      grouped[type][category].push(ledger);
-    });
-
-    return grouped;
-  };
-
-  // Toggle group expansion
-  const toggleGroup = (groupType: string) => {
-    setExpandedGroups((prev) => ({
-      ...prev,
-      [groupType]: !prev[groupType],
-    }));
-  };
-
-  // Toggle subgroup (type -> category)
-  const toggleSubgroup = (groupType: string, subgroup: string) => {
-    setExpandedSubgroups((prev) => ({
-      ...prev,
-      [groupType]: {
-        ...(prev[groupType] || {}),
-        [subgroup]: !((prev[groupType] || {})[subgroup]),
-      }
-    }));
   };
 
   // Handle ledger selection - navigate to detail page
@@ -425,11 +359,7 @@ export function ProfessionalLedgerSystem() {
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
             <div className="border-b bg-gray-50 px-6 pt-4">
-              <TabsList className="grid w-full grid-cols-9 h-12 bg-white shadow-sm">
-                <TabsTrigger value="all" className="flex items-center gap-2 data-[state=active]:bg-gray-50 data-[state=active]:text-gray-900 font-semibold">
-                  <LayoutGrid className="h-4 w-4" />
-                  All Ledgers
-                </TabsTrigger>
+              <TabsList className="grid w-full grid-cols-8 h-12 bg-white shadow-sm">
                 <TabsTrigger value="customer" className="flex items-center gap-2 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">
                   <Users className="h-4 w-4" />
                   Customers
@@ -477,138 +407,6 @@ export function ProfessionalLedgerSystem() {
                   <FileText className="h-16 w-16 text-gray-300 mx-auto mb-4" />
                   <p className="text-gray-500">No ledgers found</p>
                   <p className="text-sm text-gray-400 mt-2">Try adjusting your search or filters</p>
-                </div>
-              ) : activeTab === 'all' ? (
-                /* Grouped View for "All Ledgers" Tab */
-                <div className="space-y-4">
-                  {Object.entries(groupLedgersByType()).map(([groupType, categories]) => {
-                    // categories is Record<string, LedgerSummary[]>
-                    const categoryKeys = Object.keys(categories || {});
-                    if (categoryKeys.length === 0) return null;
-
-                    const groupInfo = {
-                      customer: { name: 'Customers (Receivables)', color: 'blue', icon: Users },
-                      supplier: { name: 'Suppliers (Payables)', color: 'purple', icon: Building2 },
-                      employee: { name: 'Employees (Salaries)', color: 'green', icon: UserCheck },
-                      investors: { name: 'Investors (Capital)', color: 'yellow', icon: HandCoins },
-                      loans: { name: 'Loans (Liabilities)', color: 'red', icon: Banknote },
-                      bank: { name: 'Bank Accounts', color: 'indigo', icon: CreditCard },
-                      sales_returns: { name: 'Sales Returns', color: 'orange', icon: RotateCcw },
-                      purchase_returns: { name: 'Purchase Returns', color: 'pink', icon: Package },
-                    }[groupType] || { name: groupType, color: 'gray', icon: FileText };
-
-                    const Icon = groupInfo.icon;
-                    // compute totals across all categories for this group type
-                    const totalDebit = categoryKeys.reduce((sum, key) => sum + (categories[key] || []).reduce((s, l) => s + (l.total_amount || 0), 0), 0);
-                    const totalCredit = categoryKeys.reduce((sum, key) => sum + (categories[key] || []).reduce((s, l) => s + (l.paid_amount || 0), 0), 0);
-                    const totalBalance = totalDebit - totalCredit;
-
-                    const totalAccounts = categoryKeys.reduce((s, k) => s + (categories[k] || []).length, 0);
-
-                    return (
-                      <Card key={groupType} className="overflow-hidden border-2">
-                        <div
-                          className={`bg-${groupInfo.color}-50 border-b-2 border-${groupInfo.color}-200 p-4 cursor-pointer hover:bg-${groupInfo.color}-100 transition-colors`}
-                          onClick={() => toggleGroup(groupType)}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <Icon className={`h-6 w-6 text-${groupInfo.color}-600`} />
-                              <div>
-                                <h3 className="text-lg font-semibold text-gray-900">{groupInfo.name}</h3>
-                                <p className="text-sm text-gray-600">{totalAccounts} Accounts</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-6">
-                              <div className="text-right">
-                                <p className="text-xs text-gray-500">Total Balance</p>
-                                <p className={`text-lg font-bold ${totalBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                  {formatCurrency(totalBalance)}
-                                </p>
-                              </div>
-                              {expandedGroups[groupType] ? (
-                                <ChevronUp className="h-5 w-5 text-gray-500" />
-                              ) : (
-                                <ChevronDown className="h-5 w-5 text-gray-500" />
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {expandedGroups[groupType] && (
-                          <div className="space-y-3 p-4">
-                            {categoryKeys.map((cat) => {
-                              const subLedgers = categories[cat] || [];
-                              const subDebit = subLedgers.reduce((s, l) => s + (l.total_amount || 0), 0);
-                              const subCredit = subLedgers.reduce((s, l) => s + (l.paid_amount || 0), 0);
-                              const subBalance = subDebit - subCredit;
-
-                              const isSubExpanded = !!(expandedSubgroups[groupType] || {})[cat];
-
-                              return (
-                                <div key={cat} className="border rounded">
-                                  <div className="flex items-center justify-between p-3 bg-gray-50 cursor-pointer" onClick={() => toggleSubgroup(groupType, cat)}>
-                                    <div>
-                                      <p className="font-medium">{cat}</p>
-                                      <p className="text-sm text-gray-500">{subLedgers.length} accounts</p>
-                                    </div>
-                                    <div className="text-right">
-                                      <p className="text-sm text-gray-500">Balance</p>
-                                      <p className={`font-semibold ${subBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(subBalance)}</p>
-                                    </div>
-                                  </div>
-
-                                  {isSubExpanded && (
-                                    <div className="overflow-x-auto">
-                                      <Table>
-                                        <TableHeader>
-                                          <TableRow className="bg-white">
-                                            <TableHead>Account Name</TableHead>
-                                            {groupType !== 'loans' && <TableHead>Contact</TableHead>}
-                                            <TableHead className="text-right">Debit (₹)</TableHead>
-                                            <TableHead className="text-right">Credit (₹)</TableHead>
-                                            <TableHead className="text-right">Balance (₹)</TableHead>
-                                            <TableHead className="text-center">Status</TableHead>
-                                          </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                          {subLedgers.map((ledger) => {
-                                            const balance = (ledger.total_amount || 0) - (ledger.paid_amount || 0);
-                                            return (
-                                              <TableRow key={ledger.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => handleViewLedger(ledger)}>
-                                                <TableCell>
-                                                  <div>
-                                                    <p className="font-medium text-gray-900">{ledger.name}</p>
-                                                    <p className="text-xs text-gray-500">ID: {ledger.id.toString().slice(0, 8)}</p>
-                                                  </div>
-                                                </TableCell>
-                                                {groupType !== 'loans' && (
-                                                  <TableCell>
-                                                    <div className="text-sm">
-                                                      {ledger.email && <p className="text-gray-600">{ledger.email}</p>}
-                                                      {ledger.phone && <p className="text-gray-500">{ledger.phone}</p>}
-                                                    </div>
-                                                  </TableCell>
-                                                )}
-                                                <TableCell className="text-right font-mono text-green-700">{formatCurrency(ledger.total_amount || 0)}</TableCell>
-                                                <TableCell className="text-right font-mono text-red-700">{formatCurrency(ledger.paid_amount || 0)}</TableCell>
-                                                <TableCell className={`text-right font-mono font-semibold ${balance >= 0 ? 'text-orange-700' : 'text-blue-700'}`}>{formatCurrency(balance)}</TableCell>
-                                                <TableCell className="text-center">{getStatusBadge(ledger.status, balance)}</TableCell>
-                                              </TableRow>
-                                            );
-                                          })}
-                                        </TableBody>
-                                      </Table>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </Card>
-                    );
-                  })}
                 </div>
               ) : (
                 /* Regular Table View for Individual Tabs */

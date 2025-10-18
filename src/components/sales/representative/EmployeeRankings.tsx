@@ -177,26 +177,30 @@ const EmployeeRankings: React.FC<EmployeeRankingsProps> = ({ timeFilter = 'all' 
         </CardTitle>
         
         {/* Category Tabs */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-2 mt-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 mt-4">
           {rankingCategories.map((category) => {
             const isActive = activeTab === category.key
             return (
               <button
                 key={category.key}
                 onClick={() => setActiveTab(category.key as keyof Rankings)}
-                className={`flex-1 min-w-[160px] p-3 rounded-lg border-2 transition-all ${
+                className={`p-3 rounded-lg border-2 transition-all shadow-sm hover:shadow-md h-[100px] ${
                   isActive
-                    ? `bg-gradient-to-r ${category.gradient} text-white border-transparent`
+                    ? `bg-gradient-to-br ${category.gradient} text-white border-transparent shadow-lg`
                     : 'bg-white hover:bg-gray-50 border-gray-200'
                 }`}
               >
-                <div className="flex items-center gap-2 justify-center">
-                  {category.icon}
-                  <span className="font-medium text-sm">{category.title}</span>
+                <div className="flex flex-col items-center justify-center text-center gap-1.5 h-full">
+                  <div className={`flex-shrink-0 ${isActive ? 'text-white' : 'text-gray-700'}`}>
+                    {category.icon}
+                  </div>
+                  <span className={`font-semibold text-xs leading-tight ${isActive ? 'text-white' : 'text-gray-900'}`}>
+                    {category.title}
+                  </span>
+                  <p className={`text-[10px] leading-tight line-clamp-2 ${isActive ? 'text-white/90' : 'text-gray-600'}`}>
+                    {category.description}
+                  </p>
                 </div>
-                <p className={`text-xs mt-1 ${isActive ? 'text-white/80' : 'text-gray-500'}`}>
-                  {category.description}
-                </p>
               </button>
             )
           })}
@@ -207,38 +211,45 @@ const EmployeeRankings: React.FC<EmployeeRankingsProps> = ({ timeFilter = 'all' 
         {currentRankings.length === 0 ? (
           <p className="text-gray-500 text-center py-8">No data available for this ranking</p>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-4">
             {currentRankings.map((rep) => (
               <div
                 key={rep.id}
-                className={`flex items-center justify-between p-4 rounded-lg border ${
-                  rep.rank <= 3 ? 'bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-200' : 'bg-gray-50 border-gray-200'
+                className={`flex items-center justify-between p-5 rounded-xl border-2 transition-all hover:shadow-md ${
+                  rep.rank <= 3 
+                    ? 'bg-gradient-to-r from-amber-50 via-yellow-50 to-orange-50 border-amber-300 shadow-sm' 
+                    : 'bg-white border-gray-200 hover:border-gray-300'
                 }`}
               >
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center justify-center w-10 h-10">
+                <div className="flex items-center gap-4 flex-1">
+                  <div className="flex items-center justify-center w-12 h-12 bg-white rounded-full shadow-sm">
                     {getRankIcon(rep.rank)}
                   </div>
-                  <div>
-                    <h4 className="font-semibold text-gray-900">{rep.name}</h4>
-                    <p className="text-sm text-gray-600">{rep.email}</p>
-                    <p className="text-xs text-gray-500">{rep.additional_info}</p>
+                  <div className="flex-1">
+                    <h4 className="font-bold text-gray-900 text-base">{rep.name}</h4>
+                    <p className="text-sm text-gray-600 font-medium">{rep.email}</p>
+                    <p className="text-xs text-gray-500 mt-1 font-medium">{rep.additional_info}</p>
                   </div>
                 </div>
                 
-                <div className="text-right">
-                  <div className="flex items-center gap-2">
-                    <Badge variant={rep.rank <= 3 ? "default" : "secondary"}>
+                <div className="text-right ml-4">
+                  <div className="flex items-center gap-2 justify-end mb-2">
+                    <Badge 
+                      variant={rep.rank <= 3 ? "default" : "secondary"}
+                      className={`text-sm font-bold px-3 py-1 ${
+                        rep.rank <= 3 ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white' : ''
+                      }`}
+                    >
                       {formatMetricValue(rep.metric_value, rep.metric_label)}
                     </Badge>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">{rep.metric_label}</p>
+                  <p className="text-xs text-gray-600 font-semibold mb-2">{rep.metric_label}</p>
                   
                   {/* Show pending amount stat card for all rankings */}
                   {rep.total_pending !== undefined && (
-                    <div className="mt-2 p-2 bg-orange-50 rounded-md border border-orange-200">
-                      <p className="text-xs font-medium text-orange-800">Pending Amount</p>
-                      <p className="text-sm font-bold text-orange-900">
+                    <div className="mt-3 p-3 bg-white rounded-lg border-2 border-orange-300 shadow-sm">
+                      <p className="text-xs font-bold text-orange-700 mb-1">Pending Amount</p>
+                      <p className="text-base font-bold text-orange-900">
                         ₹{new Intl.NumberFormat('en-IN').format(rep.total_pending)}
                       </p>
                     </div>

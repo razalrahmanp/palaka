@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,7 +11,6 @@ import {
   RotateCcw, 
   MessageSquare, 
   TrendingUp,
-  Target,
   RefreshCw,
   AlertTriangle,
   Percent,
@@ -20,7 +19,10 @@ import {
   Clock,
   Trophy,
   X,
-  ChevronDown
+  Truck,
+  CheckCircle,
+  AlertCircle,
+  FileQuestion
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { getCurrentUser, User } from '@/lib/auth'
@@ -44,6 +46,12 @@ interface SalesRepStats {
   profit_margin: number
   pending_orders: number
   completed_orders: number
+  delivered_orders: number
+  delivered_collected: number
+  delivered_pending: number
+  total_collected: number
+  total_pending: number
+  total_not_invoiced: number
   total_customers: number
   new_customers_this_month: number
   pending_returns: number
@@ -154,7 +162,7 @@ export default function SalesRepresentativePage() {
 
   useEffect(() => {
     initializePage()
-  }, [initializePage, timeFilter])
+  }, [initializePage])
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -217,11 +225,11 @@ export default function SalesRepresentativePage() {
 
         {/* Floating Employee Selector for Admin Users */}
         {isAdmin && employees.length > 0 && (
-          <div className="fixed bottom-6 left-6 z-50">
-            <div className="relative inline-block">
-              {/* Visual button */}
-              <div className="absolute inset-0 p-2.5 bg-gradient-to-br from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 pointer-events-none flex items-center justify-center">
-                <Users className="h-4 w-4" />
+          <div className="fixed bottom-24 right-6 z-50">
+            <div className="relative inline-block group">
+              {/* Visual button - rounded circle */}
+              <div className="absolute inset-0 w-12 h-12 bg-gradient-to-br from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-full shadow-lg hover:shadow-2xl transition-all duration-300 pointer-events-none flex items-center justify-center group-hover:scale-110 transform">
+                <Users className="h-5 w-5" />
               </div>
               
               {/* Actual select positioned over the button */}
@@ -236,7 +244,7 @@ export default function SalesRepresentativePage() {
                     await fetchStats(newEmployeeId, timeFilter)
                   }
                 }}
-                className="relative w-10 h-10 opacity-0 cursor-pointer"
+                className="relative w-12 h-12 opacity-0 cursor-pointer"
                 title="Select Employee"
               >
                 {employees.map((employee) => (
@@ -251,10 +259,10 @@ export default function SalesRepresentativePage() {
 
         {/* Floating Time Period Filter */}
         <div className="fixed bottom-6 right-6 z-50">
-          <div className="relative inline-block">
-            {/* Visual button */}
-            <div className="absolute inset-0 p-2.5 bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 pointer-events-none flex items-center justify-center">
-              <Clock className="h-4 w-4" />
+          <div className="relative inline-block group">
+            {/* Visual button - rounded circle */}
+            <div className="absolute inset-0 w-12 h-12 bg-gradient-to-br from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-full shadow-lg hover:shadow-2xl transition-all duration-300 pointer-events-none flex items-center justify-center group-hover:scale-110 transform">
+              <Clock className="h-5 w-5" />
             </div>
             
             {/* Actual select positioned over the button */}
@@ -269,142 +277,160 @@ export default function SalesRepresentativePage() {
                   await fetchStats(selectedEmployee, newPeriod)
                 }
               }}
-              className="relative w-10 h-10 opacity-0 cursor-pointer"
+              className="relative w-12 h-12 opacity-0 cursor-pointer"
               title="Select Time Period"
             >
               <option value="all">All Time</option>
               <option value="today">Today</option>
-              <option value="week">This Week</option>
-              <option value="month">This Month</option>
-              <option value="quarter">This Quarter</option>
-              <option value="year">This Year</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="this_week">This Week</option>
+              <option value="this_month">This Month</option>
+              <option value="last_month">Last Month</option>
+              <option value="this_quarter">This Quarter</option>
+              <option value="this_year">This Year</option>
             </select>
           </div>
         </div>
 
         {/* Statistics Cards */}
         {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
-            {/* Orders Statistics */}
-            <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0 shadow-lg">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-blue-100">Total Orders</CardTitle>
-                <ShoppingCart className="h-4 w-4 text-blue-200" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-white">{stats.total_orders}</div>
-                <div className="flex items-center text-xs text-blue-100 mt-1">
-                  <span className="text-orange-200 mr-1">{stats.pending_orders} pending</span>
-                  <span>• {stats.completed_orders} completed</span>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-3">
+            {/* Orders & Performance Combined */}
+            <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0 shadow-sm">
+              <CardContent className="p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] font-semibold text-blue-100">Orders & Performance</p>
+                  <ShoppingCart className="h-3.5 w-3.5 text-blue-200" />
                 </div>
-                <p className="text-xs text-blue-200 mt-1">
-                  Revenue: {formatCurrency(stats.total_revenue)}
+                <div className="text-xl font-bold text-white mb-1">{stats.total_orders} orders</div>
+                <p className="text-[10px] text-blue-200 leading-tight">
+                  {formatPercentage(stats.conversion_rate)} conversion
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Delivered Orders with Collection Status */}
+            <Card className="bg-gradient-to-br from-cyan-500 to-cyan-600 text-white border-0 shadow-sm">
+              <CardContent className="p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] font-semibold text-cyan-100">Delivered Orders</p>
+                  <Truck className="h-3.5 w-3.5 text-cyan-200" />
+                </div>
+                <div className="text-xl font-bold text-white mb-1">{stats.delivered_orders || 0}</div>
+                <p className="text-[10px] text-cyan-200 leading-tight truncate">
+                  ₹{new Intl.NumberFormat('en-IN', { notation: 'compact' }).format(stats.delivered_collected || 0)} paid • ₹{new Intl.NumberFormat('en-IN', { notation: 'compact' }).format(stats.delivered_pending || 0)} due
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Total Collected */}
+            <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-0 shadow-sm">
+              <CardContent className="p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] font-semibold text-emerald-100">Total Collected</p>
+                  <CheckCircle className="h-3.5 w-3.5 text-emerald-200" />
+                </div>
+                <div className="text-xl font-bold text-white mb-1 truncate">{formatCurrency(stats.total_collected || 0)}</div>
+                <p className="text-[10px] text-emerald-200 leading-tight">
+                  From invoiced orders
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Total Pending */}
+            <Card className="bg-gradient-to-br from-amber-500 to-amber-600 text-white border-0 shadow-sm">
+              <CardContent className="p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] font-semibold text-amber-100">Total Pending</p>
+                  <AlertCircle className="h-3.5 w-3.5 text-amber-200" />
+                </div>
+                <div className="text-xl font-bold text-white mb-1 truncate">{formatCurrency(stats.total_pending || 0)}</div>
+                <p className="text-[10px] text-amber-200 leading-tight">
+                  From invoiced orders
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Not Invoiced */}
+            <Card className="bg-gradient-to-br from-rose-500 to-rose-600 text-white border-0 shadow-sm">
+              <CardContent className="p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] font-semibold text-rose-100">Not Invoiced</p>
+                  <FileQuestion className="h-3.5 w-3.5 text-rose-200" />
+                </div>
+                <div className="text-xl font-bold text-white mb-1 truncate">{formatCurrency(stats.total_not_invoiced || 0)}</div>
+                <p className="text-[10px] text-rose-200 leading-tight">
+                  Orders pending invoice
                 </p>
               </CardContent>
             </Card>
 
             {/* Total Revenue */}
-            <Card className="bg-gradient-to-br from-teal-500 to-teal-600 text-white border-0 shadow-lg">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-teal-100">Total Revenue</CardTitle>
-                <DollarSign className="h-4 w-4 text-teal-200" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-white">{formatCurrency(stats.total_revenue)}</div>
-                <div className="flex items-center text-xs text-teal-100 mt-1">
-                  <span>From {stats.total_orders} orders</span>
+            <Card className="bg-gradient-to-br from-teal-500 to-teal-600 text-white border-0 shadow-sm">
+              <CardContent className="p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] font-semibold text-teal-100">Total Revenue</p>
+                  <DollarSign className="h-3.5 w-3.5 text-teal-200" />
                 </div>
-                <p className="text-xs text-teal-200 mt-1">
-                  Average: {formatCurrency(stats.average_order_value)}
+                <div className="text-xl font-bold text-white mb-1 truncate">{formatCurrency(stats.total_revenue)}</div>
+                <p className="text-[10px] text-teal-200 leading-tight truncate">
+                  Avg: {formatCurrency(stats.average_order_value)}
                 </p>
               </CardContent>
             </Card>
 
             {/* Total Profit */}
-            <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-0 shadow-lg">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-green-100">Total Profit</CardTitle>
-                <TrendingUp className="h-4 w-4 text-green-200" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-white">{formatCurrency(stats.total_profit)}</div>
-                <div className="flex items-center text-xs text-green-100 mt-1">
-                  <span>{formatPercentage(stats.profit_margin)} margin</span>
+            <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-0 shadow-sm">
+              <CardContent className="p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] font-semibold text-green-100">Total Profit</p>
+                  <TrendingUp className="h-3.5 w-3.5 text-green-200" />
                 </div>
-                <p className="text-xs text-green-200 mt-1">
-                  Revenue - Discounts = Profit
+                <div className="text-xl font-bold text-white mb-1 truncate">{formatCurrency(stats.total_profit)}</div>
+                <p className="text-[10px] text-green-200 leading-tight">
+                  {formatPercentage(stats.profit_margin)} margin
                 </p>
               </CardContent>
             </Card>
 
             {/* Total Discount Given */}
-            <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-0 shadow-lg">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-purple-100">Total Discount</CardTitle>
-                <Percent className="h-4 w-4 text-purple-200" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-white">{formatCurrency(stats.total_discount_given)}</div>
-                <div className="flex items-center text-xs text-purple-100 mt-1">
-                  <span>{formatPercentage(stats.total_revenue > 0 ? (stats.total_discount_given / stats.total_revenue) * 100 : 0)} of revenue</span>
+            <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-0 shadow-sm">
+              <CardContent className="p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] font-semibold text-purple-100">Total Discount</p>
+                  <Percent className="h-3.5 w-3.5 text-purple-200" />
                 </div>
-                <p className="text-xs text-purple-200 mt-1">
-                  Total savings given to customers
+                <div className="text-xl font-bold text-white mb-1 truncate">{formatCurrency(stats.total_discount_given)}</div>
+                <p className="text-[10px] text-purple-200 leading-tight">
+                  {formatPercentage(stats.total_revenue > 0 ? (stats.total_discount_given / stats.total_revenue) * 100 : 0)} of revenue
                 </p>
               </CardContent>
             </Card>
 
             {/* Returns & Issues */}
-            <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-0 shadow-lg">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-orange-100">Returns & Issues</CardTitle>
-                <RotateCcw className="h-4 w-4 text-orange-200" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-white">{stats.pending_returns}</div>
-                <div className="flex items-center text-xs text-orange-100 mt-1">
-                  <span>{stats.total_returns} total returns</span>
+            <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-0 shadow-sm">
+              <CardContent className="p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] font-semibold text-orange-100">Returns & Issues</p>
+                  <RotateCcw className="h-3.5 w-3.5 text-orange-200" />
                 </div>
-                <div className="flex items-center text-xs text-orange-200 mt-1">
-                  <MessageSquare className="h-3 w-3 mr-1" />
-                  <span>{stats.open_complaints} open complaints</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Performance */}
-            <Card className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white border-0 shadow-lg">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-indigo-100">Monthly Performance</CardTitle>
-                <Target className="h-4 w-4 text-indigo-200" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-white">
-                  {formatPercentage(stats.monthly_achievement)}
-                </div>
-                <div className="flex items-center text-xs text-indigo-100 mt-1">
-                  <span>Target: {formatCurrency(stats.monthly_target)}</span>
-                </div>
-                <div className="flex items-center text-xs text-indigo-200 mt-1">
-                  <TrendingUp className="h-3 w-3 mr-1" />
-                  <span>{formatPercentage(stats.conversion_rate)} conversion</span>
-                </div>
+                <div className="text-xl font-bold text-white mb-1">{stats.pending_returns}</div>
+                <p className="text-[10px] text-orange-200 leading-tight">
+                  {stats.total_returns} returns • {stats.open_complaints} complaints
+                </p>
               </CardContent>
             </Card>
           </div>
         )}
 
-        {/* Rankings Trigger Button */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
+        {/* Floating Rankings Button */}
+        <div className="fixed bottom-44 right-6 z-50">
           <button
             onClick={() => setIsRankingsOpen(true)}
-            className="w-full flex items-center justify-between px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg shadow-lg hover:shadow-xl transition-all duration-300"
+            className="w-12 h-12 bg-gradient-to-br from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-full shadow-lg hover:shadow-2xl transition-all duration-300 flex items-center justify-center group hover:scale-110 transform"
+            title="View Employee Rankings"
           >
-            <div className="flex items-center gap-3">
-              <Trophy className="h-5 w-5" />
-              <span className="font-semibold">View Employee Rankings</span>
-            </div>
-            <ChevronDown className="h-5 w-5" />
+            <Trophy className="h-5 w-5" />
           </button>
         </div>
 

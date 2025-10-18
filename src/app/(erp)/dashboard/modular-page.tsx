@@ -5,70 +5,34 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { hasPermission } from "@/lib/auth";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { 
-  DailyWalkInsComponent,
-  DailyMoneyFlowComponent,
-  CashBankBalanceComponent,
-  DailySpendingComponent
-} from "@/components/dashboard/WhatComesGoesComponents";
-import { MyOrdersSection } from '@/components/sales/representative/MyOrdersSection';
-import { ReturnsExchangesSection } from '@/components/sales/representative/ReturnsExchangesSection';
-import { ComplaintsSection } from '@/components/sales/representative/ComplaintsSection';
-import { SalesPerformanceSection } from '@/components/sales/representative/SalesPerformanceSection';
-import EmployeeRankings from '@/components/sales/representative/EmployeeRankings';
-import { getCurrentUser } from '@/lib/auth';
-import { User, UserRole, Permission } from '@/types';
-// Finance component import
-import { DetailedFinanceOverview } from '@/components/finance/DetailedFinanceOverview';
-// Analytics dashboard import
-import { AnalyticsDashboard } from '@/components/analytics';
 
-interface SalesRepStats {
-  totalRevenue: number;
-  totalProfit: number;
-  totalDiscounts: number;
-  totalReturns: number;
-  // Additional fields that might come from API
-  total_orders?: number;
-  pending_orders?: number;
-  completed_orders?: number;
-  total_revenue?: number;
-  total_profit?: number;
-  profit_margin?: number;
-  total_discount_given?: number;
-  pending_returns?: number;
-  total_returns?: number;
-  open_complaints?: number;
-  monthly_achievement?: number;
-  monthly_target?: number;
-  conversion_rate?: number;
-}
+// import { getCurrentUser } from '@/lib/auth';
+// import { User, UserRole, Permission } from '@/types';
+// Finance component import
+import DashboardCharts from "@/components/dashboard/DashboardCharts";
 
 import { 
   IndianRupee, 
   TrendingUp,
-  ArrowUpDown,
   RefreshCw,
   Calendar,
-  Download,
-  Settings,
-  BarChart3,
-  Target,
-  ShoppingCart,
-  RotateCcw,
-  MessageSquare,
   DollarSign,
-  Percent,
-  Users,
   CreditCard,
-  Building,
   Receipt,
-  ArrowDownLeft
+  ArrowDownLeft,
+  CheckCircle,
+  AlertCircle,
+  BarChart3,
+  PieChart,
+  Activity,
+  Plus,
+  Minus,
+  Equal
 } from "lucide-react";
 
 // Data fetching hooks
@@ -104,24 +68,16 @@ const useOperationalData = () => {
 export default function EnhancedModularDashboard() {
   const router = useRouter();
   const [hasAccess, setHasAccess] = useState(false);
-  const [activeTab, setActiveTab] = useState('overview');
 
-  // Sales Representative Dashboard State
-  const [salesRepActiveTab, setSalesRepActiveTab] = useState('orders');
-  const [user, setUser] = useState<User | null>(null);
-  const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
-  const [employees, setEmployees] = useState<User[]>([]);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [salesRepStats, setSalesRepStats] = useState<SalesRepStats | null>(null);
-  const [salesRepLoading, setSalesRepLoading] = useState(false);
-
-  // Finance State
-  const [financeLoading, setFinanceLoading] = useState(false);
-
-  // Date Filtering State - Updated to default to Last Month
-  const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'month' | 'last30' | 'custom' | 'alltime'>('last30');
+  // Date Filtering State - Default to This Month
+  const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'month' | 'last30' | 'custom' | 'alltime'>('month');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
+
+  // Chart visibility state - Default to showing Revenue & Profit chart
+  const [showCharts, setShowCharts] = useState(true);
+  const [selectedChart, setSelectedChart] = useState<'revenue' | 'expense' | 'collection' | 'withdrawals' | 'cogs' | null>('revenue');
+  const [isHoveringButton, setIsHoveringButton] = useState(false);
 
   // Utility function to get date range based on filter
   const getDateRange = useCallback(() => {
@@ -217,107 +173,6 @@ export default function EnhancedModularDashboard() {
     }
   }, [router]);
 
-  // Sales Representative Dashboard initialization
-  const fetchFinancialData = useCallback(async () => {
-    // Simple loading state for finance section
-    try {
-      setFinanceLoading(true);
-      // DetailedFinanceOverview handles its own data fetching
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simple delay
-    } catch (error) {
-      console.error('Error with finance overview:', error);
-    } finally {
-      setFinanceLoading(false);
-    }
-  }, []);
-
-  const fetchSalesRepStats = useCallback(async (employeeId: string) => {
-    setSalesRepLoading(true);
-    try {
-      const response = await fetch(`/api/sales/representative/${employeeId}/stats`);
-      if (response.ok) {
-        const data = await response.json();
-        setSalesRepStats(data);
-      }
-    } catch (error) {
-      console.error('Error fetching sales rep stats:', error);
-    } finally {
-      setSalesRepLoading(false);
-    }
-  }, []);
-
-  const fetchEmployees = useCallback(async () => {
-    try {
-      const response = await fetch('/api/sales/representatives');
-      if (response.ok) {
-        const data = await response.json();
-        setEmployees(data || []);
-        if (data && data.length > 0) {
-          setSelectedEmployee(data[0].id);
-          await fetchSalesRepStats(data[0].id);
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching employees:', error);
-    }
-  }, [fetchSalesRepStats]);
-
-  const initializeSalesRepDashboard = useCallback(async () => {
-    try {
-      const currentUser = await getCurrentUser();
-      if (currentUser) {
-        // Convert AuthUser to User type for state
-        const userForState: User = {
-          id: currentUser.id,
-          email: currentUser.email,
-          role: currentUser.role as UserRole, // Type conversion needed
-          name: currentUser.email, // Use email as fallback for name
-          password: '', // Not needed for display
-          created_at: '', // Not needed for display
-          permissions: currentUser.permissions as Permission[]
-        };
-        setUser(userForState);
-        
-        const adminPermissions = ['admin:all', 'sales:manage', 'dashboard:admin'];
-        const userIsAdmin = adminPermissions.some(permission => hasPermission(permission)) || 
-                           currentUser.role === 'System Administrator' || 
-                           currentUser.role === 'Admin';
-        setIsAdmin(userIsAdmin);
-        
-        if (userIsAdmin) {
-          await fetchEmployees();
-        }
-        
-        const employeeId = userIsAdmin ? null : currentUser.id;
-        setSelectedEmployee(employeeId);
-        
-        if (employeeId) {
-          await fetchSalesRepStats(employeeId);
-        }
-      }
-    } catch (error) {
-      console.error('Error initializing sales rep dashboard:', error);
-    }
-  }, [fetchEmployees, fetchSalesRepStats]);
-
-  useEffect(() => {
-    initializeSalesRepDashboard();
-    fetchFinancialData();
-  }, [initializeSalesRepDashboard, fetchFinancialData]);
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  const formatPercentage = (value: number) => {
-    return `${value.toFixed(1)}%`;
-  };
-
   const refreshAllData = () => {
     refetchKPI();
   };
@@ -336,10 +191,10 @@ export default function EnhancedModularDashboard() {
   const isLoading = kpiLoading || operationalLoading;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+    <div className="fixed inset-0 left-16 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 overflow-hidden">
       {/* Header Section */}
-      <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-lg border-b border-gray-200 px-6 py-4">
-        <div className="max-w-full mx-auto flex items-center justify-between">
+      <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-lg border-b border-gray-200 pl-4 pr-6 py-2">
+        <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <div>
               <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-700 bg-clip-text text-transparent">
@@ -455,24 +310,18 @@ export default function EnhancedModularDashboard() {
               <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
-            <Button variant="outline" size="sm">
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-            <Button variant="outline" size="sm">
-              <Settings className="h-4 w-4" />
-            </Button>
           </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="max-w-full mx-auto p-3 sm:p-4 md:p-6 space-y-4 md:space-y-6">
-        {/* KPI Section - Two Rows Layout */}
-        <div className="space-y-3 md:space-y-4">
-          {/* First Row: Revenue, Profit, Gross Profit, Payment Collected */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-            {/* Revenue (MTD) Card */}
+      <div className="h-[calc(100vh-65px-85px-8px)] overflow-hidden">
+        {/* Main Grid Layout: Adjusts based on chart visibility */}
+        <div className={`grid grid-cols-1 h-full ${showCharts ? 'lg:grid-cols-3' : 'lg:grid-cols-1'}`}>
+          {/* Left Section - All KPI Cards in 2 columns */}
+          <div className={`${showCharts ? 'lg:col-span-1' : 'lg:col-span-1 max-w-6xl mx-auto'} px-3 overflow-y-auto`}>
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
+              {/* 1. Revenue (MTD) Card */}
             <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 h-20 sm:h-24">
               <CardContent className="p-2 sm:p-3 h-full">
                 <div className="flex items-center justify-between h-full">
@@ -495,30 +344,7 @@ export default function EnhancedModularDashboard() {
               </CardContent>
             </Card>
 
-            {/* Profit (MTD) Card */}
-            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 h-20 sm:h-24">
-              <CardContent className="p-2 sm:p-3 h-full">
-                <div className="flex items-center justify-between h-full">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs sm:text-sm font-medium text-green-600 truncate">
-                      Profit (MTD)
-                    </p>
-                    <div className="text-sm sm:text-lg font-bold text-green-900 truncate">
-                      {isLoading ? (
-                        <div className="h-4 sm:h-6 w-16 sm:w-20 bg-green-200 rounded animate-pulse"></div>
-                      ) : (
-                        `₹${(kpiData?.data?.totalProfit || 0).toLocaleString()}`
-                      )}
-                    </div>
-                  </div>
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-green-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
-                    <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Gross Profit (MTD) Card */}
+            {/* 2. Gross Profit (MTD) Card */}
             <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-indigo-200 h-20 sm:h-24">
               <CardContent className="p-2 sm:p-3 h-full">
                 <div className="flex items-center justify-between h-full">
@@ -541,24 +367,72 @@ export default function EnhancedModularDashboard() {
               </CardContent>
             </Card>
 
-            {/* Payment Collected Card */}
+            {/* 3. Total Collected Card */}
+            <Card className="bg-gradient-to-br from-teal-50 to-teal-100 border-teal-200 h-20 sm:h-24">
+              <CardContent className="p-2 sm:p-3 h-full">
+                <div className="flex items-center justify-between h-full">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-teal-600 truncate">Total Collected</p>
+                    <div className="text-sm sm:text-lg font-bold text-teal-900 truncate">
+                      {isLoading ? (
+                        <div className="h-4 sm:h-6 w-16 sm:w-20 bg-teal-200 rounded animate-pulse"></div>
+                      ) : (
+                        `₹${(kpiData?.data?.totalCollected || 0).toLocaleString()}`
+                      )}
+                    </div>
+                    <p className="text-xs text-teal-600 truncate">
+                      From total sales orders
+                    </p>
+                  </div>
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-teal-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
+                    <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 4. Total Pending Card */}
+            <Card className="bg-gradient-to-br from-rose-50 to-rose-100 border-rose-200 h-20 sm:h-24">
+              <CardContent className="p-2 sm:p-3 h-full">
+                <div className="flex items-center justify-between h-full">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-rose-600 truncate">Total Pending</p>
+                    <div className="text-sm sm:text-lg font-bold text-rose-900 truncate">
+                      {isLoading ? (
+                        <div className="h-4 sm:h-6 w-16 sm:w-20 bg-rose-200 rounded animate-pulse"></div>
+                      ) : (
+                        `₹${(kpiData?.data?.totalOutstanding || 0).toLocaleString()}`
+                      )}
+                    </div>
+                    <p className="text-xs text-rose-600 truncate">
+                      Outstanding from all orders
+                    </p>
+                  </div>
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-rose-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
+                    <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 5. Delivered - Collected Card */}
             <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200 h-20 sm:h-24">
               <CardContent className="p-2 sm:p-3 h-full">
                 <div className="flex items-center justify-between h-full">
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs sm:text-sm font-medium text-emerald-600 truncate">Payment Collected</p>
+                    <p className="text-xs sm:text-sm font-medium text-emerald-600 truncate">Delivered - Collected</p>
                     <div className="text-sm sm:text-lg font-bold text-emerald-900 truncate">
                       {isLoading ? (
                         <div className="h-4 sm:h-6 w-16 sm:w-20 bg-emerald-200 rounded animate-pulse"></div>
                       ) : (
-                        `₹${(kpiData?.data?.totalCollected || 0).toLocaleString()}`
+                        `₹${(kpiData?.data?.deliveredCollected || 0).toLocaleString()}`
                       )}
                     </div>
                     <div className="text-xs text-emerald-600 truncate">
                       {isLoading ? (
                         <div className="h-3 w-12 bg-emerald-200 rounded animate-pulse"></div>
                       ) : (
-                        `${kpiData?.data?.collectionRate || 0}% collected`
+                        `${kpiData?.data?.deliveredCollectionRate || 0}% from delivered`
                       )}
                     </div>
                   </div>
@@ -568,11 +442,55 @@ export default function EnhancedModularDashboard() {
                 </div>
               </CardContent>
             </Card>
-          </div>
 
-          {/* Second Row: Total Expenses, Outstanding, Vendor Payments, Withdrawals */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-            {/* Total Expenses (MTD) Card */}
+            {/* 6. Delivered - Pending Card */}
+            <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 h-20 sm:h-24">
+              <CardContent className="p-2 sm:p-3 h-full">
+                <div className="flex items-center justify-between h-full">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-orange-600 truncate">Delivered - Pending</p>
+                    <div className="text-sm sm:text-lg font-bold text-orange-900 truncate">
+                      {isLoading ? (
+                        <div className="h-4 sm:h-6 w-16 sm:w-20 bg-orange-200 rounded animate-pulse"></div>
+                      ) : (
+                        `₹${(kpiData?.data?.deliveredPending || 0).toLocaleString()}`
+                      )}
+                    </div>
+                    <p className="text-xs text-orange-600 truncate">
+                      From delivered orders
+                    </p>
+                  </div>
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-orange-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
+                    <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 7. Profit (MTD) Card */}
+            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 h-20 sm:h-24">
+              <CardContent className="p-2 sm:p-3 h-full">
+                <div className="flex items-center justify-between h-full">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-green-600 truncate">
+                      Profit (MTD)
+                    </p>
+                    <div className="text-sm sm:text-lg font-bold text-green-900 truncate">
+                      {isLoading ? (
+                        <div className="h-4 sm:h-6 w-16 sm:w-20 bg-green-200 rounded animate-pulse"></div>
+                      ) : (
+                        `₹${(kpiData?.data?.totalProfit || 0).toLocaleString()}`
+                      )}
+                    </div>
+                  </div>
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-green-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
+                    <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 8. Total Expenses (MTD) Card */}
             <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200 h-20 sm:h-24">
               <CardContent className="p-2 sm:p-3 h-full">
                 <div className="flex items-center justify-between h-full">
@@ -595,55 +513,31 @@ export default function EnhancedModularDashboard() {
               </CardContent>
             </Card>
 
-            {/* Outstanding Card */}
-            <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 h-20 sm:h-24">
+            {/* 9. COGS Card */}
+            <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 h-20 sm:h-24">
               <CardContent className="p-2 sm:p-3 h-full">
                 <div className="flex items-center justify-between h-full">
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs sm:text-sm font-medium text-orange-600 truncate">Outstanding</p>
-                    <div className="text-sm sm:text-lg font-bold text-orange-900 truncate">
+                    <p className="text-xs sm:text-sm font-medium text-red-600 truncate">COGS</p>
+                    <div className="text-sm sm:text-lg font-bold text-red-900 truncate">
                       {isLoading ? (
-                        <div className="h-4 sm:h-6 w-16 sm:w-20 bg-orange-200 rounded animate-pulse"></div>
+                        <div className="h-4 sm:h-6 w-16 sm:w-20 bg-red-200 rounded animate-pulse"></div>
                       ) : (
-                        `₹${(kpiData?.data?.totalOutstanding || 0).toLocaleString()}`
+                        `₹${((kpiData?.data?.mtdRevenue || 0) - (kpiData?.data?.grossProfit || 0)).toLocaleString()}`
                       )}
                     </div>
-                    <p className="text-xs text-orange-600 truncate">
-                      Revenue - Collected
+                    <p className="text-xs text-red-600 truncate">
+                      Cost of Goods Sold
                     </p>
                   </div>
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-orange-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-red-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
                     <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Vendor Payments Card */}
-            <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 h-20 sm:h-24">
-              <CardContent className="p-2 sm:p-3 h-full">
-                <div className="flex items-center justify-between h-full">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs sm:text-sm font-medium text-red-600 truncate">Vendor Payments</p>
-                    <div className="text-sm sm:text-lg font-bold text-red-900 truncate">
-                      {isLoading ? (
-                        <div className="h-4 sm:h-6 w-16 sm:w-20 bg-red-200 rounded animate-pulse"></div>
-                      ) : (
-                        `₹${(kpiData?.data?.vendorPayments || 0).toLocaleString()}`
-                      )}
-                    </div>
-                    <p className="text-xs text-red-600 truncate">
-                      COGS (MTD)
-                    </p>
-                  </div>
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-red-500 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
-                    <Building className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Withdrawals (MTD) Card */}
+            {/* 10. Withdrawals (MTD) Card */}
             <Card className="bg-gradient-to-br from-violet-50 to-violet-100 border-violet-200 h-20 sm:h-24">
               <CardContent className="p-2 sm:p-3 h-full">
                 <div className="flex items-center justify-between h-full">
@@ -672,444 +566,220 @@ export default function EnhancedModularDashboard() {
                 </div>
               </CardContent>
             </Card>
+            </div>
+          </div>
+
+          {/* Right Section - Dashboard Charts (2/3) - Conditionally Rendered */}
+          {showCharts && (
+            <div className="lg:col-span-2 pr-3 overflow-y-auto">
+              <DashboardCharts kpiData={kpiData?.data || null} selectedChart={selectedChart} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* COGS Breakdown Stat Cards - Fixed Bottom Section */}
+      <div className="absolute bottom-12 left-0 right-0 h-[85px] bg-gradient-to-r from-indigo-50 to-purple-50 px-3 pt-0 pb-1 flex flex-col rounded-t-lg shadow-lg">
+        <h3 className="text-xs font-semibold text-gray-900 mb-0.5 flex items-center gap-1.5">
+          <DollarSign className="h-3 w-3 text-indigo-600" />
+          Gross Profit Calculation
+        </h3>
+        <div className="flex items-center justify-center gap-1.5 flex-1">
+          {/* 1. Opening Stock */}
+          <Card className="bg-gradient-to-br from-blue-100 to-blue-50 border-blue-300 border-2 flex-1 h-full">
+            <CardContent className="p-1.5 h-full flex flex-col justify-center">
+              <p className="text-[10px] font-semibold text-blue-700 leading-tight">Opening Stock</p>
+              <div className="text-sm font-bold text-blue-900 truncate my-0.5">
+                {isLoading ? (
+                  <div className="h-4 w-16 bg-blue-200 rounded animate-pulse"></div>
+                ) : (
+                  `₹${(kpiData?.data?.cogsBreakdown?.openingStock || 0).toLocaleString()}`
+                )}
+              </div>
+              <p className="text-[9px] text-blue-600 leading-tight">Start inventory</p>
+            </CardContent>
+          </Card>
+
+          {/* Plus Sign */}
+          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-green-200 border-2 border-green-400 flex-shrink-0">
+            <Plus className="h-4 w-4 text-green-700 font-bold" />
+          </div>
+
+          {/* 2. Purchases (Net) */}
+          <Card className="bg-gradient-to-br from-green-100 to-green-50 border-green-300 border-2 flex-1 h-full">
+            <CardContent className="p-1.5 h-full flex flex-col justify-center">
+              <p className="text-[10px] font-semibold text-green-700 leading-tight">Purchases (Net)</p>
+              <div className="text-sm font-bold text-green-900 truncate my-0.5">
+                {isLoading ? (
+                  <div className="h-4 w-16 bg-green-200 rounded animate-pulse"></div>
+                ) : (
+                  `₹${(kpiData?.data?.cogsBreakdown?.purchases || 0).toLocaleString()}`
+                )}
+              </div>
+              <p className="text-[9px] text-green-600 leading-tight">Purchase - Return</p>
+            </CardContent>
+          </Card>
+
+          {/* Minus Sign */}
+          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-orange-200 border-2 border-orange-400 flex-shrink-0">
+            <Minus className="h-4 w-4 text-orange-700 font-bold" />
+          </div>
+
+          {/* 3. Sales (Net) */}
+          <Card className="bg-gradient-to-br from-orange-100 to-orange-50 border-orange-300 border-2 flex-1 h-full">
+            <CardContent className="p-1.5 h-full flex flex-col justify-center">
+              <p className="text-[10px] font-semibold text-orange-700 leading-tight">Sales (Net)</p>
+              <div className="text-sm font-bold text-orange-900 truncate my-0.5">
+                {isLoading ? (
+                  <div className="h-4 w-16 bg-orange-200 rounded animate-pulse"></div>
+                ) : (
+                  `₹${(kpiData?.data?.mtdRevenue || 0).toLocaleString()}`
+                )}
+              </div>
+              <p className="text-[9px] text-orange-600 leading-tight">Total Revenue</p>
+            </CardContent>
+          </Card>
+
+          {/* Minus Sign */}
+          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-red-200 border-2 border-red-400 flex-shrink-0">
+            <Minus className="h-4 w-4 text-red-700 font-bold" />
+          </div>
+
+          {/* 4. Closing Stock */}
+          <Card className="bg-gradient-to-br from-red-100 to-red-50 border-red-300 border-2 flex-1 h-full">
+            <CardContent className="p-1.5 h-full flex flex-col justify-center">
+              <p className="text-[10px] font-semibold text-red-700 leading-tight">Closing Stock</p>
+              <div className="text-sm font-bold text-red-900 truncate my-0.5">
+                {isLoading ? (
+                  <div className="h-4 w-16 bg-red-200 rounded animate-pulse"></div>
+                ) : (
+                  `₹${(kpiData?.data?.cogsBreakdown?.closingStock || 0).toLocaleString()}`
+                )}
+              </div>
+              <p className="text-[9px] text-red-600 leading-tight">End inventory</p>
+            </CardContent>
+          </Card>
+
+          {/* Equal Sign */}
+          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-indigo-200 border-2 border-indigo-400 flex-shrink-0">
+            <Equal className="h-4 w-4 text-indigo-700 font-bold" />
+          </div>
+
+          {/* 5. Gross Profit (Result) */}
+          <Card className="bg-gradient-to-br from-indigo-100 to-indigo-50 border-indigo-300 border-2 flex-1 h-full">
+            <CardContent className="p-1.5 h-full flex flex-col justify-center">
+              <p className="text-[10px] font-semibold text-indigo-700 leading-tight">Gross Profit</p>
+              <div className="text-sm font-bold text-indigo-900 truncate my-0.5">
+                {isLoading ? (
+                  <div className="h-4 w-16 bg-indigo-200 rounded animate-pulse"></div>
+                ) : (
+                  `₹${(
+                    (kpiData?.data?.cogsBreakdown?.openingStock || 0) + 
+                    (kpiData?.data?.cogsBreakdown?.purchases || 0) - 
+                    (kpiData?.data?.mtdRevenue || 0) - 
+                    (kpiData?.data?.cogsBreakdown?.closingStock || 0)
+                  ).toLocaleString()}`
+                )}
+              </div>
+              <p className="text-[9px] text-indigo-600 leading-tight">Final Result</p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Floating Chart Toggle Button */}
+      <div 
+        className="fixed bottom-8 right-8 z-50"
+        onMouseEnter={() => setIsHoveringButton(true)}
+        onMouseLeave={() => setIsHoveringButton(false)}
+      >
+        {/* Expandable Menu */}
+        <div className={`absolute bottom-16 right-0 mb-2 transition-all duration-300 ease-in-out ${
+          isHoveringButton ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
+        }`}>
+          <div className="bg-white rounded-lg shadow-xl border border-gray-200 p-2 space-y-2 min-w-[200px]">
+            <button
+              onClick={() => {
+                setSelectedChart('revenue');
+                setShowCharts(true);
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-blue-50 transition-colors text-left"
+            >
+              <BarChart3 className="h-5 w-5 text-blue-600" />
+              <div>
+                <p className="text-sm font-medium text-gray-900">Revenue & Profit</p>
+                <p className="text-xs text-gray-500">View profitability</p>
+              </div>
+            </button>
+            
+            <button
+              onClick={() => {
+                setSelectedChart('expense');
+                setShowCharts(true);
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-orange-50 transition-colors text-left"
+            >
+              <PieChart className="h-5 w-5 text-orange-600" />
+              <div>
+                <p className="text-sm font-medium text-gray-900">Expense Breakdown</p>
+                <p className="text-xs text-gray-500">COGS & expenses</p>
+              </div>
+            </button>
+            
+            <button
+              onClick={() => {
+                setSelectedChart('collection');
+                setShowCharts(true);
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-teal-50 transition-colors text-left"
+            >
+              <Activity className="h-5 w-5 text-teal-600" />
+              <div>
+                <p className="text-sm font-medium text-gray-900">Collections</p>
+                <p className="text-xs text-gray-500">Payment status</p>
+              </div>
+            </button>
+            
+            <button
+              onClick={() => {
+                setSelectedChart('withdrawals');
+                setShowCharts(true);
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-violet-50 transition-colors text-left"
+            >
+              <ArrowDownLeft className="h-5 w-5 text-violet-600" />
+              <div>
+                <p className="text-sm font-medium text-gray-900">Withdrawals</p>
+                <p className="text-xs text-gray-500">Transaction summary</p>
+              </div>
+            </button>
+            
+            <button
+              onClick={() => {
+                setSelectedChart('cogs');
+                setShowCharts(true);
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-amber-50 transition-colors text-left"
+            >
+              <DollarSign className="h-5 w-5 text-amber-600" />
+              <div>
+                <p className="text-sm font-medium text-gray-900">COGS Breakdown</p>
+                <p className="text-xs text-gray-500">Inventory analysis</p>
+              </div>
+            </button>
           </div>
         </div>
 
-        {/* Main Dashboard Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <div className="bg-white rounded-lg shadow-sm border min-h-[calc(100vh-300px)]">
-            <div className="border-b border-gray-200 px-6 py-4">
-              <TabsList className="bg-gray-100 p-1 rounded-lg w-full md:w-auto">
-                <TabsTrigger value="overview" className="px-6 py-2">
-                  <BarChart3 className="h-4 w-4 mr-2" />
-                  Overview
-                </TabsTrigger>
-                <TabsTrigger value="sales" className="px-6 py-2">
-                  <TrendingUp className="h-4 w-4 mr-2" />
-                  Sales
-                </TabsTrigger>
-                <TabsTrigger value="operations" className="px-6 py-2">
-                  <ArrowUpDown className="h-4 w-4 mr-2" />
-                  What Comes & Goes
-                </TabsTrigger>
-                <TabsTrigger value="analytics" className="px-6 py-2">
-                  <Target className="h-4 w-4 mr-2" />
-                  Analytics
-                </TabsTrigger>
-              </TabsList>
-            </div>
-
-            <div className="p-6">
-              {/* Overview Tab */}
-              <TabsContent value="overview" className="mt-0">
-                {financeLoading ? (
-                  <div className="flex justify-center items-center h-64">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                    <p className="ml-4 text-gray-600">Loading financial data...</p>
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    {/* Header
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h2 className="text-2xl font-bold text-gray-900">Detailed Financial Overview</h2>
-                        <p className="text-gray-600 mt-1">Comprehensive insights into your business performance</p>
-                      </div>
-                      <div className="flex gap-3">
-                        <Button variant="outline" onClick={fetchFinancialData}>
-                          <RefreshCw className="h-4 w-4 mr-2" />
-                          Refresh
-                        </Button>
-                      </div>
-                    </div> */}
-
-                    {/* Detailed Finance Overview Component */}
-                    <DetailedFinanceOverview />
-                  </div>
-                )}
-              </TabsContent>
-
-              {/* Sales Tab */}
-              <TabsContent value="sales" className="mt-0">
-                <div className="space-y-6 max-h-[calc(100vh-200px)] overflow-y-auto">
-                  {/* Sales Representative Dashboard Header */}
-                  <div className="bg-white rounded-lg shadow-sm p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h2 className="text-2xl font-bold text-gray-900">Sales Representative Dashboard</h2>
-                        <p className="text-gray-600 mt-1">
-                          {isAdmin 
-                            ? `Viewing sales data for ${employees.find((emp: User) => emp.id === selectedEmployee)?.email || 'selected employee'}`
-                            : `Welcome back, ${user?.email}! Track your orders, customers, and performance.`
-                          }
-                        </p>
-                      </div>
-                      <Button 
-                        variant="outline" 
-                        onClick={() => selectedEmployee && fetchSalesRepStats(selectedEmployee)}
-                        disabled={salesRepLoading}
-                      >
-                        <RefreshCw className={`h-4 w-4 mr-2 ${salesRepLoading ? 'animate-spin' : ''}`} />
-                        Refresh Data
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Employee Selector for Admin Users */}
-                  {isAdmin && (
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                          <Users className="h-5 w-5" />
-                          Select Employee
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex items-center gap-4">
-                          <div className="flex-1">
-                            <select
-                              className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              value={selectedEmployee || ''}
-                              title="Select Employee"
-                              onChange={(e) => {
-                                setSelectedEmployee(e.target.value);
-                                if (e.target.value) {
-                                  fetchSalesRepStats(e.target.value);
-                                }
-                              }}
-                            >
-                              <option value="">Select an employee...</option>
-                              {employees
-                                .sort((a, b) => {
-                                  const nameA = a.name || a.email || '';
-                                  const nameB = b.name || b.email || '';
-                                  return nameA.localeCompare(nameB);
-                                })
-                                .map((employee: User) => (
-                                  <option key={employee.id} value={employee.id}>
-                                    {employee.name || 'No Name'} - {employee.email}
-                                  </option>
-                                ))}
-                            </select>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {/* Stats Cards */}
-                  {(salesRepStats || salesRepLoading || (selectedEmployee && isAdmin)) ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-                      {/* Total Orders */}
-                      <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0 shadow-lg">
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                          <CardTitle className="text-sm font-medium text-blue-100">Total Orders</CardTitle>
-                          <ShoppingCart className="h-4 w-4 text-blue-200" />
-                        </CardHeader>
-                        <CardContent>
-                          <div className="text-2xl font-bold text-white">
-                            {salesRepLoading ? (
-                              <div className="h-8 w-16 bg-blue-400 rounded animate-pulse"></div>
-                            ) : (
-                              salesRepStats?.total_orders || 0
-                            )}
-                          </div>
-                          <div className="flex items-center text-xs text-blue-100 mt-1">
-                            <span>
-                              {salesRepLoading ? '...' : `${salesRepStats?.pending_orders || 0} pending`}
-                            </span>
-                          </div>
-                          <p className="text-xs text-blue-200 mt-1">
-                            {salesRepLoading ? 'Loading...' : `${salesRepStats?.completed_orders || 0} completed`}
-                          </p>
-                        </CardContent>
-                      </Card>
-
-                      {/* Total Revenue */}
-                      <Card className="bg-gradient-to-br from-teal-500 to-teal-600 text-white border-0 shadow-lg">
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                          <CardTitle className="text-sm font-medium text-teal-100">Total Revenue</CardTitle>
-                          <DollarSign className="h-4 w-4 text-teal-200" />
-                        </CardHeader>
-                        <CardContent>
-                          <div className="text-2xl font-bold text-white">
-                            {salesRepLoading ? (
-                              <div className="h-8 w-20 bg-teal-400 rounded animate-pulse"></div>
-                            ) : (
-                              formatCurrency(salesRepStats?.total_revenue || 0)
-                            )}
-                          </div>
-                          <div className="flex items-center text-xs text-teal-100 mt-1">
-                            <span>
-                              {salesRepLoading ? 'Loading...' : `From ${salesRepStats?.total_orders || 0} orders`}
-                            </span>
-                          </div>
-                          <p className="text-xs text-teal-200 mt-1">
-                            {salesRepLoading ? '...' : `Average: ${formatCurrency((salesRepStats?.total_revenue || 0) / (salesRepStats?.total_orders || 1))}`}
-                          </p>
-                        </CardContent>
-                      </Card>
-
-                      {/* Total Profit */}
-                      <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-0 shadow-lg">
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                          <CardTitle className="text-sm font-medium text-green-100">Total Profit</CardTitle>
-                          <TrendingUp className="h-4 w-4 text-green-200" />
-                        </CardHeader>
-                        <CardContent>
-                          <div className="text-2xl font-bold text-white">
-                            {salesRepLoading ? (
-                              <div className="h-8 w-20 bg-green-400 rounded animate-pulse"></div>
-                            ) : (
-                              formatCurrency(salesRepStats?.total_profit || 0)
-                            )}
-                          </div>
-                          <div className="flex items-center text-xs text-green-100 mt-1">
-                            <span>
-                              {salesRepLoading ? 'Loading...' : `${formatPercentage(salesRepStats?.profit_margin || 0)} margin`}
-                            </span>
-                          </div>
-                          <p className="text-xs text-green-200 mt-1">
-                            Revenue - Discounts = Profit
-                          </p>
-                        </CardContent>
-                      </Card>
-
-                      {/* Total Discount Given */}
-                      <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-0 shadow-lg">
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                          <CardTitle className="text-sm font-medium text-purple-100">Total Discount</CardTitle>
-                          <Percent className="h-4 w-4 text-purple-200" />
-                        </CardHeader>
-                        <CardContent>
-                          <div className="text-2xl font-bold text-white">
-                            {salesRepLoading ? (
-                              <div className="h-8 w-20 bg-purple-400 rounded animate-pulse"></div>
-                            ) : (
-                              formatCurrency(salesRepStats?.total_discount_given || 0)
-                            )}
-                          </div>
-                          <div className="flex items-center text-xs text-purple-100 mt-1">
-                            <span>
-                              {salesRepLoading ? 'Loading...' : `${formatPercentage((salesRepStats?.total_revenue || 0) > 0 ? ((salesRepStats?.total_discount_given || 0) / (salesRepStats?.total_revenue || 1)) * 100 : 0)} of revenue`}
-                            </span>
-                          </div>
-                          <p className="text-xs text-purple-200 mt-1">
-                            Total savings given to customers
-                          </p>
-                        </CardContent>
-                      </Card>
-
-                      {/* Returns & Issues */}
-                      <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-0 shadow-lg">
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                          <CardTitle className="text-sm font-medium text-orange-100">Returns & Issues</CardTitle>
-                          <RotateCcw className="h-4 w-4 text-orange-200" />
-                        </CardHeader>
-                        <CardContent>
-                          <div className="text-2xl font-bold text-white">
-                            {salesRepLoading ? (
-                              <div className="h-8 w-12 bg-orange-400 rounded animate-pulse"></div>
-                            ) : (
-                              salesRepStats?.pending_returns || 0
-                            )}
-                          </div>
-                          <div className="flex items-center text-xs text-orange-100 mt-1">
-                            <span>
-                              {salesRepLoading ? 'Loading...' : `${salesRepStats?.total_returns || 0} total returns`}
-                            </span>
-                          </div>
-                          <div className="flex items-center text-xs text-orange-200 mt-1">
-                            <MessageSquare className="h-3 w-3 mr-1" />
-                            <span>
-                              {salesRepLoading ? '...' : `${salesRepStats?.open_complaints || 0} open complaints`}
-                            </span>
-                          </div>
-                        </CardContent>
-                      </Card>
-
-                      {/* Performance */}
-                      <Card className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white border-0 shadow-lg">
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                          <CardTitle className="text-sm font-medium text-indigo-100">Monthly Performance</CardTitle>
-                          <Target className="h-4 w-4 text-indigo-200" />
-                        </CardHeader>
-                        <CardContent>
-                          {salesRepLoading ? (
-                            <div className="space-y-2">
-                              <div className="h-6 bg-indigo-400 rounded animate-pulse"></div>
-                              <div className="h-3 bg-indigo-400 rounded animate-pulse"></div>
-                              <div className="h-3 bg-indigo-400 rounded animate-pulse"></div>
-                            </div>
-                          ) : (
-                            <>
-                              <div className="text-2xl font-bold text-white">
-                                {formatPercentage(salesRepStats?.monthly_achievement || 0)}
-                              </div>
-                              <div className="flex items-center text-xs text-indigo-100 mt-1">
-                                <span>Target: {formatCurrency(salesRepStats?.monthly_target || 0)}</span>
-                              </div>
-                              <div className="flex items-center text-xs text-indigo-200 mt-1">
-                                <TrendingUp className="h-3 w-3 mr-1" />
-                                <span>{formatPercentage(salesRepStats?.conversion_rate || 0)} conversion</span>
-                              </div>
-                            </>
-                          )}
-                        </CardContent>
-                      </Card>
-                    </div>
-                  ) : (
-                    <div className="text-center py-12">
-                      <div className="bg-gray-50 rounded-lg p-8">
-                        <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                          {isAdmin ? 'Select a Sales Representative' : 'Loading Sales Data...'}
-                        </h3>
-                        <p className="text-gray-600">
-                          {isAdmin 
-                            ? 'Choose a sales representative from the dropdown above to view their performance metrics and statistics.'
-                            : 'Please wait while we load your sales performance data.'
-                          }
-                        </p>
-                        {!isAdmin && (
-                          <Button 
-                            onClick={() => user?.id && fetchSalesRepStats(user.id)}
-                            className="mt-4"
-                            disabled={salesRepLoading}
-                          >
-                            {salesRepLoading ? (
-                              <>
-                                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                                Loading...
-                              </>
-                            ) : (
-                              <>
-                                <RefreshCw className="h-4 w-4 mr-2" />
-                                Load My Data
-                              </>
-                            )}
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Employee Rankings Section */}
-                  <EmployeeRankings />
-
-                  {/* Main Content Tabs */}
-                  <Card>
-                    <CardContent className="p-0">
-                      <Tabs value={salesRepActiveTab} onValueChange={setSalesRepActiveTab} className="w-full">
-                        <div className="border-b px-6 pt-6">
-                          <TabsList className="grid w-full grid-cols-4">
-                            <TabsTrigger value="orders" className="flex items-center gap-2">
-                              <ShoppingCart className="h-4 w-4" />
-                              My Orders
-                              {salesRepStats?.pending_orders && salesRepStats.pending_orders > 0 && (
-                                <span className="ml-1 px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full">
-                                  {salesRepStats.pending_orders}
-                                </span>
-                              )}
-                            </TabsTrigger>
-                            <TabsTrigger value="returns" className="flex items-center gap-2">
-                              <RotateCcw className="h-4 w-4" />
-                              Returns/Exchanges
-                              {salesRepStats?.pending_returns && salesRepStats.pending_returns > 0 && (
-                                <span className="ml-1 px-2 py-0.5 text-xs bg-orange-100 text-orange-800 rounded-full">
-                                  {salesRepStats.pending_returns}
-                                </span>
-                              )}
-                            </TabsTrigger>
-                            <TabsTrigger value="complaints" className="flex items-center gap-2">
-                              <MessageSquare className="h-4 w-4" />
-                              Complaints
-                              {salesRepStats?.open_complaints && salesRepStats.open_complaints > 0 && (
-                                <span className="ml-1 px-2 py-0.5 text-xs bg-red-100 text-red-800 rounded-full">
-                                  {salesRepStats.open_complaints}
-                                </span>
-                              )}
-                            </TabsTrigger>
-                            <TabsTrigger value="performance" className="flex items-center gap-2">
-                              <BarChart3 className="h-4 w-4" />
-                              Performance
-                            </TabsTrigger>
-                          </TabsList>
-                        </div>
-
-                        <div className="p-6">
-                          <TabsContent value="orders" className="mt-0">
-                            {selectedEmployee && (
-                              <MyOrdersSection 
-                                userId={selectedEmployee} 
-                                onRefresh={() => selectedEmployee && fetchSalesRepStats(selectedEmployee)}
-                              />
-                            )}
-                          </TabsContent>
-
-                          <TabsContent value="returns" className="mt-0">
-                            {selectedEmployee && (
-                              <ReturnsExchangesSection 
-                                userId={selectedEmployee}
-                                onRefresh={() => selectedEmployee && fetchSalesRepStats(selectedEmployee)}
-                              />
-                            )}
-                          </TabsContent>
-
-                          <TabsContent value="complaints" className="mt-0">
-                            {selectedEmployee && (
-                              <ComplaintsSection 
-                                userId={selectedEmployee}
-                                onRefresh={() => selectedEmployee && fetchSalesRepStats(selectedEmployee)}
-                              />
-                            )}
-                          </TabsContent>
-
-                          <TabsContent value="performance" className="mt-0">
-                            {selectedEmployee && (
-                              <SalesPerformanceSection 
-                                userId={selectedEmployee}
-                                onRefresh={() => selectedEmployee && fetchSalesRepStats(selectedEmployee)}
-                              />
-                            )}
-                          </TabsContent>
-                        </div>
-                      </Tabs>
-                    </CardContent>
-                  </Card>
-                </div>
-              </TabsContent>
-
-              {/* What Comes & Goes Tab */}
-              <TabsContent value="operations" className="mt-0">
-                <div className="space-y-6">
-                  {/* Header */}
-                  <div className="bg-white rounded-lg shadow-sm p-6 border">
-                    <h2 className="text-2xl font-bold text-gray-900 mb-2">What Comes & Goes</h2>
-                    <p className="text-gray-600">Track daily walk-ins, money flow, available funds, and spending patterns</p>
-                  </div>
-
-                  {/* First Row: Walk-ins and Money Flow */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <DailyWalkInsComponent startDate={dateRange.startDate} endDate={dateRange.endDate} />
-                    <DailyMoneyFlowComponent startDate={dateRange.startDate} endDate={dateRange.endDate} />
-                  </div>
-
-                  {/* Second Row: Cash/Bank and Spending */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <CashBankBalanceComponent startDate={dateRange.startDate} endDate={dateRange.endDate} />
-                    <DailySpendingComponent startDate={dateRange.startDate} endDate={dateRange.endDate} />
-                  </div>
-                </div>
-              </TabsContent>
-
-              {/* Analytics Tab */}
-              <TabsContent value="analytics" className="mt-0">
-                <AnalyticsDashboard dateRange={dateRange} />
-              </TabsContent>
-            </div>
-          </div>
-        </Tabs>
+        {/* Main Toggle Button */}
+        <button
+          className={`group flex items-center justify-center w-16 h-16 rounded-full shadow-2xl transition-all duration-300 ${
+            showCharts 
+              ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700' 
+              : 'bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-800 hover:to-gray-900'
+          }`}
+        >
+          <BarChart3 className="h-7 w-7 text-white transition-transform group-hover:scale-110" />
+        </button>
       </div>
     </div>
   );

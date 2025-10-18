@@ -300,6 +300,34 @@ export async function GET(request: Request) {
       collectionRate = 100;
     }
 
+    // Calculate delivered orders payment tracking
+    const deliveredOrders = salesOrdersResult.data?.filter(order => 
+      order.status === 'delivered' || order.status === 'Delivered'
+    ) || [];
+    
+    const deliveredOrderIds = new Set(deliveredOrders.map(o => o.id));
+    const deliveredRevenue = deliveredOrders.reduce((sum, order) => sum + (order.final_price || 0), 0);
+    
+    // Fetch invoices for delivered orders
+    const deliveredInvoicesResult = await supabase
+      .from('invoices')
+      .select('id, sales_order_id, total, paid_amount, status')
+      .in('sales_order_id', Array.from(deliveredOrderIds));
+    
+    const deliveredInvoices = deliveredInvoicesResult.data || [];
+    const deliveredCollected = deliveredInvoices.reduce((sum, inv) => sum + (inv.paid_amount || 0), 0);
+    const deliveredInvoiceTotal = deliveredInvoices.reduce((sum, inv) => sum + (inv.total || 0), 0);
+    const deliveredPending = deliveredInvoiceTotal - deliveredCollected;
+    
+    console.log('📦 Delivered Orders Payment Tracking:', {
+      deliveredOrdersCount: deliveredOrders.length,
+      deliveredRevenue: `₹${deliveredRevenue.toLocaleString()}`,
+      deliveredInvoicesCount: deliveredInvoices.length,
+      deliveredCollected: `₹${deliveredCollected.toLocaleString()}`,
+      deliveredPending: `₹${deliveredPending.toLocaleString()}`,
+      deliveredCollectionRate: deliveredInvoiceTotal > 0 ? `${Math.round((deliveredCollected / deliveredInvoiceTotal) * 100)}%` : '0%'
+    });
+
     // Calculate profit: Gross Profit - Operating Expenses
     // FIXED: Vendor payments should NOT be subtracted from gross profit
     // Gross profit already accounts for COGS through product.cost fields
@@ -358,6 +386,45 @@ export async function GET(request: Request) {
     const onTimeDeliveryRate = onTimeDeliveryResult.data?.on_time_pct || 100;
     const totalDeliveries = onTimeDeliveryResult.data?.total_deliveries || 0;
 
+    // Fetch COGS breakdown data from profit-loss API
+    let cogsBreakdown = {
+      opening_stock: 0,
+      purchases: 0,
+      closing_stock: 0,
+      total_cogs: 0
+    };
+
+    try {
+      const plUrl = new URL('/api/finance/reports/profit-loss', request.url);
+      plUrl.searchParams.set('start_date', dateFilter.startDate);
+      plUrl.searchParams.set('end_date', dateFilter.endDate);
+
+      const plResponse = await fetch(plUrl.toString());
+      if (plResponse.ok) {
+        const plData = await plResponse.json();
+        
+        // Extract COGS breakdown from profit-loss response
+        cogsBreakdown = {
+          opening_stock: plData.summary?.opening_stock || 0,
+          purchases: plData.summary?.purchases || 0,
+          closing_stock: plData.summary?.closing_stock || 0,
+          total_cogs: plData.summary?.total_cogs || 0
+        };
+      }
+    } catch (error) {
+      console.error('Error fetching COGS breakdown:', error);
+    }
+
+    console.log('📦 COGS Breakdown:', {
+      dateRange: `${dateFilter.startDate} to ${dateFilter.endDate}`,
+      openingStock: `₹${cogsBreakdown.opening_stock?.toLocaleString() || '0'}`,
+      purchases: `₹${cogsBreakdown.purchases?.toLocaleString() || '0'}`,
+      closingStock: `₹${cogsBreakdown.closing_stock?.toLocaleString() || '0'}`,
+      totalCOGS: `₹${cogsBreakdown.total_cogs?.toLocaleString() || '0'}`,
+      calculatedCOGS: `₹${(totalRevenue - grossProfit).toLocaleString()}`,
+      note: 'COGS breakdown from profit-loss API'
+    });
+
     return NextResponse.json({
       success: true,
       data: {
@@ -370,6 +437,11 @@ export async function GET(request: Request) {
         totalCollected: totalCollected,
         totalOutstanding: totalOutstanding, // Outstanding = Revenue - Collected
         collectionRate: collectionRate,
+        // Delivered orders payment tracking
+        deliveredRevenue: deliveredRevenue,
+        deliveredCollected: deliveredCollected,
+        deliveredPending: deliveredPending,
+        deliveredCollectionRate: deliveredInvoiceTotal > 0 ? Math.round((deliveredCollected / deliveredInvoiceTotal) * 100) : 0,
         vendorPayments: vendorPayments, // New vendor payments metric
         newCustomers: newCustomers,
         activeCustomers: customersWithFirstOrder,
@@ -385,11 +457,17 @@ export async function GET(request: Request) {
           onTimePercentage: onTimeDeliveryRate,
           totalDeliveries
         },
+        cogsBreakdown: {
+          openingStock: cogsBreakdown.opening_stock || 0,
+          purchases: cogsBreakdown.purchases || 0,
+          closingStock: cogsBreakdown.closing_stock || 0,
+          totalCogs: cogsBreakdown.total_cogs || 0
+        },
         dateRange: {
           startDate: dateFilter.startDate,
           endDate: dateFilter.endDate
         },
-        note: 'MTD revenue includes all order statuses, vendor payments treated as COGS, outstanding = revenue - collected'
+        note: 'MTD revenue includes all order statuses, delivered orders tracked separately for payment collection'
       }
     });
 

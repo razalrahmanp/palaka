@@ -4,8 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { NavLink } from './NavLink';
 import { 
   Home, Users, Receipt, Warehouse, ShoppingCart, Wrench, Truck, 
-  DollarSign, Settings, Star, Users2, Building2, Package, 
-  FileText, TrendingUp, BookOpen, BarChart, ChevronDown, ChevronRight
+  DollarSign, Star, Users2, Building2, Package, 
+  FileText, TrendingUp, BookOpen, BarChart, ChevronDown, ChevronRight,
+  Mail, LogOut
 } from 'lucide-react';
 import { hasPermission, hasAnyPermission, getCurrentUser } from '@/lib/auth';
 
@@ -80,22 +81,13 @@ const reportItems: NavItem[] = [
   { href: "/reports", icon: BarChart, label: "Reports & Analytics", permission: 'analytics:read' },
 ];
 
-// System
-const adminNavItems: NavItem[] = [
-  { href: "/settings", icon: Settings, label: "Settings", permission: 'user:manage' },
-];
-
-interface SidebarProps {
-  isOpen: boolean;
-  onToggle: () => void;
-}
-
-export const Sidebar = ({ isOpen, onToggle }: SidebarProps) => {
+export const Sidebar = () => {
   const [isHydrated, setIsHydrated] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
   
-  // State for collapsible sections
+  // State for collapsible sections - All collapsed by default, only selected expands
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    new Set(['dashboard', 'sales', 'purchases', 'inventory', 'finance', 'hr', 'reports', 'system'])
+    new Set() // Empty set means all sections start collapsed
   );
 
   useEffect(() => {
@@ -104,10 +96,9 @@ export const Sidebar = ({ isOpen, onToggle }: SidebarProps) => {
 
   const toggleSection = (section: string) => {
     setExpandedSections(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(section)) {
-        newSet.delete(section);
-      } else {
+      const newSet = new Set<string>();
+      // If clicking the same section, collapse it. Otherwise, expand only the clicked section
+      if (!prev.has(section)) {
         newSet.add(section);
       }
       return newSet;
@@ -117,36 +108,34 @@ export const Sidebar = ({ isOpen, onToggle }: SidebarProps) => {
   if (!isHydrated) {
     // Show minimal sidebar during hydration to prevent mismatch
     return (
-      <aside className={`fixed md:relative z-30 bg-gradient-to-b from-white to-gray-50 border-r border-gray-200 shadow-xl transition-all duration-300 ${
-        isOpen ? 'w-64' : 'w-16 md:w-64'
-      } h-full overflow-y-auto`}>
-        <div className="flex items-center h-12 px-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+      <aside className="fixed top-0 left-0 z-50 w-16 h-screen bg-gradient-to-b from-white to-gray-50 border-r border-gray-200 shadow-xl">
+        <div className="flex items-center justify-center h-14 bg-gradient-to-r from-purple-600 to-blue-600 text-white">
           <Package className="h-6 w-6 text-white" />
-          <span className="ml-2 text-lg font-bold">Palaka ERP</span>
         </div>
-        <nav className="flex-1 p-2 space-y-1">
+        <nav className="flex-1 p-2">
           <div className="flex items-center justify-center py-8">
-            <div className="text-center text-gray-500">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600 mx-auto mb-2"></div>
-              <p className="text-xs">Loading...</p>
-            </div>
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
           </div>
         </nav>
       </aside>
     );
   }
 
+  const isExpanded = isHovered;
+
   // Collapsible Section Component
   const CollapsibleSection = ({ 
     title, 
     items, 
-    sectionKey 
+    sectionKey,
+    icon: SectionIcon
   }: { 
     title: string; 
     items: NavItem[]; 
     sectionKey: string;
+    icon: React.ElementType;
   }) => {
-    const isExpanded = expandedSections.has(sectionKey);
+    const isSectionExpanded = expandedSections.has(sectionKey);
     const visibleItems = items.filter(i =>
       Array.isArray(i.permission)
         ? hasAnyPermission(i.permission)
@@ -156,20 +145,26 @@ export const Sidebar = ({ isOpen, onToggle }: SidebarProps) => {
     if (visibleItems.length === 0) return null;
 
     return (
-      <div className="mb-1">
+      <div>
         <button
           onClick={() => toggleSection(sectionKey)}
-          className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+          className="w-full flex items-center gap-3 px-3 py-2 text-gray-700 hover:bg-purple-50 hover:text-purple-600 rounded-lg transition-all group"
+          title={!isExpanded ? title : ''}
         >
-          <span className="uppercase tracking-wide">{title}</span>
-          {isExpanded ? (
-            <ChevronDown className="h-3.5 w-3.5 flex-shrink-0" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5 flex-shrink-0" />
+          <SectionIcon className="h-5 w-5 flex-shrink-0" />
+          {isExpanded && (
+            <>
+              <span className="text-sm font-medium flex-1 text-left truncate">{title}</span>
+              {isSectionExpanded ? (
+                <ChevronDown className="h-4 w-4 flex-shrink-0" />
+              ) : (
+                <ChevronRight className="h-4 w-4 flex-shrink-0" />
+              )}
+            </>
           )}
         </button>
-        {isExpanded && (
-          <div className="mt-0.5 space-y-0.5">
+        {isSectionExpanded && isExpanded && (
+          <div className="mt-1 ml-8 space-y-0.5">
             {visibleItems.map(i => (
               <NavLink key={i.href} href={i.href} icon={i.icon}>
                 {i.label}
@@ -183,83 +178,87 @@ export const Sidebar = ({ isOpen, onToggle }: SidebarProps) => {
 
   return (
     <aside
-      className={`fixed md:fixed top-0 left-0 z-50 h-screen flex flex-col bg-gradient-to-b from-white to-gray-50 border-r border-gray-200 shadow-xl transition-all duration-300 ease-in-out
-        ${isOpen ? 'w-64 md:translate-x-0' : 'w-0 md:-translate-x-64'}
-      `}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className={`fixed top-0 left-0 z-50 h-screen flex flex-col bg-gradient-to-b from-white to-gray-50 border-r border-gray-200 shadow-xl transition-all duration-300 ease-in-out ${
+        isExpanded ? 'w-64' : 'w-16'
+      }`}
     >
     {/* Header - Compact */}
-    <div className="flex-shrink-0 flex items-center justify-between h-12 px-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white">
-      <div className="flex items-center">
-        <Package className="h-6 w-6 text-white" />
-        <span className="ml-2 text-lg font-bold">Palaka ERP</span>
-      </div>
-      <button onClick={onToggle} className="text-white hover:bg-white/10 rounded p-1 transition-colors">
-        {isOpen ? (
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        ) : (
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        )}
-      </button>
+    <div className="flex-shrink-0 flex items-center justify-center h-14 bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+      <Package className="h-6 w-6 text-white flex-shrink-0" />
+      {isExpanded && <span className="ml-2 text-lg font-bold whitespace-nowrap">Palaka ERP</span>}
     </div>
     
-    {/* Compact Collapsible Navigation */}
-    <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
-      {/* Dashboard - Always visible */}
-      {dashboardItems.filter(i => 
-        Array.isArray(i.permission)
-          ? hasAnyPermission(i.permission)
-          : hasPermission(i.permission)
-      ).map(i => (
-        <NavLink key={i.href} href={i.href} icon={i.icon}>
-          {i.label}
-        </NavLink>
-      ))}
+    {/* Compact Navigation */}
+    <nav className="flex-1 px-2 py-4 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 flex flex-col justify-between">
+      <div className="space-y-2">
+        {/* Dashboard - Always visible */}
+        {dashboardItems.filter(i => 
+          Array.isArray(i.permission)
+            ? hasAnyPermission(i.permission)
+            : hasPermission(i.permission)
+        ).map(i => (
+          <div key={i.href}>
+            <NavLink href={i.href} icon={i.icon}>
+              {isExpanded && i.label}
+            </NavLink>
+          </div>
+        ))}
+      </div>
 
-      {/* Collapsible Sections */}
-      <CollapsibleSection 
-        title="Sales & CRM" 
-        items={salesItems} 
-        sectionKey="sales" 
-      />
+      <div className="space-y-2 flex-1 flex flex-col justify-evenly py-4">
+        {/* Collapsible Sections */}
+        <CollapsibleSection 
+          title="Sales & CRM" 
+          items={salesItems} 
+          sectionKey="sales"
+          icon={ShoppingCart}
+        />
 
-      <CollapsibleSection 
-        title="Purchases" 
-        items={purchaseItems} 
-        sectionKey="purchases" 
-      />
+        <CollapsibleSection 
+          title="Purchases" 
+          items={purchaseItems} 
+          sectionKey="purchases"
+          icon={Truck}
+        />
 
       <CollapsibleSection 
         title="Inventory & Manufacturing" 
         items={inventoryItems} 
-        sectionKey="inventory" 
+        sectionKey="inventory"
+        icon={Warehouse}
       />
 
       <CollapsibleSection 
         title="Banking & Finance" 
         items={financeItems} 
-        sectionKey="finance" 
+        sectionKey="finance"
+        icon={DollarSign}
       />
 
       {/* HR Section - with special permission check */}
       {canSeeHRSection() && (
-        <div className="mb-1">
+        <div>
           <button
             onClick={() => toggleSection('hr')}
-            className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+            className="w-full flex items-center gap-3 px-3 py-2 text-gray-700 hover:bg-purple-50 hover:text-purple-600 rounded-lg transition-all"
+            title={!isExpanded ? 'Human Resources' : ''}
           >
-            <span className="uppercase tracking-wide">Human Resources</span>
-            {expandedSections.has('hr') ? (
-              <ChevronDown className="h-3.5 w-3.5 flex-shrink-0" />
-            ) : (
-              <ChevronRight className="h-3.5 w-3.5 flex-shrink-0" />
+            <Users2 className="h-5 w-5 flex-shrink-0" />
+            {isExpanded && (
+              <>
+                <span className="text-sm font-medium flex-1 text-left truncate">Human Resources</span>
+                {expandedSections.has('hr') ? (
+                  <ChevronDown className="h-4 w-4 flex-shrink-0" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 flex-shrink-0" />
+                )}
+              </>
             )}
           </button>
-          {expandedSections.has('hr') && (
-            <div className="mt-0.5 space-y-0.5">
+          {expandedSections.has('hr') && isExpanded && (
+            <div className="mt-1 ml-8 space-y-0.5">
               {hrNavItems
                 .filter(i => hasPermission(i.permission as string) || isSystemAdmin() || isHRManager())
                 .map(i => (
@@ -275,37 +274,65 @@ export const Sidebar = ({ isOpen, onToggle }: SidebarProps) => {
       <CollapsibleSection 
         title="Reports & Analytics" 
         items={reportItems} 
-        sectionKey="reports" 
+        sectionKey="reports"
+        icon={BarChart}
       />
+      </div>
+    </nav>
 
-      {/* System Section */}
-      {adminNavItems.some(i => hasPermission(i.permission as string)) && (
-        <div className="mb-1">
-          <button
-            onClick={() => toggleSection('system')}
-            className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
-          >
-            <span className="uppercase tracking-wide">System</span>
-            {expandedSections.has('system') ? (
-              <ChevronDown className="h-3.5 w-3.5 flex-shrink-0" />
-            ) : (
-              <ChevronRight className="h-3.5 w-3.5 flex-shrink-0" />
-            )}
-          </button>
-          {expandedSections.has('system') && (
-            <div className="mt-0.5 space-y-0.5">
-              {adminNavItems
-                .filter(i => hasPermission(i.permission as string))
-                .map(i => (
-                  <NavLink key={i.href} href={i.href} icon={i.icon}>
-                    {i.label}
-                  </NavLink>
-                ))}
+    {/* Profile Section at Bottom */}
+    <div className="flex-shrink-0 border-t border-gray-200 bg-white">
+      {isExpanded ? (
+        <div className="p-3">
+          <div className="flex items-center gap-3">
+            {/* Avatar */}
+            <div className="relative flex-shrink-0">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white font-semibold shadow-md text-sm">
+                {getCurrentUser()?.email?.charAt(0)?.toUpperCase() || 'U'}
+              </div>
+              <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
             </div>
-          )}
+
+            {/* User Details */}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-900 truncate">
+                {getCurrentUser()?.email?.split('@')[0] || 'User'}
+              </p>
+              <p className="text-xs text-gray-500 truncate">
+                {getCurrentUser()?.role || 'Role'}
+              </p>
+            </div>
+
+            {/* Logout Button */}
+            <button
+              onClick={() => {
+                localStorage.removeItem('user');
+                window.location.href = '/login';
+              }}
+              className="flex-shrink-0 p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+              title="Logout"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+          
+          {/* Email */}
+          <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
+            <Mail className="h-3 w-3 flex-shrink-0" />
+            <span className="truncate">{getCurrentUser()?.email || 'email@example.com'}</span>
+          </div>
+        </div>
+      ) : (
+        <div className="p-2 flex justify-center">
+          <div className="relative">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white font-semibold shadow-md text-sm">
+              {getCurrentUser()?.email?.charAt(0)?.toUpperCase() || 'U'}
+            </div>
+            <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
+          </div>
         </div>
       )}
-    </nav>
+    </div>
   </aside>
   );
 }

@@ -14,26 +14,28 @@ interface NavLinkProps {
 export const NavLink = ({ href, icon: Icon, children }: NavLinkProps) => {
   const pathname = usePathname();
   const active = pathname === href;
+  const iconOnly = !children;
 
   return (
     <Link
       href={href}
-      className={`group flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
+      className={`group flex items-center ${iconOnly ? 'justify-center' : ''} px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
         active
-          ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg transform scale-[1.02]'
-          : 'text-gray-700 hover:bg-gradient-to-r hover:from-gray-100 hover:to-blue-50 hover:text-blue-700 hover:shadow-md hover:transform hover:scale-[1.01]'
+          ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg'
+          : 'text-gray-700 hover:bg-purple-50 hover:text-purple-600'
       }`}
+      title={iconOnly ? String(children) : ''}
     >
       <Icon
-        className={`mr-3 h-5 w-5 transition-all duration-200 ${
+        className={`${iconOnly ? '' : 'mr-3'} h-5 w-5 flex-shrink-0 transition-all duration-200 ${
           active 
             ? 'text-white' 
-            : 'text-gray-500 group-hover:text-blue-600'
+            : 'text-gray-500 group-hover:text-purple-600'
         }`}
       />
-      <span className="transition-all duration-200">{children}</span>
-      {active && (
-        <div className="ml-auto w-2 h-2 bg-white rounded-full opacity-75"></div>
+      {children && <span className="transition-all duration-200 truncate">{children}</span>}
+      {active && children && (
+        <div className="ml-auto w-2 h-2 bg-white rounded-full opacity-75 flex-shrink-0"></div>
       )}
     </Link>
   );

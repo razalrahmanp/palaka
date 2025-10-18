@@ -2,7 +2,19 @@
 
 import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { TrendingUp, TrendingDown, DollarSign, Users, User, PieChart as PieChartIcon } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, Users, User, PieChart as PieChartIcon, Calendar, ChevronDown } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Button } from '@/components/ui/button'
 import {
   PieChart,
   Pie,
@@ -73,8 +85,131 @@ const formatNumber = (value: number) => {
   return `₹${value.toFixed(0)}`
 }
 
+type TimePeriod = 
+  | 'today' 
+  | 'this_week' 
+  | 'this_month' 
+  | 'last_month'
+  | 'week_1' | 'week_2' | 'week_3' | 'week_4' | 'week_5'
+  | 'jan' | 'feb' | 'mar' | 'apr' | 'may' | 'jun' | 'jul' | 'aug' | 'sep' | 'oct' | 'nov' | 'dec'
+  | 'quarter_1' | 'quarter_2' | 'quarter_3' | 'quarter_4'
+  | 'half_1' | 'half_2'
+  | 'this_year'
+  | 'all_time'
+
+const TIME_PERIOD_LABELS: Record<TimePeriod, string> = {
+  today: 'Today',
+  this_week: 'This Week',
+  this_month: 'This Month',
+  last_month: 'Last Month',
+  week_1: 'Week 1',
+  week_2: 'Week 2',
+  week_3: 'Week 3',
+  week_4: 'Week 4',
+  week_5: 'Week 5',
+  jan: 'January',
+  feb: 'February',
+  mar: 'March',
+  apr: 'April',
+  may: 'May',
+  jun: 'June',
+  jul: 'July',
+  aug: 'August',
+  sep: 'September',
+  oct: 'October',
+  nov: 'November',
+  dec: 'December',
+  quarter_1: 'Q1 (Jan-Mar)',
+  quarter_2: 'Q2 (Apr-Jun)',
+  quarter_3: 'Q3 (Jul-Sep)',
+  quarter_4: 'Q4 (Oct-Dec)',
+  half_1: 'H1 (Jan-Jun)',
+  half_2: 'H2 (Jul-Dec)',
+  this_year: 'This Year',
+  all_time: 'All Time',
+}
+
+const getDateRangeForPeriod = (period: TimePeriod): { startDate: string; endDate: string; allTime?: boolean } => {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth()
+  const day = now.getDate()
+  
+  const formatDate = (date: Date) => date.toISOString().split('T')[0]
+  
+  switch (period) {
+    case 'today': {
+      const today = new Date(year, month, day)
+      return { startDate: formatDate(today), endDate: formatDate(today) }
+    }
+    case 'this_week': {
+      const dayOfWeek = now.getDay()
+      const monday = new Date(year, month, day - dayOfWeek + (dayOfWeek === 0 ? -6 : 1))
+      const sunday = new Date(year, month, day + (7 - dayOfWeek))
+      return { startDate: formatDate(monday), endDate: formatDate(sunday) }
+    }
+    case 'this_month': {
+      const firstDay = new Date(year, month, 1)
+      const lastDay = new Date(year, month + 1, 0)
+      return { startDate: formatDate(firstDay), endDate: formatDate(lastDay) }
+    }
+    case 'last_month': {
+      const firstDay = new Date(year, month - 1, 1)
+      const lastDay = new Date(year, month, 0)
+      return { startDate: formatDate(firstDay), endDate: formatDate(lastDay) }
+    }
+    // Weekly ranges (assuming month starts on 1st)
+    case 'week_1': {
+      return { startDate: `${year}-${String(month + 1).padStart(2, '0')}-01`, endDate: `${year}-${String(month + 1).padStart(2, '0')}-07` }
+    }
+    case 'week_2': {
+      return { startDate: `${year}-${String(month + 1).padStart(2, '0')}-08`, endDate: `${year}-${String(month + 1).padStart(2, '0')}-14` }
+    }
+    case 'week_3': {
+      return { startDate: `${year}-${String(month + 1).padStart(2, '0')}-15`, endDate: `${year}-${String(month + 1).padStart(2, '0')}-21` }
+    }
+    case 'week_4': {
+      return { startDate: `${year}-${String(month + 1).padStart(2, '0')}-22`, endDate: `${year}-${String(month + 1).padStart(2, '0')}-28` }
+    }
+    case 'week_5': {
+      const lastDay = new Date(year, month + 1, 0).getDate()
+      return { startDate: `${year}-${String(month + 1).padStart(2, '0')}-29`, endDate: `${year}-${String(month + 1).padStart(2, '0')}-${lastDay}` }
+    }
+    // Monthly ranges
+    case 'jan': return { startDate: `${year}-01-01`, endDate: `${year}-01-31` }
+    case 'feb': {
+      const isLeap = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0)
+      return { startDate: `${year}-02-01`, endDate: `${year}-02-${isLeap ? '29' : '28'}` }
+    }
+    case 'mar': return { startDate: `${year}-03-01`, endDate: `${year}-03-31` }
+    case 'apr': return { startDate: `${year}-04-01`, endDate: `${year}-04-30` }
+    case 'may': return { startDate: `${year}-05-01`, endDate: `${year}-05-31` }
+    case 'jun': return { startDate: `${year}-06-01`, endDate: `${year}-06-30` }
+    case 'jul': return { startDate: `${year}-07-01`, endDate: `${year}-07-31` }
+    case 'aug': return { startDate: `${year}-08-01`, endDate: `${year}-08-31` }
+    case 'sep': return { startDate: `${year}-09-01`, endDate: `${year}-09-30` }
+    case 'oct': return { startDate: `${year}-10-01`, endDate: `${year}-10-31` }
+    case 'nov': return { startDate: `${year}-11-01`, endDate: `${year}-11-30` }
+    case 'dec': return { startDate: `${year}-12-01`, endDate: `${year}-12-31` }
+    // Quarters
+    case 'quarter_1': return { startDate: `${year}-01-01`, endDate: `${year}-03-31` }
+    case 'quarter_2': return { startDate: `${year}-04-01`, endDate: `${year}-06-30` }
+    case 'quarter_3': return { startDate: `${year}-07-01`, endDate: `${year}-09-30` }
+    case 'quarter_4': return { startDate: `${year}-10-01`, endDate: `${year}-12-31` }
+    // Half yearly
+    case 'half_1': return { startDate: `${year}-01-01`, endDate: `${year}-06-30` }
+    case 'half_2': return { startDate: `${year}-07-01`, endDate: `${year}-12-31` }
+    // Year
+    case 'this_year': return { startDate: `${year}-01-01`, endDate: `${year}-12-31` }
+    // All time
+    case 'all_time': return { startDate: '2000-01-01', endDate: formatDate(now), allTime: true }
+    default: return { startDate: '2000-01-01', endDate: formatDate(now), allTime: true }
+  }
+}
+
 export default function InvestorWithdrawalDashboard({ }: InvestorWithdrawalDashboardProps) {
   const [viewMode, setViewMode] = useState<'overview' | 'investors'>('overview')
+  const [timePeriod, setTimePeriod] = useState<TimePeriod>('all_time')
   const [investorData, setInvestorData] = useState<InvestorApiResponse | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -83,8 +218,17 @@ export default function InvestorWithdrawalDashboard({ }: InvestorWithdrawalDashb
     const fetchInvestorData = async () => {
       setLoading(true)
       try {
-        // Use all-time data instead of filtering by date
-        const response = await fetch('/api/dashboard/investors?all_time=true')
+        const dateRange = getDateRangeForPeriod(timePeriod)
+        const params = new URLSearchParams()
+        
+        if (dateRange.allTime) {
+          params.append('all_time', 'true')
+        } else {
+          params.append('start_date', dateRange.startDate)
+          params.append('end_date', dateRange.endDate)
+        }
+        
+        const response = await fetch(`/api/dashboard/investors?${params.toString()}`)
         if (response.ok) {
           const data = await response.json()
           console.log('📊 Investor data received:', data)
@@ -102,7 +246,7 @@ export default function InvestorWithdrawalDashboard({ }: InvestorWithdrawalDashb
     }
 
     fetchInvestorData()
-  }, [])
+  }, [timePeriod])
 
   if (loading) {
     return (
@@ -130,34 +274,148 @@ export default function InvestorWithdrawalDashboard({ }: InvestorWithdrawalDashb
           <h3 className="text-sm font-semibold text-violet-900">Investor Dashboard</h3>
         </div>
         
-        {/* Toggle Buttons */}
-        <div className="flex bg-white border border-violet-300 rounded-md p-0.5">
-          <button
-            onClick={() => setViewMode('overview')}
-            className={`px-3 py-1 text-xs font-medium rounded transition-all ${
-              viewMode === 'overview'
-                ? 'bg-violet-600 text-white shadow-sm'
-                : 'text-violet-700 hover:text-violet-900 hover:bg-violet-50'
-            }`}
-          >
-            <div className="flex items-center gap-1.5">
-              <PieChartIcon className="h-3.5 w-3.5" />
-              <span>Overview</span>
-            </div>
-          </button>
-          <button
-            onClick={() => setViewMode('investors')}
-            className={`px-3 py-1 text-xs font-medium rounded transition-all ${
-              viewMode === 'investors'
-                ? 'bg-violet-600 text-white shadow-sm'
-                : 'text-violet-700 hover:text-violet-900 hover:bg-violet-50'
-            }`}
-          >
-            <div className="flex items-center gap-1.5">
-              <Users className="h-3.5 w-3.5" />
-              <span>All Investors</span>
-            </div>
-          </button>
+        <div className="flex items-center gap-2">
+          {/* Time Period Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-8 text-xs border-violet-300 hover:bg-violet-50">
+                <Calendar className="h-3.5 w-3.5 mr-1.5" />
+                {TIME_PERIOD_LABELS[timePeriod]}
+                <ChevronDown className="h-3.5 w-3.5 ml-1.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel className="text-xs">Quick Select</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => setTimePeriod('today')} className="text-xs">
+                Today
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTimePeriod('this_week')} className="text-xs">
+                This Week
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTimePeriod('this_month')} className="text-xs">
+                This Month
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTimePeriod('last_month')} className="text-xs">
+                Last Month
+              </DropdownMenuItem>
+              
+              <DropdownMenuSeparator />
+              
+              {/* Weekly Breakdown */}
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="text-xs">
+                  Week (Monthly Base)
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem onClick={() => setTimePeriod('week_1')} className="text-xs">
+                    Week 1 (1-7)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTimePeriod('week_2')} className="text-xs">
+                    Week 2 (8-14)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTimePeriod('week_3')} className="text-xs">
+                    Week 3 (15-21)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTimePeriod('week_4')} className="text-xs">
+                    Week 4 (22-28)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTimePeriod('week_5')} className="text-xs">
+                    Week 5 (29+)
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              
+              {/* Monthly Breakdown */}
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="text-xs">
+                  Month (Jan-Dec)
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="max-h-80 overflow-y-auto">
+                  <DropdownMenuItem onClick={() => setTimePeriod('jan')} className="text-xs">January</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTimePeriod('feb')} className="text-xs">February</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTimePeriod('mar')} className="text-xs">March</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTimePeriod('apr')} className="text-xs">April</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTimePeriod('may')} className="text-xs">May</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTimePeriod('jun')} className="text-xs">June</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTimePeriod('jul')} className="text-xs">July</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTimePeriod('aug')} className="text-xs">August</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTimePeriod('sep')} className="text-xs">September</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTimePeriod('oct')} className="text-xs">October</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTimePeriod('nov')} className="text-xs">November</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTimePeriod('dec')} className="text-xs">December</DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              
+              <DropdownMenuSeparator />
+              
+              {/* Yearly Breakdown */}
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="text-xs">
+                  All Time Options
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem onClick={() => setTimePeriod('quarter_1')} className="text-xs">
+                    Q1 (Jan-Mar)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTimePeriod('quarter_2')} className="text-xs">
+                    Q2 (Apr-Jun)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTimePeriod('quarter_3')} className="text-xs">
+                    Q3 (Jul-Sep)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTimePeriod('quarter_4')} className="text-xs">
+                    Q4 (Oct-Dec)
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setTimePeriod('half_1')} className="text-xs">
+                    H1 (Jan-Jun)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTimePeriod('half_2')} className="text-xs">
+                    H2 (Jul-Dec)
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setTimePeriod('this_year')} className="text-xs">
+                    This Year
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setTimePeriod('all_time')} className="text-xs font-semibold">
+                All Time
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Toggle Buttons */}
+          <div className="flex bg-white border border-violet-300 rounded-md p-0.5">
+            <button
+              onClick={() => setViewMode('overview')}
+              className={`px-3 py-1 text-xs font-medium rounded transition-all ${
+                viewMode === 'overview'
+                  ? 'bg-violet-600 text-white shadow-sm'
+                  : 'text-violet-700 hover:text-violet-900 hover:bg-violet-50'
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <PieChartIcon className="h-3.5 w-3.5" />
+                <span>Overview</span>
+              </div>
+            </button>
+            <button
+              onClick={() => setViewMode('investors')}
+              className={`px-3 py-1 text-xs font-medium rounded transition-all ${
+                viewMode === 'investors'
+                  ? 'bg-violet-600 text-white shadow-sm'
+                  : 'text-violet-700 hover:text-violet-900 hover:bg-violet-50'
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <Users className="h-3.5 w-3.5" />
+                <span>All Investors</span>
+              </div>
+            </button>
+          </div>
         </div>
       </div>
 

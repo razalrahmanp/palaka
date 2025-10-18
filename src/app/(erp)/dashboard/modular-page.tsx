@@ -10,6 +10,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+} from '@/components/ui/dropdown-menu';
 
 // import { getCurrentUser } from '@/lib/auth';
 // import { User, UserRole, Permission } from '@/types';
@@ -21,6 +32,7 @@ import {
   TrendingUp,
   RefreshCw,
   Calendar,
+  ChevronDown,
   DollarSign,
   CreditCard,
   Receipt,
@@ -70,7 +82,53 @@ export default function EnhancedModularDashboard() {
   const [hasAccess, setHasAccess] = useState(false);
 
   // Date Filtering State - Default to This Month
-  const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'month' | 'last30' | 'custom' | 'alltime'>('month');
+  type DateFilter = 
+    | 'today' 
+    | 'this_week' 
+    | 'this_month' 
+    | 'last_month'
+    | 'week_1' | 'week_2' | 'week_3' | 'week_4' | 'week_5'
+    | 'jan' | 'feb' | 'mar' | 'apr' | 'may' | 'jun' | 'jul' | 'aug' | 'sep' | 'oct' | 'nov' | 'dec'
+    | 'quarter_1' | 'quarter_2' | 'quarter_3' | 'quarter_4'
+    | 'half_1' | 'half_2'
+    | 'this_year'
+    | 'all_time'
+    | 'custom';
+
+  const DATE_FILTER_LABELS: Record<DateFilter, string> = {
+    today: 'Today',
+    this_week: 'This Week',
+    this_month: 'This Month',
+    last_month: 'Last Month',
+    week_1: 'Week 1 (1-7)',
+    week_2: 'Week 2 (8-14)',
+    week_3: 'Week 3 (15-21)',
+    week_4: 'Week 4 (22-28)',
+    week_5: 'Week 5 (29+)',
+    jan: 'January',
+    feb: 'February',
+    mar: 'March',
+    apr: 'April',
+    may: 'May',
+    jun: 'June',
+    jul: 'July',
+    aug: 'August',
+    sep: 'September',
+    oct: 'October',
+    nov: 'November',
+    dec: 'December',
+    quarter_1: 'Q1 (Jan-Mar)',
+    quarter_2: 'Q2 (Apr-Jun)',
+    quarter_3: 'Q3 (Jul-Sep)',
+    quarter_4: 'Q4 (Oct-Dec)',
+    half_1: 'H1 (Jan-Jun)',
+    half_2: 'H2 (Jul-Dec)',
+    this_year: 'This Year',
+    all_time: 'All Time',
+    custom: 'Custom Range',
+  };
+
+  const [dateFilter, setDateFilter] = useState<DateFilter>('this_month');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
 
@@ -82,65 +140,91 @@ export default function EnhancedModularDashboard() {
   // Utility function to get date range based on filter
   const getDateRange = useCallback(() => {
     const now = new Date();
-    // Use local date to avoid timezone issues
     const year = now.getFullYear();
     const month = now.getMonth();
-    const date = now.getDate();
-    const today = new Date(year, month, date);
+    const day = now.getDate();
+    
+    const formatDate = (date: Date) => {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    };
     
     switch (dateFilter) {
-      case 'today':
-        const todayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`;
+      case 'today': {
+        const today = formatDate(now);
+        return { startDate: today, endDate: today };
+      }
+      case 'this_week': {
+        const dayOfWeek = now.getDay();
+        const monday = new Date(year, month, day - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
+        const sunday = new Date(year, month, day + (7 - dayOfWeek));
+        return { startDate: formatDate(monday), endDate: formatDate(sunday) };
+      }
+      case 'this_month': {
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+        return { startDate: formatDate(firstDay), endDate: formatDate(lastDay) };
+      }
+      case 'last_month': {
+        const firstDay = new Date(year, month - 1, 1);
+        const lastDay = new Date(year, month, 0);
+        return { startDate: formatDate(firstDay), endDate: formatDate(lastDay) };
+      }
+      // Weekly ranges (assuming month starts on 1st)
+      case 'week_1': {
+        return { startDate: `${year}-${String(month + 1).padStart(2, '0')}-01`, endDate: `${year}-${String(month + 1).padStart(2, '0')}-07` };
+      }
+      case 'week_2': {
+        return { startDate: `${year}-${String(month + 1).padStart(2, '0')}-08`, endDate: `${year}-${String(month + 1).padStart(2, '0')}-14` };
+      }
+      case 'week_3': {
+        return { startDate: `${year}-${String(month + 1).padStart(2, '0')}-15`, endDate: `${year}-${String(month + 1).padStart(2, '0')}-21` };
+      }
+      case 'week_4': {
+        return { startDate: `${year}-${String(month + 1).padStart(2, '0')}-22`, endDate: `${year}-${String(month + 1).padStart(2, '0')}-28` };
+      }
+      case 'week_5': {
+        const lastDay = new Date(year, month + 1, 0).getDate();
+        return { startDate: `${year}-${String(month + 1).padStart(2, '0')}-29`, endDate: `${year}-${String(month + 1).padStart(2, '0')}-${lastDay}` };
+      }
+      // Monthly ranges
+      case 'jan': return { startDate: `${year}-01-01`, endDate: `${year}-01-31` };
+      case 'feb': {
+        const isLeap = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+        return { startDate: `${year}-02-01`, endDate: `${year}-02-${isLeap ? '29' : '28'}` };
+      }
+      case 'mar': return { startDate: `${year}-03-01`, endDate: `${year}-03-31` };
+      case 'apr': return { startDate: `${year}-04-01`, endDate: `${year}-04-30` };
+      case 'may': return { startDate: `${year}-05-01`, endDate: `${year}-05-31` };
+      case 'jun': return { startDate: `${year}-06-01`, endDate: `${year}-06-30` };
+      case 'jul': return { startDate: `${year}-07-01`, endDate: `${year}-07-31` };
+      case 'aug': return { startDate: `${year}-08-01`, endDate: `${year}-08-31` };
+      case 'sep': return { startDate: `${year}-09-01`, endDate: `${year}-09-30` };
+      case 'oct': return { startDate: `${year}-10-01`, endDate: `${year}-10-31` };
+      case 'nov': return { startDate: `${year}-11-01`, endDate: `${year}-11-30` };
+      case 'dec': return { startDate: `${year}-12-01`, endDate: `${year}-12-31` };
+      // Quarters
+      case 'quarter_1': return { startDate: `${year}-01-01`, endDate: `${year}-03-31` };
+      case 'quarter_2': return { startDate: `${year}-04-01`, endDate: `${year}-06-30` };
+      case 'quarter_3': return { startDate: `${year}-07-01`, endDate: `${year}-09-30` };
+      case 'quarter_4': return { startDate: `${year}-10-01`, endDate: `${year}-12-31` };
+      // Half yearly
+      case 'half_1': return { startDate: `${year}-01-01`, endDate: `${year}-06-30` };
+      case 'half_2': return { startDate: `${year}-07-01`, endDate: `${year}-12-31` };
+      // Year
+      case 'this_year': return { startDate: `${year}-01-01`, endDate: `${year}-12-31` };
+      // All time
+      case 'all_time': return { startDate: '2020-01-01', endDate: formatDate(now) };
+      case 'custom': {
         return {
-          startDate: todayStr,
-          endDate: todayStr
+          startDate: customStartDate || formatDate(now),
+          endDate: customEndDate || formatDate(now)
         };
-      case 'week':
-        const weekStart = new Date(today);
-        weekStart.setDate(date - today.getDay());
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekStart.getDate() + 6);
-        return {
-          startDate: `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`,
-          endDate: `${weekEnd.getFullYear()}-${String(weekEnd.getMonth() + 1).padStart(2, '0')}-${String(weekEnd.getDate()).padStart(2, '0')}`
-        };
-      case 'month':
-        // Dynamic month calculation based on current date
-        const monthEnd = new Date(year, month + 1, 0);
-        return {
-          startDate: `${year}-${String(month + 1).padStart(2, '0')}-01`,
-          endDate: `${year}-${String(month + 1).padStart(2, '0')}-${String(monthEnd.getDate()).padStart(2, '0')}`
-        };
-      case 'last30':
-        // Previous month - from 1st day to last day of previous month
-        const prevMonth = month - 1;
-        const prevYear = prevMonth < 0 ? year - 1 : year;
-        const actualPrevMonth = prevMonth < 0 ? 11 : prevMonth;
-        
-        // Get the last day of the previous month (handles 28, 29, 30, 31 days automatically)
-        const lastDayOfPrevMonth = new Date(prevYear, actualPrevMonth + 1, 0);
-        
-        return {
-          startDate: `${prevYear}-${String(actualPrevMonth + 1).padStart(2, '0')}-01`,
-          endDate: `${prevYear}-${String(actualPrevMonth + 1).padStart(2, '0')}-${String(lastDayOfPrevMonth.getDate()).padStart(2, '0')}`
-        };
-      case 'alltime':
-        // All time data - from a very early date to today
-        // This will fetch all historical data from the beginning of records
-        return {
-          startDate: '2020-01-01', // Start from 2020 or adjust based on when your business started
-          endDate: `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`
-        };
-      case 'custom':
-        return {
-          startDate: customStartDate || `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`,
-          endDate: customEndDate || `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`
-        };
+      }
       default:
-        return {
-          startDate: '',
-          endDate: ''
-        };
+        return { startDate: '', endDate: '' };
     }
   }, [dateFilter, customStartDate, customEndDate]);
 
@@ -204,12 +288,7 @@ export default function EnhancedModularDashboard() {
                 Executive Dashboard & Business Intelligence
                 {dateRange.startDate && dateRange.endDate && (
                   <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-                    {dateFilter === 'today' ? 'Today' :
-                     dateFilter === 'week' ? 'This Week' :
-                     dateFilter === 'month' ? 'This Month' :
-                     dateFilter === 'last30' ? 'Last Month' :
-                     dateFilter === 'alltime' ? 'All Time' :
-                     `${dateRange.startDate} to ${dateRange.endDate}`}
+                    {DATE_FILTER_LABELS[dateFilter]}
                   </span>
                 )}
               </p>
@@ -217,95 +296,164 @@ export default function EnhancedModularDashboard() {
           </div>
           
           <div className="flex items-center space-x-3">
-            {/* Date Filter Controls */}
-            <div className="flex items-center space-x-2 border rounded-lg p-1 bg-gray-50">
-              <Button 
-                variant={dateFilter === 'today' ? "default" : "ghost"} 
-                size="sm"
-                onClick={() => setDateFilter('today')}
-                className="text-xs h-7"
-              >
-                Today
-              </Button>
-              <Button 
-                variant={dateFilter === 'week' ? "default" : "ghost"} 
-                size="sm"
-                onClick={() => setDateFilter('week')}
-                className="text-xs h-7"
-              >
-                Week
-              </Button>
-              <Button 
-                variant={dateFilter === 'month' ? "default" : "ghost"} 
-                size="sm"
-                onClick={() => setDateFilter('month')}
-                className="text-xs h-7"
-              >
-                Month
-              </Button>
-              <Button 
-                variant={dateFilter === 'last30' ? "default" : "ghost"} 
-                size="sm"
-                onClick={() => setDateFilter('last30')}
-                className="text-xs h-7"
-              >
-                Last Month
-              </Button>
-              <Button 
-                variant={dateFilter === 'alltime' ? "default" : "ghost"} 
-                size="sm"
-                onClick={() => setDateFilter('alltime')}
-                className="text-xs h-7"
-              >
-                All Time
-              </Button>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button 
-                    variant={dateFilter === 'custom' ? "default" : "ghost"} 
-                    size="sm"
-                    className="text-xs h-7"
-                  >
-                    <Calendar className="h-3 w-3 mr-1" />
-                    Custom
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-80 p-3">
-                  <div className="space-y-3">
-                    <h4 className="font-medium">Custom Date Range</h4>
-                    <div className="space-y-2">
-                      <div>
-                        <label className="text-sm font-medium">Start Date</label>
-                        <Input
-                          type="date"
-                          value={customStartDate}
-                          onChange={(e) => setCustomStartDate(e.target.value)}
-                          className="mt-1"
-                        />
+            {/* Date Filter Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 text-xs border-blue-300 hover:bg-blue-50">
+                  <Calendar className="h-3.5 w-3.5 mr-1.5" />
+                  {DATE_FILTER_LABELS[dateFilter]}
+                  <ChevronDown className="h-3.5 w-3.5 ml-1.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="text-xs">Quick Select</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => setDateFilter('today')} className="text-xs">
+                  Today
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setDateFilter('this_week')} className="text-xs">
+                  This Week
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setDateFilter('this_month')} className="text-xs">
+                  This Month
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setDateFilter('last_month')} className="text-xs">
+                  Last Month
+                </DropdownMenuItem>
+                
+                <DropdownMenuSeparator />
+                
+                {/* Weekly Breakdown */}
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger className="text-xs">
+                    Week (Monthly Base)
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuItem onClick={() => setDateFilter('week_1')} className="text-xs">
+                      Week 1 (1-7)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDateFilter('week_2')} className="text-xs">
+                      Week 2 (8-14)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDateFilter('week_3')} className="text-xs">
+                      Week 3 (15-21)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDateFilter('week_4')} className="text-xs">
+                      Week 4 (22-28)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDateFilter('week_5')} className="text-xs">
+                      Week 5 (29+)
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                
+                {/* Monthly Breakdown */}
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger className="text-xs">
+                    Month (Jan-Dec)
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="max-h-80 overflow-y-auto">
+                    <DropdownMenuItem onClick={() => setDateFilter('jan')} className="text-xs">January</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDateFilter('feb')} className="text-xs">February</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDateFilter('mar')} className="text-xs">March</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDateFilter('apr')} className="text-xs">April</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDateFilter('may')} className="text-xs">May</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDateFilter('jun')} className="text-xs">June</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDateFilter('jul')} className="text-xs">July</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDateFilter('aug')} className="text-xs">August</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDateFilter('sep')} className="text-xs">September</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDateFilter('oct')} className="text-xs">October</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDateFilter('nov')} className="text-xs">November</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDateFilter('dec')} className="text-xs">December</DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                
+                <DropdownMenuSeparator />
+                
+                {/* Yearly Breakdown */}
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger className="text-xs">
+                    All Time Options
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuItem onClick={() => setDateFilter('quarter_1')} className="text-xs">
+                      Q1 (Jan-Mar)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDateFilter('quarter_2')} className="text-xs">
+                      Q2 (Apr-Jun)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDateFilter('quarter_3')} className="text-xs">
+                      Q3 (Jul-Sep)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDateFilter('quarter_4')} className="text-xs">
+                      Q4 (Oct-Dec)
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => setDateFilter('half_1')} className="text-xs">
+                      H1 (Jan-Jun)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDateFilter('half_2')} className="text-xs">
+                      H2 (Jul-Dec)
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => setDateFilter('this_year')} className="text-xs">
+                      This Year
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setDateFilter('all_time')} className="text-xs font-semibold">
+                  All Time
+                </DropdownMenuItem>
+                
+                <DropdownMenuSeparator />
+                
+                {/* Custom Date Range */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-xs">
+                      <Calendar className="h-3 w-3 mr-2" />
+                      Custom Range...
+                    </DropdownMenuItem>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80 p-3" align="end" side="right">
+                    <div className="space-y-3">
+                      <h4 className="font-medium text-sm">Custom Date Range</h4>
+                      <div className="space-y-2">
+                        <div>
+                          <label className="text-xs font-medium">Start Date</label>
+                          <Input
+                            type="date"
+                            value={customStartDate}
+                            onChange={(e) => setCustomStartDate(e.target.value)}
+                            className="mt-1 text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium">End Date</label>
+                          <Input
+                            type="date"
+                            value={customEndDate}
+                            onChange={(e) => setCustomEndDate(e.target.value)}
+                            className="mt-1 text-xs"
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <label className="text-sm font-medium">End Date</label>
-                        <Input
-                          type="date"
-                          value={customEndDate}
-                          onChange={(e) => setCustomEndDate(e.target.value)}
-                          className="mt-1"
-                        />
-                      </div>
+                      <Button 
+                        size="sm" 
+                        onClick={() => setDateFilter('custom')}
+                        disabled={!customStartDate || !customEndDate}
+                        className="w-full text-xs"
+                      >
+                        Apply Custom Range
+                      </Button>
                     </div>
-                    <Button 
-                      size="sm" 
-                      onClick={() => setDateFilter('custom')}
-                      disabled={!customStartDate || !customEndDate}
-                      className="w-full"
-                    >
-                      Apply Custom Range
-                    </Button>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
+                  </PopoverContent>
+                </Popover>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
+            {/* Refresh Button */}
             <Button variant="outline" size="sm" onClick={refreshAllData} disabled={isLoading}>
               <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
               Refresh

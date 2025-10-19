@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { NavLink } from './NavLink';
 import { 
   Home, Users, Receipt, Warehouse, ShoppingCart, Wrench, Truck, 
   DollarSign, Star, Users2, Building2, Package, 
   FileText, TrendingUp, BookOpen, BarChart, ChevronDown, ChevronRight,
-  Mail, LogOut
+  Mail, LogOut, Pin, PinOff
 } from 'lucide-react';
 import { hasPermission, hasAnyPermission, getCurrentUser } from '@/lib/auth';
 
@@ -82,8 +83,10 @@ const reportItems: NavItem[] = [
 ];
 
 export const Sidebar = () => {
+  const pathname = usePathname();
   const [isHydrated, setIsHydrated] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const [isManuallyExpanded, setIsManuallyExpanded] = useState(false);
   
   // State for collapsible sections - All collapsed by default, only selected expands
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
@@ -94,6 +97,15 @@ export const Sidebar = () => {
     setIsHydrated(true);
   }, []);
 
+  // Collapse sidebar when pathname changes (navigation occurs)
+  useEffect(() => {
+    if (pathname) {
+      setIsHovered(false);
+      setIsManuallyExpanded(false);
+      setExpandedSections(new Set());
+    }
+  }, [pathname]);
+
   const toggleSection = (section: string) => {
     setExpandedSections(prev => {
       const newSet = new Set<string>();
@@ -103,6 +115,11 @@ export const Sidebar = () => {
       }
       return newSet;
     });
+  };
+
+  // Function to toggle manual expansion
+  const toggleManualExpansion = () => {
+    setIsManuallyExpanded(prev => !prev);
   };
 
   if (!isHydrated) {
@@ -121,7 +138,7 @@ export const Sidebar = () => {
     );
   }
 
-  const isExpanded = isHovered;
+  const isExpanded = isHovered || isManuallyExpanded;
 
   // Collapsible Section Component
   const CollapsibleSection = ({ 
@@ -185,9 +202,24 @@ export const Sidebar = () => {
       }`}
     >
     {/* Header - Compact */}
-    <div className="flex-shrink-0 flex items-center justify-center h-14 bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+    <div className="flex-shrink-0 flex items-center justify-center h-14 bg-gradient-to-r from-purple-600 to-blue-600 text-white relative">
       <Package className="h-6 w-6 text-white flex-shrink-0" />
       {isExpanded && <span className="ml-2 text-lg font-bold whitespace-nowrap">Palaka ERP</span>}
+      
+      {/* Pin/Unpin Button */}
+      {isExpanded && (
+        <button
+          onClick={toggleManualExpansion}
+          className="absolute right-2 p-1 hover:bg-white/20 rounded transition-colors"
+          title={isManuallyExpanded ? "Unpin sidebar" : "Pin sidebar"}
+        >
+          {isManuallyExpanded ? (
+            <PinOff className="w-4 h-4" />
+          ) : (
+            <Pin className="w-4 h-4" />
+          )}
+        </button>
+      )}
     </div>
     
     {/* Compact Navigation */}
@@ -199,11 +231,9 @@ export const Sidebar = () => {
             ? hasAnyPermission(i.permission)
             : hasPermission(i.permission)
         ).map(i => (
-          <div key={i.href}>
-            <NavLink href={i.href} icon={i.icon}>
-              {isExpanded && i.label}
-            </NavLink>
-          </div>
+          <NavLink key={i.href} href={i.href} icon={i.icon}>
+            {isExpanded && i.label}
+          </NavLink>
         ))}
       </div>
 

@@ -17,6 +17,37 @@ interface VendorBillFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
+  // Editing mode props
+  editMode?: boolean;
+  billToEdit?: {
+    id: string;
+    bill_number: string;
+    bill_date: string;
+    due_date: string;
+    total_amount: number;
+    description?: string;
+    tax_amount?: number;
+    discount_amount?: number;
+    reference_number?: string;
+    freight_total?: number;
+    additional_charges?: number;
+    cgst?: number;
+    sgst?: number;
+    igst?: number;
+    total_gst?: number;
+    gst_rate?: number;
+    is_interstate?: boolean;
+    vendor_bill_line_items?: {
+      id: string;
+      product_id?: string;
+      product_name: string;
+      description?: string;
+      quantity: number;
+      unit_price: number;
+      line_total?: number;
+      purchase_order_id?: string;
+    }[];
+  } | null;
 }
 
 interface PurchaseOrder {
@@ -38,6 +69,18 @@ interface PurchaseOrder {
 
 
 
+interface ApiLineItem {
+  id?: string;
+  product_id?: string | null;
+  product_name?: string;
+  description?: string | null;
+  quantity?: number;
+  unit_price?: number;
+  purchase_order_id?: string | null;
+  actual_cost_per_unit?: number;
+  operation: 'create' | 'update' | 'delete';
+}
+
 interface BillLineItem {
   id: string;
   product_id?: string;
@@ -45,7 +88,7 @@ interface BillLineItem {
   description?: string;
   quantity: number;
   unit_price: number;
-  line_total: number;
+  line_total?: number;
   purchase_order_id?: string;
 }
 
@@ -60,11 +103,20 @@ interface TaxCalculation {
   grand_total: number;
 }
 
-export function EnhancedVendorBillForm({ vendorId, vendorName, open, onOpenChange, onSuccess }: VendorBillFormProps) {
+export function EnhancedVendorBillForm({ 
+  vendorId, 
+  vendorName, 
+  open, 
+  onOpenChange, 
+  onSuccess, 
+  editMode = false, 
+  billToEdit = null 
+}: VendorBillFormProps) {
   const [loading, setLoading] = useState(false);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
 
   const [lineItems, setLineItems] = useState<BillLineItem[]>([]);
+  const [originalLineItems, setOriginalLineItems] = useState<BillLineItem[]>([]); // Track original items for deletions
   const [taxCalculation, setTaxCalculation] = useState<TaxCalculation>({
     subtotal: 0,
     freight_total: 0,
@@ -106,34 +158,88 @@ export function EnhancedVendorBillForm({ vendorId, vendorName, open, onOpenChang
     }
   }, [vendorId]);
 
-  // Generate bill number automatically
+  // Initialize form data (create or edit mode)
   useEffect(() => {
     if (open) {
-      const today = new Date();
-      const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
-      const timeStamp = Date.now().toString().slice(-6);
-      
-      const supplierAbbr = vendorName
-        .split(' ')
-        .map(word => word.charAt(0).toUpperCase())
-        .join('')
-        .slice(0, 6);
-      
-      const billNumber = `BILL-${supplierAbbr}-${timeStamp}-${dateStr}`;
-      setFormData(prev => ({ ...prev, bill_number: billNumber }));
-      
-      // Add one empty line item to start
-      setLineItems([{
-        id: Date.now().toString(),
-        product_name: '',
-        quantity: 1,
-        unit_price: 0,
-        line_total: 0
-      }]);
+      if (editMode && billToEdit) {
+        // Edit mode: Load existing bill data
+        setFormData({
+          bill_number: billToEdit.bill_number,
+          bill_date: billToEdit.bill_date,
+          due_date: billToEdit.due_date,
+          description: billToEdit.description || '',
+          reference_number: billToEdit.reference_number || '',
+          gst_rate: billToEdit.gst_rate?.toString() || '0', // Use existing GST rate or 0 if none
+          is_interstate: billToEdit.is_interstate || false, // Use existing interstate setting
+          freight_total: billToEdit.freight_total?.toString() || '0',
+          additional_charges: billToEdit.additional_charges?.toString() || '0',
+          discount_amount: billToEdit.discount_amount?.toString() || '0'
+        });
+
+        // Load existing line items
+        if (billToEdit.vendor_bill_line_items && billToEdit.vendor_bill_line_items.length > 0) {
+          const existingItems = billToEdit.vendor_bill_line_items.map((item) => ({
+            id: item.id,
+            product_id: item.product_id,
+            product_name: item.product_name,
+            description: item.description || '',
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            line_total: item.line_total || (item.quantity * item.unit_price),
+            purchase_order_id: item.purchase_order_id
+          }));
+          setLineItems(existingItems);
+          setOriginalLineItems(existingItems); // Store original items for deletion tracking
+        } else {
+          // Add one empty line item if no existing items
+          setLineItems([{
+            id: Date.now().toString(),
+            product_name: '',
+            quantity: 1,
+            unit_price: 0,
+            line_total: 0
+          }]);
+        }
+
+        // Set existing calculated values
+        setTaxCalculation({
+          subtotal: billToEdit.total_amount - (billToEdit.tax_amount || 0) - (billToEdit.freight_total || 0) - (billToEdit.additional_charges || 0) + (billToEdit.discount_amount || 0),
+          freight_total: billToEdit.freight_total || 0,
+          taxable_amount: billToEdit.total_amount - (billToEdit.tax_amount || 0),
+          cgst: billToEdit.cgst || 0,
+          sgst: billToEdit.sgst || 0,
+          igst: billToEdit.igst || 0,
+          total_gst: billToEdit.total_gst || billToEdit.tax_amount || 0,
+          grand_total: billToEdit.total_amount
+        });
+      } else {
+        // Create mode: Generate new bill number and initialize
+        const today = new Date();
+        const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
+        const timeStamp = Date.now().toString().slice(-6);
+        
+        const supplierAbbr = vendorName
+          .split(' ')
+          .map(word => word.charAt(0).toUpperCase())
+          .join('')
+          .slice(0, 6);
+        
+        const billNumber = `BILL-${supplierAbbr}-${timeStamp}-${dateStr}`;
+        setFormData(prev => ({ ...prev, bill_number: billNumber }));
+        
+        // Add one empty line item to start
+        setLineItems([{
+          id: Date.now().toString(),
+          product_name: '',
+          quantity: 1,
+          unit_price: 0,
+          line_total: 0
+        }]);
+      }
 
       fetchPurchaseOrders();
     }
-  }, [open, vendorId, vendorName, fetchPurchaseOrders]);
+  }, [open, vendorId, vendorName, editMode, billToEdit, fetchPurchaseOrders]);
 
   // Auto-calculate due date when bill date changes
   useEffect(() => {
@@ -254,8 +360,14 @@ export function EnhancedVendorBillForm({ vendorId, vendorName, open, onOpenChang
     try {
       setLoading(true);
       
-      const response = await fetch(`/api/vendors/${vendorId}/bills/enhanced`, {
-        method: 'POST',
+      const url = editMode && billToEdit 
+        ? `/api/finance/vendor-bills/${billToEdit.id}/enhanced`
+        : `/api/vendors/${vendorId}/bills/enhanced`;
+      
+      const method = editMode && billToEdit ? 'PUT' : 'POST';
+      
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -272,6 +384,8 @@ export function EnhancedVendorBillForm({ vendorId, vendorName, open, onOpenChang
           freight_total: taxCalculation.freight_total,
           additional_charges: parseFloat(formData.additional_charges) || 0,
           discount_amount: parseFloat(formData.discount_amount) || 0,
+          tax_amount: taxCalculation.total_gst,
+          total_amount: taxCalculation.grand_total,
           cgst: taxCalculation.cgst,
           sgst: taxCalculation.sgst,
           igst: taxCalculation.igst,
@@ -283,38 +397,90 @@ export function EnhancedVendorBillForm({ vendorId, vendorName, open, onOpenChang
           is_interstate: formData.is_interstate,
           
           // Line items with detailed costing
-          line_items: lineItems.filter(item => item.product_name.trim()).map(item => {
-            const gstRate = parseFloat(formData.gst_rate) || 0;
-            const freight_total = parseFloat(formData.freight_total) || 0;
-            const subtotal = lineItems.reduce((sum, lineItem) => sum + (lineItem.quantity * lineItem.unit_price), 0);
-            
-            // Allocate freight proportionally based on line total
-            const lineTotal = item.quantity * item.unit_price;
-            const freightAllocation = subtotal > 0 ? (lineTotal / subtotal) * freight_total : 0;
-            const freightPerUnit = item.quantity > 0 ? freightAllocation / item.quantity : 0;
-            
-            // Calculate actual cost per unit with freight allocation and GST
-            const unitPriceWithFreight = item.unit_price + freightPerUnit;
-            const gstAmount = (unitPriceWithFreight * gstRate) / 100;
-            const actualCostPerUnit = unitPriceWithFreight + gstAmount;
-            
-            return {
-              product_id: item.product_id || null,
-              product_name: item.product_name,
-              description: item.description || null,
-              quantity: item.quantity,
-              unit_price: item.unit_price,
-              line_total: lineTotal,
-              purchase_order_id: item.purchase_order_id || null,
-              // Send the calculated actual cost per unit including freight allocation and GST
-              actual_cost_per_unit: actualCostPerUnit
-            };
-          })
+          line_items: editMode && billToEdit ? 
+            // Edit mode: include operation flags for CRUD operations
+            (() => {
+              const currentItems = lineItems.filter(item => item.product_name.trim());
+              const resultItems: ApiLineItem[] = []; // Line items for API submission
+              
+              // Add current items (create or update)
+              currentItems.forEach(item => {
+                const gstRate = parseFloat(formData.gst_rate) || 0;
+                const freight_total = parseFloat(formData.freight_total) || 0;
+                const subtotal = currentItems.reduce((sum, lineItem) => sum + (lineItem.quantity * lineItem.unit_price), 0);
+                
+                // Allocate freight proportionally based on line total
+                const lineTotal = item.quantity * item.unit_price;
+                const freightAllocation = subtotal > 0 ? (lineTotal / subtotal) * freight_total : 0;
+                const freightPerUnit = item.quantity > 0 ? freightAllocation / item.quantity : 0;
+                
+                // Calculate actual cost per unit with freight allocation and GST
+                const unitPriceWithFreight = item.unit_price + freightPerUnit;
+                const gstAmount = (unitPriceWithFreight * gstRate) / 100;
+                const actualCostPerUnit = unitPriceWithFreight + gstAmount;
+                
+                // Determine operation based on whether item has existing ID
+                const isExistingItem = item.id && !item.id.startsWith('temp-') && originalLineItems.some(orig => orig.id === item.id);
+                const operation = isExistingItem ? 'update' : 'create';
+                
+                resultItems.push({
+                  id: isExistingItem ? item.id : undefined,
+                  product_id: item.product_id || null,
+                  product_name: item.product_name,
+                  description: item.description || null,
+                  quantity: item.quantity,
+                  unit_price: item.unit_price,
+                  purchase_order_id: item.purchase_order_id || null,
+                  actual_cost_per_unit: actualCostPerUnit,
+                  operation
+                });
+              });
+              
+              // Add deleted items
+              originalLineItems.forEach(originalItem => {
+                const stillExists = currentItems.some(current => current.id === originalItem.id);
+                if (!stillExists) {
+                  resultItems.push({
+                    id: originalItem.id,
+                    operation: 'delete'
+                  });
+                }
+              });
+              
+              return resultItems;
+            })()
+            :
+            // Create mode: simple format without operations
+            lineItems.filter(item => item.product_name.trim()).map(item => {
+              const gstRate = parseFloat(formData.gst_rate) || 0;
+              const freight_total = parseFloat(formData.freight_total) || 0;
+              const subtotal = lineItems.reduce((sum, lineItem) => sum + (lineItem.quantity * lineItem.unit_price), 0);
+              
+              // Allocate freight proportionally based on line total
+              const lineTotal = item.quantity * item.unit_price;
+              const freightAllocation = subtotal > 0 ? (lineTotal / subtotal) * freight_total : 0;
+              const freightPerUnit = item.quantity > 0 ? freightAllocation / item.quantity : 0;
+              
+              // Calculate actual cost per unit with freight allocation and GST
+              const unitPriceWithFreight = item.unit_price + freightPerUnit;
+              const gstAmount = (unitPriceWithFreight * gstRate) / 100;
+              const actualCostPerUnit = unitPriceWithFreight + gstAmount;
+              
+              return {
+                product_id: item.product_id || null,
+                product_name: item.product_name,
+                description: item.description || null,
+                quantity: item.quantity,
+                unit_price: item.unit_price,
+                purchase_order_id: item.purchase_order_id || null,
+                actual_cost_per_unit: actualCostPerUnit
+              };
+            })
         }),
       });
 
       if (response.ok) {
-        toast.success('Enhanced vendor bill created successfully!');
+        toast.success(editMode ? 'Vendor bill updated successfully!' : 'Enhanced vendor bill created successfully!');
         resetForm();
         onOpenChange(false);
         onSuccess();
@@ -344,6 +510,7 @@ export function EnhancedVendorBillForm({ vendorId, vendorName, open, onOpenChang
       discount_amount: '0'
     });
     setLineItems([]);
+    setOriginalLineItems([]); // Clear original line items tracking
     setTaxCalculation({
       subtotal: 0,
       freight_total: 0,
@@ -373,7 +540,7 @@ export function EnhancedVendorBillForm({ vendorId, vendorName, open, onOpenChang
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-semibold text-blue-700 flex items-center gap-2">
               <FileText className="h-6 w-6" />
-              Vendor Bill - {vendorName}
+              {editMode ? 'Edit Vendor Bill' : 'Vendor Bill'} - {vendorName}
             </h1>
             <Button 
               type="button" 
@@ -724,7 +891,7 @@ export function EnhancedVendorBillForm({ vendorId, vendorName, open, onOpenChang
                   Cancel
                 </Button>
                 <Button type="submit" disabled={loading}>
-                  {loading ? 'Creating...' : 'Create Bill'}
+                  {loading ? (editMode ? 'Updating...' : 'Creating...') : (editMode ? 'Update Bill' : 'Create Bill')}
                 </Button>
               </div>
             </div>

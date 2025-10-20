@@ -977,45 +977,77 @@ async function generateAccountBalancesReport(asOfDate: string) {
  */
 async function calculateInventoryValue(startDate: string, endDate: string, type: 'opening' | 'closing'): Promise<number> {
   try {
-    // 1. Get current inventory with product costs
-    const { data: currentInventory, error: invError } = await supabase
-      .from('inventory_items')
-      .select(`
-        id,
-        quantity,
-        product_id,
-        products (
-          cost,
-          name
-        )
-      `);
-    
-    if (invError) {
-      console.error('Error fetching current inventory:', invError);
-      return 0;
-    }
-
-    // Calculate closing stock value (current inventory)
-    let closingStockValue = 0;
-    currentInventory?.forEach((item: any) => {
-      const productCost = Array.isArray(item.products) 
-        ? (item.products[0]?.cost || 0)
-        : (item.products?.cost || 0);
-      
-      closingStockValue += item.quantity * parseFloat(productCost || '0');
-    });
-
     if (type === 'closing') {
-      console.log(`📦 Closing Stock Calculation (${endDate}):`, {
-        totalItems: currentInventory?.length || 0,
-        totalValue: closingStockValue.toFixed(2),
-        method: 'Current inventory quantities × product cost'
+      // For closing stock, use the SAME METHOD as vendor stats API
+      // This ensures consistency between P&L and vendor calculations
+      
+      // 1. Get all vendors
+      const { data: vendors, error: vendorsError } = await supabase
+        .from('suppliers')
+        .select('id, name');
+
+      if (vendorsError) {
+        console.error('Error fetching vendors:', vendorsError);
+        return 0;
+      }
+
+      // 2. Calculate stock cost for each vendor individually (same as vendor stats API)
+      let totalClosingStock = 0;
+      const vendorCalculations = [];
+
+      for (const vendor of vendors) {
+        const { data: vendorProducts, error: vendorError } = await supabase
+          .from('inventory_items')
+          .select(`
+            quantity,
+            products!inner(
+              price,
+              cost,
+              supplier_id
+            )
+          `)
+          .eq('products.supplier_id', vendor.id);
+
+        if (vendorError) {
+          console.error(`Error fetching vendor ${vendor.id} inventory:`, vendorError);
+          continue;
+        }
+
+        // Calculate cost for this vendor using same logic as vendor stats API
+        const vendorStockCost = vendorProducts?.reduce((sum: number, item: any) => {
+          const quantity = Number(item.quantity) || 0;
+          const product = Array.isArray(item.products) ? item.products[0] : item.products;
+          const cost = Number(product?.cost) || 0;
+          
+          // Only include items with quantity > 0 (same as vendor stats API)
+          if (quantity > 0) {
+            return sum + (quantity * cost);
+          }
+          return sum;
+        }, 0) || 0;
+
+        totalClosingStock += vendorStockCost;
+        vendorCalculations.push({
+          vendor: vendor.name,
+          products: vendorProducts?.length || 0,
+          stockCost: vendorStockCost
+        });
+      }
+
+      console.log(`📦 Closing Stock Calculation (${endDate}) - Using Vendor Method:`, {
+        totalVendors: vendors?.length || 0,
+        totalValue: totalClosingStock.toFixed(2),
+        method: 'Individual vendor calculations (same as vendor stats API)',
+        vendorBreakdown: vendorCalculations.slice(0, 5)
       });
 
-      return closingStockValue;
+      return totalClosingStock;
     }
 
     // For opening stock: Cost of items sold during period + Closing stock
+    
+    // First calculate closing stock using the same vendor method
+    const closingStockValue = await calculateInventoryValue(startDate, endDate, 'closing');
     
     // 2. Get sales orders in the period
     const { data: salesOrders, error: salesError } = await supabase

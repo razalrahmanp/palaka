@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { FileText, Plus, Calendar, DollarSign, CreditCard, Receipt, Search, Minus, Clock, Trash2, Edit, Calculator, ChevronDown, ChevronRight, RotateCcw, Scale } from 'lucide-react';
 // import { VendorBillForm } from './VendorBillForm';
 import { EnhancedVendorBillForm } from './EnhancedVendorBillForm';
+
 import { subcategoryMap } from '@/types';
 import PurchaseReturnWizard from '@/components/purchase-returns/PurchaseReturnWizard';
 import PaymentCollectionForm from '@/components/purchase-returns/PaymentCollectionForm';
@@ -25,6 +26,7 @@ interface VendorBillLineItem {
   description?: string;
   quantity: number;
   unit_price: number;
+  line_total?: number;
   actual_cost_per_unit?: number;
   purchase_order_id?: string;
   total_returned_quantity?: number;
@@ -153,21 +155,9 @@ export function VendorBillsTab({
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [selectedBillForPayment, setSelectedBillForPayment] = useState<VendorBill | null>(null);
   
-  // Edit bill state
-  const [editBillOpen, setEditBillOpen] = useState(false);
-  const [selectedBillForEdit, setSelectedBillForEdit] = useState<VendorBill | null>(null);
-  const [isUpdatingBill, setIsUpdatingBill] = useState(false);
-  const [isDeletingBill, setIsDeletingBill] = useState(false);
-  const [editBillForm, setEditBillForm] = useState({
-    bill_number: '',
-    bill_date: '',
-    due_date: '',
-    total_amount: '',
-    description: '',
-    tax_amount: '',
-    discount_amount: '',
-    reference_number: ''
-  });
+  // Enhanced edit bill state (for editing line items)
+  const [enhancedEditBillOpen, setEnhancedEditBillOpen] = useState(false);
+  const [selectedBillForEnhancedEdit, setSelectedBillForEnhancedEdit] = useState<VendorBill | null>(null);
   
   // Smart payment states
   const [smartPaymentOpen, setSmartPaymentOpen] = useState(false);
@@ -592,152 +582,10 @@ export function VendorBillsTab({
     }
   };
 
-  // Edit bill functionality
-  const handleEditBill = (bill: VendorBill) => {
-    setSelectedBillForEdit(bill);
-    setEditBillForm({
-      bill_number: bill.bill_number,
-      bill_date: bill.bill_date,
-      due_date: bill.due_date,
-      total_amount: bill.total_amount.toString(),
-      description: bill.description || '',
-      tax_amount: bill.tax_amount?.toString() || '0',
-      discount_amount: bill.discount_amount?.toString() || '0',
-      reference_number: bill.reference_number || ''
-    });
-    setEditBillOpen(true);
-  };
-
-  const handleUpdateBill = async () => {
-    if (!selectedBillForEdit) return;
-
-    // Validation
-    if (!editBillForm.total_amount || parseFloat(editBillForm.total_amount) <= 0) {
-      alert('Please enter a valid total amount greater than 0');
-      return;
-    }
-
-    if (!editBillForm.bill_number.trim()) {
-      alert('Please enter a bill number');
-      return;
-    }
-
-    setIsUpdatingBill(true);
-    try {
-      const response = await fetch('/api/finance/vendor-bills', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          bill_id: selectedBillForEdit.id,
-          supplier_id: vendorId,
-          bill_number: editBillForm.bill_number.trim(),
-          bill_date: editBillForm.bill_date,
-          due_date: editBillForm.due_date,
-          total_amount: parseFloat(editBillForm.total_amount),
-          description: editBillForm.description.trim(),
-          tax_amount: parseFloat(editBillForm.tax_amount) || 0,
-          discount_amount: parseFloat(editBillForm.discount_amount) || 0,
-          reference_number: editBillForm.reference_number.trim()
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to update bill');
-      }
-
-      setEditBillOpen(false);
-      setSelectedBillForEdit(null);
-      setEditBillForm({
-        bill_number: '',
-        bill_date: '',
-        due_date: '',
-        total_amount: '',
-        description: '',
-        tax_amount: '',
-        discount_amount: '',
-        reference_number: ''
-      });
-      
-      // Refresh bill data
-      onBillUpdate();
-      alert('Bill updated successfully!');
-    } catch (error) {
-      console.error('Error updating bill:', error);
-      alert(`Error updating bill: ${error instanceof Error ? error.message : 'Please try again.'}`);
-    } finally {
-      setIsUpdatingBill(false);
-    }
-  };
-
-  const closeEditDialog = () => {
-    setEditBillOpen(false);
-    setSelectedBillForEdit(null);
-    setIsUpdatingBill(false);
-    setIsDeletingBill(false);
-    setEditBillForm({
-      bill_number: '',
-      bill_date: '',
-      due_date: '',
-      total_amount: '',
-      description: '',
-      tax_amount: '',
-      discount_amount: '',
-      reference_number: ''
-    });
-  };
-
-  const handleDeleteBill = async () => {
-    if (!selectedBillForEdit) return;
-
-    // Confirm deletion
-    const confirmDelete = window.confirm(
-      `Are you sure you want to delete bill "${selectedBillForEdit.bill_number}"?\n\n` +
-      `This action cannot be undone and will permanently remove the bill and all associated data.`
-    );
-
-    if (!confirmDelete) return;
-
-    // Additional confirmation for bills with payments
-    if (selectedBillForEdit.paid_amount > 0) {
-      const confirmWithPayments = window.confirm(
-        `⚠️ WARNING: This bill has payments totaling ${formatCurrency(selectedBillForEdit.paid_amount)}.\n\n` +
-        `Deleting this bill may affect your accounting records. Are you absolutely sure you want to proceed?`
-      );
-
-      if (!confirmWithPayments) return;
-    }
-
-    setIsDeletingBill(true);
-    try {
-      const response = await fetch('/api/finance/vendor-bills', {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          bill_id: selectedBillForEdit.id
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to delete bill');
-      }
-
-      closeEditDialog();
-      
-      // Refresh bill data
-      onBillUpdate();
-      alert('Bill deleted successfully!');
-    } catch (error) {
-      console.error('Error deleting bill:', error);
-      alert(`Error deleting bill: ${error instanceof Error ? error.message : 'Please try again.'}`);
-    } finally {
-      setIsDeletingBill(false);
-    }
+  // Enhanced edit bill functionality (with line items)
+  const handleEnhancedEditBill = (bill: VendorBill) => {
+    setSelectedBillForEnhancedEdit(bill);
+    setEnhancedEditBillOpen(true);
   };
 
   const handleDeleteExpense = async (expense: Expense) => {
@@ -979,57 +827,8 @@ export function VendorBillsTab({
     }
   };
 
-  const totals = {
-    totalAmount: financialSummary.totalBillAmount,
-    totalPaid: financialSummary.totalPaidAmount,
-    totalRemaining: financialSummary.totalOutstanding
-  };
-
   return (
     <div className="space-y-6">
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <FileText className="h-4 w-4 text-blue-600" />
-              <span className="text-sm font-medium">Total Bills</span>
-            </div>
-            <p className="text-2xl font-bold text-blue-600">{bills.length}</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <DollarSign className="h-4 w-4 text-green-600" />
-              <span className="text-sm font-medium">Total Amount</span>
-            </div>
-            <p className="text-lg font-bold text-green-600">{formatCurrency(totals.totalAmount)}</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <DollarSign className="h-4 w-4 text-blue-600" />
-              <span className="text-sm font-medium">Total Paid</span>
-            </div>
-            <p className="text-lg font-bold text-blue-600">{formatCurrency(totals.totalPaid)}</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <DollarSign className="h-4 w-4 text-orange-600" />
-              <span className="text-sm font-medium">Outstanding</span>
-            </div>
-            <p className="text-lg font-bold text-orange-600">{formatCurrency(totals.totalRemaining)}</p>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Tabs for Bills and Expenses */}
       <Tabs defaultValue="bills" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
@@ -1159,11 +958,12 @@ export function VendorBillsTab({
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="h-8 w-8 p-0"
-                                  onClick={() => handleEditBill(bill)}
-                                  title="Edit bill"
+                                  className="h-8 px-2 text-xs"
+                                  onClick={() => handleEnhancedEditBill(bill)}
+                                  title="Edit bill and items"
                                 >
-                                  <Edit className="h-3 w-3" />
+                                  <Edit className="h-3 w-3 mr-1" />
+                                  Edit
                                 </Button>
                                 {bill.remaining_amount > 0 && (
                                   <Button
@@ -2059,7 +1859,7 @@ export function VendorBillsTab({
                                 title="View bill details"
                                 onClick={() => {
                                   const bill = bills.find(b => b.id === entry.bill_id);
-                                  if (bill) handleEditBill(bill);
+                                  if (bill) handleEnhancedEditBill(bill);
                                 }}
                               >
                                 <FileText className="h-3 w-3" />
@@ -2233,196 +2033,6 @@ export function VendorBillsTab({
         </TabsContent>
       </Tabs>
 
-      {/* Edit Bill Dialog */}
-      <Dialog open={editBillOpen} onOpenChange={(open) => {
-        if (!open && !isUpdatingBill && !isDeletingBill) {
-          closeEditDialog();
-        }
-      }}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Edit className="h-5 w-5" />
-              Edit Vendor Bill
-            </DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Left Column */}
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="edit_bill_number">Bill Number *</Label>
-                  <Input
-                    id="edit_bill_number"
-                    value={editBillForm.bill_number}
-                    onChange={(e) => setEditBillForm({...editBillForm, bill_number: e.target.value})}
-                    placeholder="Enter bill number"
-                    required
-                  />
-                </div>
-                
-                <div>
-                  <Label htmlFor="edit_bill_date">Bill Date *</Label>
-                  <Input
-                    id="edit_bill_date"
-                    type="date"
-                    value={editBillForm.bill_date}
-                    onChange={(e) => setEditBillForm({...editBillForm, bill_date: e.target.value})}
-                    required
-                  />
-                </div>
-                
-                <div>
-                  <Label htmlFor="edit_due_date">Due Date *</Label>
-                  <Input
-                    id="edit_due_date"
-                    type="date"
-                    value={editBillForm.due_date}
-                    onChange={(e) => setEditBillForm({...editBillForm, due_date: e.target.value})}
-                    required
-                  />
-                </div>
-                
-                <div>
-                  <Label htmlFor="edit_reference_number">Reference Number</Label>
-                  <Input
-                    id="edit_reference_number"
-                    value={editBillForm.reference_number}
-                    onChange={(e) => setEditBillForm({...editBillForm, reference_number: e.target.value})}
-                    placeholder="Enter reference number (optional)"
-                  />
-                </div>
-              </div>
-              
-              {/* Right Column */}
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="edit_total_amount">Total Amount *</Label>
-                  <Input
-                    id="edit_total_amount"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={editBillForm.total_amount}
-                    onChange={(e) => setEditBillForm({...editBillForm, total_amount: e.target.value})}
-                    placeholder="0.00"
-                    required
-                  />
-                </div>
-                
-                <div>
-                  <Label htmlFor="edit_tax_amount">Tax Amount</Label>
-                  <Input
-                    id="edit_tax_amount"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={editBillForm.tax_amount}
-                    onChange={(e) => setEditBillForm({...editBillForm, tax_amount: e.target.value})}
-                    placeholder="0.00"
-                  />
-                </div>
-                
-                <div>
-                  <Label htmlFor="edit_discount_amount">Discount Amount</Label>
-                  <Input
-                    id="edit_discount_amount"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={editBillForm.discount_amount}
-                    onChange={(e) => setEditBillForm({...editBillForm, discount_amount: e.target.value})}
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
-            </div>
-            
-            <div>
-              <Label htmlFor="edit_description">Description</Label>
-              <Textarea
-                id="edit_description"
-                value={editBillForm.description}
-                onChange={(e) => setEditBillForm({...editBillForm, description: e.target.value})}
-                placeholder="Enter bill description"
-                rows={3}
-              />
-            </div>
-            
-            {/* Summary */}
-            {selectedBillForEdit && (
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h4 className="font-medium text-gray-900 mb-2">Bill Summary</h4>
-                <div className="text-sm text-gray-600 space-y-1">
-                  <p><strong>Current Paid Amount:</strong> {formatCurrency(selectedBillForEdit.paid_amount)}</p>
-                  <p><strong>Current Outstanding:</strong> {formatCurrency(selectedBillForEdit.remaining_amount)}</p>
-                  <p className="text-xs text-orange-600 mt-2">
-                    Note: Changing the total amount will automatically recalculate the outstanding balance.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-          
-          <DialogFooter className="pt-6 border-t border-gray-200">
-            <div className="flex justify-between items-center w-full">
-              {/* Delete button on the left */}
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={handleDeleteBill}
-                disabled={isUpdatingBill || isDeletingBill}
-                className="flex items-center gap-2"
-              >
-                {isDeletingBill ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    Deleting...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="h-4 w-4" />
-                    Delete Bill
-                  </>
-                )}
-              </Button>
-
-              {/* Cancel and Update buttons on the right */}
-              <div className="flex gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={closeEditDialog}
-                  disabled={isUpdatingBill || isDeletingBill}
-                  className="flex-1 sm:flex-none"
-                >
-                  Cancel
-                </Button>
-                <Button 
-                  type="button" 
-                  onClick={handleUpdateBill}
-                  disabled={!editBillForm.bill_number.trim() || !editBillForm.total_amount || parseFloat(editBillForm.total_amount) <= 0 || isUpdatingBill || isDeletingBill}
-                  className="bg-blue-600 hover:bg-blue-700 flex-1 sm:flex-none"
-                >
-                  {isUpdatingBill ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Updating...
-                    </>
-                  ) : (
-                    <>
-                      <Edit className="h-4 w-4 mr-2" />
-                      Update Bill
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Enhanced Vendor Bill Form Dialog */}
       <EnhancedVendorBillForm
         vendorId={vendorId}
@@ -2430,6 +2040,17 @@ export function VendorBillsTab({
         open={createBillOpen}
         onOpenChange={setCreateBillOpen}
         onSuccess={onBillUpdate}
+      />
+
+      {/* Enhanced Vendor Bill Form Dialog (for editing) */}
+      <EnhancedVendorBillForm
+        vendorId={vendorId}
+        vendorName={vendorName}
+        open={enhancedEditBillOpen}
+        onOpenChange={setEnhancedEditBillOpen}
+        onSuccess={onBillUpdate}
+        editMode={true}
+        billToEdit={selectedBillForEnhancedEdit}
       />
 
       {/* Legacy Vendor Bill Form Dialog (keeping for compatibility) */}

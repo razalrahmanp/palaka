@@ -529,59 +529,7 @@ export default function ProfitLossReport({ startDate: initialStartDate, endDate:
   const renderHorizontalView = () => {
     return (
       <div className="grid grid-cols-2 gap-6">
-        {/* Left Column - Revenue */}
-        <Card>
-          <CardHeader className="bg-green-50">
-            <CardTitle className="text-green-900">REVENUE</CardTitle>
-          </CardHeader>
-          <CardContent className="p-4">
-            <div className="space-y-1">
-              {reportData?.sections?.REVENUE?.map((item, index) => {
-                const isHeader = item.is_category_header;
-                const isItem = item.is_revenue_item;
-                
-                if (isItem && !expandedCategories.has('REV001')) {
-                  return null;
-                }
-                
-                return (
-                  <div 
-                    key={index} 
-                    className={`flex justify-between py-1.5 ${
-                      isHeader ? 'font-semibold bg-green-100 px-2 rounded cursor-pointer hover:bg-green-200' : 
-                      'pl-4 border-b border-gray-50'
-                    }`}
-                    onClick={() => {
-                      if (isHeader) {
-                        toggleCategory(item.account_code);
-                      }
-                    }}
-                  >
-                    <span className={`text-sm flex items-center gap-1 ${isItem ? 'text-gray-600' : 'text-gray-700'}`}>
-                      {isHeader && (
-                        expandedCategories.has(item.account_code) ? (
-                          <ChevronDown className="h-4 w-4" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4" />
-                        )
-                      )}
-                      {item.account_name}
-                    </span>
-                    <span className={`text-sm font-mono ${isHeader ? 'text-green-700' : 'text-green-600'}`}>
-                      {formatCurrency(item.amount)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="flex justify-between py-3 mt-2 font-bold border-t-2 border-green-200">
-              <span>Total Revenue</span>
-              <span className="text-green-700">{formatCurrency(reportData?.summary?.total_revenue || 0)}</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Right Column - COGS & Expenses */}
+        {/* Left Column - COGS & Expenses */}
         <div className="space-y-6">
           {/* COGS Section */}
           {reportData?.sections?.COST_OF_GOODS_SOLD && reportData.sections.COST_OF_GOODS_SOLD.length > 0 && (
@@ -715,6 +663,58 @@ export default function ProfitLossReport({ startDate: initialStartDate, endDate:
             </CardContent>
           </Card>
         </div>
+
+        {/* Right Column - Revenue */}
+        <Card>
+          <CardHeader className="bg-green-50">
+            <CardTitle className="text-green-900">REVENUE</CardTitle>
+          </CardHeader>
+          <CardContent className="p-4">
+            <div className="space-y-1">
+              {reportData?.sections?.REVENUE?.map((item, index) => {
+                const isHeader = item.is_category_header;
+                const isItem = item.is_revenue_item;
+                
+                if (isItem && !expandedCategories.has('REV001')) {
+                  return null;
+                }
+                
+                return (
+                  <div 
+                    key={index} 
+                    className={`flex justify-between py-1.5 ${
+                      isHeader ? 'font-semibold bg-green-100 px-2 rounded cursor-pointer hover:bg-green-200' : 
+                      'pl-4 border-b border-gray-50'
+                    }`}
+                    onClick={() => {
+                      if (isHeader) {
+                        toggleCategory(item.account_code);
+                      }
+                    }}
+                  >
+                    <span className={`text-sm flex items-center gap-1 ${isItem ? 'text-gray-600' : 'text-gray-700'}`}>
+                      {isHeader && (
+                        expandedCategories.has(item.account_code) ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )
+                      )}
+                      {item.account_name}
+                    </span>
+                    <span className={`text-sm font-mono ${isHeader ? 'text-green-700' : 'text-green-600'}`}>
+                      {formatCurrency(item.amount)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex justify-between py-3 mt-2 font-bold border-t-2 border-green-200">
+              <span>Total Revenue</span>
+              <span className="text-green-700">{formatCurrency(reportData?.summary?.total_revenue || 0)}</span>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   };
@@ -927,12 +927,12 @@ export default function ProfitLossReport({ startDate: initialStartDate, endDate:
               </TableRow>
 
               {/* Net Income/Loss */}
-              <TableRow className="bg-blue-100 font-bold border-t-2 border-blue-300">
+              <TableRow className={`font-bold border-t-2 ${(reportData?.summary?.net_income || 0) >= 0 ? 'bg-blue-100 border-blue-300' : 'bg-red-100 border-red-300'}`}>
                 <TableCell>NET INCOME / (LOSS)</TableCell>
                 <TableCell className="text-right font-mono">
                   {(reportData?.summary?.net_income || 0) < 0 ? formatCurrency(Math.abs(reportData?.summary?.net_income || 0)) : '-'}
                 </TableCell>
-                <TableCell className="text-right font-mono text-blue-700">
+                <TableCell className={`text-right font-mono ${(reportData?.summary?.net_income || 0) >= 0 ? 'text-blue-700' : 'text-red-700'}`}>
                   {(reportData?.summary?.net_income || 0) >= 0 ? formatCurrency(reportData?.summary?.net_income || 0) : '-'}
                 </TableCell>
               </TableRow>
@@ -965,8 +965,8 @@ export default function ProfitLossReport({ startDate: initialStartDate, endDate:
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Floating Action Buttons - Left Side */}
-      <div className="fixed left-6 top-24 z-20 flex flex-col gap-3">
+      {/* Floating Action Buttons - Right Middle */}
+      <div className="fixed right-6 top-1/2 transform -translate-y-1/2 z-20 flex flex-col gap-3">
         {/* View Mode Toggle */}
         <div 
           className="relative flex items-center"
@@ -986,7 +986,7 @@ export default function ProfitLossReport({ startDate: initialStartDate, endDate:
           
           {/* View Options Menu */}
           {showViewMenu && (
-            <div className="absolute left-14 top-0 bg-white rounded-lg shadow-xl border border-gray-200 py-2 min-w-[200px] z-30">
+            <div className="absolute right-14 top-0 bg-white rounded-lg shadow-xl border border-gray-200 py-2 min-w-[200px] z-30">
               <button
                 onClick={() => {
                   setViewMode('vertical');
@@ -1129,7 +1129,7 @@ export default function ProfitLossReport({ startDate: initialStartDate, endDate:
       </div>
 
       {/* Report Content */}
-      <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <div className="pl-6 pr-6 pt-6 pb-6 space-y-6">
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
@@ -1166,7 +1166,7 @@ export default function ProfitLossReport({ startDate: initialStartDate, endDate:
           <Card>
             <CardContent className="p-4">
               <p className="text-sm text-gray-600">Net Income</p>
-              <p className="text-2xl font-bold text-blue-600">
+              <p className={`text-2xl font-bold ${(reportData?.summary?.net_income || 0) >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
                 {formatCurrency(reportData?.summary?.net_income || 0)}
               </p>
             </CardContent>
@@ -1179,7 +1179,7 @@ export default function ProfitLossReport({ startDate: initialStartDate, endDate:
         {viewMode === 'accounting' && renderAccountingView()}
 
         {/* Net Income Summary */}
-        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200">
+        <Card className={`border-2 ${(reportData?.summary?.net_income || 0) >= 0 ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200' : 'bg-gradient-to-r from-red-50 to-pink-50 border-red-200'}`}>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -1189,7 +1189,7 @@ export default function ProfitLossReport({ startDate: initialStartDate, endDate:
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-4xl font-bold text-blue-700">
+                <p className={`text-4xl font-bold ${(reportData?.summary?.net_income || 0) >= 0 ? 'text-blue-700' : 'text-red-700'}`}>
                   {formatCurrency(reportData?.summary?.net_income || 0)}
                 </p>
                 <Badge 

@@ -8,7 +8,6 @@ interface BillLineItem {
   description?: string | null;
   quantity: number;
   unit_price: number;
-  line_total: number;
   actual_cost_per_unit: number;
   purchase_order_id?: string | null;
 }

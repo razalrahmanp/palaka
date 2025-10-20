@@ -29,6 +29,9 @@ interface VendorStats {
   total_pending: number; // Amount owed to vendor
   unpaid_bills: number; // Number of unpaid bills
   payment_status: 'pending' | 'paid';
+  // Stock availability metrics
+  out_of_stock_items?: number;
+  available_products?: number;
   // Detailed inventory information
   inventory_summary?: {
     total_products: number;
@@ -101,7 +104,7 @@ export default function VendorsPage() {
           total_stock_cost: vendor.total_cost_inr,
           total_profit: vendor.profit_margin_inr,
           low_stock_items: 0, // Not available in current stats, can be added later if needed
-          out_of_stock_items: 0, // Not available in current stats, can be added later if needed
+          out_of_stock_items: vendor.out_of_stock_items || 0, // Use new API field
           categories: [], // Not available in current stats, can be added later if needed
           overall_profit_margin: vendor.profit_percentage
         }
@@ -658,22 +661,22 @@ export default function VendorsPage() {
                           {/* Product and Stock Count */}
                           <div className="grid grid-cols-3 gap-2">
                             <div className="text-center">
-                              <div className="text-lg font-bold text-blue-600">
-                                {vendor.inventory_summary.total_products}
+                              <div className="text-lg font-bold text-green-600">
+                                {vendor.inventory_summary.total_products - (vendor.inventory_summary.out_of_stock_items || 0)}
                               </div>
-                              <div className="text-xs text-blue-700 font-medium">Products</div>
+                              <div className="text-xs text-green-700 font-medium">Available Products</div>
                             </div>
                             <div className="text-center">
                               <div className="text-lg font-bold text-blue-600">
                                 {vendor.inventory_summary.total_quantity}
                               </div>
-                              <div className="text-xs text-blue-700 font-medium">Total Qty</div>
+                              <div className="text-xs text-blue-700 font-medium">Available Qty</div>
                             </div>
                             <div className="text-center">
-                              <div className="text-lg font-bold text-blue-600">
-                                {vendor.inventory_summary.categories.length}
+                              <div className="text-lg font-bold text-red-600">
+                                {vendor.inventory_summary.out_of_stock_items || 0}
                               </div>
-                              <div className="text-xs text-blue-700 font-medium">Categories</div>
+                              <div className="text-xs text-red-700 font-medium">Stock Out</div>
                             </div>
                           </div>
                           
@@ -700,18 +703,24 @@ export default function VendorsPage() {
                           )}
                         </div>
                       ) : (
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-3 gap-3">
                           <div className="text-center">
-                            <div className="text-2xl font-bold text-blue-600">
-                              {vendor.products_count || 0}
+                            <div className="text-lg font-bold text-green-600">
+                              {vendor.available_products || vendor.products_count || 0}
                             </div>
-                            <div className="text-xs text-blue-700 font-medium">Products</div>
+                            <div className="text-xs text-green-700 font-medium">Available Products</div>
                           </div>
                           <div className="text-center">
-                            <div className="text-2xl font-bold text-blue-600">
+                            <div className="text-lg font-bold text-blue-600">
                               {vendor.current_stock_quantity || 0}
                             </div>
-                            <div className="text-xs text-blue-700 font-medium">Units in Stock</div>
+                            <div className="text-xs text-blue-700 font-medium">Available Qty</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-red-600">
+                              {vendor.out_of_stock_items || 0}
+                            </div>
+                            <div className="text-xs text-red-700 font-medium">Stock Out</div>
                           </div>
                         </div>
                       )}

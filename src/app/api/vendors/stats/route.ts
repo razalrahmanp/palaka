@@ -62,14 +62,34 @@ export async function GET() {
       .select('id, supplier_id, total_amount, paid_amount, status, created_at')
       .in('supplier_id', vendors.map(v => v.id));
 
-    // Bulk fetch all inventory data for all vendors in one query
-    const { data: allVendorProducts } = await supabase
+    // Bulk fetch all inventory data for all vendors in one query - using exact same structure as individual stock API
+    const { data: allVendorProducts, error: productsError } = await supabase
       .from('inventory_items')
       .select(`
+        id,
         quantity,
-        products!inner(price, cost, supplier_id)
+        reorder_point,
+        updated_at,
+        products!inner(
+          id,
+          name,
+          sku,
+          description,
+          category,
+          price,
+          cost,
+          supplier_id
+        ),
+        suppliers!inner(
+          id,
+          name
+        )
       `)
       .in('products.supplier_id', vendors.map(v => v.id));
+
+    if (productsError) {
+      console.error('Error fetching vendor products:', productsError);
+    }
 
     // Group data by vendor_id for efficient processing
     const purchaseOrdersByVendor = new Map<string, PurchaseOrder[]>();
@@ -110,21 +130,32 @@ export async function GET() {
       const vendorProducts = productsByVendor.get(vendor.id) || [];
       const vendorBills = billsByVendor.get(vendor.id) || [];
 
-        // Calculate current stock metrics
-        const currentStockQuantity = vendorProducts.reduce((sum: number, item: InventoryItem) => sum + (item.quantity || 0), 0);
+        // Calculate current stock metrics - only count items with quantity > 0
+        const currentStockQuantity = vendorProducts.reduce((sum: number, item: InventoryItem) => {
+          const quantity = Number(item.quantity) || 0;
+          return quantity > 0 ? sum + quantity : sum;
+        }, 0);
         const currentStockValue = vendorProducts.reduce((sum: number, item: InventoryItem) => {
-          const quantity = item.quantity || 0;
+          const quantity = Number(item.quantity) || 0;
           const product = Array.isArray(item.products) ? item.products[0] : item.products;
-          const price = product?.price || 0;
-          return sum + (quantity * price);
+          const price = Number(product?.price) || 0;
+          // Only include items with quantity > 0 to match individual stock API behavior
+          if (quantity > 0) {
+            return sum + (quantity * price);
+          }
+          return sum;
         }, 0);
 
-        // Calculate total purchase cost (what was paid to vendor)
+        // Calculate total purchase cost (what was paid to vendor) - using same logic as individual stock API
         const totalPurchaseCost = vendorProducts.reduce((sum: number, item: InventoryItem) => {
-          const quantity = item.quantity || 0;
+          const quantity = Number(item.quantity) || 0;
           const product = Array.isArray(item.products) ? item.products[0] : item.products;
-          const cost = product?.cost || 0;
-          return sum + (quantity * cost);
+          const cost = Number(product?.cost) || 0;
+          // Only include items with quantity > 0 to match individual stock API behavior
+          if (quantity > 0) {
+            return sum + (quantity * cost);
+          }
+          return sum;
         }, 0);
 
         // Calculate purchase order metrics
@@ -153,7 +184,7 @@ export async function GET() {
           current_stock_quantity: currentStockQuantity,
           total_purchase_cost: totalPurchaseCost,
           profit_potential: currentStockValue - totalPurchaseCost,
-          products_count: vendorProducts.length,
+          products_count: vendorProducts.length, // Total products regardless of stock
           // Enhanced Financial metrics in INR with payment tracking
           total_cost_inr: totalPurchaseCost, // Cost value of current stock
           total_mrp_inr: currentStockValue, // MRP value of current stock
@@ -175,7 +206,13 @@ export async function GET() {
       return (b.current_stock_value || 0) - (a.current_stock_value || 0);
     });
 
-    return NextResponse.json(sortedVendorStats);
+    return NextResponse.json(sortedVendorStats, {
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    });
   } catch (error) {
     console.error('GET /api/vendors/stats error', error);
     return NextResponse.json({ error: 'Failed to fetch vendor statistics' }, { status: 500 });

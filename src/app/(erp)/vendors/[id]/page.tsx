@@ -19,7 +19,8 @@ import {
   Calendar,
   AlertTriangle,
   Search,
-  Copy
+  Copy,
+  ShoppingCart
 } from 'lucide-react';
 import Link from 'next/link';
 import { VendorPerformanceMetrics } from '@/components/vendors/VendorPerformanceMetrics';
@@ -60,7 +61,12 @@ interface StockItem {
   current_quantity: number;
   reorder_point: number;
   unit_price: number;
+  unit_cost: number;
   total_value: number;
+  total_cost: number;
+  profit_per_unit: number;
+  total_profit_potential: number;
+  margin_percentage: number;
   last_restocked?: string;
 }
 
@@ -266,67 +272,121 @@ export default function VendorDetailsPage() {
         </div>
       </div>
 
-      {/* Vendor Information Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Vendor Information</CardTitle>
+      {/* Compact Vendor Information Card */}
+      <Card className="shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">Vendor Information</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <Phone className="h-4 w-4 text-gray-400" />
-                <div>
-                  <p className="text-sm text-gray-600">Contact</p>
-                  <p className="font-medium">{vendor.contact || 'N/A'}</p>
-                </div>
+        <CardContent className="pt-0">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-sm">
+            {/* Contact Info */}
+            <div className="space-y-1">
+              <div className="flex items-center space-x-1">
+                <Phone className="h-3 w-3 text-gray-400" />
+                <p className="text-xs text-gray-600">Contact</p>
               </div>
-              <div className="flex items-center space-x-2">
-                <Mail className="h-4 w-4 text-gray-400" />
-                <div>
-                  <p className="text-sm text-gray-600">Email</p>
-                  <p className="font-medium">{vendor.email || 'N/A'}</p>
-                </div>
-              </div>
+              <p className="font-medium text-sm">{vendor.contact || 'N/A'}</p>
             </div>
-            <div className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <MapPin className="h-4 w-4 text-gray-400" />
-                <div>
-                  <p className="text-sm text-gray-600">Address</p>
-                  <p className="font-medium">{vendor.address || 'N/A'}</p>
-                </div>
+            
+            <div className="space-y-1">
+              <div className="flex items-center space-x-1">
+                <Mail className="h-3 w-3 text-gray-400" />
+                <p className="text-xs text-gray-600">Email</p>
               </div>
-              <div className="flex items-center space-x-2">
-                <Calendar className="h-4 w-4 text-gray-400" />
-                <div>
-                  <p className="text-sm text-gray-600">Member Since</p>
-                  <p className="font-medium">{new Date(vendor.created_at).toLocaleDateString()}</p>
-                </div>
-              </div>
+              <p className="font-medium text-sm">{vendor.email || 'N/A'}</p>
             </div>
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm text-gray-600">Status</p>
-                <Badge className={getStatusBadge(vendor.status)}>
-                  {vendor.status}
-                </Badge>
+
+            {/* Dates & Status */}
+            <div className="space-y-1">
+              <div className="flex items-center space-x-1">
+                <Calendar className="h-3 w-3 text-gray-400" />
+                <p className="text-xs text-gray-600">Member Since</p>
               </div>
-              <div>
-                <p className="text-sm text-gray-600">Last Order</p>
-                <p className="font-medium">
-                  {vendor.last_order_date 
-                    ? new Date(vendor.last_order_date).toLocaleDateString()
-                    : 'Never'
-                  }
-                </p>
-              </div>
+              <p className="font-medium text-sm">{new Date(vendor.created_at).toLocaleDateString()}</p>
             </div>
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm text-gray-600">Last Updated</p>
-                <p className="font-medium">{new Date(vendor.updated_at).toLocaleDateString()}</p>
+
+            <div className="space-y-1">
+              <p className="text-xs text-gray-600">Status</p>
+              <Badge className={getStatusBadge(vendor.status)}>
+                {vendor.status}
+              </Badge>
+            </div>
+
+            {/* Stock Information */}
+            <div className="space-y-1">
+              <div className="flex items-center space-x-1">
+                <Package className="h-3 w-3 text-blue-600" />
+                <p className="text-xs text-gray-600">Available Stock</p>
               </div>
+              <p className="font-medium text-sm text-blue-700">
+                {stockItems.filter(item => (item.current_quantity || 0) > 0).length} items
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center space-x-1">
+                <AlertTriangle className="h-3 w-3 text-red-600" />
+                <p className="text-xs text-gray-600">Stock Out</p>
+              </div>
+              <p className="font-medium text-sm text-red-700">
+                {stockItems.filter(item => (item.current_quantity || 0) === 0).length} items
+              </p>
+            </div>
+          </div>
+          
+          {/* Second Row - Additional Info */}
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-sm mt-3 pt-3 border-t border-gray-100">
+            <div className="space-y-1">
+              <div className="flex items-center space-x-1">
+                <MapPin className="h-3 w-3 text-gray-400" />
+                <p className="text-xs text-gray-600">Address</p>
+              </div>
+              <p className="font-medium text-sm">{vendor.address || 'N/A'}</p>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-xs text-gray-600">Last Order</p>
+              <p className="font-medium text-sm">
+                {vendor.last_order_date 
+                  ? new Date(vendor.last_order_date).toLocaleDateString()
+                  : 'Never'
+                }
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-xs text-gray-600">Last Updated</p>
+              <p className="font-medium text-sm">{new Date(vendor.updated_at).toLocaleDateString()}</p>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center space-x-1">
+                <Package className="h-3 w-3 text-gray-400" />
+                <p className="text-xs text-gray-600">Total Qty</p>
+              </div>
+              <p className="font-medium text-sm">
+                {stockItems.reduce((sum, item) => sum + (item.current_quantity || 0), 0)}
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center space-x-1">
+                <DollarSign className="h-3 w-3 text-green-600" />
+                <p className="text-xs text-gray-600">Stock Cost</p>
+              </div>
+              <p className="font-medium text-sm text-green-700">
+                {formatCurrency(stockItems.reduce((sum, item) => sum + (item.total_cost || 0), 0))}
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center space-x-1">
+                <ShoppingCart className="h-3 w-3 text-orange-600" />
+                <p className="text-xs text-gray-600">Stock Value</p>
+              </div>
+              <p className="font-medium text-sm text-orange-700">
+                {formatCurrency(stockItems.reduce((sum, item) => sum + (item.total_value || 0), 0))}
+              </p>
             </div>
           </div>
         </CardContent>
@@ -467,6 +527,45 @@ export default function VendorDetailsPage() {
               <CardDescription>Inventory levels for products from this vendor</CardDescription>
             </CardHeader>
             <CardContent>
+              {/* Stock Summary */}
+              {stockItems.length > 0 && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                    <div className="text-sm font-medium text-blue-700">Total Products</div>
+                    <div className="text-2xl font-bold text-blue-900">{stockItems.length}</div>
+                    <div className="text-xs text-blue-600">
+                      {stockItems.filter(item => item.current_quantity > 0).length} in stock
+                    </div>
+                  </div>
+                  <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                    <div className="text-sm font-medium text-green-700">Total Stock Cost</div>
+                    <div className="text-2xl font-bold text-green-900">
+                      {formatCurrency(stockItems.reduce((sum, item) => sum + (item.total_cost || 0), 0))}
+                    </div>
+                    <div className="text-xs text-green-600">Amount invested</div>
+                  </div>
+                  <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                    <div className="text-sm font-medium text-purple-700">Total Stock Value</div>
+                    <div className="text-2xl font-bold text-purple-900">
+                      {formatCurrency(stockItems.reduce((sum, item) => sum + (item.total_value || 0), 0))}
+                    </div>
+                    <div className="text-xs text-purple-600">Current market value</div>
+                  </div>
+                  <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
+                    <div className="text-sm font-medium text-orange-700">Potential Profit</div>
+                    <div className="text-2xl font-bold text-orange-900">
+                      {formatCurrency(stockItems.reduce((sum, item) => sum + (item.total_profit_potential || 0), 0))}
+                    </div>
+                    <div className="text-xs text-orange-600">
+                      {stockItems.length > 0 ? 
+                        `${((stockItems.reduce((sum, item) => sum + (item.total_profit_potential || 0), 0) / 
+                             stockItems.reduce((sum, item) => sum + (item.total_cost || 1), 0)) * 100).toFixed(1)}% margin`
+                        : '0% margin'}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Search/Filter Input */}
               <div className="mb-4 flex items-center justify-between">
                 <div className="flex items-center space-x-2">
@@ -501,7 +600,9 @@ export default function VendorDetailsPage() {
                     <TableHead className="w-32">SKU</TableHead>
                     <TableHead className="text-right">Current Quantity</TableHead>
                     <TableHead className="text-right">Reorder Point</TableHead>
+                    <TableHead className="text-right">Unit Cost</TableHead>
                     <TableHead className="text-right">Unit Price</TableHead>
+                    <TableHead className="text-right">Total Cost</TableHead>
                     <TableHead className="text-right">Total Value</TableHead>
                     <TableHead>Last Restocked</TableHead>
                     <TableHead>Status</TableHead>
@@ -517,7 +618,7 @@ export default function VendorDetailsPage() {
                     
                     return filteredStockItems.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={10} className="text-center py-8 text-gray-500">
                         {stockFilter ? 
                           `No stock items match "${stockFilter}"` : 
                           'No stock items found for this vendor'
@@ -547,8 +648,10 @@ export default function VendorDetailsPage() {
                         </TableCell>
                         <TableCell className="text-right">{item.current_quantity}</TableCell>
                         <TableCell className="text-right">{item.reorder_point}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(item.unit_price)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(item.total_value)}</TableCell>
+                        <TableCell className="text-right font-semibold text-blue-600">{formatCurrency(item.unit_cost)}</TableCell>
+                        <TableCell className="text-right text-gray-600">{formatCurrency(item.unit_price)}</TableCell>
+                        <TableCell className="text-right font-semibold text-blue-800">{formatCurrency(item.total_cost)}</TableCell>
+                        <TableCell className="text-right text-gray-600">{formatCurrency(item.total_value)}</TableCell>
                         <TableCell>
                           {item.last_restocked 
                             ? new Date(item.last_restocked).toLocaleDateString()

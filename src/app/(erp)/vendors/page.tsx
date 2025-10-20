@@ -82,7 +82,12 @@ export default function VendorsPage() {
   const fetchVendors = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/vendors/stats');
+      const response = await fetch(`/api/vendors/stats?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      });
       if (!response.ok) throw new Error('Failed to fetch vendors');
       const data = await response.json();
       

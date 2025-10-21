@@ -545,8 +545,9 @@ export default function RedesignedSalesPage() {
         </div>
       </div>
 
-      {/* Compact Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 mb-4">
+      {/* Compact Stats Grid - Organized by Flow */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-2 mb-4">
+        {/* Orders & Conversion */}
         <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-0 shadow-sm hover:shadow-md transition-all duration-300">
           <CardContent className="p-2">
             <div className="flex items-center gap-1.5 mb-1">
@@ -558,17 +559,6 @@ export default function RedesignedSalesPage() {
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-0 shadow-sm hover:shadow-md transition-all duration-300">
-          <CardContent className="p-2">
-            <div className="flex items-center gap-1.5 mb-1">
-              <DollarSign className="h-3.5 w-3.5 flex-shrink-0" />
-              <p className="text-[11px] font-semibold leading-tight">Revenue</p>
-            </div>
-            <p className="text-lg font-bold leading-none mb-0.5 truncate">{formatCurrency(stats.totalRevenue)}</p>
-            <p className="text-[10px] leading-tight truncate">{stats.collectionRate}% collected</p>
-          </CardContent>
-        </Card>
-
         <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-0 shadow-sm hover:shadow-md transition-all duration-300">
           <CardContent className="p-2">
             <div className="flex items-center gap-1.5 mb-1">
@@ -577,6 +567,29 @@ export default function RedesignedSalesPage() {
             </div>
             <p className="text-lg font-bold leading-none mb-0.5">{stats.conversionRate}%</p>
             <p className="text-[10px] leading-tight truncate">Quote to order</p>
+          </CardContent>
+        </Card>
+
+        {/* Revenue Metrics */}
+        <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-0 shadow-sm hover:shadow-md transition-all duration-300">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <DollarSign className="h-3.5 w-3.5 flex-shrink-0" />
+              <p className="text-[11px] font-semibold leading-tight">Total Revenue</p>
+            </div>
+            <p className="text-lg font-bold leading-none mb-0.5 truncate">{formatCurrency(stats.totalRevenue)}</p>
+            <p className="text-[10px] leading-tight truncate">{stats.collectionRate}% collected</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-0 shadow-sm hover:shadow-md transition-all duration-300">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <CreditCard className="h-3.5 w-3.5 flex-shrink-0" />
+              <p className="text-[11px] font-semibold leading-tight">Collected</p>
+            </div>
+            <p className="text-lg font-bold leading-none mb-0.5 truncate">{formatCurrency(stats.totalCollected)}</p>
+            <p className="text-[10px] leading-tight truncate">{stats.fullyPaidOrders} paid orders</p>
           </CardContent>
         </Card>
 
@@ -593,17 +606,7 @@ export default function RedesignedSalesPage() {
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-0 shadow-sm hover:shadow-md transition-all duration-300">
-          <CardContent className="p-2">
-            <div className="flex items-center gap-1.5 mb-1">
-              <CreditCard className="h-3.5 w-3.5 flex-shrink-0" />
-              <p className="text-[11px] font-semibold leading-tight">Collected</p>
-            </div>
-            <p className="text-lg font-bold leading-none mb-0.5 truncate">{formatCurrency(stats.totalCollected)}</p>
-            <p className="text-[10px] leading-tight truncate">{stats.fullyPaidOrders} paid orders</p>
-          </CardContent>
-        </Card>
-
+        {/* Profitability & Delivery */}
         <Card className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white border-0 shadow-sm hover:shadow-md transition-all duration-300">
           <CardContent className="p-2">
             <div className="flex items-center gap-1.5 mb-1">
@@ -615,7 +618,6 @@ export default function RedesignedSalesPage() {
           </CardContent>
         </Card>
 
-        {/* NEW: Delivered Items - Payment Collected */}
         <Card className="bg-gradient-to-br from-teal-500 to-teal-600 text-white border-0 shadow-sm hover:shadow-md transition-all duration-300">
           <CardContent className="p-2">
             <div className="flex items-center gap-1.5 mb-1">
@@ -624,18 +626,6 @@ export default function RedesignedSalesPage() {
             </div>
             <p className="text-lg font-bold leading-none mb-0.5 truncate">{formatCurrency(stats.deliveredOrdersCollected)}</p>
             <p className="text-[10px] leading-tight truncate">{stats.deliveredOrdersCount} delivered</p>
-          </CardContent>
-        </Card>
-
-        {/* NEW: Delivered Items - Payment Pending */}
-        <Card className="bg-gradient-to-br from-amber-500 to-amber-600 text-white border-0 shadow-sm hover:shadow-md transition-all duration-300">
-          <CardContent className="p-2">
-            <div className="flex items-center gap-1.5 mb-1">
-              <Clock className="h-3.5 w-3.5 flex-shrink-0" />
-              <p className="text-[11px] font-semibold leading-tight">Delivered Pending</p>
-            </div>
-            <p className="text-lg font-bold leading-none mb-0.5 truncate">{formatCurrency(stats.deliveredOrdersPending)}</p>
-            <p className="text-[10px] leading-tight truncate">{stats.deliveredOrdersWithPendingPayment} unpaid</p>
           </CardContent>
         </Card>
       </div>

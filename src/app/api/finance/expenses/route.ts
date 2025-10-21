@@ -14,34 +14,59 @@ import {
     const start_date = searchParams.get('start_date');
     const end_date = searchParams.get('end_date');
 
-    let query = supabase
-      .from("expenses")
-      .select("*")
-      .order("date", { ascending: false });
+    // Fetch all expenses using pagination to bypass the 1000 record limit
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let allExpenses: any[] = [];
+    let from = 0;
+    const pageSize = 1000;
+    let hasMore = true;
 
-    // Apply entity filtering
-    if (entity_id && entity_type) {
-      query = query
-        .eq('entity_id', entity_id)
-        .eq('entity_type', entity_type);
+    while (hasMore) {
+      let query = supabase
+        .from("expenses")
+        .select("*", { count: 'exact' })
+        .order("date", { ascending: false })
+        .range(from, from + pageSize - 1);
+
+      // Apply entity filtering
+      if (entity_id && entity_type) {
+        query = query
+          .eq('entity_id', entity_id)
+          .eq('entity_type', entity_type);
+      }
+
+      // Apply date range filtering
+      if (start_date) {
+        query = query.gte('date', start_date);
+      }
+      if (end_date) {
+        query = query.lte('date', end_date);
+      }
+
+      const { data, error, count } = await query;
+      
+      if (error) {
+        console.error('Error fetching expenses:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      if (data && data.length > 0) {
+        allExpenses = [...allExpenses, ...data];
+        from += pageSize;
+        
+        // Check if we've fetched all records
+        if (count && allExpenses.length >= count) {
+          hasMore = false;
+        } else if (data.length < pageSize) {
+          hasMore = false;
+        }
+      } else {
+        hasMore = false;
+      }
     }
 
-    // Apply date range filtering
-    if (start_date) {
-      query = query.gte('date', start_date);
-    }
-    if (end_date) {
-      query = query.lte('date', end_date);
-    }
-
-    const { data, error } = await query;
-    
-    if (error) {
-      console.error('Error fetching expenses:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    return NextResponse.json({ data });
+    console.log(`✅ Fetched ${allExpenses.length} total expenses`);
+    return NextResponse.json({ data: allExpenses });
   } catch (error) {
     console.error('Error in GET /api/finance/expenses:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -553,5 +578,124 @@ export async function DELETE(req: Request) {
   } catch (error) {
     console.error('Error in DELETE /api/finance/expenses:', error);
     return NextResponse.json({ error: "Failed to delete expense" }, { status: 500 });
+  }
+}
+
+export async function PUT(req: Request) {
+  try {
+    const {
+      expense_id,
+      date,
+      description,
+      category,
+      type,
+      amount,
+      payment_method
+    } = await req.json();
+
+    if (!expense_id) {
+      return NextResponse.json({ error: "Expense ID is required" }, { status: 400 });
+    }
+
+    // Get the current expense details for comparison
+    const { data: currentExpense, error: fetchError } = await supabase
+      .from('expenses')
+      .select('*')
+      .eq('id', expense_id)
+      .single();
+
+    if (fetchError || !currentExpense) {
+      return NextResponse.json({ error: "Expense not found" }, { status: 404 });
+    }
+
+    // Update the expense
+    const { data: updatedExpense, error: updateError } = await supabase
+      .from('expenses')
+      .update({
+        date,
+        description,
+        category,
+        type,
+        amount,
+        payment_method,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', expense_id)
+      .select()
+      .single();
+
+    if (updateError) {
+      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    // If amount changed, update bank account balance (if applicable)
+    const amountDifference = amount - currentExpense.amount;
+    
+    if (amountDifference !== 0 && currentExpense.bank_account_id && payment_method !== 'cash') {
+      const { data: bankAccount, error: bankError } = await supabase
+        .from('bank_accounts')
+        .select('current_balance')
+        .eq('id', currentExpense.bank_account_id)
+        .single();
+      
+      if (!bankError && bankAccount) {
+        const newBalance = (bankAccount.current_balance || 0) - amountDifference;
+        
+        const { error: updateBalanceError } = await supabase
+          .from('bank_accounts')
+          .update({ current_balance: newBalance })
+          .eq('id', currentExpense.bank_account_id);
+        
+        if (updateBalanceError) {
+          console.error('❌ Failed to update bank account balance:', updateBalanceError);
+        } else {
+          console.log(`✅ Bank account balance updated: ${bankAccount.current_balance} → ${newBalance}`);
+        }
+      }
+      
+      // Update bank transaction
+      await supabase
+        .from('bank_transactions')
+        .update({
+          date,
+          amount,
+          description: `Expense: ${description} (${payment_method?.toUpperCase()})`
+        })
+        .match({
+          bank_account_id: currentExpense.bank_account_id,
+          type: 'withdrawal',
+          description: `Expense: ${currentExpense.description}`
+        });
+    }
+
+    // Update cashflow if date or amount changed
+    if (date !== currentExpense.date || amount !== currentExpense.amount) {
+      // Remove old amount from old month
+      const oldMonth = new Date(currentExpense.date);
+      oldMonth.setDate(1);
+      await supabase.rpc("upsert_cashflow_snapshot", {
+        mon: oldMonth.toISOString().slice(0, 10),
+        inflows: 0,
+        outflows: -currentExpense.amount,
+      });
+
+      // Add new amount to new month
+      const newMonth = new Date(date);
+      newMonth.setDate(1);
+      await supabase.rpc("upsert_cashflow_snapshot", {
+        mon: newMonth.toISOString().slice(0, 10),
+        inflows: 0,
+        outflows: amount,
+      });
+    }
+
+    return NextResponse.json({ 
+      success: true,
+      data: updatedExpense,
+      message: "Expense updated successfully"
+    });
+  } catch (error) {
+    console.error('Error in PUT /api/finance/expenses:', error);
+    return NextResponse.json({ error: "Failed to update expense" }, { status: 500 });
   }
 }

@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -40,7 +41,6 @@ import {
   Clock,
   Receipt,
   CreditCard,
-  Eye,
   Plus,
   Printer,
   MessageCircle,
@@ -62,7 +62,8 @@ import {
   MoreHorizontal,
   ChevronDown,
   ChevronUp,
-  CheckCircle
+  CheckCircle,
+  Edit
 } from 'lucide-react';
 import { SalesOrder, Invoice, subcategoryMap } from '@/types';
 import { PaymentTrackingDialog } from './PaymentTrackingDialog';
@@ -350,7 +351,6 @@ export function SalesOrderInvoiceManager() {
   const [itemsPerPage] = useState(20);
   const [activeTab, setActiveTab] = useState('orders');
   const [showPagination, setShowPagination] = useState(true); // Toggle between pagination and full list
-  const [cashflowSortOrder, setCashflowSortOrder] = useState<'desc' | 'asc'>('desc'); // desc = newest first, asc = oldest first
   
   // Search states for each tab
   const [ordersSearchQuery, setOrdersSearchQuery] = useState('');
@@ -380,6 +380,12 @@ export function SalesOrderInvoiceManager() {
   // Multiple filter selection for cashflow
   const [multipleCategoryFilters, setMultipleCategoryFilters] = useState<string[]>([]);
   const [useMultipleFilters, setUseMultipleFilters] = useState(false);
+  const [cashflowSortOrder, setCashflowSortOrder] = useState<'desc' | 'asc'>('asc'); // asc = oldest first, desc = newest first
+  
+  // Daysheet view states
+  const [showDaysheetView, setShowDaysheetView] = useState(false);
+  const [daysheetSelectedDate, setDaysheetSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [weekDates, setWeekDates] = useState<string[]>([]);
   
   // Export/Print states
   const [isExporting, setIsExporting] = useState(false);
@@ -399,6 +405,11 @@ export function SalesOrderInvoiceManager() {
   const [deleteExpenseOpen, setDeleteExpenseOpen] = useState(false);
   const [selectedExpenseForDelete, setSelectedExpenseForDelete] = useState<Expense | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Edit expense states
+  const [editExpenseOpen, setEditExpenseOpen] = useState(false);
+  const [selectedExpenseForEdit, setSelectedExpenseForEdit] = useState<Expense | null>(null);
+  const [isUpdatingExpense, setIsUpdatingExpense] = useState(false);
   
   // Expense category search state
   const [categorySearchTerm, setCategorySearchTerm] = useState('');
@@ -543,6 +554,29 @@ export function SalesOrderInvoiceManager() {
     fetchCustomers();
     fetchAllAccounts(); // Load accounts for fund transfer
   }, [fetchCustomers]);
+
+  // Generate week dates (Monday to Sunday) based on selected date
+  useEffect(() => {
+    if (!daysheetSelectedDate) return;
+    
+    const selectedDate = new Date(daysheetSelectedDate + 'T00:00:00');
+    const dayOfWeek = selectedDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    
+    // Calculate Monday (ISO week start)
+    const monday = new Date(selectedDate);
+    const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // If Sunday, go back 6 days
+    monday.setDate(selectedDate.getDate() + daysToMonday);
+    
+    // Generate dates for the week (Monday to Sunday)
+    const dates: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + i);
+      dates.push(date.toISOString().split('T')[0]);
+    }
+    
+    setWeekDates(dates);
+  }, [daysheetSelectedDate]);
 
   const buildCashflowFromExistingData = useCallback(async () => {
     console.log('🔧 Building comprehensive cashflow from all data sources...');
@@ -3021,6 +3055,49 @@ export function SalesOrderInvoiceManager() {
     }
   };
 
+  const handleEditExpense = (expense: Expense) => {
+    setSelectedExpenseForEdit(expense);
+    setEditExpenseOpen(true);
+  };
+
+  const confirmEditExpense = async (updatedExpense: Expense) => {
+    if (!selectedExpenseForEdit) return;
+
+    setIsUpdatingExpense(true);
+    try {
+      const response = await fetch(`/api/finance/expenses`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          expense_id: selectedExpenseForEdit.id,
+          date: updatedExpense.date,
+          description: updatedExpense.description,
+          category: updatedExpense.category,
+          type: updatedExpense.type,
+          amount: updatedExpense.amount,
+          payment_method: updatedExpense.payment_method,
+        }),
+      });
+
+      if (response.ok) {
+        setEditExpenseOpen(false);
+        setSelectedExpenseForEdit(null);
+        fetchData(); // Refresh data
+        alert('Expense updated successfully!');
+      } else {
+        const error = await response.json();
+        alert(`Failed to update expense: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error updating expense:', error);
+      alert('Error updating expense. Please try again.');
+    } finally {
+      setIsUpdatingExpense(false);
+    }
+  };
+
   const handleAddNewInvestor = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
@@ -5292,10 +5369,11 @@ export function SalesOrderInvoiceManager() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="text-xs px-2 py-1"
-                                title="View Details"
+                                className="text-xs px-2 py-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                title="Edit Expense"
+                                onClick={() => handleEditExpense(expense)}
                               >
-                                <Eye className="h-3 w-3" />
+                                <Edit className="h-3 w-3" />
                               </Button>
                               <Button
                                 size="sm"
@@ -5385,8 +5463,295 @@ export function SalesOrderInvoiceManager() {
                 })()}
               </div>
 
-              {/* Filters */}
-              <div className="flex flex-col sm:flex-row gap-4 mb-4 mx-4">
+              {/* Daysheet View Toggle */}
+              <div className="mx-4 mb-4">
+                <Card>
+                  <CardContent className="p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Calendar className="h-4 w-4 text-blue-600" />
+                        <div>
+                          <h3 className="font-semibold text-sm text-gray-900">Daysheet View</h3>
+                          <p className="text-xs text-gray-600">View transactions by day with weekly breakdown</p>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={showDaysheetView}
+                        onCheckedChange={setShowDaysheetView}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Daysheet View Content */}
+              {showDaysheetView && (
+                <div className="mx-4 mb-4 space-y-3">
+                  {/* Date Selector and Week Navigation */}
+                  <Card>
+                    <CardContent className="p-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor="daysheet-date" className="whitespace-nowrap font-semibold text-sm">Select Date:</Label>
+                          <Input
+                            id="daysheet-date"
+                            type="date"
+                            value={daysheetSelectedDate}
+                            onChange={(e) => setDaysheetSelectedDate(e.target.value)}
+                            className="w-40 h-8 text-sm"
+                          />
+                        </div>
+                        <div className="text-xs text-gray-600">
+                          Week: {weekDates.length > 0 && (
+                            <>
+                              <span className="font-semibold">{new Date(weekDates[0] + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                              {' - '}
+                              <span className="font-semibold">{new Date(weekDates[6] + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Week Days Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
+                    {weekDates.map((date, index) => {
+                      const dayName = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][index];
+                      const isSelected = date === daysheetSelectedDate;
+                      const isToday = date === new Date().toISOString().split('T')[0];
+                      
+                      // Calculate transactions for this day
+                      const dayTransactions = cashflowTransactions.filter(t => {
+                        const txDate = t.date.split('T')[0];
+                        return txDate === date;
+                      });
+                      
+                      const dayInflow = dayTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+                      const dayOutflow = dayTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+                      const dayNet = dayInflow - dayOutflow;
+                      
+                      return (
+                        <Card 
+                          key={date}
+                          className={`cursor-pointer transition-all hover:shadow-md ${
+                            isSelected ? 'ring-2 ring-blue-500 bg-blue-50' : ''
+                          } ${isToday ? 'border-green-500 border-2' : ''}`}
+                          onClick={() => setDaysheetSelectedDate(date)}
+                        >
+                          <CardContent className="p-2">
+                            <div className="text-center space-y-1">
+                              <div className="font-bold text-xs text-gray-700">{dayName}</div>
+                              <div className="text-[10px] text-gray-500">
+                                {new Date(date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              </div>
+                              {isToday && <Badge variant="outline" className="text-[10px] py-0 px-1 border-green-500 text-green-600">Today</Badge>}
+                              <div className="pt-1 border-t space-y-0.5">
+                                <div className="flex justify-between text-[10px]">
+                                  <span className="text-gray-600">In:</span>
+                                  <span className="font-semibold text-green-600">{formatCurrency(dayInflow)}</span>
+                                </div>
+                                <div className="flex justify-between text-[10px]">
+                                  <span className="text-gray-600">Out:</span>
+                                  <span className="font-semibold text-red-600">{formatCurrency(dayOutflow)}</span>
+                                </div>
+                                <div className="flex justify-between text-[10px] font-bold border-t pt-0.5">
+                                  <span className="text-gray-700">Net:</span>
+                                  <span className={dayNet >= 0 ? 'text-green-600' : 'text-red-600'}>
+                                    {formatCurrency(dayNet)}
+                                  </span>
+                                </div>
+                                <div className="text-[10px] text-gray-500">
+                                  {dayTransactions.length} tx
+                                </div>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+
+                  {/* Selected Day Transactions */}
+                  <Card>
+                    <CardContent className="p-3">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold text-sm">
+                          Daysheet - {new Date(daysheetSelectedDate + 'T00:00:00').toLocaleDateString('en-US', { 
+                            weekday: 'long', 
+                            year: 'numeric', 
+                            month: 'long', 
+                            day: 'numeric' 
+                          })}
+                        </h3>
+                        <Badge variant="outline" className="text-xs">
+                          {(() => {
+                            const dayTx = cashflowTransactions.filter(t => t.date.split('T')[0] === daysheetSelectedDate);
+                            return `${dayTx.length} Transaction${dayTx.length !== 1 ? 's' : ''}`;
+                          })()}
+                        </Badge>
+                      </div>
+                      <div className="rounded-lg border max-h-96 overflow-y-auto">
+                        <Table>
+                          <TableHeader className="sticky top-0 bg-gray-50 z-10">
+                            <TableRow>
+                              <TableHead className="text-xs">Time</TableHead>
+                              <TableHead className="text-xs">Description</TableHead>
+                              <TableHead className="text-xs">Category</TableHead>
+                              <TableHead className="text-xs">Method</TableHead>
+                              <TableHead className="text-right text-xs text-green-600">Debit (₹)</TableHead>
+                              <TableHead className="text-right text-xs text-red-600">Credit (₹)</TableHead>
+                              <TableHead className="text-right text-xs text-blue-600">Balance (₹)</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {(() => {
+                              const selectedDayTransactions = cashflowTransactions
+                                .filter(t => {
+                                  const txDate = t.date.split('T')[0];
+                                  return txDate === daysheetSelectedDate;
+                                })
+                                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                              
+                              if (selectedDayTransactions.length === 0) {
+                                return (
+                                  <TableRow>
+                                    <TableCell colSpan={7} className="text-center py-6 text-gray-500">
+                                      <Calendar className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+                                      <p className="text-sm">No transactions for this date</p>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              }
+                              
+                              // Calculate opening balance (previous day's closing)
+                              const previousDate = new Date(daysheetSelectedDate + 'T00:00:00');
+                              previousDate.setDate(previousDate.getDate() - 1);
+                              
+                              const previousDayTransactions = cashflowTransactions
+                                .filter(t => {
+                                  const txDate = t.date.split('T')[0];
+                                  return txDate < daysheetSelectedDate;
+                                })
+                                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                              
+                              let openingBalance = 0;
+                              previousDayTransactions.forEach(tx => {
+                                if (tx.type === 'income') {
+                                  openingBalance += tx.amount;
+                                } else {
+                                  openingBalance -= tx.amount;
+                                }
+                              });
+                              
+                              // Calculate running balance
+                              let runningBalance = openingBalance;
+                              const transactionRows: React.ReactElement[] = [];
+                              
+                              // Add opening balance row
+                              transactionRows.push(
+                                <TableRow key="opening" className="bg-blue-50 font-semibold">
+                                  <TableCell className="text-xs py-2" colSpan={4}>Opening Balance</TableCell>
+                                  <TableCell className="text-right text-xs py-2">-</TableCell>
+                                  <TableCell className="text-right text-xs py-2">-</TableCell>
+                                  <TableCell className={`text-right font-mono text-xs py-2 font-bold ${openingBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {formatCurrency(Math.abs(openingBalance))}
+                                  </TableCell>
+                                </TableRow>
+                              );
+                              
+                              // Add transaction rows
+                              let totalDebit = 0;
+                              let totalCredit = 0;
+                              
+                              selectedDayTransactions.forEach((tx) => {
+                                const debit = tx.type === 'income' ? tx.amount : 0;
+                                const credit = tx.type === 'expense' ? tx.amount : 0;
+                                
+                                totalDebit += debit;
+                                totalCredit += credit;
+                                runningBalance += (debit - credit);
+                                
+                                transactionRows.push(
+                                  <TableRow key={tx.id} className="text-xs hover:bg-gray-50">
+                                    <TableCell className="font-mono py-2">
+                                      {new Date(tx.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                    </TableCell>
+                                    <TableCell className="max-w-xs truncate py-2" title={tx.description}>
+                                      {tx.description}
+                                      {tx.reference && <div className="text-[10px] text-gray-500">{tx.reference}</div>}
+                                    </TableCell>
+                                    <TableCell className="py-2">
+                                      <Badge variant="outline" className="text-[10px] py-0 px-1">{tx.category}</Badge>
+                                    </TableCell>
+                                    <TableCell className="py-2 text-xs">{tx.payment_method || '-'}</TableCell>
+                                    <TableCell className="text-right font-mono py-2 text-green-600">
+                                      {debit > 0 ? formatCurrency(debit) : '-'}
+                                    </TableCell>
+                                    <TableCell className="text-right font-mono py-2 text-red-600">
+                                      {credit > 0 ? formatCurrency(credit) : '-'}
+                                    </TableCell>
+                                    <TableCell className={`text-right font-mono py-2 font-semibold ${runningBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                      {formatCurrency(Math.abs(runningBalance))}
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              });
+                              
+                              // Add totals row
+                              const closingBalance = runningBalance;
+                              transactionRows.push(
+                                <TableRow key="totals" className="bg-blue-100 font-bold border-t-2 border-blue-300">
+                                  <TableCell className="text-xs py-2" colSpan={4}>
+                                    <div className="font-bold text-gray-900">DAILY TOTALS</div>
+                                  </TableCell>
+                                  <TableCell className="text-right font-mono py-2 text-green-700 font-bold">
+                                    {formatCurrency(totalDebit)}
+                                  </TableCell>
+                                  <TableCell className="text-right font-mono py-2 text-red-700 font-bold">
+                                    {formatCurrency(totalCredit)}
+                                  </TableCell>
+                                  <TableCell className={`text-right font-mono py-2 font-bold text-sm ${closingBalance >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                    {formatCurrency(Math.abs(closingBalance))}
+                                  </TableCell>
+                                </TableRow>
+                              );
+                              
+                              // Add closing balance row
+                              const netChange = totalDebit - totalCredit;
+                              transactionRows.push(
+                                <TableRow key="closing" className="bg-green-50 font-semibold border-t">
+                                  <TableCell className="text-xs py-2" colSpan={4}>
+                                    <div className="flex items-center gap-2">
+                                      <span>Closing Balance</span>
+                                      <Badge variant={netChange >= 0 ? "default" : "destructive"} className="text-[10px]">
+                                        {netChange >= 0 ? `+${formatCurrency(netChange)}` : formatCurrency(Math.abs(netChange))} Today
+                                      </Badge>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="text-right text-xs py-2">-</TableCell>
+                                  <TableCell className="text-right text-xs py-2">-</TableCell>
+                                  <TableCell className={`text-right font-mono text-xs py-2 font-bold ${closingBalance >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                    {formatCurrency(Math.abs(closingBalance))}
+                                  </TableCell>
+                                </TableRow>
+                              );
+                              
+                              return transactionRows;
+                            })()}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+
+              {/* Filters and Cashflow Table - Hidden when Daysheet View is active */}
+              {!showDaysheetView && (
+                <>
+                  {/* Filters */}
+                  <div className="flex flex-col sm:flex-row gap-4 mb-4 mx-4">
                 <div className="flex-1">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
@@ -5829,6 +6194,8 @@ export function SalesOrderInvoiceManager() {
                     })()} transactions
                   </div>
                 </div>
+              )}
+                </>
               )}
             </TabsContent>
           </div>
@@ -8090,6 +8457,163 @@ export function SalesOrderInvoiceManager() {
                 <>
                   <Trash2 className="h-4 w-4 mr-2" />
                   Delete Expense
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Expense Dialog */}
+      <Dialog open={editExpenseOpen} onOpenChange={setEditExpenseOpen}>
+        <DialogContent className="max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold flex items-center gap-2">
+              <Edit className="h-5 w-5 text-blue-600" />
+              Edit Expense
+            </DialogTitle>
+          </DialogHeader>
+          
+          {selectedExpenseForEdit && (
+            <div className="py-4 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="edit-date">Date</Label>
+                  <Input
+                    id="edit-date"
+                    type="date"
+                    defaultValue={selectedExpenseForEdit.date}
+                    onChange={(e) => {
+                      setSelectedExpenseForEdit({
+                        ...selectedExpenseForEdit,
+                        date: e.target.value
+                      });
+                    }}
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="edit-amount">Amount (₹)</Label>
+                  <Input
+                    id="edit-amount"
+                    type="number"
+                    step="0.01"
+                    defaultValue={selectedExpenseForEdit.amount}
+                    onChange={(e) => {
+                      setSelectedExpenseForEdit({
+                        ...selectedExpenseForEdit,
+                        amount: parseFloat(e.target.value) || 0
+                      });
+                    }}
+                  />
+                </div>
+              </div>
+              
+              <div>
+                <Label htmlFor="edit-description">Description</Label>
+                <Input
+                  id="edit-description"
+                  type="text"
+                  defaultValue={selectedExpenseForEdit.description}
+                  onChange={(e) => {
+                    setSelectedExpenseForEdit({
+                      ...selectedExpenseForEdit,
+                      description: e.target.value
+                    });
+                  }}
+                />
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="edit-category">Category</Label>
+                  <Select
+                    value={selectedExpenseForEdit.category}
+                    onValueChange={(value) => {
+                      const categoryDetails = subcategoryMap[value as keyof typeof subcategoryMap];
+                      setSelectedExpenseForEdit({
+                        ...selectedExpenseForEdit,
+                        category: value,
+                        type: categoryDetails?.type || selectedExpenseForEdit.type
+                      });
+                    }}
+                  >
+                    <SelectTrigger id="edit-category">
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.keys(subcategoryMap).map((category) => (
+                        <SelectItem key={category} value={category}>
+                          {category}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div>
+                  <Label htmlFor="edit-payment-method">Payment Method</Label>
+                  <Select
+                    value={selectedExpenseForEdit.payment_method}
+                    onValueChange={(value) => {
+                      setSelectedExpenseForEdit({
+                        ...selectedExpenseForEdit,
+                        payment_method: value
+                      });
+                    }}
+                  >
+                    <SelectTrigger id="edit-payment-method">
+                      <SelectValue placeholder="Select payment method" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                      <SelectItem value="card">Card</SelectItem>
+                      <SelectItem value="upi">UPI</SelectItem>
+                      <SelectItem value="bajaj">Bajaj Finance</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              
+              {selectedExpenseForEdit.category && subcategoryMap[selectedExpenseForEdit.category as keyof typeof subcategoryMap] && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    <span className="font-medium">Category Info:</span> {subcategoryMap[selectedExpenseForEdit.category as keyof typeof subcategoryMap].category} expense | 
+                    Account: {subcategoryMap[selectedExpenseForEdit.category as keyof typeof subcategoryMap].accountCode} | 
+                    Type: {subcategoryMap[selectedExpenseForEdit.category as keyof typeof subcategoryMap].type}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEditExpenseOpen(false);
+                setSelectedExpenseForEdit(null);
+              }}
+              disabled={isUpdatingExpense}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => selectedExpenseForEdit && confirmEditExpense(selectedExpenseForEdit)}
+              disabled={isUpdatingExpense}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {isUpdatingExpense ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Updating...
+                </>
+              ) : (
+                <>
+                  <Edit className="h-4 w-4 mr-2" />
+                  Update Expense
                 </>
               )}
             </Button>

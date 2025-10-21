@@ -470,7 +470,13 @@ export default function EnhancedModularDashboard() {
           <div className={`${showCharts ? 'lg:col-span-1' : 'lg:col-span-1 max-w-6xl mx-auto'} px-3 overflow-y-auto`}>
             <div className="grid grid-cols-2 gap-2 sm:gap-3">
               {/* 1. Revenue (MTD) Card */}
-            <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 h-20 sm:h-24">
+            <Card 
+              className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 h-20 sm:h-24 cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-105"
+              onClick={() => {
+                setSelectedChart('revenue');
+                setShowCharts(true);
+              }}
+            >
               <CardContent className="p-2 sm:p-3 h-full">
                 <div className="flex items-center justify-between h-full">
                   <div className="flex-1 min-w-0">
@@ -493,7 +499,13 @@ export default function EnhancedModularDashboard() {
             </Card>
 
             {/* 2. Gross Profit (MTD) Card */}
-            <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-indigo-200 h-20 sm:h-24">
+            <Card 
+              className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-indigo-200 h-20 sm:h-24 cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-105"
+              onClick={() => {
+                setSelectedChart('revenue');
+                setShowCharts(true);
+              }}
+            >
               <CardContent className="p-2 sm:p-3 h-full">
                 <div className="flex items-center justify-between h-full">
                   <div className="flex-1 min-w-0">
@@ -516,7 +528,13 @@ export default function EnhancedModularDashboard() {
             </Card>
 
             {/* 3. Total Collected Card */}
-            <Card className="bg-gradient-to-br from-teal-50 to-teal-100 border-teal-200 h-20 sm:h-24">
+            <Card 
+              className="bg-gradient-to-br from-teal-50 to-teal-100 border-teal-200 h-20 sm:h-24 cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-105"
+              onClick={() => {
+                setSelectedChart('collection');
+                setShowCharts(true);
+              }}
+            >
               <CardContent className="p-2 sm:p-3 h-full">
                 <div className="flex items-center justify-between h-full">
                   <div className="flex-1 min-w-0">
@@ -540,7 +558,13 @@ export default function EnhancedModularDashboard() {
             </Card>
 
             {/* 4. Total Pending Card */}
-            <Card className="bg-gradient-to-br from-rose-50 to-rose-100 border-rose-200 h-20 sm:h-24">
+            <Card 
+              className="bg-gradient-to-br from-rose-50 to-rose-100 border-rose-200 h-20 sm:h-24 cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-105"
+              onClick={() => {
+                setSelectedChart('collection');
+                setShowCharts(true);
+              }}
+            >
               <CardContent className="p-2 sm:p-3 h-full">
                 <div className="flex items-center justify-between h-full">
                   <div className="flex-1 min-w-0">
@@ -564,7 +588,13 @@ export default function EnhancedModularDashboard() {
             </Card>
 
             {/* 5. Delivered - Collected Card */}
-            <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200 h-20 sm:h-24">
+            <Card 
+              className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200 h-20 sm:h-24 cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-105"
+              onClick={() => {
+                setSelectedChart('collection');
+                setShowCharts(true);
+              }}
+            >
               <CardContent className="p-2 sm:p-3 h-full">
                 <div className="flex items-center justify-between h-full">
                   <div className="flex-1 min-w-0">
@@ -592,7 +622,13 @@ export default function EnhancedModularDashboard() {
             </Card>
 
             {/* 6. Delivered - Pending Card */}
-            <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 h-20 sm:h-24">
+            <Card 
+              className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 h-20 sm:h-24 cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-105"
+              onClick={() => {
+                setSelectedChart('collection');
+                setShowCharts(true);
+              }}
+            >
               <CardContent className="p-2 sm:p-3 h-full">
                 <div className="flex items-center justify-between h-full">
                   <div className="flex-1 min-w-0">
@@ -616,7 +652,13 @@ export default function EnhancedModularDashboard() {
             </Card>
 
             {/* 7. Profit (MTD) Card */}
-            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 h-20 sm:h-24">
+            <Card 
+              className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 h-20 sm:h-24 cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-105"
+              onClick={() => {
+                setSelectedChart('revenue');
+                setShowCharts(true);
+              }}
+            >
               <CardContent className="p-2 sm:p-3 h-full">
                 <div className="flex items-center justify-between h-full">
                   <div className="flex-1 min-w-0">
@@ -639,7 +681,13 @@ export default function EnhancedModularDashboard() {
             </Card>
 
             {/* 8. Total Expenses (MTD) Card */}
-            <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200 h-20 sm:h-24">
+            <Card 
+              className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200 h-20 sm:h-24 cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-105"
+              onClick={() => {
+                setSelectedChart('expense');
+                setShowCharts(true);
+              }}
+            >
               <CardContent className="p-2 sm:p-3 h-full">
                 <div className="flex items-center justify-between h-full">
                   <div className="flex-1 min-w-0">
@@ -662,7 +710,13 @@ export default function EnhancedModularDashboard() {
             </Card>
 
             {/* 9. COGS Card */}
-            <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 h-20 sm:h-24">
+            <Card 
+              className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 h-20 sm:h-24 cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-105"
+              onClick={() => {
+                setSelectedChart('cogs');
+                setShowCharts(true);
+              }}
+            >
               <CardContent className="p-2 sm:p-3 h-full">
                 <div className="flex items-center justify-between h-full">
                   <div className="flex-1 min-w-0">
@@ -686,7 +740,13 @@ export default function EnhancedModularDashboard() {
             </Card>
 
             {/* 10. Withdrawals (MTD) Card */}
-            <Card className="bg-gradient-to-br from-violet-50 to-violet-100 border-violet-200 h-20 sm:h-24">
+            <Card 
+              className="bg-gradient-to-br from-violet-50 to-violet-100 border-violet-200 h-20 sm:h-24 cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-105"
+              onClick={() => {
+                setSelectedChart('withdrawals');
+                setShowCharts(true);
+              }}
+            >
               <CardContent className="p-2 sm:p-3 h-full">
                 <div className="flex items-center justify-between h-full">
                   <div className="flex-1 min-w-0">

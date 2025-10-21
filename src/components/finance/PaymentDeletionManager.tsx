@@ -99,6 +99,22 @@ interface Liability {
   loan_emi_amount?: number;
 }
 
+interface Expense {
+  id: string;
+  date: string;
+  category: string;
+  type: string;
+  description: string;
+  amount: number;
+  payment_method: string;
+  created_by?: string;
+  created_at: string;
+  entity_type?: string;
+  bank_account_id?: string;
+  // Enhanced fields
+  bank_account_name?: string;
+}
+
 interface TransactionWithType {
   id: string;
   amount: number;
@@ -107,7 +123,7 @@ interface TransactionWithType {
   reference?: string;
   bank_account_id?: string;
   created_at: string;
-  transaction_type: 'payment' | 'withdrawal' | 'investment' | 'liability';
+  transaction_type: 'payment' | 'withdrawal' | 'investment' | 'liability' | 'expense';
   // Additional fields depending on type
   [key: string]: unknown;
 }
@@ -152,9 +168,10 @@ export function PaymentDeletionManager() {
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'payments' | 'withdrawals' | 'investments' | 'liabilities'>('payments');
+  const [activeTab, setActiveTab] = useState<'payments' | 'withdrawals' | 'investments' | 'liabilities' | 'expenses'>('payments');
   const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set());
   const [deletionDialog, setDeletionDialog] = useState<{
     open: boolean;
@@ -250,7 +267,22 @@ export function PaymentDeletionManager() {
     }
   };
 
-  const fetchTabData = useCallback(async (tab: 'payments' | 'withdrawals' | 'investments' | 'liabilities', forceReload = false) => {
+  const fetchExpenses = async () => {
+    try {
+      const response = await fetch('/api/finance/expenses');
+      if (response.ok) {
+        const result = await response.json();
+        setExpenses(result.data || []);
+      } else {
+        toast.error('Failed to fetch expenses');
+      }
+    } catch (error) {
+      console.error('Error fetching expenses:', error);
+      toast.error('Error fetching expenses');
+    }
+  };
+
+  const fetchTabData = useCallback(async (tab: 'payments' | 'withdrawals' | 'investments' | 'liabilities' | 'expenses', forceReload = false) => {
     // Skip if already loaded and not forcing reload
     if (loadedTabs.has(tab) && !forceReload) {
       return;
@@ -270,6 +302,9 @@ export function PaymentDeletionManager() {
           break;
         case 'liabilities':
           await fetchLiabilities();
+          break;
+        case 'expenses':
+          await fetchExpenses();
           break;
       }
       // Mark tab as loaded
@@ -471,6 +506,52 @@ export function PaymentDeletionManager() {
     }
   };
 
+  const handleEditExpense = (expense: Expense) => {
+    const transactionWithType: TransactionWithType = {
+      ...expense,
+      transaction_type: 'expense'
+    };
+    
+    setEditForm({
+      amount: expense.amount.toString(),
+      date: expense.date,
+      description: expense.description || '',
+      reference_number: '',
+      payment_method: expense.payment_method || '',
+      category: expense.category || '',
+      category_id: '',
+      method: '',
+      bank_account_id: expense.bank_account_id || '',
+      invoice_id: '',
+      liability_type: '',
+      principal_amount: '',
+      interest_amount: '',
+      upi_reference: ''
+    });
+    setEditDialog({ open: true, transaction: transactionWithType });
+  };
+
+  const handleDeleteExpense = async (expense: Expense) => {
+    try {
+      const response = await fetch(`/api/finance/expenses/cleanup?expense_id=${expense.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (response.ok) {
+        toast.success('Expense deleted successfully');
+        await fetchExpenses();
+        setLoadedTabs(prev => new Set(prev).add('expenses'));
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Failed to delete expense');
+      }
+    } catch (error) {
+      console.error('Error deleting expense:', error);
+      toast.error('Error deleting expense');
+    }
+  };
+
   // Update functions for edit functionality
   const handleUpdateWithdrawal = async () => {
     if (!editDialog.transaction) return;
@@ -495,6 +576,14 @@ export function PaymentDeletionManager() {
         toast.success('Withdrawal updated successfully');
         toast.info('Note: Journal entries may need manual reconciliation', { duration: 5000 });
         setEditDialog({ open: false });
+        
+        // Force reload
+        setLoadedTabs(prev => {
+          const newSet = new Set(prev);
+          newSet.delete('withdrawals');
+          return newSet;
+        });
+        
         await fetchWithdrawals();
         setLoadedTabs(prev => new Set(prev).add('withdrawals'));
       } else {
@@ -529,13 +618,25 @@ export function PaymentDeletionManager() {
       });
 
       if (response.ok) {
+        const result = await response.json();
+        console.log('Investment update result:', result);
         toast.success('Investment updated successfully');
         toast.info('Note: Journal entries may need manual reconciliation', { duration: 5000 });
         setEditDialog({ open: false });
+        
+        // Force reload by clearing the tab from loadedTabs first
+        setLoadedTabs(prev => {
+          const newSet = new Set(prev);
+          newSet.delete('investments');
+          return newSet;
+        });
+        
+        // Then fetch fresh data
         await fetchInvestments();
         setLoadedTabs(prev => new Set(prev).add('investments'));
       } else {
         const error = await response.json();
+        console.error('Investment update error:', error);
         toast.error(error.error || 'Failed to update investment');
       }
     } catch (error) {
@@ -577,6 +678,14 @@ export function PaymentDeletionManager() {
         toast.success('Liability payment updated successfully');
         toast.info('Note: Journal entries may need manual reconciliation', { duration: 5000 });
         setEditDialog({ open: false });
+        
+        // Force reload
+        setLoadedTabs(prev => {
+          const newSet = new Set(prev);
+          newSet.delete('liabilities');
+          return newSet;
+        });
+        
         await fetchLiabilities();
         setLoadedTabs(prev => new Set(prev).add('liabilities'));
       } else {
@@ -613,6 +722,14 @@ export function PaymentDeletionManager() {
         toast.success('Payment updated successfully');
         toast.info('Note: Journal entries may need manual reconciliation', { duration: 5000 });
         setEditDialog({ open: false });
+        
+        // Force reload
+        setLoadedTabs(prev => {
+          const newSet = new Set(prev);
+          newSet.delete('payments');
+          return newSet;
+        });
+        
         await fetchPayments();
         setLoadedTabs(prev => new Set(prev).add('payments'));
       } else {
@@ -622,6 +739,54 @@ export function PaymentDeletionManager() {
     } catch (error) {
       console.error('Error updating payment:', error);
       toast.error('Error updating payment');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleUpdateExpense = async () => {
+    if (!editDialog.transaction) return;
+    
+    setEditLoading(true);
+    try {
+      // Get type from original transaction
+      const expense = editDialog.transaction as unknown as Expense;
+      
+      const response = await fetch('/api/finance/expenses', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          expense_id: editDialog.transaction.id,
+          date: editForm.date,
+          description: editForm.description,
+          category: editForm.category,
+          type: expense.type,
+          amount: parseFloat(editForm.amount),
+          payment_method: editForm.payment_method
+        })
+      });
+
+      if (response.ok) {
+        toast.success('Expense updated successfully');
+        toast.info('Note: Journal entries may need manual reconciliation', { duration: 5000 });
+        setEditDialog({ open: false });
+        
+        // Force reload
+        setLoadedTabs(prev => {
+          const newSet = new Set(prev);
+          newSet.delete('expenses');
+          return newSet;
+        });
+        
+        await fetchExpenses();
+        setLoadedTabs(prev => new Set(prev).add('expenses'));
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Failed to update expense');
+      }
+    } catch (error) {
+      console.error('Error updating expense:', error);
+      toast.error('Error updating expense');
     } finally {
       setEditLoading(false);
     }
@@ -703,9 +868,9 @@ export function PaymentDeletionManager() {
         payment.customer_name?.toLowerCase().includes(searchLower) ||
         payment.customer_phone?.toLowerCase().includes(searchLower) ||
         payment.customer_email?.toLowerCase().includes(searchLower) ||
-        payment.invoice_id.toLowerCase().includes(searchLower) ||
+        payment.invoice_id.toString().toLowerCase().includes(searchLower) ||
         payment.amount.toString().includes(searchTerm) ||
-        payment.id.toLowerCase().includes(searchLower)
+        payment.id.toString().toLowerCase().includes(searchLower)
       );
     });
 
@@ -846,7 +1011,7 @@ export function PaymentDeletionManager() {
         withdrawal.description?.toLowerCase().includes(searchLower) ||
         withdrawal.bank_account_name?.toLowerCase().includes(searchLower) ||
         withdrawal.amount.toString().includes(searchTerm) ||
-        withdrawal.id.toLowerCase().includes(searchLower)
+        withdrawal.id.toString().toLowerCase().includes(searchLower)
       );
     });
 
@@ -948,7 +1113,7 @@ export function PaymentDeletionManager() {
         investment.description?.toLowerCase().includes(searchLower) ||
         investment.bank_account_name?.toLowerCase().includes(searchLower) ||
         investment.amount.toString().includes(searchTerm) ||
-        investment.id.toLowerCase().includes(searchLower)
+        investment.id.toString().toLowerCase().includes(searchLower)
       );
     });
 
@@ -1060,7 +1225,7 @@ export function PaymentDeletionManager() {
         liability.loan_number?.toLowerCase().includes(searchLower) ||
         liability.loan_account_code?.toLowerCase().includes(searchLower) ||
         liability.total_amount.toString().includes(searchTerm) ||
-        liability.id.toLowerCase().includes(searchLower)
+        liability.id.toString().toLowerCase().includes(searchLower)
       );
     });
 
@@ -1180,6 +1345,160 @@ export function PaymentDeletionManager() {
     );
   };
 
+  const renderExpensesTable = () => {
+    const filteredExpenses = expenses.filter(expense => {
+      if (!searchTerm) return true;
+      const searchLower = searchTerm.toLowerCase();
+      return (
+        expense.description?.toLowerCase().includes(searchLower) ||
+        expense.category?.toLowerCase().includes(searchLower) ||
+        expense.type?.toLowerCase().includes(searchLower) ||
+        expense.payment_method?.toLowerCase().includes(searchLower) ||
+        expense.entity_type?.toLowerCase().includes(searchLower) ||
+        expense.amount.toString().includes(searchTerm) ||
+        expense.id.toString().toLowerCase().includes(searchLower)
+      );
+    });
+
+    // Pagination
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const paginatedExpenses = filteredExpenses.slice(startIndex, endIndex);
+    const totalPages = Math.ceil(filteredExpenses.length / itemsPerPage);
+
+    return (
+      <div className="space-y-4">
+        <div className="rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>Payment Method</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8">
+                    <div className="flex justify-center items-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                      <p className="ml-4 text-gray-600">Loading expenses...</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : paginatedExpenses.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                    {searchTerm ? 'No expenses found matching your search' : 'No expenses found'}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                paginatedExpenses.map((expense) => (
+                  <TableRow key={expense.id} className="hover:bg-gray-50">
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4 text-gray-500" />
+                        {formatDate(expense.date)}
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-medium max-w-xs">
+                      <div className="truncate" title={expense.description}>
+                        {expense.description}
+                      </div>
+                      {expense.entity_type && (
+                        <Badge variant="secondary" className="text-xs mt-1">
+                          {expense.entity_type}
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="font-medium">
+                        {expense.category}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge 
+                        variant={expense.type === 'Direct' ? 'default' : 'secondary'}
+                        className="font-medium"
+                      >
+                        {expense.type}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-semibold text-red-600">
+                      {formatCurrency(expense.amount)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="font-medium uppercase text-xs">
+                        {expense.payment_method}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleEditExpense(expense)}
+                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                        >
+                          <Edit3 className="h-4 w-4 mr-1" />
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDeleteExpense(expense)}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Delete
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-600">
+              Showing {startIndex + 1} to {Math.min(endIndex, filteredExpenses.length)} of {filteredExpenses.length} expenses
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-gray-600">
+                Page {currentPage} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <Card>
@@ -1210,8 +1529,8 @@ export function PaymentDeletionManager() {
         </CardHeader>
         
         <CardContent>
-                    <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'payments' | 'withdrawals' | 'investments' | 'liabilities')} className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
+                    <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'payments' | 'withdrawals' | 'investments' | 'liabilities' | 'expenses')} className="w-full">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="payments" className="flex items-center gap-2">
                 <CreditCard className="h-4 w-4" />
                 Payments {loading && activeTab === 'payments' ? '(...)' : `(${payments.length})`}
@@ -1227,6 +1546,10 @@ export function PaymentDeletionManager() {
               <TabsTrigger value="liabilities" className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4" />
                 Liabilities {loading && activeTab === 'liabilities' ? '(...)' : `(${liabilities.length})`}
+              </TabsTrigger>
+              <TabsTrigger value="expenses" className="flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Expenses {loading && activeTab === 'expenses' ? '(...)' : `(${expenses.length})`}
               </TabsTrigger>
             </TabsList>
 
@@ -1248,6 +1571,11 @@ export function PaymentDeletionManager() {
             {/* Liabilities Tab */}
             <TabsContent value="liabilities" className="space-y-4">
               {renderLiabilitiesTable()}
+            </TabsContent>
+
+            {/* Expenses Tab */}
+            <TabsContent value="expenses" className="space-y-4">
+              {renderExpensesTable()}
             </TabsContent>
           </Tabs>
         </CardContent>
@@ -1463,6 +1791,8 @@ export function PaymentDeletionManager() {
                   handleUpdatePayment();
                 } else if (editDialog.transaction?.transaction_type === 'liability') {
                   handleUpdateLiability();
+                } else if (editDialog.transaction?.transaction_type === 'expense') {
+                  handleUpdateExpense();
                 }
               }}
               disabled={editLoading || !editForm.amount || !editForm.date}

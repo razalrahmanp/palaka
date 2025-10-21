@@ -23,7 +23,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -375,12 +374,11 @@ export function SalesOrderInvoiceManager() {
   });
   
   // Date preset selection
-  const [datePreset, setDatePreset] = useState<'all_time' | 'today' | 'this_week' | 'this_month' | 'last_month' | 'custom'>('today');
+  const [datePreset, setDatePreset] = useState<'all_time' | 'today' | 'this_week' | 'this_month' | 'last_month' | 'year_2025' | 'year_2024' | 'year_2023' | 'custom'>('today');
   
   // Multiple filter selection for cashflow
   const [multipleCategoryFilters, setMultipleCategoryFilters] = useState<string[]>([]);
   const [useMultipleFilters, setUseMultipleFilters] = useState(false);
-  const [cashflowSortOrder, setCashflowSortOrder] = useState<'desc' | 'asc'>('asc'); // asc = oldest first, desc = newest first
   
   // Daysheet view states
   const [showDaysheetView, setShowDaysheetView] = useState(false);
@@ -869,23 +867,13 @@ export function SalesOrderInvoiceManager() {
       const aDate = parseDate(a.date);
       const bDate = parseDate(b.date);
       
-      // If different dates, sort by date based on sort order
+      // If different dates, sort by date (oldest to newest)
       if (aDateStr !== bDateStr) {
-        if (cashflowSortOrder === 'desc') {
-          // Newest to oldest (pure date sort)
-          return bDateOnly.getTime() - aDateOnly.getTime();
-        } else {
-          // Oldest to newest (pure date sort)
-          return aDateOnly.getTime() - bDateOnly.getTime();
-        }
+        return aDateOnly.getTime() - bDateOnly.getTime();
       }
       
-      // If same date, sort by time based on sort order
-      if (cashflowSortOrder === 'desc') {
-        return bDate.getTime() - aDate.getTime(); // newest first within same day
-      } else {
-        return aDate.getTime() - bDate.getTime(); // oldest first within same day
-      }
+      // If same date, sort by time (oldest first within same day)
+      return aDate.getTime() - bDate.getTime();
     });    // Filter by date range
     let filteredTransactions = uniqueTransactions;
     const paymentsBeforeFilter = uniqueTransactions.filter(t => t.type === 'income' && t.category === 'payment').length;
@@ -1023,7 +1011,7 @@ export function SalesOrderInvoiceManager() {
     setCashflowTransactions(filteredTransactions);
     console.log('✅ Built cashflow transactions after date filtering:', filteredTransactions.length);
     console.log('📊 Sample filtered transaction:', filteredTransactions[0]);
-  }, [payments, expenses, cashflowDateRange, cashflowSortOrder]);
+  }, [payments, expenses, cashflowDateRange]);
 
   const fetchCashflowData = useCallback(async () => {
     try {
@@ -2521,7 +2509,7 @@ export function SalesOrderInvoiceManager() {
     });
   };
 
-  const handleDatePresetChange = (preset: 'all_time' | 'today' | 'this_week' | 'this_month' | 'last_month' | 'custom') => {
+  const handleDatePresetChange = (preset: 'all_time' | 'today' | 'this_week' | 'this_month' | 'last_month' | 'year_2025' | 'year_2024' | 'year_2023' | 'custom') => {
     setDatePreset(preset);
     
     // Get current date in user's timezone
@@ -2566,6 +2554,24 @@ export function SalesOrderInvoiceManager() {
         setCashflowDateRange({
           from: startOfMonth.toISOString().split('T')[0],
           to: endOfMonth.toISOString().split('T')[0]
+        });
+        break;
+      case 'year_2025':
+        setCashflowDateRange({
+          from: '2025-01-01',
+          to: '2025-12-31'
+        });
+        break;
+      case 'year_2024':
+        setCashflowDateRange({
+          from: '2024-01-01',
+          to: '2024-12-31'
+        });
+        break;
+      case 'year_2023':
+        setCashflowDateRange({
+          from: '2023-01-01',
+          to: '2023-12-31'
         });
         break;
       case 'last_month':
@@ -5398,91 +5404,83 @@ export function SalesOrderInvoiceManager() {
             </TabsContent>
 
             {/* Cashflow Tab */}
-            <TabsContent value="cashflow" className="space-y-4 p-0">
-              {/* Cashflow Summary Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 m-4 mb-6">
-                {(() => {
-                  const filteredTransactions = filterCashflowTransactions(cashflowTransactions, cashflowSearchQuery, cashflowTypeFilter, cashflowCategoryFilter, multipleCategoryFilters, useMultipleFilters);
-                  const totalInflow = filteredTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-                  const totalOutflow = filteredTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-                  const netCashflow = totalInflow - totalOutflow;
-                  
-                  return (
-                    <>
-                      <Card>
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-sm font-medium text-gray-600">Total Inflow</p>
-                              <p className="text-2xl font-bold text-green-600">{formatCurrency(totalInflow)}</p>
+            <TabsContent value="cashflow" className="space-y-4 p-0 relative">
+              {/* Cashflow Summary Cards - Hidden when daysheet view is active */}
+              {!showDaysheetView && (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 m-4 mb-6">
+                  {(() => {
+                    const filteredTransactions = filterCashflowTransactions(cashflowTransactions, cashflowSearchQuery, cashflowTypeFilter, cashflowCategoryFilter, multipleCategoryFilters, useMultipleFilters);
+                    const totalInflow = filteredTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+                    const totalOutflow = filteredTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+                    const netCashflow = totalInflow - totalOutflow;
+                    
+                    return (
+                      <>
+                        <Card>
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-medium text-gray-600">Total Inflow</p>
+                                <p className="text-2xl font-bold text-green-600">{formatCurrency(totalInflow)}</p>
+                              </div>
+                              <TrendingUp className="h-8 w-8 text-green-600" />
                             </div>
-                            <TrendingUp className="h-8 w-8 text-green-600" />
-                          </div>
-                        </CardContent>
-                      </Card>
-                      
-                      <Card>
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-sm font-medium text-gray-600">Total Outflow</p>
-                              <p className="text-2xl font-bold text-red-600">{formatCurrency(totalOutflow)}</p>
+                          </CardContent>
+                        </Card>
+                        
+                        <Card>
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-medium text-gray-600">Total Outflow</p>
+                                <p className="text-2xl font-bold text-red-600">{formatCurrency(totalOutflow)}</p>
+                              </div>
+                              <TrendingDown className="h-8 w-8 text-red-600" />
                             </div>
-                            <TrendingDown className="h-8 w-8 text-red-600" />
-                          </div>
-                        </CardContent>
-                      </Card>
-                      
-                      <Card>
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-sm font-medium text-gray-600">Net Cashflow</p>
-                              <p className={`text-2xl font-bold ${netCashflow >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                {formatCurrency(netCashflow)}
-                              </p>
+                          </CardContent>
+                        </Card>
+                        
+                        <Card>
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-medium text-gray-600">Net Cashflow</p>
+                                <p className={`text-2xl font-bold ${netCashflow >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                  {formatCurrency(netCashflow)}
+                                </p>
+                              </div>
+                              <DollarSign className={`h-8 w-8 ${netCashflow >= 0 ? 'text-green-600' : 'text-red-600'}`} />
                             </div>
-                            <DollarSign className={`h-8 w-8 ${netCashflow >= 0 ? 'text-green-600' : 'text-red-600'}`} />
-                          </div>
-                        </CardContent>
-                      </Card>
-                      
-                      <Card>
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-sm font-medium text-gray-600">Transactions</p>
-                              <p className="text-2xl font-bold text-blue-600">{filteredTransactions.length}</p>
+                          </CardContent>
+                        </Card>
+                        
+                        <Card>
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-medium text-gray-600">Transactions</p>
+                                <p className="text-2xl font-bold text-blue-600">{filteredTransactions.length}</p>
+                              </div>
+                              <Receipt className="h-8 w-8 text-blue-600" />
                             </div>
-                            <Receipt className="h-8 w-8 text-blue-600" />
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </>
-                  );
-                })()}
-              </div>
+                          </CardContent>
+                        </Card>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
 
-              {/* Daysheet View Toggle */}
-              <div className="mx-4 mb-4">
-                <Card>
-                  <CardContent className="p-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Calendar className="h-4 w-4 text-blue-600" />
-                        <div>
-                          <h3 className="font-semibold text-sm text-gray-900">Daysheet View</h3>
-                          <p className="text-xs text-gray-600">View transactions by day with weekly breakdown</p>
-                        </div>
-                      </div>
-                      <Switch
-                        checked={showDaysheetView}
-                        onCheckedChange={setShowDaysheetView}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+              {/* Floating Daysheet View Toggle Button */}
+              <Button
+                onClick={() => setShowDaysheetView(!showDaysheetView)}
+                className={`fixed bottom-6 right-6 z-50 rounded-full w-14 h-14 shadow-lg ${
+                  showDaysheetView ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-600 hover:bg-gray-700'
+                }`}
+                title={showDaysheetView ? 'Close Daysheet View' : 'Open Daysheet View'}
+              >
+                <Calendar className="h-6 w-6" />
+              </Button>
 
               {/* Daysheet View Content */}
               {showDaysheetView && (
@@ -5764,21 +5762,11 @@ export function SalesOrderInvoiceManager() {
                   </div>
                   <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
                     <Calendar className="h-3 w-3" />
-                    Sorted: {cashflowSortOrder === 'desc' ? 'Newest to oldest by date' : 'Oldest to newest by date'}
+                    Sorted: Oldest to newest by date
                   </div>
                 </div>
                 
                 <div className="flex gap-2">
-                  {/* Date Sort Toggle */}
-                  <Button 
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCashflowSortOrder(cashflowSortOrder === 'desc' ? 'asc' : 'desc')}
-                    className="whitespace-nowrap"
-                    title={`Sort ${cashflowSortOrder === 'desc' ? 'oldest first' : 'newest first'}`}
-                  >
-                    {cashflowSortOrder === 'desc' ? '↓ Newest' : '↑ Oldest'}
-                  </Button>
                   {/* Pagination Toggle */}
                   <Button 
                     variant={showPagination ? "default" : "outline"}
@@ -5815,6 +5803,9 @@ export function SalesOrderInvoiceManager() {
                       <SelectItem value="this_week">This Week</SelectItem>
                       <SelectItem value="this_month">This Month</SelectItem>
                       <SelectItem value="last_month">Last Month</SelectItem>
+                      <SelectItem value="year_2025">Year 2025</SelectItem>
+                      <SelectItem value="year_2024">Year 2024</SelectItem>
+                      <SelectItem value="year_2023">Year 2023</SelectItem>
                       <SelectItem value="custom">Custom Range</SelectItem>
                     </SelectContent>
                   </Select>
@@ -5971,7 +5962,7 @@ export function SalesOrderInvoiceManager() {
                       <TableHead className="flex items-center gap-1">
                         Date 
                         <span className="text-xs text-gray-500">
-                          {cashflowSortOrder === 'desc' ? '↓' : '↑'}
+                          ↑
                         </span>
                       </TableHead>
                       <TableHead>Description</TableHead>

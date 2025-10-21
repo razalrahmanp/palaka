@@ -55,7 +55,10 @@ export default function RedesignedSalesPage() {
   const [actualPayments, setActualPayments] = useState<Array<{ 
     amount: number; 
     payment_date?: string; 
-    date?: string; 
+    date?: string;
+    order_id?: string;
+    sales_order_id?: string;
+    reference_id?: string;
   }>>([]);
   const [paymentsLoading, setPaymentsLoading] = useState(true);
 
@@ -86,11 +89,14 @@ export default function RedesignedSalesPage() {
   const fetchActualPayments = async () => {
     try {
       setPaymentsLoading(true);
-      const response = await fetch('/api/finance/payments');
+      
+      // Fetch payments with order references
+      const response = await fetch('/api/finance/payments?include_order_refs=true');
       if (response.ok) {
         const payments = await response.json();
         setActualPayments(Array.isArray(payments) ? payments : []);
         console.log('📄 Fetched actual payments for Sales tab:', payments.length);
+        console.log('📄 Sample payment data:', payments.slice(0, 2));
       } else {
         console.error('Failed to fetch payments:', response.statusText);
         setActualPayments([]);
@@ -341,12 +347,48 @@ export default function RedesignedSalesPage() {
     const pendingOrders = ordersWithPayment.filter(o => o.status === 'draft').length; // using 'draft' as pending equivalent
     const convertedQuotes = quotesFiltered.filter(q => q.status === 'Converted').length;
     
-    // Delivery-based payment tracking
+    // Delivery-based payment tracking - Simplified for clarity
     const deliveredOrders = ordersWithPayment.filter(o => o.status === 'delivered');
-    const deliveredOrdersRevenue = deliveredOrders.reduce((sum, order) => sum + (order.final_price || order.total || 0), 0);
-    const deliveredOrdersCollected = deliveredOrders.reduce((sum, order) => sum + (order.total_paid || 0), 0);
-    const deliveredOrdersPending = deliveredOrdersRevenue - deliveredOrdersCollected;
-    const deliveredOrdersWithPendingPayment = deliveredOrders.filter(o => (o.payment_status === 'pending' || o.payment_status === 'partial')).length;
+    
+    console.log(`📦 Found ${deliveredOrders.length} delivered orders`);
+    
+    // Calculate PENDING amount from delivered orders only
+    let deliveredOrdersPending = 0;
+    let deliveredOrdersWithPendingPayment = 0;
+    
+    deliveredOrders.forEach(order => {
+      const orderTotal = order.final_price || order.total || 0;
+      const orderPaid = order.total_paid || 0;
+      const remainingAmount = orderTotal - orderPaid;
+      
+      if (remainingAmount > 0) {
+        deliveredOrdersPending += remainingAmount;
+        deliveredOrdersWithPendingPayment++;
+      }
+    });
+    
+    // Also calculate revenue and collected for other stats
+    const deliveredOrdersRevenue = deliveredOrders.reduce((sum, order) => {
+      return sum + (order.final_price || order.total || 0);
+    }, 0);
+    
+    const deliveredOrdersCollected = deliveredOrders.reduce((sum, order) => {
+      return sum + (order.total_paid || 0);
+    }, 0);
+    
+    console.log(`📦 Delivered Orders Summary:
+    - Total Orders: ${deliveredOrders.length}
+    - Total Revenue: ₹${deliveredOrdersRevenue.toLocaleString()}
+    - Total Collected: ₹${deliveredOrdersCollected.toLocaleString()}
+    - PENDING AMOUNT: ₹${deliveredOrdersPending.toLocaleString()}
+    - Orders with Pending: ${deliveredOrdersWithPendingPayment}`);
+    
+    console.log('📦 Sample delivered orders:', deliveredOrders.slice(0, 3).map(o => ({
+      id: o.id,
+      total: o.final_price || o.total,
+      paid: o.total_paid,
+      pending: (o.final_price || o.total || 0) - (o.total_paid || 0)
+    })));
     
     // Profit calculations - using final_price (actual amount received) minus cost
     const totalProfit = ordersWithPayment.reduce((sum, order) => {
@@ -504,18 +546,7 @@ export default function RedesignedSalesPage() {
       </div>
 
       {/* Compact Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-2 mb-4">
-        <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0 shadow-sm hover:shadow-md transition-all duration-300">
-          <CardContent className="p-2">
-            <div className="flex items-center gap-1.5 mb-1">
-              <FileText className="h-3.5 w-3.5 flex-shrink-0" />
-              <p className="text-[11px] font-semibold leading-tight">Active Quotes</p>
-            </div>
-            <p className="text-lg font-bold leading-none mb-0.5">{stats.totalQuotes}</p>
-            <p className="text-[10px] leading-tight truncate">{stats.pendingQuotes} pending</p>
-          </CardContent>
-        </Card>
-
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 mb-4">
         <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-0 shadow-sm hover:shadow-md transition-all duration-300">
           <CardContent className="p-2">
             <div className="flex items-center gap-1.5 mb-1">

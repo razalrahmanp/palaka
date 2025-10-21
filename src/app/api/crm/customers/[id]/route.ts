@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabaseAdmin'
+import { supabase } from '@/lib/supabasePool'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function PUT(req: NextRequest) {

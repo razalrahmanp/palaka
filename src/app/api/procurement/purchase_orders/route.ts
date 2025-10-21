@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabaseAdmin';
+import { supabase } from '@/lib/supabasePool';
 
 // Helper function to create vendor bill from purchase order
 async function createVendorBillFromPO({

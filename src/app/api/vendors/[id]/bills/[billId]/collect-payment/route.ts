@@ -2,7 +2,7 @@
 // File: src/app/api/vendors/[id]/bills/[billId]/collect-payment/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabaseAdmin';
+import { supabase } from '@/lib/supabasePool';
 
 interface CollectPaymentPayload {
   method: 'cash' | 'bank_transfer' | 'cheque' | 'upi' | 'card';

@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { supabase as supabaseAdmin } from '@/lib/supabaseAdmin';
+import { supabase as supabaseAdmin } from '@/lib/supabasePool';
 
 // GET - Fetch employee obligations
 export async function GET(request: NextRequest) {

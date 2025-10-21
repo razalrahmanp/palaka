@@ -1,6 +1,6 @@
 // Debug API to compare P&L inventory calculation vs Vendor Stats calculation
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { supabase } from '@/lib/supabaseAdmin';
+import { supabase } from '@/lib/supabasePool';
 import { NextResponse } from 'next/server';
 
 export async function GET() {

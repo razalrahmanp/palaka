@@ -1,5 +1,5 @@
 // app/api/vendors/[id]/purchase-orders/route.ts
-import { supabase } from '@/lib/supabaseAdmin'
+import { supabase } from '@/lib/supabasePool'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(

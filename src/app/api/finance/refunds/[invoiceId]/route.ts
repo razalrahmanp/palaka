@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabaseAdmin';
+import { supabase } from '@/lib/supabasePool';
 
 // GET - Fetch refunds for a specific invoice
 export async function GET(

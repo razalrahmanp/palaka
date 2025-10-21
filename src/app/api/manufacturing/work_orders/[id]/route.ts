@@ -1,6 +1,6 @@
 // app/api/manufacturing/work_orders/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabaseAdmin';
+import { supabase } from '@/lib/supabasePool';
 
 export async function GET(req: NextRequest) {
   const id = req.nextUrl.pathname.split('/').pop();

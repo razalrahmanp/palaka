@@ -1,5 +1,5 @@
 // app/api/inventory/products/route.ts
-import { supabase } from '@/lib/supabaseAdmin'
+import { supabase } from '@/lib/supabasePool'
 import { NextRequest, NextResponse } from 'next/server'
 
 import QRCode from 'qrcode';

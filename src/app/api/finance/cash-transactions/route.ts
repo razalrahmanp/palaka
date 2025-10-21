@@ -6,7 +6,7 @@
 // ================================================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase as supabaseAdmin } from '@/lib/supabaseAdmin';
+import { supabase as supabaseAdmin } from '@/lib/supabasePool';
 import { createCashTransaction, getCashTransactions, validateCashBalance } from '@/lib/cashManager';
 
 

@@ -2,7 +2,7 @@
 // This script analyzes existing bank transactions and expense records to properly classify them
 
 import { NextResponse } from 'next/server';
-import { supabase as supabaseAdmin } from '@/lib/supabaseAdmin';
+import { supabase as supabaseAdmin } from '@/lib/supabasePool';
 
 export async function POST() {
   try {

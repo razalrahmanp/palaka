@@ -1,5 +1,5 @@
 // app/api/profit-margins/route.ts
-import { supabase } from '@/lib/supabaseAdmin'
+import { supabase } from '@/lib/supabasePool'
 import { NextRequest, NextResponse } from 'next/server'
 
 /**

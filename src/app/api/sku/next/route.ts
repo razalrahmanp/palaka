@@ -1,6 +1,6 @@
 // src/app/api/sku/next/route.ts
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabaseAdmin';
+import { supabase } from '@/lib/supabasePool';
 
 export async function GET(request: Request) {
   try {

@@ -1,5 +1,5 @@
 // src/app/api/inventory/adjust/route.ts
-import { supabase } from '@/lib/supabaseAdmin';
+import { supabase } from '@/lib/supabasePool';
 import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {

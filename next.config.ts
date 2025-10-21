@@ -1,7 +1,17 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-images: {
+  // Performance optimizations
+  experimental: {
+    serverComponentsExternalPackages: ['@supabase/supabase-js'],
+    optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
+  },
+  
+  // Compilation optimizations
+  swcMinify: true,
+  
+  // Image optimization
+  images: {
     remotePatterns: [
       {
         protocol: 'https',
@@ -9,12 +19,87 @@ images: {
         pathname: '/**',
       },
     ],
+    formats: ['image/webp', 'image/avif'],
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
   },
-   eslint: {
+  
+  // Bundle optimization
+  webpack: (config, { dev, isServer }) => {
+    if (!dev && !isServer) {
+      // Split vendor chunks for better caching
+      config.optimization.splitChunks = {
+        chunks: 'all',
+        cacheGroups: {
+          default: false,
+          vendors: false,
+          // Create a chunk for React/Next.js
+          framework: {
+            chunks: 'all',
+            name: 'framework',
+            test: /(?:react|react-dom)$/,
+            priority: 40,
+            enforce: true,
+          },
+          // Create a chunk for UI libraries
+          lib: {
+            test: /[\\/]node_modules[\\/](@radix-ui|lucide-react)[\\/]/,
+            name: 'lib',
+            priority: 30,
+            chunks: 'all',
+          },
+          // Commons chunk for shared modules
+          commons: {
+            name: 'commons',
+            minChunks: 2,
+            priority: 20,
+            chunks: 'all',
+          },
+        },
+      };
+    }
+    return config;
+  },
+  
+  eslint: {
     ignoreDuringBuilds: true,
   },
   typescript: {
     ignoreBuildErrors: true,
+  },
+  
+  // Output optimization
+  output: 'standalone',
+  
+  // Compression
+  compress: true,
+  
+  // Headers for caching
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'X-Frame-Options',
+            value: 'DENY',
+          },
+          {
+            key: 'X-Content-Type-Options',
+            value: 'nosniff',
+          },
+        ],
+      },
+      {
+        source: '/api/(.*)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=300, s-maxage=300',
+          },
+        ],
+      },
+    ];
   },
 };
 

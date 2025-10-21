@@ -10,8 +10,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileText, Plus, Calendar, DollarSign, CreditCard, Receipt, Search, Minus, Clock, Trash2, Edit, Calculator, ChevronDown, ChevronRight, RotateCcw, Scale } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { FileText, Plus, Calendar, DollarSign, CreditCard, Receipt, Search, Minus, Clock, Trash2, Edit, Calculator, ChevronDown, ChevronRight, RotateCcw, Scale, User } from 'lucide-react';
 // import { VendorBillForm } from './VendorBillForm';
 import { EnhancedVendorBillForm } from './EnhancedVendorBillForm';
 
@@ -142,17 +142,26 @@ interface VendorBillsTabProps {
   bills: VendorBill[];
   financialSummary: VendorFinancialSummary;
   onBillUpdate: () => Promise<void>;
+  onEditVendor?: () => void;
 }
+
+type TabType = 'bills' | 'expenses';
 
 export function VendorBillsTab({ 
   vendorId, 
   vendorName, 
   bills, 
   financialSummary, 
-  onBillUpdate 
+  onBillUpdate,
+  onEditVendor 
 }: VendorBillsTabProps) {
   const [createBillOpen, setCreateBillOpen] = useState(false);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [currentTab, setCurrentTab] = useState<TabType>('bills');
+  
+  // Helper functions for tab comparisons
+  const isExpensesTab = () => currentTab === 'expenses';
+  const isBillsTab = () => currentTab === 'bills';
   const [selectedBillForPayment, setSelectedBillForPayment] = useState<VendorBill | null>(null);
   
   // Enhanced edit bill state (for editing line items)
@@ -829,21 +838,42 @@ export function VendorBillsTab({
 
   return (
     <div className="space-y-6">
-      {/* Tabs for Bills and Expenses */}
-      <Tabs defaultValue="bills" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="bills">Bills & Payments</TabsTrigger>
-          <TabsTrigger value="expenses">Vendor Expenses</TabsTrigger>
-        </TabsList>
+      {/* Floating Edit Vendor Button */}
+      {onEditVendor && (
+        <Button
+          onClick={onEditVendor}
+          className="fixed top-24 right-4 z-50 rounded-full w-10 h-10 bg-blue-600 hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all duration-200 p-0"
+          size="sm"
+        >
+          <User className="h-4 w-4 text-white" />
+        </Button>
+      )}
 
-        {/* Bills Tab */}
-        <TabsContent value="bills" className="space-y-4">
+      {/* Content based on current tab */}
+      {isBillsTab() ? (
+        /* Bills Tab Content */
+        <div className="space-y-4">
           <Card>
             <CardHeader>
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <CardTitle className="text-lg font-semibold text-gray-900">
-                  Vendor Bills
-                </CardTitle>
+                <div className="flex items-center gap-4">
+                  <CardTitle className="text-lg font-semibold text-gray-900">
+                    {isBillsTab() ? 'Vendor Bills' : 'Vendor Expenses'}
+                  </CardTitle>
+                  <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-1">
+                    <span className={`text-xs font-medium transition-colors px-2 py-1 rounded ${isBillsTab() ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600'}`}>
+                      Bills & Payments
+                    </span>
+                    <Switch
+                      checked={isExpensesTab()}
+                      onCheckedChange={(checked) => setCurrentTab(checked ? 'expenses' : 'bills')}
+                      className="data-[state=checked]:bg-blue-600 scale-75"
+                    />
+                    <span className={`text-xs font-medium transition-colors px-2 py-1 rounded ${isExpensesTab() ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600'}`}>
+                      Vendor Expenses
+                    </span>
+                  </div>
+                </div>
                 <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                   {bills.some(bill => bill.remaining_amount > 0) && (
                     <Button 
@@ -1374,31 +1404,45 @@ export function VendorBillsTab({
               )}
             </CardContent>
           </Card>
-        </TabsContent>
-
-        {/* Expenses Tab */}
-        <TabsContent value="expenses" className="space-y-4">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Vendor Account Ledger</h3>
-              <p className="text-sm text-gray-600 mt-1">
-                Complete transaction history with bills and payments for {vendorName}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={isSyncingExpenses}
-                onClick={async () => {
-                  console.log('Refreshing expenses for vendor:', vendorId);
-                  setIsSyncingExpenses(true);
-                  
-                  try {
-                    // First, sync vendor payments to expenses if any are missing
-                    console.log('Syncing vendor payments to expenses...');
-                    const syncResponse = await fetch(`/api/vendors/${vendorId}/sync-expenses`, {
-                      method: 'POST',
+        </div>
+      ) : (
+        /* Expenses Tab Content */
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div className="flex items-center gap-4">
+                  <CardTitle className="text-lg font-semibold text-gray-900">
+                    {isBillsTab() ? 'Vendor Bills' : 'Vendor Expenses'}
+                  </CardTitle>
+                  <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-1">
+                    <span className={`text-xs font-medium transition-colors px-2 py-1 rounded ${isBillsTab() ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600'}`}>
+                      Bills & Payments
+                    </span>
+                    <Switch
+                      checked={isExpensesTab()}
+                      onCheckedChange={(checked) => setCurrentTab(checked ? 'expenses' : 'bills')}
+                      className="data-[state=checked]:bg-blue-600 scale-75"
+                    />
+                    <span className={`text-xs font-medium transition-colors px-2 py-1 rounded ${isExpensesTab() ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600'}`}>
+                      Vendor Expenses
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isSyncingExpenses}
+                    onClick={async () => {
+                      console.log('Refreshing expenses for vendor:', vendorId);
+                      setIsSyncingExpenses(true);
+                      
+                      try {
+                        // First, sync vendor payments to expenses if any are missing
+                        console.log('Syncing vendor payments to expenses...');
+                        const syncResponse = await fetch(`/api/vendors/${vendorId}/sync-expenses`, {
+                          method: 'POST',
                       headers: { 'Content-Type': 'application/json' }
                     });
                     
@@ -1440,8 +1484,10 @@ export function VendorBillsTab({
                   </>
                 )}
               </Button>
-            </div>
-          </div>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
 
           {/* Ledger Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -2030,8 +2076,10 @@ export function VendorBillsTab({
               </div>
             );
           })()}
-        </TabsContent>
-      </Tabs>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
       {/* Enhanced Vendor Bill Form Dialog */}
       <EnhancedVendorBillForm

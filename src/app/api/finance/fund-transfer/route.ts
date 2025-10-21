@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabase as supabaseAdmin } from '@/lib/supabaseAdmin';
+import { supabase as supabaseAdmin } from '@/lib/supabasePool';
 
 interface FundTransferRequest {
   fromAccountId: string;

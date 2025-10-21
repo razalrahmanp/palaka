@@ -1,5 +1,5 @@
 // app/api/vendors/stats/route.ts
-import { supabase } from '@/lib/supabaseAdmin'
+import { supabase } from '@/lib/supabasePool'
 import { NextResponse } from 'next/server'
 
 // Type definitions

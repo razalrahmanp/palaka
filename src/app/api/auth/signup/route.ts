@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabaseAdmin'; // Use the admin client on the server
+import { supabase } from '@/lib/supabasePool'; // Use the admin client on the server
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 

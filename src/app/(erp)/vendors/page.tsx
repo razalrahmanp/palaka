@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PlusCircle, Eye, Edit, Package, DollarSign, ShoppingCart, CreditCard, RefreshCw, Star, Target, Filter, Grid, List } from 'lucide-react';
 import Link from 'next/link';
+import { PageSkeleton, TableSkeleton } from '@/components/ui/loading';
 
 interface VendorStats {
   id: string;
@@ -624,8 +625,9 @@ export default function VendorsPage() {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="flex items-center justify-center h-32">
-              <p className="text-gray-500">Loading vendors...</p>
+            <div className="space-y-6">
+              <PageSkeleton />
+              <TableSkeleton rows={10} cols={6} />
             </div>
           ) : viewMode === 'card' ? (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">

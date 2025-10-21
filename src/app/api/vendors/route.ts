@@ -1,23 +1,37 @@
-import { supabase } from '@/lib/supabaseAdmin'
+import { supabase } from '@/lib/supabasePool'
 import { NextRequest, NextResponse } from 'next/server'
+import { createCachedResponse, getCachedData, setCachedData } from '@/lib/cache'
+import { PerformanceMonitor } from '@/lib/performance'
 
 export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const includeOutstanding = searchParams.get('include_outstanding') === 'true'
+  return PerformanceMonitor.measureAsync('vendors-list', async () => {
+    try {
+      const { searchParams } = new URL(request.url)
+      const includeOutstanding = searchParams.get('include_outstanding') === 'true'
+      
+      // Create cache key
+      const cacheKey = `vendors-list-${includeOutstanding ? 'with-outstanding' : 'basic'}`
+      
+      // Check cache first
+      const cachedData = getCachedData(cacheKey)
+      if (cachedData) {
+        console.log('📦 Cache hit for vendors list')
+        return createCachedResponse(cachedData, { cacheKey })
+      }
 
-    // Get vendors/suppliers list
-    const { data: vendors, error } = await supabase
-      .from('suppliers')
-      .select('id, name, contact, email, address, created_at')
-      .order('name')
+      // Get vendors/suppliers list
+      const { data: vendors, error } = await supabase
+        .from('suppliers')
+        .select('id, name, contact, email, address, created_at')
+        .order('name')
+        .limit(100) // Limit for performance
 
-    if (error) {
-      console.error('Error fetching vendors:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
+      if (error) {
+        console.error('Error fetching vendors:', error)
+        return NextResponse.json({ error: error.message }, { status: 500 })
+      }
 
-    let result = vendors
+      let result = vendors
 
     // If outstanding amounts are requested, fetch them
     if (includeOutstanding && vendors) {
@@ -46,14 +60,20 @@ export async function GET(request: NextRequest) {
       }))
     }
 
-    return NextResponse.json({
+    // Cache the result
+    const responseData = {
       success: true,
       vendors: result || [],
       total: result?.length || 0
-    })
+    }
+    
+    setCachedData(cacheKey, responseData, 300) // Cache for 5 minutes
+    
+    return createCachedResponse(responseData, { cacheKey, ttl: 300 })
 
   } catch (error) {
     console.error('Error in vendors API:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
+  })
 }

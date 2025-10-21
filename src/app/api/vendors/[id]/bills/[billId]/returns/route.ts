@@ -2,7 +2,7 @@
 // File: src/app/api/vendors/[id]/bills/[billId]/returns/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabaseAdmin';
+import { supabase } from '@/lib/supabasePool';
 
 interface CreateReturnPayload {
   reason: 'defective' | 'wrong_item' | 'damaged' | 'excess_quantity' | 'quality_issue' | 'other';

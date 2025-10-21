@@ -1,5 +1,5 @@
 // app/api/vendors/financial-summary/route.ts
-import { supabase } from '@/lib/supabaseAdmin'
+import { supabase } from '@/lib/supabasePool'
 import { NextResponse } from 'next/server'
 
 interface PurchaseOrder {

@@ -1,5 +1,5 @@
 // GET all interactions (optionally filtered by customer_id), POST new interaction
-import { supabase } from '@/lib/supabaseAdmin'
+import { supabase } from '@/lib/supabasePool'
 import { NextResponse } from 'next/server'
 
 export async function GET(req: Request) {

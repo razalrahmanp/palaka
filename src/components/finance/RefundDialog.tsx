@@ -21,7 +21,9 @@ import {
   RefreshCw,
   User,
   Calendar,
-  RotateCcw
+  RotateCcw,
+  Edit,
+  Trash2
 } from 'lucide-react';
 import { getCurrentUser } from '@/lib/auth';
 
@@ -41,9 +43,11 @@ interface RefundRequest {
   refund_type: string;
   reason: string;
   refund_method: string;
+  bank_account_id?: string;
   status: string;
   reference_number?: string;
   created_at: string;
+  processed_at?: string;
   requested_by_user?: {
     name: string;
     email: string;
@@ -91,6 +95,7 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefil
   const [refunds, setRefunds] = useState<RefundRequest[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [selectedBankAccount, setSelectedBankAccount] = useState<BankAccount | null>(null);
+  const [editingRefund, setEditingRefund] = useState<RefundRequest | null>(null);
   const [formData, setFormData] = useState({
     refund_amount: '',
     refund_type: 'partial',
@@ -98,6 +103,7 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefil
     refund_method: 'bank_transfer',
     bank_account_id: '',
     reference_number: '',
+    refund_date: new Date().toISOString().split('T')[0], // Add refund date field
     notes: ''
   });
 
@@ -211,7 +217,8 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefil
       return;
     }
 
-    if (refundAmount > availableForRefund) {
+    // Skip validation for available amount when editing
+    if (!editingRefund && refundAmount > availableForRefund) {
       alert(`Refund amount cannot exceed available amount (₹${availableForRefund})`);
       return;
     }
@@ -240,10 +247,11 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefil
         ...formData,
         refund_amount: refundAmount,
         requested_by: currentUser.id,
+        processed_at: formData.refund_date, // Use the selected date as processed_at
         return_id: returnId || null // ✅ Include return_id if provided
       };
 
-      console.log('� CRITICAL DEBUG - Request Body Construction:', {
+      console.log('🔍 CRITICAL DEBUG - Request Body Construction:', {
         returnIdProp: returnId,
         returnIdType: typeof returnId,
         returnIdInBody: requestBody.return_id,
@@ -252,11 +260,17 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefil
         willBeUndefined: requestBody.return_id === undefined,
         fullBody: requestBody
       });
-      console.log('�📋 Complete request body JSON:', JSON.stringify(requestBody, null, 2));
+      console.log('📋 Complete request body JSON:', JSON.stringify(requestBody, null, 2));
       console.log('🔗 Return ID being sent:', returnId);
 
-      const response = await fetch(`/api/finance/refunds/${invoice.id}`, {
-        method: 'POST',
+      const url = editingRefund 
+        ? `/api/finance/refunds/${invoice.id}/${editingRefund.id}`
+        : `/api/finance/refunds/${invoice.id}`;
+      
+      const method = editingRefund ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -274,8 +288,11 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefil
           refund_method: 'bank_transfer',
           bank_account_id: '',
           reference_number: '',
+          refund_date: new Date().toISOString().split('T')[0],
           notes: ''
         });
+        
+        setEditingRefund(null);
         
         // Refresh refunds list
         await fetchRefunds();
@@ -297,6 +314,49 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefil
     } catch (error) {
       console.error('Error creating refund:', error);
       alert('Failed to process refund');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditRefund = (refund: RefundRequest) => {
+    setEditingRefund(refund);
+    setFormData({
+      refund_amount: refund.refund_amount.toString(),
+      refund_type: refund.refund_type,
+      reason: refund.reason,
+      refund_method: refund.refund_method,
+      bank_account_id: refund.bank_account_id || '',
+      reference_number: refund.reference_number || '',
+      refund_date: refund.processed_at ? new Date(refund.processed_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      notes: refund.notes || ''
+    });
+    setCurrentView('create');
+  };
+
+  const handleDeleteRefund = async (refund: RefundRequest) => {
+    if (!confirm(`Are you sure you want to delete this refund of ${formatCurrency(refund.refund_amount)}?`)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/finance/refunds/${invoice?.id}/${refund.id}`, {
+        method: 'DELETE',
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        alert('Refund deleted successfully!');
+        fetchRefunds();
+        onRefundCreated();
+      } else {
+        alert(`Error: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error deleting refund:', error);
+      alert('Failed to delete refund');
     } finally {
       setLoading(false);
     }
@@ -341,7 +401,20 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefil
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setCurrentView('list')}
+                onClick={() => {
+                  setCurrentView('list');
+                  setEditingRefund(null);
+                  setFormData({
+                    refund_amount: '',
+                    refund_type: 'partial',
+                    reason: '',
+                    refund_method: 'bank_transfer',
+                    bank_account_id: '',
+                    reference_number: '',
+                    refund_date: new Date().toISOString().split('T')[0],
+                    notes: ''
+                  });
+                }}
                 className="p-1"
               >
                 <ArrowLeft className="h-4 w-4" />
@@ -350,7 +423,7 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefil
             <div>
               <DialogTitle className="flex items-center gap-2">
                 <DollarSign className="h-5 w-5" />
-                {currentView === 'create' ? 'Process Refund' : 'Invoice Refunds'}
+                {currentView === 'create' ? (editingRefund ? 'Edit Refund' : 'Process Refund') : 'Invoice Refunds'}
               </DialogTitle>
               <p className="text-sm text-gray-600 mt-1">
                 Invoice: {invoice.id.slice(0, 8)} • Customer: {invoice.customer_name}
@@ -454,8 +527,31 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefil
                             </div>
                           </div>
                           
-                          {/* Action Buttons - Only show reversal for processed refunds */}
+                          {/* Action Buttons */}
                           <div className="flex flex-col gap-2 ml-4">
+                            <div className="flex gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleEditRefund(refund)}
+                                disabled={loading}
+                                className="h-8 px-2"
+                              >
+                                <Edit className="h-3.5 w-3.5 mr-1" />
+                                Edit
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-red-200 text-red-700 hover:bg-red-50 h-8 px-2"
+                                onClick={() => handleDeleteRefund(refund)}
+                                disabled={loading}
+                              >
+                                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                                Delete
+                              </Button>
+                            </div>
+                            
                             {refund.status === 'processed' && (
                               <Button
                                 size="sm"
@@ -499,7 +595,19 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefil
               <p className="text-xl font-bold text-blue-900">{formatCurrency(availableForRefund)}</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <Label htmlFor="refund_date">Refund Date *</Label>
+                <Input
+                  id="refund_date"
+                  type="date"
+                  value={formData.refund_date}
+                  onChange={(e) => setFormData({...formData, refund_date: e.target.value})}
+                  required
+                  max={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+              
               <div>
                 <Label htmlFor="refund_amount">Refund Amount *</Label>
                 <Input

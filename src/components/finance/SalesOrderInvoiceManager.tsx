@@ -75,6 +75,7 @@ import { RefundDialog } from './RefundDialog';
 import { InvoiceReturnExchangeDialog } from './InvoiceReturnExchangeDialog';
 import { FloatingActionMenu, createFinanceActions } from './FloatingActionMenu';
 import { CashTransactionManager } from '@/lib/cashTransactionManager';
+import { toast } from 'sonner';
 
 // Component interfaces and types
 
@@ -4557,19 +4558,16 @@ export function SalesOrderInvoiceManager() {
                                 </>
                               )}
 
-                              {/* Refund Button - Only show if there's paid amount */}
+                              {/* Refund Button - Only show if there's paid amount AND returns exist */}
                               {(invoice.paid_amount || 0) > 0 && (
                                 <>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem 
                                     onClick={async () => {
                                       console.log('🎯 [Dropdown] Refund button clicked for invoice:', invoice.id);
-                                      setSelectedInvoiceForRefund(invoice);
-                                      const refundAmount = await calculateRefundAmount(invoice.id);
-                                      setPrefilledRefundAmount(refundAmount);
                                       
-                                      // Fetch return details to get return_id for linking refund
-                                      console.log('🔍 [Dropdown] Fetching return details for invoice:', invoice.id);
+                                      // First check if there are any returns
+                                      console.log('🔍 [Dropdown] Checking for returns for invoice:', invoice.id);
                                       const returnDetails = await fetchReturnDetails(invoice.id);
                                       console.log('📦 [Dropdown] Return details fetched:', {
                                         count: returnDetails.length,
@@ -4577,7 +4575,17 @@ export function SalesOrderInvoiceManager() {
                                         firstReturnId: returnDetails.length > 0 ? returnDetails[0].id : 'NO_RETURNS'
                                       });
                                       
-                                      const returnId = returnDetails.length > 0 ? returnDetails[0].id : undefined;
+                                      // If no returns found, show error and stop
+                                      if (returnDetails.length === 0) {
+                                        toast.error('No returns found for this invoice. Please create a return first before processing a refund.');
+                                        return;
+                                      }
+                                      
+                                      setSelectedInvoiceForRefund(invoice);
+                                      const refundAmount = await calculateRefundAmount(invoice.id);
+                                      setPrefilledRefundAmount(refundAmount);
+                                      
+                                      const returnId = returnDetails[0].id;
                                       setSelectedReturnId(returnId);
                                       console.log('🔗 [Dropdown] Return ID set for refund dialog:', {
                                         returnId,
@@ -4899,7 +4907,8 @@ export function SalesOrderInvoiceManager() {
                                           <th className="text-left py-2 pr-4">Date</th>
                                           <th className="text-left py-2 pr-4">Type</th>
                                           <th className="text-right py-2 pr-6">Amount</th>
-                                          <th className="text-left py-2">Reason</th>
+                                          <th className="text-left py-2 pr-4">Reason</th>
+                                          <th className="text-center py-2">Actions</th>
                                         </tr>
                                       </thead>
                                       <tbody>
@@ -4908,7 +4917,48 @@ export function SalesOrderInvoiceManager() {
                                             <td className="py-2 pr-4">{formatDate(refund.processed_at)}</td>
                                             <td className="py-2 pr-4 capitalize">{refund.refund_type}</td>
                                             <td className="py-2 pr-6 text-right font-medium text-blue-600">{formatCurrency(refund.refund_amount)}</td>
-                                            <td className="py-2">{refund.reason}</td>
+                                            <td className="py-2 pr-4">{refund.reason}</td>
+                                            <td className="py-2 text-center">
+                                              <div className="flex items-center justify-center gap-1">
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  onClick={() => {
+                                                    setSelectedInvoiceForRefund(invoice);
+                                                    setRefundDialogOpen(true);
+                                                  }}
+                                                  className="h-7 px-2"
+                                                >
+                                                  <Edit className="h-3.5 w-3.5" />
+                                                </Button>
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  onClick={async () => {
+                                                    if (confirm(`Are you sure you want to delete this refund of ${formatCurrency(refund.refund_amount)}?`)) {
+                                                      try {
+                                                        const response = await fetch(`/api/finance/refunds/${invoice.id}/${refund.id}`, {
+                                                          method: 'DELETE'
+                                                        });
+                                                        const result = await response.json();
+                                                        if (result.success) {
+                                                          toast.success('Refund deleted successfully');
+                                                          fetchData();
+                                                        } else {
+                                                          toast.error(result.error || 'Failed to delete refund');
+                                                        }
+                                                      } catch (error) {
+                                                        console.error('Error deleting refund:', error);
+                                                        toast.error('Failed to delete refund');
+                                                      }
+                                                    }
+                                                  }}
+                                                  className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                >
+                                                  <Trash2 className="h-3.5 w-3.5" />
+                                                </Button>
+                                              </div>
+                                            </td>
                                           </tr>
                                         ))}
                                       </tbody>

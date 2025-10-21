@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -177,6 +177,28 @@ export function PaymentDeletionManager() {
     open: boolean;
     confirmation?: DeletionConfirmation;
   }>({ open: false });
+  
+  // Deletion dialogs for other transaction types
+  const [withdrawalDeletionDialog, setWithdrawalDeletionDialog] = useState<{
+    open: boolean;
+    withdrawal?: Withdrawal;
+  }>({ open: false });
+  
+  const [investmentDeletionDialog, setInvestmentDeletionDialog] = useState<{
+    open: boolean;
+    investment?: Investment;
+  }>({ open: false });
+  
+  const [liabilityDeletionDialog, setLiabilityDeletionDialog] = useState<{
+    open: boolean;
+    liability?: Liability;
+  }>({ open: false });
+  
+  const [expenseDeletionDialog, setExpenseDeletionDialog] = useState<{
+    open: boolean;
+    expense?: Expense;
+  }>({ open: false });
+  
   const [editDialog, setEditDialog] = useState<{
     open: boolean;
     transaction?: TransactionWithType;
@@ -390,9 +412,16 @@ export function PaymentDeletionManager() {
     setEditDialog({ open: true, transaction: transactionWithType });
   };
 
-  const handleDeleteWithdrawal = async (withdrawal: Withdrawal) => {
+  const handleDeleteWithdrawal = (withdrawal: Withdrawal) => {
+    setWithdrawalDeletionDialog({ open: true, withdrawal });
+  };
+
+  const confirmWithdrawalDeletion = async () => {
+    if (!withdrawalDeletionDialog.withdrawal) return;
+
+    setDeleting(true);
     try {
-      const response = await fetch(`/api/finance/withdrawals?id=${withdrawal.id}`, {
+      const response = await fetch(`/api/finance/withdrawals?id=${withdrawalDeletionDialog.withdrawal.id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -401,6 +430,7 @@ export function PaymentDeletionManager() {
         toast.success('Withdrawal deleted successfully');
         await fetchWithdrawals();
         setLoadedTabs(prev => new Set(prev).add('withdrawals'));
+        setWithdrawalDeletionDialog({ open: false });
       } else {
         const error = await response.json();
         toast.error(error.error || 'Failed to delete withdrawal');
@@ -408,6 +438,8 @@ export function PaymentDeletionManager() {
     } catch (error) {
       console.error('Error deleting withdrawal:', error);
       toast.error('Error deleting withdrawal');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -437,9 +469,16 @@ export function PaymentDeletionManager() {
     setEditDialog({ open: true, transaction: transactionWithType });
   };
 
-  const handleDeleteInvestment = async (investment: Investment) => {
+  const handleDeleteInvestment = (investment: Investment) => {
+    setInvestmentDeletionDialog({ open: true, investment });
+  };
+
+  const confirmInvestmentDeletion = async () => {
+    if (!investmentDeletionDialog.investment) return;
+
+    setDeleting(true);
     try {
-      const response = await fetch(`/api/finance/investments?id=${investment.id}`, {
+      const response = await fetch(`/api/finance/investments?id=${investmentDeletionDialog.investment.id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -448,6 +487,7 @@ export function PaymentDeletionManager() {
         toast.success('Investment deleted successfully');
         await fetchInvestments();
         setLoadedTabs(prev => new Set(prev).add('investments'));
+        setInvestmentDeletionDialog({ open: false });
       } else {
         const error = await response.json();
         toast.error(error.error || 'Failed to delete investment');
@@ -455,6 +495,8 @@ export function PaymentDeletionManager() {
     } catch (error) {
       console.error('Error deleting investment:', error);
       toast.error('Error deleting investment');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -485,9 +527,16 @@ export function PaymentDeletionManager() {
     setEditDialog({ open: true, transaction: transactionWithType });
   };
 
-  const handleDeleteLiability = async (liability: Liability) => {
+  const handleDeleteLiability = (liability: Liability) => {
+    setLiabilityDeletionDialog({ open: true, liability });
+  };
+
+  const confirmLiabilityDeletion = async () => {
+    if (!liabilityDeletionDialog.liability) return;
+
+    setDeleting(true);
     try {
-      const response = await fetch(`/api/finance/liability-payments?id=${liability.id}`, {
+      const response = await fetch(`/api/finance/liability-payments?id=${liabilityDeletionDialog.liability.id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -496,6 +545,7 @@ export function PaymentDeletionManager() {
         toast.success('Liability payment deleted successfully');
         await fetchLiabilities();
         setLoadedTabs(prev => new Set(prev).add('liabilities'));
+        setLiabilityDeletionDialog({ open: false });
       } else {
         const error = await response.json();
         toast.error(error.error || 'Failed to delete liability payment');
@@ -503,6 +553,8 @@ export function PaymentDeletionManager() {
     } catch (error) {
       console.error('Error deleting liability payment:', error);
       toast.error('Error deleting liability payment');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -531,9 +583,16 @@ export function PaymentDeletionManager() {
     setEditDialog({ open: true, transaction: transactionWithType });
   };
 
-  const handleDeleteExpense = async (expense: Expense) => {
+  const handleDeleteExpense = (expense: Expense) => {
+    setExpenseDeletionDialog({ open: true, expense });
+  };
+
+  const confirmExpenseDeletion = async () => {
+    if (!expenseDeletionDialog.expense) return;
+
+    setDeleting(true);
     try {
-      const response = await fetch(`/api/finance/expenses/cleanup?expense_id=${expense.id}`, {
+      const response = await fetch(`/api/finance/expenses/cleanup?expense_id=${expenseDeletionDialog.expense.id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -542,6 +601,7 @@ export function PaymentDeletionManager() {
         toast.success('Expense deleted successfully');
         await fetchExpenses();
         setLoadedTabs(prev => new Set(prev).add('expenses'));
+        setExpenseDeletionDialog({ open: false });
       } else {
         const error = await response.json();
         toast.error(error.error || 'Failed to delete expense');
@@ -549,6 +609,8 @@ export function PaymentDeletionManager() {
     } catch (error) {
       console.error('Error deleting expense:', error);
       toast.error('Error deleting expense');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -1979,6 +2041,474 @@ export function PaymentDeletionManager() {
                 <>
                   <Trash2 className="h-4 w-4 mr-2" />
                   Delete Payment
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Withdrawal Deletion Dialog */}
+      <Dialog 
+        open={withdrawalDeletionDialog.open} 
+        onOpenChange={(open) => {
+          if (!open) {
+            setWithdrawalDeletionDialog({ open: false, withdrawal: undefined });
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <div className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              <DialogTitle>Delete Withdrawal</DialogTitle>
+            </div>
+            <DialogDescription>
+              Are you sure you want to delete this withdrawal? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          {withdrawalDeletionDialog.withdrawal && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <h4 className="font-semibold">Withdrawal Details</h4>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Amount</p>
+                      <p className="font-medium">
+                        ₹{withdrawalDeletionDialog.withdrawal.amount.toLocaleString('en-IN', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2
+                        })}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Category</p>
+                      <p className="font-medium">{withdrawalDeletionDialog.withdrawal.category}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Date</p>
+                      <p className="font-medium">
+                        {new Date(withdrawalDeletionDialog.withdrawal.date).toLocaleDateString('en-IN')}
+                      </p>
+                    </div>
+                  </div>
+                  {withdrawalDeletionDialog.withdrawal.description && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Description</p>
+                      <p className="font-medium">{withdrawalDeletionDialog.withdrawal.description}</p>
+                    </div>
+                  )}
+                  {withdrawalDeletionDialog.withdrawal.bank_account_id && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Bank Account</p>
+                      <p className="font-medium">{withdrawalDeletionDialog.withdrawal.bank_account_name}</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="border-red-200 bg-red-50">
+                <CardContent className="pt-4">
+                  <div className="flex gap-2">
+                    <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="font-semibold text-red-900">Warning</p>
+                      <p className="text-sm text-red-800">
+                        Deleting this withdrawal will:
+                      </p>
+                      <ul className="text-sm text-red-800 list-disc list-inside space-y-1">
+                        <li>Remove the withdrawal transaction from your records</li>
+                        <li>Restore the withdrawn amount to your bank account balance</li>
+                        <li>Affect your financial reports and cash flow statements</li>
+                        <li>This action cannot be undone</li>
+                      </ul>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setWithdrawalDeletionDialog({ open: false, withdrawal: undefined })}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmWithdrawalDeletion}
+              disabled={deleting}
+            >
+              {deleting ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Withdrawal
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Investment Deletion Dialog */}
+      <Dialog 
+        open={investmentDeletionDialog.open} 
+        onOpenChange={(open) => {
+          if (!open) {
+            setInvestmentDeletionDialog({ open: false, investment: undefined });
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <div className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              <DialogTitle>Delete Investment</DialogTitle>
+            </div>
+            <DialogDescription>
+              Are you sure you want to delete this investment? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          {investmentDeletionDialog.investment && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <h4 className="font-semibold">Investment Details</h4>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Amount</p>
+                      <p className="font-medium">
+                        ₹{investmentDeletionDialog.investment.amount.toLocaleString('en-IN', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2
+                        })}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Category</p>
+                      <p className="font-medium">{investmentDeletionDialog.investment.category}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Date</p>
+                      <p className="font-medium">
+                        {new Date(investmentDeletionDialog.investment.date).toLocaleDateString('en-IN')}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Payment Method</p>
+                      <p className="font-medium">{investmentDeletionDialog.investment.payment_method}</p>
+                    </div>
+                  </div>
+                  {investmentDeletionDialog.investment.description && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Description</p>
+                      <p className="font-medium">{investmentDeletionDialog.investment.description}</p>
+                    </div>
+                  )}
+                  {investmentDeletionDialog.investment.bank_account_name && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Bank Account</p>
+                      <p className="font-medium">{investmentDeletionDialog.investment.bank_account_name}</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="border-red-200 bg-red-50">
+                <CardContent className="pt-4">
+                  <div className="flex gap-2">
+                    <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="font-semibold text-red-900">Warning</p>
+                      <p className="text-sm text-red-800">
+                        Deleting this investment will:
+                      </p>
+                      <ul className="text-sm text-red-800 list-disc list-inside space-y-1">
+                        <li>Remove the investment transaction from your records</li>
+                        <li>Restore the invested amount to your bank account balance</li>
+                        <li>Affect your financial reports and investment tracking</li>
+                        <li>This action cannot be undone</li>
+                      </ul>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setInvestmentDeletionDialog({ open: false, investment: undefined })}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmInvestmentDeletion}
+              disabled={deleting}
+            >
+              {deleting ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Investment
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Liability Deletion Dialog */}
+      <Dialog 
+        open={liabilityDeletionDialog.open} 
+        onOpenChange={(open) => {
+          if (!open) {
+            setLiabilityDeletionDialog({ open: false, liability: undefined });
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <div className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              <DialogTitle>Delete Liability Payment</DialogTitle>
+            </div>
+            <DialogDescription>
+              Are you sure you want to delete this liability payment? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          {liabilityDeletionDialog.liability && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <h4 className="font-semibold">Liability Payment Details</h4>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Amount</p>
+                      <p className="font-medium">
+                        ₹{liabilityDeletionDialog.liability.total_amount.toLocaleString('en-IN', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2
+                        })}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Type</p>
+                      <p className="font-medium">{liabilityDeletionDialog.liability.liability_type}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Date</p>
+                      <p className="font-medium">
+                        {new Date(liabilityDeletionDialog.liability.date).toLocaleDateString('en-IN')}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Payment Method</p>
+                      <p className="font-medium">{liabilityDeletionDialog.liability.payment_method}</p>
+                    </div>
+                  </div>
+                  {liabilityDeletionDialog.liability.description && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Description</p>
+                      <p className="font-medium">{liabilityDeletionDialog.liability.description}</p>
+                    </div>
+                  )}
+                  {liabilityDeletionDialog.liability.bank_account_id && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Bank Account</p>
+                      <p className="font-medium">{liabilityDeletionDialog.liability.bank_account_name}</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="border-red-200 bg-red-50">
+                <CardContent className="pt-4">
+                  <div className="flex gap-2">
+                    <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="font-semibold text-red-900">Warning</p>
+                      <p className="text-sm text-red-800">
+                        Deleting this liability payment will:
+                      </p>
+                      <ul className="text-sm text-red-800 list-disc list-inside space-y-1">
+                        <li>Remove the liability payment from your records</li>
+                        <li>Restore the payment amount to your bank account balance</li>
+                        <li>Affect your liability tracking and financial reports</li>
+                        <li>This action cannot be undone</li>
+                      </ul>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setLiabilityDeletionDialog({ open: false, liability: undefined })}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmLiabilityDeletion}
+              disabled={deleting}
+            >
+              {deleting ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Liability
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Expense Deletion Dialog */}
+      <Dialog 
+        open={expenseDeletionDialog.open} 
+        onOpenChange={(open) => {
+          if (!open) {
+            setExpenseDeletionDialog({ open: false, expense: undefined });
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <div className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              <DialogTitle>Delete Expense</DialogTitle>
+            </div>
+            <DialogDescription>
+              Are you sure you want to delete this expense? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          {expenseDeletionDialog.expense && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <h4 className="font-semibold">Expense Details</h4>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Amount</p>
+                      <p className="font-medium">
+                        ₹{expenseDeletionDialog.expense.amount.toLocaleString('en-IN', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2
+                        })}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Category</p>
+                      <p className="font-medium">{expenseDeletionDialog.expense.category}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Date</p>
+                      <p className="font-medium">
+                        {new Date(expenseDeletionDialog.expense.date).toLocaleDateString('en-IN')}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Payment Method</p>
+                      <p className="font-medium">{expenseDeletionDialog.expense.payment_method}</p>
+                    </div>
+                  </div>
+                  {expenseDeletionDialog.expense.description && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Description</p>
+                      <p className="font-medium">{expenseDeletionDialog.expense.description}</p>
+                    </div>
+                  )}
+                  {expenseDeletionDialog.expense.bank_account_id && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Bank Account</p>
+                      <p className="font-medium">{expenseDeletionDialog.expense.bank_account_name}</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="border-red-200 bg-red-50">
+                <CardContent className="pt-4">
+                  <div className="flex gap-2">
+                    <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="font-semibold text-red-900">Warning</p>
+                      <p className="text-sm text-red-800">
+                        Deleting this expense will:
+                      </p>
+                      <ul className="text-sm text-red-800 list-disc list-inside space-y-1">
+                        <li>Remove the expense transaction from your records</li>
+                        <li>Restore the expense amount to your bank account balance</li>
+                        <li>Affect your expense tracking and financial reports</li>
+                        <li>This action cannot be undone</li>
+                      </ul>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setExpenseDeletionDialog({ open: false, expense: undefined })}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmExpenseDeletion}
+              disabled={deleting}
+            >
+              {deleting ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Expense
                 </>
               )}
             </Button>

@@ -117,25 +117,27 @@ export async function GET() {
           const quantity = Number(item.quantity) || 0;
           return quantity > 0 ? sum + quantity : sum;
         }, 0);
-        const currentStockValue = products.reduce((sum: number, item: InventoryItem) => {
-          const quantity = Number(item.quantity) || 0;
-          const product = Array.isArray(item.products) ? item.products[0] : item.products;
-          const price = Number(product?.price) || 0;
-          // Only include items with quantity > 0 to match individual stock API behavior
-          if (quantity > 0) {
-            return sum + (quantity * price);
-          }
-          return sum;
-        }, 0);
-
-        // Calculate total purchase cost (what was paid to vendor) - using same logic as individual stock API
+        
+        // Calculate total stock cost (cost × quantity) - using same logic as dashboard
         const totalPurchaseCost = products.reduce((sum: number, item: InventoryItem) => {
           const quantity = Number(item.quantity) || 0;
           const product = Array.isArray(item.products) ? item.products[0] : item.products;
           const cost = Number(product?.cost) || 0;
-          // Only include items with quantity > 0 to match individual stock API behavior
-          if (quantity > 0) {
+          // Only include items with quantity > 0 AND cost > 0 to match dashboard logic
+          if (quantity > 0 && cost > 0) {
             return sum + (quantity * cost);
+          }
+          return sum;
+        }, 0);
+        
+        // Calculate total MRP value (price × quantity) for profit potential calculation
+        const currentStockValue = products.reduce((sum: number, item: InventoryItem) => {
+          const quantity = Number(item.quantity) || 0;
+          const product = Array.isArray(item.products) ? item.products[0] : item.products;
+          const price = Number(product?.price) || 0;
+          // Only include items with quantity > 0 AND price > 0 to match dashboard logic
+          if (quantity > 0 && price > 0) {
+            return sum + (quantity * price);
           }
           return sum;
         }, 0);

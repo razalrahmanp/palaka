@@ -618,6 +618,8 @@ export default function VendorsPage() {
                 <option value="10">10</option>
                 <option value="25">25</option>
                 <option value="50">50</option>
+                <option value="100">100</option>
+                <option value={filteredAndSortedVendors.length}>All ({filteredAndSortedVendors.length})</option>
               </select>
               <span className="text-sm text-gray-500">per page</span>
             </div>
@@ -846,19 +848,19 @@ export default function VendorsPage() {
             /* List View */
             <div className="overflow-x-auto rounded-lg border border-gray-200">
               <table className="w-full min-w-[1200px] bg-white">
-                <thead>
+                <thead className="sticky top-0 z-10">
                   <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Vendor</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Status</th>
-                    <th className="text-right py-3 px-4 font-semibold text-gray-700">Products</th>
-                    <th className="text-right py-3 px-4 font-semibold text-gray-700">Stock Qty</th>
-                    <th className="text-right py-3 px-4 font-semibold text-gray-700">Stock Cost</th>
-                    <th className="text-right py-3 px-4 font-semibold text-gray-700">Stock Value</th>
-                    <th className="text-right py-3 px-4 font-semibold text-gray-700">Profit</th>
-                    <th className="text-right py-3 px-4 font-semibold text-gray-700">Profit %</th>
-                    <th className="text-right py-3 px-4 font-semibold text-gray-700">Paid</th>
-                    <th className="text-right py-3 px-4 font-semibold text-gray-700">Pending</th>
-                    <th className="text-center py-3 px-4 font-semibold text-gray-700">Actions</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700 bg-gray-50">Vendor</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700 bg-gray-50">Status</th>
+                    <th className="text-right py-3 px-4 font-semibold text-gray-700 bg-gray-50">Products</th>
+                    <th className="text-right py-3 px-4 font-semibold text-gray-700 bg-gray-50">Stock Qty</th>
+                    <th className="text-right py-3 px-4 font-semibold text-gray-700 bg-gray-50">Stock Cost</th>
+                    <th className="text-right py-3 px-4 font-semibold text-gray-700 bg-gray-50">Stock Value</th>
+                    <th className="text-right py-3 px-4 font-semibold text-gray-700 bg-gray-50">Profit</th>
+                    <th className="text-right py-3 px-4 font-semibold text-gray-700 bg-gray-50">Profit %</th>
+                    <th className="text-right py-3 px-4 font-semibold text-gray-700 bg-gray-50">Paid</th>
+                    <th className="text-right py-3 px-4 font-semibold text-gray-700 bg-gray-50">Pending</th>
+                    <th className="text-center py-3 px-4 font-semibold text-gray-700 bg-gray-50">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -963,6 +965,51 @@ export default function VendorsPage() {
                     </tr>
                   ))}
                 </tbody>
+                <tfoot className="bg-gray-50 border-t-2 border-gray-300">
+                  <tr>
+                    <td className="py-4 px-4 font-bold text-gray-900" colSpan={2}>
+                      Total (All {filteredAndSortedVendors.length} Vendors)
+                    </td>
+                    <td className="py-4 px-4 text-right font-bold text-gray-900">
+                      <div className="text-xs text-gray-600 font-normal mb-1">Products</div>
+                      {filteredAndSortedVendors.reduce((sum, v) => sum + (v.inventory_summary?.total_products || v.products_count || 0), 0)}
+                    </td>
+                    <td className="py-4 px-4 text-right font-bold text-gray-900">
+                      <div className="text-xs text-gray-600 font-normal mb-1">Stock Qty</div>
+                      {filteredAndSortedVendors.reduce((sum, v) => sum + (v.inventory_summary?.total_quantity || v.current_stock_quantity || 0), 0).toLocaleString()}
+                    </td>
+                    <td className="py-4 px-4 text-right font-bold text-green-700">
+                      <div className="text-xs text-gray-600 font-normal mb-1">Stock Cost</div>
+                      {formatCurrency(filteredAndSortedVendors.reduce((sum, v) => sum + (v.inventory_summary?.total_stock_cost || v.total_cost_inr || 0), 0))}
+                    </td>
+                    <td className="py-4 px-4 text-right font-bold text-orange-700">
+                      <div className="text-xs text-gray-600 font-normal mb-1">Stock Value</div>
+                      {formatCurrency(filteredAndSortedVendors.reduce((sum, v) => sum + (v.inventory_summary?.total_stock_value || v.total_mrp_inr || 0), 0))}
+                    </td>
+                    <td className="py-4 px-4 text-right font-bold text-green-600">
+                      <div className="text-xs text-gray-600 font-normal mb-1">Profit</div>
+                      {formatCurrency(filteredAndSortedVendors.reduce((sum, v) => sum + (v.inventory_summary?.total_profit || v.profit_margin_inr || 0), 0))}
+                    </td>
+                    <td className="py-4 px-4 text-right font-bold text-gray-900">
+                      <div className="text-xs text-gray-600 font-normal mb-1">Profit %</div>
+                      {/* Profit % - calculated as total profit / total stock cost * 100 */}
+                      {(() => {
+                        const totalCost = filteredAndSortedVendors.reduce((sum, v) => sum + (v.inventory_summary?.total_stock_cost || v.total_cost_inr || 0), 0);
+                        const totalProfit = filteredAndSortedVendors.reduce((sum, v) => sum + (v.inventory_summary?.total_profit || v.profit_margin_inr || 0), 0);
+                        return totalCost > 0 ? (totalProfit / totalCost * 100).toFixed(1) : '0.0';
+                      })()}%
+                    </td>
+                    <td className="py-4 px-4 text-right font-bold text-green-600">
+                      <div className="text-xs text-gray-600 font-normal mb-1">Paid</div>
+                      {formatCurrency(filteredAndSortedVendors.reduce((sum, v) => sum + (v.total_paid || 0), 0))}
+                    </td>
+                    <td className="py-4 px-4 text-right font-bold text-red-600">
+                      <div className="text-xs text-gray-600 font-normal mb-1">Pending</div>
+                      {formatCurrency(filteredAndSortedVendors.reduce((sum, v) => sum + (v.total_pending || 0), 0))}
+                    </td>
+                    <td className="py-4 px-4"></td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}

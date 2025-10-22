@@ -966,14 +966,14 @@ async function generateAccountBalancesReport(asOfDate: string) {
 }
 
 /**
- * Calculate inventory value at a specific date using sales data
+ * Calculate inventory value at a specific date
  * 
  * Method: 
- * - Opening Stock = Cost of Goods Sold + Closing Stock
  * - Closing Stock = Current inventory quantities × product cost
- * 
- * Formula:
- * Opening = Sum(sold_items.quantity × products.cost) + Current Stock Value
+ * - Opening Stock:
+ *   1. For "All Time": Uses snapshot value (Total Sales Cost + Current Closing Stock)
+ *   2. For specific periods: Uses previous period's closing stock from snapshots
+ *   3. Fallback: If no snapshot, calculates as (Cost of Sold Items + Closing Stock)
  * 
  * @param startDate - Period start date (YYYY-MM-DD)
  * @param endDate - Period end date (YYYY-MM-DD)
@@ -984,6 +984,7 @@ async function calculateInventoryValue(startDate: string, endDate: string, type:
   try {
     if (type === 'closing') {
       // OPTIMIZED: Calculate closing stock with a single query instead of 174 queries
+      // Match vendor stats API logic exactly
       const { data: inventoryItems, error: inventoryError } = await supabase
         .from('inventory_items')
         .select(`
@@ -1012,7 +1013,8 @@ async function calculateInventoryValue(startDate: string, endDate: string, type:
         const cost = Number(product?.cost) || 0;
         const supplierId = product?.supplier_id;
 
-        if (quantity > 0 && cost > 0) {
+        // Match vendor page logic: only count items with supplier_id, quantity > 0, and cost > 0
+        if (quantity > 0 && cost > 0 && supplierId) {
           const itemCost = quantity * cost;
           totalClosingStock += itemCost;
 
@@ -1050,17 +1052,88 @@ async function calculateInventoryValue(startDate: string, endDate: string, type:
       console.log(`📦 Closing Stock Calculation (${endDate}) - OPTIMIZED Single Query:`, {
         totalVendors: vendorMap.size,
         totalValue: totalClosingStock.toFixed(2),
-        method: 'Single optimized query (was 174 queries)',
+        method: 'Single optimized query (was 174 queries) - Vendor-assigned products only',
+        note: 'Excludes products without supplier_id to match vendor page',
         vendorBreakdown: vendorCalculations
       });
 
       return totalClosingStock;
     }
 
-    // For opening stock: Cost of items sold during period + Closing stock
+    // ========== OPENING STOCK CALCULATION ==========
     
-    // First calculate closing stock using the same vendor method
+    // First calculate closing stock for the current period
     const closingStockValue = await calculateInventoryValue(startDate, endDate, 'closing');
+    
+    // Check if this is an "All Time" request (very old start date or beginning of business)
+    // All Time typically uses 2020-01-01 or earlier as start date
+    const isAllTime = new Date(startDate).getFullYear() <= 2020;
+    
+    if (isAllTime) {
+      // For "All Time": Check if we have a snapshot, otherwise calculate fixed value
+      const { data: allTimeSnapshot } = await supabase
+        .from('opening_stock_snapshots')
+        .select('opening_stock_value, total_sales_cost')
+        .eq('snapshot_type', 'all_time')
+        .single();
+      
+      if (allTimeSnapshot?.opening_stock_value) {
+        console.log('📦 Opening Stock (All Time) - Using Snapshot:', {
+          openingStock: allTimeSnapshot.opening_stock_value.toFixed(2),
+          totalSalesCost: allTimeSnapshot.total_sales_cost?.toFixed(2),
+          method: 'Retrieved from opening_stock_snapshots table'
+        });
+        return parseFloat(allTimeSnapshot.opening_stock_value);
+      }
+      
+      // Calculate All Time opening stock: Total Sales Cost + Current Closing Stock
+      const { data: totalSalesCostData } = await supabase
+        .from('sales_order_items')
+        .select(`
+          quantity,
+          products!inner(cost)
+        `)
+        .not('product_id', 'is', null);
+      
+      const totalSalesCost = totalSalesCostData?.reduce((sum, item: any) => {
+        const cost = Array.isArray(item.products) ? item.products[0]?.cost : item.products?.cost;
+        return sum + (item.quantity * parseFloat(cost || '0'));
+      }, 0) || 0;
+      
+      const allTimeOpeningStock = totalSalesCost + closingStockValue;
+      
+      console.log('📦 Opening Stock (All Time) - Calculated:', {
+        totalSalesCost: totalSalesCost.toFixed(2),
+        closingStock: closingStockValue.toFixed(2),
+        openingStock: allTimeOpeningStock.toFixed(2),
+        formula: 'Total Sales Cost + Current Closing Stock',
+        note: 'Consider saving this to opening_stock_snapshots table'
+      });
+      
+      return allTimeOpeningStock;
+    }
+    
+    // For specific date ranges: Try to get opening stock from snapshot (previous period's closing)
+    // Look for snapshot on or before the start date
+    const { data: openingSnapshot } = await supabase
+      .from('opening_stock_snapshots')
+      .select('closing_stock_value, snapshot_date')
+      .lte('snapshot_date', startDate)
+      .order('snapshot_date', { ascending: false })
+      .limit(1)
+      .single();
+    
+    if (openingSnapshot?.closing_stock_value) {
+      console.log(`📦 Opening Stock (${startDate}) - Using Previous Period Closing:`, {
+        snapshotDate: openingSnapshot.snapshot_date,
+        openingStock: parseFloat(openingSnapshot.closing_stock_value).toFixed(2),
+        method: 'Retrieved from opening_stock_snapshots table'
+      });
+      return parseFloat(openingSnapshot.closing_stock_value);
+    }
+    
+    // FALLBACK: Calculate using cost of sold items method
+    console.log('⚠️ No snapshot found, using fallback calculation method');
     
     // 2. Get sales orders in the period
     const { data: salesOrders, error: salesError } = await supabase

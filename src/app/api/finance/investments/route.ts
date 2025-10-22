@@ -86,7 +86,55 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Investment ID is required' }, { status: 400 })
     }
 
-    // Delete the investment
+    console.log('🗑️ Starting investment deletion with cleanup:', id);
+
+    // 1. Get investment details first
+    const { data: investment, error: fetchError } = await supabaseAdmin
+      .from('investments')
+      .select('id, amount, investment_date, bank_account_id, payment_method, description')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !investment) {
+      console.error('Error fetching investment:', fetchError);
+      return NextResponse.json({ error: 'Investment not found' }, { status: 404 });
+    }
+
+    console.log('📋 Investment details:', investment);
+
+    // 2. Delete related bank transaction if it exists (for ALL payment methods including cash)
+    // Cash payments also create bank_transactions for CASH type bank accounts
+    if (investment.bank_account_id) {
+      console.log('🏦 Deleting bank transaction for account:', investment.bank_account_id);
+
+      // Find the bank transaction (investments create deposits)
+      const { data: bankTransaction, error: bankTxError } = await supabaseAdmin
+        .from('bank_transactions')
+        .select('id, amount')
+        .eq('bank_account_id', investment.bank_account_id)
+        .eq('date', investment.investment_date)
+        .eq('type', 'deposit')
+        .eq('amount', investment.amount)
+        .ilike('description', `%${investment.description}%`)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (!bankTxError && bankTransaction) {
+        // Note: Bank account balance will be auto-updated by the database trigger
+        // No manual balance update needed here
+        
+        // Delete the bank transaction (trigger will handle balance update)
+        await supabaseAdmin
+          .from('bank_transactions')
+          .delete()
+          .eq('id', bankTransaction.id);
+
+        console.log('✅ Deleted bank transaction (balance auto-updated by trigger)');
+      }
+    }
+
+    // 3. Delete the investment record
     const { error } = await supabaseAdmin
       .from('investments')
       .delete()
@@ -96,6 +144,8 @@ export async function DELETE(request: NextRequest) {
       console.error('Error deleting investment:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    console.log('✅ Investment deleted successfully with all related records');
 
     return NextResponse.json({
       success: true,

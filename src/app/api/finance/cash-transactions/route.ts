@@ -1,18 +1,18 @@
 // ================================================================================================
-// CASH TRANSACTIONS API ENDPOINT - UPDATED TO USE CENTRALIZED SYSTEM
+// CASH TRANSACTIONS API ENDPOINT - UPDATED TO FETCH FROM BANK_TRANSACTIONS TABLE
 // ================================================================================================
 // Handles all cash transaction operations: GET (with filtering), POST (create), DELETE
-// Integrates with the centralized cash management system
+// Fetches transactions from bank_transactions table where account_type = 'CASH'
 // ================================================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase as supabaseAdmin } from '@/lib/supabasePool';
-import { createCashTransaction, getCashTransactions, validateCashBalance } from '@/lib/cashManager';
+import { createCashTransaction, validateCashBalance } from '@/lib/cashManager';
 
 
 
 // ================================================================================================
-// GET - Fetch cash transactions with filtering and pagination
+// GET - Fetch cash transactions from bank_transactions table
 // ================================================================================================
 export async function GET(request: NextRequest) {
   try {
@@ -29,20 +29,132 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || undefined;
     const export_data = searchParams.get('export') === 'true';
 
-    console.log('💰 Fetching cash transactions with filters:', {
+    console.log('💰 Fetching cash transactions from cash_transactions table with filters:', {
       page, limit, cash_account_id, source_type, transaction_type, date_from, date_to, search, export_data
     });
 
-    // Use the centralized cash transactions function
-    const result = await getCashTransactions({
-      page: export_data ? undefined : page,
-      limit: export_data ? undefined : limit,
-      cash_account_id,
-      source_type,
-      transaction_type,
-      date_from,
-      date_to
-    });
+    const offset = (page - 1) * limit;
+
+    // First, get all CASH account IDs
+    console.log('🔍 Step 1: Fetching CASH account IDs...');
+    const { data: cashAccountsData, error: cashAccountError } = await supabaseAdmin
+      .from('bank_accounts')
+      .select('id')
+      .eq('account_type', 'CASH');
+
+    if (cashAccountError) {
+      console.error('❌ Error fetching cash account IDs:', cashAccountError);
+      return NextResponse.json({
+        success: false,
+        error: `Failed to fetch cash accounts: ${cashAccountError.message}`
+      }, { status: 500 });
+    }
+
+    const cashAccountIds = (cashAccountsData || []).map(acc => acc.id);
+    console.log('✅ Found CASH accounts:', cashAccountIds.length, 'accounts');
+
+    if (cashAccountIds.length === 0) {
+      console.log('⚠️ No cash accounts found, returning empty result');
+      // No cash accounts found, return empty result
+      return NextResponse.json({
+        success: true,
+        transactions: [],
+        total_count: 0,
+        current_page: page,
+        total_pages: 0,
+        filters_applied: {
+          cash_account_id,
+          source_type,
+          transaction_type,
+          date_from,
+          date_to,
+          search
+        }
+      });
+    }
+
+    // Build query to fetch from cash_transactions table
+    console.log('🔍 Step 2: Building query for cash_transactions...');
+    let query = supabaseAdmin
+      .from('cash_transactions')
+      .select(`
+        *,
+        bank_account:bank_accounts!cash_transactions_cash_account_id_fkey (
+          id,
+          name,
+          account_type,
+          current_balance
+        )
+      `, { count: 'exact' })
+      .in('cash_account_id', cashAccountIds)
+      .eq('is_deleted', false);
+
+    // Apply filters
+    if (cash_account_id) {
+      query = query.eq('cash_account_id', cash_account_id);
+    }
+    if (source_type) {
+      query = query.eq('source_type', source_type);
+    }
+    if (transaction_type) {
+      query = query.eq('transaction_type', transaction_type);
+    }
+    if (date_from) {
+      query = query.gte('transaction_date', date_from);
+    }
+    if (date_to) {
+      query = query.lte('transaction_date', date_to);
+    }
+
+    // Apply search filter if provided
+    if (search) {
+      const searchPattern = `%${search}%`;
+      query = query.or(`description.ilike.${searchPattern},reference_number.ilike.${searchPattern}`);
+    }
+
+    // Apply ordering and pagination
+    query = query
+      .order('transaction_date', { ascending: false })
+      .order('created_at', { ascending: false });
+
+    if (!export_data) {
+      query = query.range(offset, offset + limit - 1);
+    }
+
+    console.log('🔍 Step 3: Executing query...');
+    const { data, error, count } = await query;
+
+    if (error) {
+      console.error('❌ Error fetching cash transactions from bank_transactions:', error);
+      return NextResponse.json({
+        success: false,
+        error: `Database query failed: ${error.message}`,
+        details: error
+      }, { status: 500 });
+    }
+
+    console.log('✅ Query successful, received', data?.length || 0, 'transactions');
+
+    // Transform the data to match the expected format
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const transactions = (data || []).map((transaction: any) => ({
+      id: transaction.id,
+      transaction_date: transaction.transaction_date,
+      transaction_type: transaction.transaction_type,
+      amount: transaction.amount,
+      description: transaction.description,
+      source_type: transaction.source_type,
+      source_id: transaction.source_id,
+      reference_number: transaction.reference_number,
+      running_balance: transaction.running_balance,
+      cash_account_id: transaction.cash_account_id,
+      cash_account_name: transaction.bank_account?.name || 'Unknown Account',
+      source_description: transaction.source_type || 'Unknown',
+      created_at: transaction.created_at
+    }));
+
+    const total_count = count || 0;
+    const total_pages = Math.ceil(total_count / limit);
 
     // If export is requested, return CSV data
     if (export_data) {
@@ -58,8 +170,7 @@ export async function GET(request: NextRequest) {
         'Created At'
       ].join(',');
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const csvRows = result.transactions.map((transaction: any) => [
+      const csvRows = transactions.map((transaction) => [
         transaction.transaction_date,
         transaction.transaction_type,
         transaction.amount.toString(),
@@ -67,7 +178,7 @@ export async function GET(request: NextRequest) {
         transaction.source_description,
         transaction.cash_account_name,
         transaction.reference_number || '',
-        transaction.running_balance.toString(),
+        transaction.running_balance?.toString() || '0',
         transaction.created_at
       ].join(','));
 
@@ -81,35 +192,16 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Apply search filter if provided (done at API level for flexibility)
-    let filteredTransactions = result.transactions;
-    if (search) {
-      const searchLower = search.toLowerCase();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      filteredTransactions = result.transactions.filter((transaction: any) =>
-        transaction.description.toLowerCase().includes(searchLower) ||
-        transaction.reference_number?.toLowerCase().includes(searchLower) ||
-        transaction.cash_account_name.toLowerCase().includes(searchLower) ||
-        transaction.source_description.toLowerCase().includes(searchLower)
-      );
-    }
-
-    // Recalculate pagination for filtered results
-    const total_count = search ? filteredTransactions.length : result.total_count;
-    const total_pages = Math.ceil(total_count / limit);
-    const offset = (page - 1) * limit;
-    const paginatedTransactions = search ? filteredTransactions.slice(offset, offset + limit) : filteredTransactions;
-
-    console.log('✅ Successfully fetched cash transactions:', {
+    console.log('✅ Successfully fetched cash transactions from bank_transactions:', {
       total_count,
       current_page: page,
       total_pages,
-      returned_count: paginatedTransactions.length
+      returned_count: transactions.length
     });
 
     return NextResponse.json({
       success: true,
-      transactions: paginatedTransactions,
+      transactions: transactions,
       total_count,
       current_page: page,
       total_pages,
@@ -125,9 +217,11 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('❌ Error in GET /api/finance/cash-transactions:', error);
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     return NextResponse.json({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
+      error: error instanceof Error ? error.message : 'Unknown error occurred',
+      errorType: error instanceof Error ? error.constructor.name : typeof error
     }, { status: 500 });
   }
 }

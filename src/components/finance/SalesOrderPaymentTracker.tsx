@@ -231,39 +231,8 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
         }
       }
 
-      // If payment method is cash, create cash transaction directly
-      if (formData.method === 'cash') {
-        try {
-          // Create cash transaction record
-          await fetch('/api/finance/cash-transactions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              transaction_type: 'receipt',
-              amount: parseFloat(formData.amount),
-              description: `Cash Payment received for Order ${orderId}`,
-              reference: formData.reference || `Order-${orderId}`,
-              transaction_date: formData.payment_date,
-              source: 'sales_order_payment'
-            })
-          });
-
-          // Update cash balance
-          await fetch('/api/finance/cash-balance', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              amount: parseFloat(formData.amount),
-              transaction_type: 'deposit',
-              description: `Cash received for Order ${orderId}`,
-              date: formData.payment_date
-            })
-          });
-        } catch (cashError) {
-          console.warn('Cash transaction creation failed:', cashError);
-          // Don't fail the payment if cash transaction fails
-        }
-      }
+      // Cash payments are handled by the backend API
+      // The backend will create bank_transaction and update account balance
 
       // If payment method is Bajaj Finance, handle down payment and credit balance
       if (formData.method === 'bajaj' && formData.bajaj_downpayment_amount && formData.bajaj_bank_account_id) {
@@ -382,6 +351,21 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
   const isFormValid = () => {
     if (!formData.amount || !formData.method) return false;
     
+    // Cash requires cash account selection
+    if (formData.method === 'cash') {
+      return !!formData.cash_account_id;
+    }
+    
+    // UPI requires UPI account selection
+    if (formData.method === 'upi') {
+      return !!formData.upi_account_id;
+    }
+    
+    // Bank transfer, cheque, card require bank account selection
+    if (['bank_transfer', 'cheque', 'card'].includes(formData.method)) {
+      return !!formData.bank_account_id;
+    }
+    
     if (formData.method === 'bajaj') {
       // Check basic Bajaj fields
       if (!formData.bajaj_downpayment_amount || !formData.bajaj_downpayment_method || !formData.bajaj_bank_account_id) {
@@ -389,9 +373,8 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
       }
       
       // Check down payment account based on method
-      // Cash doesn't require account selection
       if (formData.bajaj_downpayment_method === 'cash') {
-        return true; // Cash payments auto-update cash balance
+        return true; // Cash down payments don't need account - legacy behavior
       } else if (formData.bajaj_downpayment_method === 'upi') {
         return !!formData.upi_account_id;
       } else if (['cheque', 'bank_transfer', 'card'].includes(formData.bajaj_downpayment_method)) {
@@ -536,18 +519,36 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
               </div>
             )}
 
-            {/* Cash payment doesn't require account selection - auto-updates cash balance */}
+            {/* Cash Account Selection */}
             {formData.method === 'cash' && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <div className="flex items-center gap-2 text-green-700">
-                  <DollarSign className="h-4 w-4" />
-                  <span className="text-sm font-medium">
-                    Cash payment will automatically update cash balance
-                  </span>
-                </div>
-                <p className="text-xs text-green-600 mt-2">
-                  No account selection needed. Cash transactions and balance will be updated automatically.
-                </p>
+              <div>
+                <Label htmlFor="cash_account">Cash Account *</Label>
+                <Select 
+                  value={formData.cash_account_id} 
+                  onValueChange={(value) => handleInputChange('cash_account_id', value)}
+                >
+                  <SelectTrigger id="cash_account">
+                    <SelectValue placeholder="Select cash account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {cashAccounts.map((account) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        <div className="flex items-center gap-2">
+                          <DollarSign className="h-4 w-4" />
+                          <span>{account.name}</span>
+                          <span className="text-gray-500 text-xs">
+                            (Balance: {account.currency} {account.current_balance.toFixed(2)})
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {cashAccounts.length === 0 && (
+                  <p className="text-xs text-orange-600 mt-1">
+                    No cash accounts found. Please add a cash account first.
+                  </p>
+                )}
               </div>
             )}
 

@@ -625,33 +625,31 @@ export async function DELETE(request: Request) {
       }
     }
 
-    // 3. Restore bank balance if bank account was used (not cash)
-    if (payment.bank_account_id && payment.payment_method !== 'cash') {
-      console.log('💰 Restoring bank balance for bank_account_id:', payment.bank_account_id);
+    // 3. Delete bank transaction for ALL account types (including CASH)
+    // Cash payments also create bank_transactions for CASH type bank accounts
+    if (payment.bank_account_id) {
+      console.log('🏦 Processing bank account cleanup for:', payment.bank_account_id);
       
-      const { data: bankAccount, error: bankError } = await supabase
-        .from("bank_accounts")
-        .select("current_balance")
-        .eq("id", payment.bank_account_id)
+      // Delete related bank transaction (liability payments create withdrawals)
+      // The database trigger will automatically handle the balance update
+      const { data: bankTransaction, error: bankTxError } = await supabase
+        .from('bank_transactions')
+        .select('id')
+        .eq('bank_account_id', payment.bank_account_id)
+        .eq('type', 'withdrawal')
+        .eq('amount', payment.total_amount)
+        .ilike('description', `%Liability Payment%`)
+        .order('created_at', { ascending: false })
+        .limit(1)
         .single();
-      
-      if (!bankError && bankAccount) {
-        const restoredBalance = (bankAccount.current_balance || 0) + payment.total_amount;
-        const { error: bankUpdateError } = await supabase
-          .from("bank_accounts")
-          .update({ current_balance: restoredBalance })
-          .eq("id", payment.bank_account_id);
-        
-        if (bankUpdateError) {
-          console.error('❌ Error restoring bank balance:', bankUpdateError);
-        } else {
-          console.log('✅ Bank balance restored:', {
-            bankAccountId: payment.bank_account_id,
-            oldBalance: bankAccount.current_balance,
-            restoredBalance,
-            amountRestored: payment.total_amount
-          });
-        }
+
+      if (!bankTxError && bankTransaction) {
+        await supabase
+          .from('bank_transactions')
+          .delete()
+          .eq('id', bankTransaction.id);
+
+        console.log('✅ Deleted bank transaction (balance auto-updated by trigger)');
       }
     }
 

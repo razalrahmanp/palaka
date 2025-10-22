@@ -218,6 +218,12 @@ export async function GET(
       if (upi_account_id && upi_account_id.trim() !== '') {
         paymentData.bank_account_id = upi_account_id;
       }
+    } else if (method === 'cash') {
+      // For cash payments, use the selected cash account
+      const cash_account_id = body.cash_account_id;
+      if (cash_account_id && cash_account_id.trim() !== '') {
+        paymentData.bank_account_id = cash_account_id;
+      }
     }
     // Note: cash method doesn't store account_id as it updates cash balance directly
 
@@ -281,6 +287,8 @@ export async function GET(
       targetAccountId = bank_account_id;
     } else if (method === 'upi') {
       targetAccountId = upi_account_id;
+    } else if (method === 'cash') {
+      targetAccountId = body.cash_account_id;
     }
 
     if (targetAccountId) {

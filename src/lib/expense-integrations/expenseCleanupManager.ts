@@ -217,7 +217,7 @@ export async function deleteExpenseAndRelatedRecords(params: ExpenseCleanupParam
       }
     }
 
-    // 5. Delete bank transaction and reverse balance
+    // 5. Delete bank transaction (balance will be auto-updated by database trigger)
     const { data: bankTransactions, error: bankTransactionError } = await supabase
       .from('bank_transactions')
       .select('id, bank_account_id, amount')
@@ -228,31 +228,7 @@ export async function deleteExpenseAndRelatedRecords(params: ExpenseCleanupParam
     if (!bankTransactionError && bankTransactions && bankTransactions.length > 0) {
       const bankTransaction = bankTransactions[0];
       
-      // Reverse bank account balance (add back the amount)
-      const { data: bankAccount, error: fetchBankError } = await supabase
-        .from('bank_accounts')
-        .select('current_balance')
-        .eq('id', bankTransaction.bank_account_id)
-        .single();
-      
-      if (!fetchBankError && bankAccount) {
-        const newBalance = (bankAccount.current_balance || 0) + expense.amount;
-        const { error: updateBankError } = await supabase
-          .from('bank_accounts')
-          .update({ 
-            current_balance: newBalance,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', bankTransaction.bank_account_id);
-        
-        if (!updateBankError) {
-          console.log(`✅ Reversed bank account balance: +${expense.amount} (new balance: ${newBalance})`);
-        } else {
-          console.error(`❌ Error reversing bank balance:`, updateBankError);
-        }
-      }
-      
-      // Delete bank transaction
+      // Delete bank transaction (trigger will automatically update bank account balance)
       const { error: deleteBankError } = await supabase
         .from('bank_transactions')
         .delete()
@@ -260,7 +236,9 @@ export async function deleteExpenseAndRelatedRecords(params: ExpenseCleanupParam
       
       if (!deleteBankError) {
         deletedRecords.bankTransaction = true;
-        console.log('✅ Deleted bank transaction');
+        console.log('✅ Deleted bank transaction (balance auto-updated by trigger)');
+      } else {
+        console.error(`❌ Error deleting bank transaction:`, deleteBankError);
       }
     }
 

@@ -17,7 +17,8 @@ export async function DELETE(
         invoice_id,
         amount,
         method,
-        bank_account_id
+        bank_account_id,
+        date
       `)
       .eq('id', paymentId)
       .single();
@@ -150,51 +151,50 @@ export async function DELETE(
       }
     }
 
-    // Step 2: Find and update bank account balances, then delete related bank transactions
+    // Step 2: Delete related bank transactions (the trigger will auto-update balances)
     console.log('🏦 Looking for related bank transactions...');
-    const { data: bankTransactions, error: bankQueryError } = await supabase
-      .from('bank_transactions')
-      .select('id, bank_account_id, amount, description, type')
-      .ilike('description', `%${payment.id.slice(0, 8)}%`);
-
-    if (bankQueryError) {
-      console.error('Error querying bank transactions:', bankQueryError);
-    }
-
-    if (bankTransactions && bankTransactions.length > 0) {
-      // Update bank account balances BEFORE deleting transactions
-      console.log('💰 Reversing bank account balances...');
-      for (const bankTx of bankTransactions) {
-        if (bankTx.bank_account_id) {
-          // Reverse the transaction effect on bank balance
-          // If it was a deposit (+), we subtract (-) to reverse
-          // If it was a withdrawal (-), we add (+) to reverse
-          const reverseAmount = bankTx.type === 'deposit' ? -bankTx.amount : bankTx.amount;
-          
-          const { error: balanceUpdateError } = await supabase.rpc('update_bank_balance', {
-            account_id: bankTx.bank_account_id,
-            delta: reverseAmount
-          });
-
-          if (balanceUpdateError) {
-            console.error(`Error updating bank balance for account ${bankTx.bank_account_id}:`, balanceUpdateError);
-          } else {
-            console.log(`✅ Reversed bank balance: ${bankTx.type} of ${bankTx.amount} (delta: ${reverseAmount})`);
-          }
-        }
-      }
-
-      // Now delete the bank transactions
-      const { error: bankDeleteError } = await supabase
+    
+    // For payments, we need to find bank transactions by:
+    // 1. bank_account_id from payment record
+    // 2. amount matching payment amount
+    // 3. date matching payment date
+    // 4. type = 'deposit' (payments are money coming in)
+    
+    let bankTransactionsDeleted = 0;
+    
+    if (payment.bank_account_id) {
+      console.log(`🔍 Searching for bank transaction: bank_account_id=${payment.bank_account_id}, amount=${payment.amount}, date=${payment.date}`);
+      
+      const { data: bankTransactions, error: bankQueryError } = await supabase
         .from('bank_transactions')
-        .delete()
-        .ilike('description', `%${payment.id.slice(0, 8)}%`);
+        .select('id, bank_account_id, amount, description, type, date')
+        .eq('bank_account_id', payment.bank_account_id)
+        .eq('type', 'deposit')
+        .eq('amount', payment.amount)
+        .eq('date', payment.date);
 
-      if (bankDeleteError) {
-        console.error('Error deleting bank transactions:', bankDeleteError);
+      if (bankQueryError) {
+        console.error('Error querying bank transactions:', bankQueryError);
+      } else if (bankTransactions && bankTransactions.length > 0) {
+        console.log(`📋 Found ${bankTransactions.length} bank transaction(s) to delete`);
+        
+        // Delete the bank transactions (trigger will automatically update bank balance)
+        const { error: bankDeleteError } = await supabase
+          .from('bank_transactions')
+          .delete()
+          .in('id', bankTransactions.map(bt => bt.id));
+
+        if (bankDeleteError) {
+          console.error('Error deleting bank transactions:', bankDeleteError);
+        } else {
+          bankTransactionsDeleted = bankTransactions.length;
+          console.log(`✅ Deleted ${bankTransactionsDeleted} bank transaction(s) - balance automatically updated by trigger`);
+        }
       } else {
-        console.log(`✅ Deleted ${bankTransactions.length} bank transactions`);
+        console.log('ℹ️ No matching bank transactions found (may be cash payment or already deleted)');
       }
+    } else {
+      console.log('ℹ️ Payment has no bank_account_id (likely a cash payment without cash account selected)');
     }
 
     // Step 3: Update invoice paid_amount
@@ -245,7 +245,7 @@ export async function DELETE(
       deletedItems: {
         payment: 1,
         journalEntries: journalEntries?.length || 0,
-        bankTransactions: bankTransactions?.length || 0,
+        bankTransactions: bankTransactionsDeleted,
         updatedInvoice: payment.invoice_id
       }
     });

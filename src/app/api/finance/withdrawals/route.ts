@@ -92,7 +92,55 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Withdrawal ID is required' }, { status: 400 })
     }
 
-    // Delete the withdrawal
+    console.log('🗑️ Starting withdrawal deletion with cleanup:', id);
+
+    // 1. Get withdrawal details first
+    const { data: withdrawal, error: fetchError } = await supabaseAdmin
+      .from('withdrawals')
+      .select('id, amount, withdrawal_date, bank_account_id, payment_method, description')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !withdrawal) {
+      console.error('Error fetching withdrawal:', fetchError);
+      return NextResponse.json({ error: 'Withdrawal not found' }, { status: 404 });
+    }
+
+    console.log('📋 Withdrawal details:', withdrawal);
+
+    // 2. Delete related bank transaction if it exists (for ALL payment methods including cash)
+    // Cash payments also create bank_transactions for CASH type bank accounts
+    if (withdrawal.bank_account_id) {
+      console.log('🏦 Deleting bank transaction for account:', withdrawal.bank_account_id);
+
+      // Find the bank transaction
+      const { data: bankTransaction, error: bankTxError } = await supabaseAdmin
+        .from('bank_transactions')
+        .select('id, amount')
+        .eq('bank_account_id', withdrawal.bank_account_id)
+        .eq('date', withdrawal.withdrawal_date)
+        .eq('type', 'withdrawal')
+        .eq('amount', withdrawal.amount)
+        .ilike('description', `%${withdrawal.description}%`)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (!bankTxError && bankTransaction) {
+        // Note: Bank account balance will be auto-updated by the database trigger
+        // No manual balance update needed here
+        
+        // Delete the bank transaction (trigger will handle balance update)
+        await supabaseAdmin
+          .from('bank_transactions')
+          .delete()
+          .eq('id', bankTransaction.id);
+
+        console.log('✅ Deleted bank transaction (balance auto-updated by trigger)');
+      }
+    }
+
+    // 3. Delete the withdrawal record
     const { error } = await supabaseAdmin
       .from('withdrawals')
       .delete()
@@ -102,6 +150,8 @@ export async function DELETE(request: NextRequest) {
       console.error('Error deleting withdrawal:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    console.log('✅ Withdrawal deleted successfully with all related records');
 
     return NextResponse.json({
       success: true,

@@ -299,6 +299,7 @@ export function SalesOrderInvoiceManager() {
   const [payments, setPayments] = useState<PaymentDetails[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [bankAccounts, setBankAccounts] = useState<{id: string; account_name: string; account_number: string; account_type?: string}[]>([]);
+  const [cashAccounts, setCashAccounts] = useState<{id: string; account_name: string; current_balance?: number}[]>([]);
   const [loans, setLoans] = useState<{id: string; loan_name: string; bank_name: string; loan_account_code: string; current_balance: number; loan_type: string}[]>([]);
   const [investors, setInvestors] = useState<{id: string; name: string; email?: string; phone?: string; notes?: string}[]>([]);
   const [investmentCategories, setInvestmentCategories] = useState<{id: string; category_name: string; description?: string; chart_account_code?: string}[]>([]);
@@ -421,6 +422,7 @@ export function SalesOrderInvoiceManager() {
     category: 'Office Supplies',
     payment_method: 'cash',
     bank_account_id: '',
+    cash_account_id: '', // New field for cash account selection when payment_method is cash
     deposit_bank_id: '', // New field for bank deposit selection
     entity_id: '', // For truck, employee, or supplier selection
     entity_type: '', // 'truck', 'employee', 'supplier'
@@ -451,6 +453,7 @@ export function SalesOrderInvoiceManager() {
     total_amount: '',
     payment_method: 'bank_transfer',
     bank_account_id: '',
+    cash_account_id: '', // New field for cash account selection when payment_method is cash
     loan_account: '', // Which loan account to debit (2210, 2510, 2530)
     upi_reference: '',
     reference_number: '',
@@ -480,6 +483,7 @@ export function SalesOrderInvoiceManager() {
     description: '',
     payment_method: 'cash',
     bank_account_id: '',
+    cash_account_id: '', // New field for cash account selection when payment_method is cash
     upi_reference: '',
     reference_number: '',
   });
@@ -493,6 +497,7 @@ export function SalesOrderInvoiceManager() {
     description: '',
     payment_method: 'cash',
     bank_account_id: '',
+    cash_account_id: '', // New field for cash account selection when payment_method is cash
     upi_reference: '',
     reference_number: '',
     withdrawal_type: 'capital_withdrawal', // New field for withdrawal type
@@ -1062,6 +1067,23 @@ export function SalesOrderInvoiceManager() {
     }
   }, [cashflowDateRange, payments, expenses, fetchCashflowData]);
 
+  // Fetch cash accounts for cash payment selection
+  const fetchCashAccounts = async () => {
+    try {
+      const response = await fetch('/api/finance/bank-accounts?type=CASH');
+      if (response.ok) {
+        const data = await response.json();
+        const accounts = Array.isArray(data) ? data : (data.data || []);
+        setCashAccounts(accounts);
+        console.log('💵 Cash accounts loaded:', accounts.length);
+      } else {
+        console.error('Failed to fetch cash accounts:', response.statusText);
+      }
+    } catch (error) {
+      console.error('Error fetching cash accounts:', error);
+    }
+  };
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -1276,6 +1298,9 @@ export function SalesOrderInvoiceManager() {
       setInvestmentCategories(investmentCategoriesData);
       setWithdrawalCategories(withdrawalCategoriesData);
       setWithdrawalSubcategories(withdrawalSubcategoriesData);
+      
+      // Fetch cash accounts separately
+      await fetchCashAccounts();
       
       console.log('🎯 Final State Data:');
       console.log('- Investors:', investorsData.length);
@@ -2832,6 +2857,12 @@ export function SalesOrderInvoiceManager() {
       return;
     }
 
+    // Validate cash account selection for cash payments
+    if (expenseForm.payment_method === 'cash' && !expenseForm.cash_account_id) {
+      alert('Please select a cash account for cash payment');
+      return;
+    }
+
     // Validate bank account selection for non-cash payments
     const requiresBankAccount = ['bank_transfer', 'card', 'cheque', 'online'].includes(expenseForm.payment_method);
     if (requiresBankAccount && !expenseForm.bank_account_id) {
@@ -2865,6 +2896,7 @@ export function SalesOrderInvoiceManager() {
         vendor_name: null;
         receipt_number: null;
         bank_account_id?: string;
+        cash_account_id?: string;
         deposit_bank_id?: string;
       } = {
         date: expenseForm.date,
@@ -2884,6 +2916,11 @@ export function SalesOrderInvoiceManager() {
         vendor_name: null, // Could be extracted from supplier name
         receipt_number: null // Could be added to form
       };
+
+      // Include cash_account_id for cash payments
+      if (expenseForm.payment_method === 'cash' && expenseForm.cash_account_id) {
+        expenseData.cash_account_id = expenseForm.cash_account_id;
+      }
 
       // Only include bank_account_id for non-cash payments (but not for cash deposits)
       if (expenseForm.payment_method !== 'cash' && expenseForm.bank_account_id && expenseForm.category !== 'Cash to Bank Deposit') {
@@ -2934,6 +2971,7 @@ export function SalesOrderInvoiceManager() {
           category: 'Office Supplies',
           payment_method: 'cash',
           bank_account_id: '',
+          cash_account_id: '',
           deposit_bank_id: '',
           entity_id: '',
           entity_type: '',
@@ -3189,6 +3227,12 @@ export function SalesOrderInvoiceManager() {
       return;
     }
 
+    // Validate cash account selection for cash payments
+    if (investmentForm.payment_method === 'cash' && !investmentForm.cash_account_id) {
+      alert('Please select a cash account for cash payment');
+      return;
+    }
+
     // Validate bank account selection for non-cash payments
     const requiresBankAccount = ['bank_transfer', 'card', 'cheque', 'online'].includes(investmentForm.payment_method);
     if (requiresBankAccount && !investmentForm.bank_account_id) {
@@ -3211,7 +3255,8 @@ export function SalesOrderInvoiceManager() {
           amount: parseFloat(investmentForm.amount),
           description: investmentForm.description,
           payment_method: investmentForm.payment_method,
-          bank_account_id: investmentForm.bank_account_id || null,
+          bank_account_id: investmentForm.payment_method === 'cash' ? null : (investmentForm.bank_account_id || null),
+          cash_account_id: investmentForm.payment_method === 'cash' ? investmentForm.cash_account_id : null,
           upi_reference: investmentForm.upi_reference || null,
           reference_number: investmentForm.reference_number || null,
           investment_date: investmentForm.date,
@@ -3246,6 +3291,7 @@ export function SalesOrderInvoiceManager() {
           description: '',
           payment_method: 'cash',
           bank_account_id: '',
+          cash_account_id: '',
           upi_reference: '',
           reference_number: '',
         });
@@ -3290,6 +3336,12 @@ export function SalesOrderInvoiceManager() {
       return;
     }
 
+    // Validate cash account selection for cash payments
+    if (withdrawalForm.payment_method === 'cash' && !withdrawalForm.cash_account_id) {
+      alert('Please select a cash account for cash payment');
+      return;
+    }
+
     // Validate bank account selection for non-cash payments
     const requiresBankAccount = ['bank_transfer', 'card', 'cheque', 'online'].includes(withdrawalForm.payment_method);
     if (requiresBankAccount && !withdrawalForm.bank_account_id) {
@@ -3312,7 +3364,8 @@ export function SalesOrderInvoiceManager() {
           amount: parseFloat(withdrawalForm.amount),
           description: withdrawalForm.description,
           payment_method: withdrawalForm.payment_method,
-          bank_account_id: withdrawalForm.bank_account_id || null,
+          bank_account_id: withdrawalForm.payment_method === 'cash' ? null : (withdrawalForm.bank_account_id || null),
+          cash_account_id: withdrawalForm.payment_method === 'cash' ? withdrawalForm.cash_account_id : null,
           upi_reference: withdrawalForm.upi_reference || null,
           reference_number: withdrawalForm.reference_number || null,
           withdrawal_date: withdrawalForm.date,
@@ -3349,6 +3402,7 @@ export function SalesOrderInvoiceManager() {
           description: '',
           payment_method: 'cash',
           bank_account_id: '',
+          cash_account_id: '',
           upi_reference: '',
           reference_number: '',
           withdrawal_type: 'capital_withdrawal', // Reset to default
@@ -3395,6 +3449,12 @@ export function SalesOrderInvoiceManager() {
       return;
     }
 
+    // Validate cash account selection for cash payments
+    if (liabilityForm.payment_method === 'cash' && !liabilityForm.cash_account_id) {
+      alert('Please select a cash account for cash payment');
+      return;
+    }
+
     // Validate bank account selection for non-cash payments
     const requiresBankAccount = ['bank_transfer', 'card', 'cheque', 'online'].includes(liabilityForm.payment_method);
     if (requiresBankAccount && !liabilityForm.bank_account_id) {
@@ -3433,7 +3493,8 @@ export function SalesOrderInvoiceManager() {
           total_amount: totalAmount,
           description: liabilityForm.description,
           payment_method: liabilityForm.payment_method,
-          bank_account_id: liabilityForm.bank_account_id || null,
+          bank_account_id: liabilityForm.payment_method === 'cash' ? null : (liabilityForm.bank_account_id || null),
+          cash_account_id: liabilityForm.payment_method === 'cash' ? liabilityForm.cash_account_id : null,
           upi_reference: liabilityForm.upi_reference || null,
           reference_number: liabilityForm.reference_number || null,
           created_by: getCurrentUser()?.id
@@ -3467,6 +3528,7 @@ export function SalesOrderInvoiceManager() {
           total_amount: '',
           payment_method: 'bank_transfer',
           bank_account_id: '',
+          cash_account_id: '',
           loan_account: '',
           upi_reference: '',
           reference_number: '',
@@ -3608,7 +3670,7 @@ export function SalesOrderInvoiceManager() {
   }
 
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full overflow-x-hidden">
       {/* Header Section with Navigation Tabs */}
       <div className="bg-white border-b">
         <div className="p-4 border-b">
@@ -3671,7 +3733,7 @@ export function SalesOrderInvoiceManager() {
           </TabsList>
 
           {/* Summary Cards - Contextual based on active tab */}
-          <div className="bg-gray-50">
+          <div className="bg-gray-50 overflow-x-hidden">
             {activeTab === 'orders' && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3 mb-4 p-4">
                 <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 shadow-md">
@@ -3897,7 +3959,7 @@ export function SalesOrderInvoiceManager() {
             )}
           </div>
           {/* Tab Content with improved styling */}
-          <div className="bg-white">
+          <div className="bg-white overflow-x-hidden">
             {/* Sales Orders Tab */}
             <TabsContent value="orders" className="space-y-4 p-4">
               
@@ -4007,20 +4069,20 @@ export function SalesOrderInvoiceManager() {
                     </div>
                   </div>
 
-                  <div className="rounded-lg border border-gray-200 overflow-hidden bg-white shadow-sm">
+                  <div className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-x-auto">
                     <Table>
                       <TableHeader className="bg-gray-50/75">
                         <TableRow className="hover:bg-transparent">
-                          <TableHead className="font-semibold w-[120px]">Order ID</TableHead>
-                          <TableHead className="font-semibold w-[200px]">Customer Details</TableHead>
-                          <TableHead className="font-semibold w-[120px]">Date</TableHead>
-                          <TableHead className="font-semibold w-[150px]">Order Value</TableHead>
-                          <TableHead className="font-semibold w-[140px]">Status</TableHead>
-                          <TableHead className="font-semibold w-[130px]">Paid Amt</TableHead>
-                          <TableHead className="font-semibold w-[120px]">Waived</TableHead>
-                          <TableHead className="font-semibold w-[130px]">Balance</TableHead>
-                          <TableHead className="font-semibold w-[120px]">Payment</TableHead>
-                          <TableHead className="font-semibold text-center">Actions</TableHead>
+                          <TableHead className="font-semibold min-w-[120px]">Order ID</TableHead>
+                          <TableHead className="font-semibold min-w-[200px]">Customer Details</TableHead>
+                          <TableHead className="font-semibold min-w-[120px]">Date</TableHead>
+                          <TableHead className="font-semibold min-w-[150px]">Order Value</TableHead>
+                          <TableHead className="font-semibold min-w-[140px]">Status</TableHead>
+                          <TableHead className="font-semibold min-w-[130px]">Paid Amt</TableHead>
+                          <TableHead className="font-semibold min-w-[120px]">Waived</TableHead>
+                          <TableHead className="font-semibold min-w-[130px]">Balance</TableHead>
+                          <TableHead className="font-semibold min-w-[120px]">Payment</TableHead>
+                          <TableHead className="font-semibold text-center min-w-[120px]">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -4406,21 +4468,21 @@ export function SalesOrderInvoiceManager() {
                 )}
               </div>
              
-              <div className="rounded-lg border border-gray-200 overflow-hidden">
+              <div className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-x-auto">
                 <Table>
                   <TableHeader className="bg-gray-50">
                     <TableRow>
-                      <TableHead className="font-semibold">Invoice ID</TableHead>
-                      <TableHead className="font-semibold">Sales Order</TableHead>
-                      <TableHead className="font-semibold">Customer</TableHead>
-                      <TableHead className="font-semibold">Date</TableHead>
-                      <TableHead className="font-semibold">Amount</TableHead>
-                      <TableHead className="font-semibold">Paid</TableHead>
-                      <TableHead className="font-semibold">Waived</TableHead>
-                      <TableHead className="font-semibold">Refunded</TableHead>
-                      <TableHead className="font-semibold">Balance</TableHead>
-                      <TableHead className="font-semibold">Status</TableHead>
-                      <TableHead className="font-semibold text-center">Actions</TableHead>
+                      <TableHead className="font-semibold min-w-[120px]">Invoice ID</TableHead>
+                      <TableHead className="font-semibold min-w-[120px]">Sales Order</TableHead>
+                      <TableHead className="font-semibold min-w-[180px]">Customer</TableHead>
+                      <TableHead className="font-semibold min-w-[100px]">Date</TableHead>
+                      <TableHead className="font-semibold min-w-[120px]">Amount</TableHead>
+                      <TableHead className="font-semibold min-w-[120px]">Paid</TableHead>
+                      <TableHead className="font-semibold min-w-[120px]">Waived</TableHead>
+                      <TableHead className="font-semibold min-w-[120px]">Refunded</TableHead>
+                      <TableHead className="font-semibold min-w-[120px]">Balance</TableHead>
+                      <TableHead className="font-semibold min-w-[120px]">Status</TableHead>
+                      <TableHead className="font-semibold text-center min-w-[180px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -5026,17 +5088,17 @@ export function SalesOrderInvoiceManager() {
                 )}
               </div>
               
-              <div className="rounded-lg border border-gray-200 overflow-hidden">
+              <div className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-x-auto">
                 <Table>
                   <TableHeader className="bg-gray-50">
                     <TableRow>
-                      <TableHead className="font-semibold">Payment ID</TableHead>
-                      <TableHead className="font-semibold">Invoice</TableHead>
-                      <TableHead className="font-semibold">Customer</TableHead>
-                      <TableHead className="font-semibold">Date</TableHead>
-                      <TableHead className="font-semibold">Amount</TableHead>
-                      <TableHead className="font-semibold">Method</TableHead>
-                      <TableHead className="font-semibold">Reference</TableHead>
+                      <TableHead className="font-semibold min-w-[120px]">Payment ID</TableHead>
+                      <TableHead className="font-semibold min-w-[120px]">Invoice</TableHead>
+                      <TableHead className="font-semibold min-w-[180px]">Customer</TableHead>
+                      <TableHead className="font-semibold min-w-[100px]">Date</TableHead>
+                      <TableHead className="font-semibold min-w-[120px]">Amount</TableHead>
+                      <TableHead className="font-semibold min-w-[150px]">Method</TableHead>
+                      <TableHead className="font-semibold min-w-[150px]">Reference</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -5358,17 +5420,17 @@ export function SalesOrderInvoiceManager() {
               </div>
 
               {/* Expenses Table */}
-              <div className="rounded-lg border border-gray-200 overflow-hidden bg-white shadow-sm">
+              <div className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-x-auto">
                 <Table>
                   <TableHeader className="bg-gray-50">
                     <TableRow>
-                      <TableHead className="font-semibold">Date</TableHead>
-                      <TableHead className="font-semibold">Description</TableHead>
-                      <TableHead className="font-semibold">Category</TableHead>
-                      <TableHead className="font-semibold">Type</TableHead>
-                      <TableHead className="font-semibold">Amount</TableHead>
-                      <TableHead className="font-semibold">Payment Method</TableHead>
-                      <TableHead className="font-semibold">Actions</TableHead>
+                      <TableHead className="font-semibold min-w-[100px]">Date</TableHead>
+                      <TableHead className="font-semibold min-w-[200px]">Description</TableHead>
+                      <TableHead className="font-semibold min-w-[150px]">Category</TableHead>
+                      <TableHead className="font-semibold min-w-[120px]">Type</TableHead>
+                      <TableHead className="font-semibold min-w-[120px]">Amount</TableHead>
+                      <TableHead className="font-semibold min-w-[150px]">Payment Method</TableHead>
+                      <TableHead className="font-semibold min-w-[100px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -6005,24 +6067,24 @@ export function SalesOrderInvoiceManager() {
               </div>
 
               {/* Cashflow Table */}
-              <div className="border-t overflow-hidden">
+              <div className="border-t bg-white shadow-sm overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="flex items-center gap-1">
+                      <TableHead className="flex items-center gap-1 min-w-[100px]">
                         Date 
                         <span className="text-xs text-gray-500">
                           ↑
                         </span>
                       </TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Payment Method</TableHead>
-                      <TableHead className="text-right text-green-600">Debit</TableHead>
-                      <TableHead className="text-right text-red-600">Credit</TableHead>
-                      <TableHead className="text-right text-blue-600">Balance</TableHead>
-                      <TableHead>Reference</TableHead>
+                      <TableHead className="min-w-[250px]">Description</TableHead>
+                      <TableHead className="min-w-[100px]">Type</TableHead>
+                      <TableHead className="min-w-[150px]">Category</TableHead>
+                      <TableHead className="min-w-[150px]">Payment Method</TableHead>
+                      <TableHead className="text-right text-green-600 min-w-[120px]">Debit</TableHead>
+                      <TableHead className="text-right text-red-600 min-w-[120px]">Credit</TableHead>
+                      <TableHead className="text-right text-blue-600 min-w-[120px]">Balance</TableHead>
+                      <TableHead className="min-w-[150px]">Reference</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -6847,6 +6909,53 @@ export function SalesOrderInvoiceManager() {
                     )}
                   </div>
 
+                  {/* Cash Account Selection - Show when payment method is cash */}
+                  {expenseForm.payment_method === 'cash' && (
+                    <div className="space-y-2">
+                      <Label htmlFor="cash_account" className="text-sm font-medium">
+                        Cash Account *
+                      </Label>
+                      <div className="flex gap-2">
+                        <Select value={expenseForm.cash_account_id} onValueChange={(value) => setExpenseForm({ ...expenseForm, cash_account_id: value })} disabled={isCreatingExpense}>
+                          <SelectTrigger className="flex-1">
+                            <SelectValue placeholder="Select cash account" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {cashAccounts && cashAccounts.length > 0 ? (
+                              cashAccounts.map((account) => (
+                                <SelectItem key={account.id} value={account.id}>
+                                  <div className="flex flex-col">
+                                    <span className="font-medium text-green-700">{account.account_name}</span>
+                                    <span className="text-xs text-gray-500">
+                                      Balance: ₹{account.current_balance?.toLocaleString('en-IN') || '0.00'}
+                                    </span>
+                                  </div>
+                                </SelectItem>
+                              ))
+                            ) : (
+                              <SelectItem value="none" disabled>
+                                No cash accounts available
+                              </SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => fetchCashAccounts()}
+                          title="Refresh cash accounts"
+                          className="px-3"
+                        >
+                          🔄
+                        </Button>
+                      </div>
+                      <div className="text-xs text-green-600 bg-green-50 p-2 rounded">
+                        💰 This expense will be deducted from the selected cash account
+                      </div>
+                    </div>
+                  )}
+
                   {/* Bank Selection for Cash to Bank Deposit */}
                   {expenseForm.category === 'Cash to Bank Deposit' && (
                     <div className="space-y-2">
@@ -7357,6 +7466,53 @@ export function SalesOrderInvoiceManager() {
               </Select>
             </div>
 
+            {/* Cash Account Selection - Show when payment method is cash */}
+            {investmentForm.payment_method === 'cash' && (
+              <div className="space-y-2">
+                <Label htmlFor="cash_account" className="text-sm font-medium">
+                  Cash Account *
+                </Label>
+                <div className="flex gap-2">
+                  <Select value={investmentForm.cash_account_id} onValueChange={(value) => setInvestmentForm(prev => ({ ...prev, cash_account_id: value }))}>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Select cash account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {cashAccounts && cashAccounts.length > 0 ? (
+                        cashAccounts.map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            <div className="flex flex-col">
+                              <span className="font-medium text-green-700">{account.account_name}</span>
+                              <span className="text-xs text-gray-500">
+                                Balance: ₹{account.current_balance?.toLocaleString('en-IN') || '0.00'}
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="none" disabled>
+                          No cash accounts available
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchCashAccounts()}
+                    title="Refresh cash accounts"
+                    className="px-3"
+                  >
+                    🔄
+                  </Button>
+                </div>
+                <div className="text-xs text-green-600 bg-green-50 p-2 rounded">
+                  💰 This investment will be credited to the selected cash account
+                </div>
+              </div>
+            )}
+
             {/* Bank Account Selection (show when payment method requires it) */}
             {['bank_transfer', 'card', 'cheque', 'online'].includes(investmentForm.payment_method) && (
               <div className="space-y-2">
@@ -7672,6 +7828,53 @@ export function SalesOrderInvoiceManager() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Cash Account Selection - Show when payment method is cash */}
+            {withdrawalForm.payment_method === 'cash' && (
+              <div className="space-y-2">
+                <Label htmlFor="cash_account" className="text-sm font-medium">
+                  Cash Account *
+                </Label>
+                <div className="flex gap-2">
+                  <Select value={withdrawalForm.cash_account_id} onValueChange={(value) => setWithdrawalForm(prev => ({ ...prev, cash_account_id: value }))}>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Select cash account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {cashAccounts && cashAccounts.length > 0 ? (
+                        cashAccounts.map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            <div className="flex flex-col">
+                              <span className="font-medium text-green-700">{account.account_name}</span>
+                              <span className="text-xs text-gray-500">
+                                Balance: ₹{account.current_balance?.toLocaleString('en-IN') || '0.00'}
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="none" disabled>
+                          No cash accounts available
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchCashAccounts()}
+                    title="Refresh cash accounts"
+                    className="px-3"
+                  >
+                    🔄
+                  </Button>
+                </div>
+                <div className="text-xs text-green-600 bg-green-50 p-2 rounded">
+                  💰 This withdrawal will be deducted from the selected cash account
+                </div>
+              </div>
+            )}
 
             {/* Bank Account Selection - Show different accounts based on payment method */}
             {withdrawalForm.payment_method && withdrawalForm.payment_method !== 'cash' && (
@@ -8085,6 +8288,56 @@ export function SalesOrderInvoiceManager() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Cash Account Selection */}
+                {liabilityForm.payment_method === 'cash' && (
+                  <div className="space-y-2 mb-3 md:mb-4">
+                    <Label htmlFor="cash_account" className="text-sm font-medium">
+                      Cash Account *
+                    </Label>
+                    <div className="flex gap-2">
+                      <Select 
+                        value={liabilityForm.cash_account_id} 
+                        onValueChange={(value) => setLiabilityForm(prev => ({ ...prev, cash_account_id: value }))}
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Select cash account" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {cashAccounts && cashAccounts.length > 0 ? (
+                            cashAccounts.map((account) => (
+                              <SelectItem key={account.id} value={account.id}>
+                                <div className="flex flex-col">
+                                  <span className="font-medium text-green-700">{account.account_name}</span>
+                                  <span className="text-xs text-gray-500">
+                                    Balance: ₹{account.current_balance?.toLocaleString('en-IN') || '0.00'}
+                                  </span>
+                                </div>
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="none" disabled>
+                              No cash accounts available
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fetchCashAccounts()}
+                        title="Refresh cash accounts"
+                        className="px-3"
+                      >
+                        🔄
+                      </Button>
+                    </div>
+                    <div className="text-xs text-green-600 bg-green-50 p-2 rounded">
+                      💰 This payment will be deducted from the selected cash account
+                    </div>
+                  </div>
+                )}
 
                 {/* Bank Account Selection */}
                 {['bank_transfer', 'cheque', 'online'].includes(liabilityForm.payment_method) && (

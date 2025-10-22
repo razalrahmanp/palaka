@@ -299,16 +299,23 @@ export function BankAccountManager() {
   const fetchCashTransactions = async () => {
     try {
       setLoading(true);
+      console.log('🔍 Fetching cash transactions from API...');
       const response = await fetch('/api/finance/cash-transactions');
+      console.log('📡 API Response status:', response.status, response.statusText);
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch cash transactions');
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('❌ API Error response:', errorData);
+        throw new Error(`Failed to fetch cash transactions: ${errorData.error || response.statusText}`);
       }
+      
       const data = await response.json();
+      console.log('✅ Cash transactions data received:', data);
       // Extract the transactions array from the API response
       setCashTransactions(data.transactions || []);
     } catch (error) {
       console.error('Error fetching cash transactions:', error);
-      alert('Failed to fetch cash transactions');
+      alert(`Failed to fetch cash transactions: ${error instanceof Error ? error.message : 'Unknown error'}`);
       // Set empty array on error to prevent map function errors
       setCashTransactions([]);
     } finally {

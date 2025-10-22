@@ -9,7 +9,29 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase as supabaseAdmin } from '@/lib/supabasePool';
 import { createCashTransaction, validateCashBalance } from '@/lib/cashManager';
 
+// Helper function to extract source type from description
+function extractSourceType(description: string): string {
+  if (description.includes('Sales Payment') || description.includes('Payment received')) return 'sales_payment';
+  if (description.includes('Expense:') || description.includes('Vendor payment')) return 'expense';
+  if (description.includes('Withdrawal') || description.includes('Owner')) return 'withdrawal';
+  if (description.includes('Investment') || description.includes('Capital contribution')) return 'investment';
+  if (description.includes('Liability') || description.includes('Loan Payment')) return 'liability_payment';
+  if (description.includes('Refund')) return 'refund';
+  if (description.includes('Fund Transfer')) return 'fund_transfer';
+  return 'manual_adjustment';
+}
 
+// Helper function to extract source description from transaction description
+function extractSourceDescription(description: string): string {
+  if (description.includes('Sales Payment') || description.includes('Payment received')) return 'Sales Receipt';
+  if (description.includes('Expense:') || description.includes('Vendor payment')) return 'Expense Payment';
+  if (description.includes('Withdrawal')) return 'Withdrawal';
+  if (description.includes('Investment')) return 'Investment';
+  if (description.includes('Liability')) return 'Liability Payment';
+  if (description.includes('Refund')) return 'Refund';
+  if (description.includes('Fund Transfer')) return 'Fund Transfer';
+  return 'Cash Transaction';
+}
 
 // ================================================================================================
 // GET - Fetch cash transactions from bank_transactions table
@@ -35,8 +57,9 @@ export async function GET(request: NextRequest) {
 
     const offset = (page - 1) * limit;
 
-    // First, get all CASH account IDs
-    console.log('🔍 Step 1: Fetching CASH account IDs...');
+    // Step 1: Get all CASH type account IDs from bank_accounts table
+    // This ensures we only show transactions for accounts marked as CASH type
+    console.log('🔍 Step 1: Fetching CASH account IDs from bank_accounts...');
     const { data: cashAccountsData, error: cashAccountError } = await supabaseAdmin
       .from('bank_accounts')
       .select('id')
@@ -73,37 +96,32 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Build query to fetch from cash_transactions table
-    console.log('🔍 Step 2: Building query for cash_transactions...');
+    // Step 2: Fetch transactions from bank_transactions table for these CASH accounts
+    // Using the same unified table as BANK and UPI account types
+    console.log('🔍 Step 2: Building query for bank_transactions...');
     let query = supabaseAdmin
-      .from('cash_transactions')
+      .from('bank_transactions')
       .select(`
         *,
-        bank_account:bank_accounts!cash_transactions_cash_account_id_fkey (
+        bank_account:bank_accounts!bank_transactions_bank_account_id_fkey (
           id,
           name,
           account_type,
           current_balance
         )
       `, { count: 'exact' })
-      .in('cash_account_id', cashAccountIds)
-      .eq('is_deleted', false);
+      .in('bank_account_id', cashAccountIds);
 
     // Apply filters
     if (cash_account_id) {
-      query = query.eq('cash_account_id', cash_account_id);
+      query = query.eq('bank_account_id', cash_account_id);
     }
-    if (source_type) {
-      query = query.eq('source_type', source_type);
-    }
-    if (transaction_type) {
-      query = query.eq('transaction_type', transaction_type);
-    }
+    // Note: bank_transactions table uses 'date' and 'type' columns, not 'transaction_date' and 'transaction_type'
     if (date_from) {
-      query = query.gte('transaction_date', date_from);
+      query = query.gte('date', date_from);
     }
     if (date_to) {
-      query = query.lte('transaction_date', date_to);
+      query = query.lte('date', date_to);
     }
 
     // Apply search filter if provided
@@ -114,8 +132,7 @@ export async function GET(request: NextRequest) {
 
     // Apply ordering and pagination
     query = query
-      .order('transaction_date', { ascending: false })
-      .order('created_at', { ascending: false });
+      .order('date', { ascending: false });
 
     if (!export_data) {
       query = query.range(offset, offset + limit - 1);
@@ -125,7 +142,7 @@ export async function GET(request: NextRequest) {
     const { data, error, count } = await query;
 
     if (error) {
-      console.error('❌ Error fetching cash transactions from bank_transactions:', error);
+      console.error('❌ Error fetching cash transactions from cash_transactions table:', error);
       return NextResponse.json({
         success: false,
         error: `Database query failed: ${error.message}`,
@@ -135,22 +152,23 @@ export async function GET(request: NextRequest) {
 
     console.log('✅ Query successful, received', data?.length || 0, 'transactions');
 
-    // Transform the data to match the expected format
+    // Transform the data from bank_transactions table to match the expected cash transactions format
+    // bank_transactions columns: id, date, type (deposit/withdrawal), amount, description, reference
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const transactions = (data || []).map((transaction: any) => ({
       id: transaction.id,
-      transaction_date: transaction.transaction_date,
-      transaction_type: transaction.transaction_type,
-      amount: transaction.amount,
-      description: transaction.description,
-      source_type: transaction.source_type,
-      source_id: transaction.source_id,
-      reference_number: transaction.reference_number,
-      running_balance: transaction.running_balance,
-      cash_account_id: transaction.cash_account_id,
+      transaction_date: transaction.date, // map 'date' to 'transaction_date'
+      transaction_type: transaction.type === 'deposit' ? 'CREDIT' : 'DEBIT', // map 'deposit' to 'CREDIT', 'withdrawal' to 'DEBIT'
+      amount: Math.abs(transaction.amount || 0),
+      description: transaction.description || 'Cash Transaction',
+      source_type: extractSourceType(transaction.description || ''),
+      source_id: null,
+      reference_number: transaction.reference || null,
+      running_balance: 0, // bank_transactions doesn't have running_balance, will need to calculate
+      cash_account_id: transaction.bank_account_id,
       cash_account_name: transaction.bank_account?.name || 'Unknown Account',
-      source_description: transaction.source_type || 'Unknown',
-      created_at: transaction.created_at
+      source_description: extractSourceDescription(transaction.description || ''),
+      created_at: transaction.date
     }));
 
     const total_count = count || 0;
@@ -192,7 +210,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    console.log('✅ Successfully fetched cash transactions from bank_transactions:', {
+    console.log('✅ Successfully fetched cash transactions from cash_transactions table:', {
       total_count,
       current_page: page,
       total_pages,

@@ -1,14 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // External packages for server components
+  serverExternalPackages: ['@supabase/supabase-js'],
+  
   // Performance optimizations
   experimental: {
-    serverComponentsExternalPackages: ['@supabase/supabase-js'],
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
   },
-  
-  // Compilation optimizations
-  swcMinify: true,
   
   // Image optimization
   images: {

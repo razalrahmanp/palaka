@@ -4558,7 +4558,7 @@ export function SalesOrderInvoiceManager() {
                                 </>
                               )}
 
-                              {/* Refund Button - Only show if there's paid amount AND returns exist */}
+                              {/* Refund Button - Show if there's paid amount */}
                               {(invoice.paid_amount || 0) > 0 && (
                                 <>
                                   <DropdownMenuSeparator />
@@ -4566,7 +4566,7 @@ export function SalesOrderInvoiceManager() {
                                     onClick={async () => {
                                       console.log('🎯 [Dropdown] Refund button clicked for invoice:', invoice.id);
                                       
-                                      // First check if there are any returns
+                                      // Try to fetch return details if they exist
                                       console.log('🔍 [Dropdown] Checking for returns for invoice:', invoice.id);
                                       const returnDetails = await fetchReturnDetails(invoice.id);
                                       console.log('📦 [Dropdown] Return details fetched:', {
@@ -4575,24 +4575,24 @@ export function SalesOrderInvoiceManager() {
                                         firstReturnId: returnDetails.length > 0 ? returnDetails[0].id : 'NO_RETURNS'
                                       });
                                       
-                                      // If no returns found, show error and stop
-                                      if (returnDetails.length === 0) {
-                                        toast.error('No returns found for this invoice. Please create a return first before processing a refund.');
-                                        return;
-                                      }
-                                      
                                       setSelectedInvoiceForRefund(invoice);
                                       const refundAmount = await calculateRefundAmount(invoice.id);
                                       setPrefilledRefundAmount(refundAmount);
                                       
-                                      const returnId = returnDetails[0].id;
-                                      setSelectedReturnId(returnId);
-                                      console.log('🔗 [Dropdown] Return ID set for refund dialog:', {
-                                        returnId,
-                                        type: typeof returnId,
-                                        isUndefined: returnId === undefined,
-                                        willBeSent: returnId !== undefined
-                                      });
+                                      // Set return ID if available (optional)
+                                      if (returnDetails.length > 0) {
+                                        const returnId = returnDetails[0].id;
+                                        setSelectedReturnId(returnId);
+                                        console.log('🔗 [Dropdown] Return ID set for refund dialog:', {
+                                          returnId,
+                                          type: typeof returnId,
+                                          isUndefined: returnId === undefined,
+                                          willBeSent: returnId !== undefined
+                                        });
+                                      } else {
+                                        setSelectedReturnId(undefined);
+                                        console.log('🔗 [Dropdown] No return ID available - proceeding without return link');
+                                      }
                                       
                                       setRefundDialogOpen(true);
                                     }}

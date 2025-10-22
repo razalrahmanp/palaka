@@ -425,7 +425,7 @@ export async function GET(request: Request) {
       note: 'COGS breakdown from profit-loss API'
     });
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: {
         mtdRevenue: totalRevenue, // MTD revenue with all order statuses
@@ -470,6 +470,11 @@ export async function GET(request: Request) {
         note: 'MTD revenue includes all order statuses, delivered orders tracked separately for payment collection'
       }
     });
+    
+    // Add cache control headers (cache for 2 minutes for dashboard data)
+    response.headers.set('Cache-Control', 'public, s-maxage=120, stale-while-revalidate=240');
+    
+    return response;
 
   } catch (error) {
     console.error('Error fetching KPIs:', error);

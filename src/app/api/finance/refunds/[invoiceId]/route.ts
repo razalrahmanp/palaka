@@ -101,7 +101,8 @@ export async function POST(
       reference_number,
       requested_by,
       notes,
-      return_id
+      return_id,
+      processed_at
     } = body;
 
     console.log('� FULL REQUEST BODY:', JSON.stringify(body, null, 2));
@@ -197,7 +198,7 @@ export async function POST(
         notes: notes || null,
         status: 'processed', // Direct refund - no approval needed
         approved_at: new Date().toISOString(),
-        processed_at: new Date().toISOString(),
+        processed_at: processed_at || new Date().toISOString(), // Use provided date or current date
         approved_by: userId, // Same user approves and processes
         processed_by: userId
       })
@@ -216,7 +217,7 @@ export async function POST(
     const { data: expense, error: expenseError } = await supabase
       .from('expenses')
       .insert({
-        date: new Date().toISOString().split('T')[0],
+        date: processed_at ? processed_at.split('T')[0] : new Date().toISOString().split('T')[0], // Use refund date
         category: 'Customer Refunds',
         subcategory: 'Invoice Refund',
         description: `Refund for Invoice ${invoiceId.slice(0, 8)} - ${reason}`,
@@ -232,7 +233,24 @@ export async function POST(
       .single();
 
     if (expenseError) {
-      console.error('Error creating refund expense:', expenseError);
+      console.error('❌ Error creating refund expense:', expenseError);
+      console.error('❌ Expense data attempted:', {
+        date: processed_at ? processed_at.split('T')[0] : new Date().toISOString().split('T')[0],
+        category: 'Customer Refunds',
+        subcategory: 'Invoice Refund',
+        description: `Refund for Invoice ${invoiceId.slice(0, 8)} - ${reason}`,
+        amount: parseFloat(refund_amount),
+        payment_method: refund_method,
+        type: 'Direct',
+        entity_type: 'customer',
+        entity_id: invoiceId,
+        entity_reference_id: refund.id,
+        created_by: userId
+      });
+      // Don't fail the refund operation, but make sure to log prominently
+      console.warn('⚠️ Refund created but expense entry failed!');
+    } else {
+      console.log('✅ Refund expense created successfully:', expense);
     }
 
     // Process bank account balance update immediately (for non-cash refunds)

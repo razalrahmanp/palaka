@@ -159,6 +159,32 @@ export async function POST(request: NextRequest) {
       refundRecordId = newRefund.id;
     }
 
+    // 2.5. Create expense entry for the refund
+    const { data: expense, error: expenseError } = await supabase
+      .from('expenses')
+      .insert({
+        date: new Date().toISOString().split('T')[0],
+        category: 'Customer Refunds',
+        subcategory: 'Invoice Refund',
+        description: `Refund for Return ${return_id.slice(0, 8)} - Invoice ${invoice_id.slice(0, 8)}`,
+        amount: refund_amount,
+        payment_method: refund_method,
+        type: 'Direct',
+        entity_type: 'customer',
+        entity_id: invoice_id,
+        entity_reference_id: refundRecordId,
+        created_by: currentUser.id
+      })
+      .select()
+      .single();
+
+    if (expenseError) {
+      console.error('Error creating refund expense:', expenseError);
+      // Don't fail the operation, but log the error
+    } else {
+      console.log('Refund expense created successfully:', expense);
+    }
+
     // 3. Create financial transaction record for accounting
     const transactionDescription = `Refund - ${returnRecord.return_type} (Return #${return_id.slice(0, 8)})`;
     

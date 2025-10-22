@@ -107,6 +107,27 @@ export async function PUT(
       });
     }
 
+    // Update associated expense if exists
+    const { error: expenseUpdateError } = await supabase
+      .from('expenses')
+      .update({
+        amount: refund_amount,
+        payment_method: refund_method,
+        date: processed_at ? processed_at.split('T')[0] : new Date().toISOString().split('T')[0],
+        description: `Refund for Invoice ${invoiceId.slice(0, 8)} - ${reason}`,
+        updated_at: new Date().toISOString()
+      })
+      .eq('entity_reference_id', refundId)
+      .eq('entity_type', 'customer')
+      .eq('category', 'Customer Refunds');
+
+    if (expenseUpdateError) {
+      console.error('Error updating associated expense:', expenseUpdateError);
+      // Don't fail the operation, but log the error
+    } else {
+      console.log('Associated expense updated successfully');
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Refund updated successfully',
@@ -183,11 +204,18 @@ export async function DELETE(
     }
 
     // Delete associated expense if exists
-    if (existingRefund.id) {
-      await supabase
-        .from('expenses')
-        .delete()
-        .eq('refund_id', existingRefund.id);
+    const { error: expenseDeleteError } = await supabase
+      .from('expenses')
+      .delete()
+      .eq('entity_reference_id', refundId)
+      .eq('entity_type', 'customer')
+      .eq('category', 'Customer Refunds');
+
+    if (expenseDeleteError) {
+      console.error('Error deleting associated expense:', expenseDeleteError);
+      // Don't fail the operation, but log the error
+    } else {
+      console.log('Associated expense deleted successfully');
     }
 
     return NextResponse.json({

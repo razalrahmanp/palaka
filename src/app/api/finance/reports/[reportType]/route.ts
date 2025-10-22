@@ -300,7 +300,7 @@ async function generateProfitLossReport(startDate: string, endDate: string) {
       formula: 'COGS = Opening Stock + Purchases - Closing Stock'
     });
     
-    return NextResponse.json({
+    const response = NextResponse.json({
       report_type: 'Profit & Loss Statement',
       period: { start_date: startDate, end_date: endDate },
       sections,
@@ -324,6 +324,11 @@ async function generateProfitLossReport(startDate: string, endDate: string) {
         ...sections.EXPENSES
       ]
     });
+    
+    // Add cache control headers (cache for 5 minutes)
+    response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+    
+    return response;
   } catch (error) {
     throw error;
   }
@@ -978,67 +983,75 @@ async function generateAccountBalancesReport(asOfDate: string) {
 async function calculateInventoryValue(startDate: string, endDate: string, type: 'opening' | 'closing'): Promise<number> {
   try {
     if (type === 'closing') {
-      // For closing stock, use the SAME METHOD as vendor stats API
-      // This ensures consistency between P&L and vendor calculations
-      
-      // 1. Get all vendors
-      const { data: vendors, error: vendorsError } = await supabase
-        .from('suppliers')
-        .select('id, name');
+      // OPTIMIZED: Calculate closing stock with a single query instead of 174 queries
+      const { data: inventoryItems, error: inventoryError } = await supabase
+        .from('inventory_items')
+        .select(`
+          quantity,
+          products!inner(
+            price,
+            cost,
+            supplier_id,
+            suppliers(name)
+          )
+        `)
+        .gt('quantity', 0); // Only include items with quantity > 0
 
-      if (vendorsError) {
-        console.error('Error fetching vendors:', vendorsError);
+      if (inventoryError) {
+        console.error('Error fetching inventory:', inventoryError);
         return 0;
       }
 
-      // 2. Calculate stock cost for each vendor individually (same as vendor stats API)
+      // Calculate total closing stock and group by vendor
       let totalClosingStock = 0;
-      const vendorCalculations = [];
+      const vendorMap = new Map<string, { products: number; stockCost: number }>();
 
-      for (const vendor of vendors) {
-        const { data: vendorProducts, error: vendorError } = await supabase
-          .from('inventory_items')
-          .select(`
-            quantity,
-            products!inner(
-              price,
-              cost,
-              supplier_id
-            )
-          `)
-          .eq('products.supplier_id', vendor.id);
+      inventoryItems?.forEach((item: any) => {
+        const quantity = Number(item.quantity) || 0;
+        const product = Array.isArray(item.products) ? item.products[0] : item.products;
+        const cost = Number(product?.cost) || 0;
+        const supplierId = product?.supplier_id;
 
-        if (vendorError) {
-          console.error(`Error fetching vendor ${vendor.id} inventory:`, vendorError);
-          continue;
-        }
+        if (quantity > 0 && cost > 0) {
+          const itemCost = quantity * cost;
+          totalClosingStock += itemCost;
 
-        // Calculate cost for this vendor using same logic as vendor stats API
-        const vendorStockCost = vendorProducts?.reduce((sum: number, item: any) => {
-          const quantity = Number(item.quantity) || 0;
-          const product = Array.isArray(item.products) ? item.products[0] : item.products;
-          const cost = Number(product?.cost) || 0;
-          
-          // Only include items with quantity > 0 (same as vendor stats API)
-          if (quantity > 0) {
-            return sum + (quantity * cost);
+          // Track by vendor
+          if (!vendorMap.has(supplierId)) {
+            vendorMap.set(supplierId, { products: 0, stockCost: 0 });
           }
-          return sum;
-        }, 0) || 0;
+          const vendorData = vendorMap.get(supplierId)!;
+          vendorData.products += 1;
+          vendorData.stockCost += itemCost;
+        }
+      });
 
-        totalClosingStock += vendorStockCost;
-        vendorCalculations.push({
-          vendor: vendor.name,
-          products: vendorProducts?.length || 0,
-          stockCost: vendorStockCost
-        });
-      }
+      // Convert to array for logging (first 5 vendors)
+      const vendorCalculations = Array.from(vendorMap.entries())
+        .map(([id, data]) => {
+          const item = inventoryItems?.find((item: any) => {
+            const product = Array.isArray(item.products) ? item.products[0] : item.products;
+            return product?.supplier_id === id;
+          });
+          const product: any = item ? (Array.isArray(item.products) ? item.products[0] : item.products) : null;
+          const supplierName = product?.suppliers ? 
+            (Array.isArray(product.suppliers) ? product.suppliers[0]?.name : product.suppliers?.name) : 
+            'Unknown';
+          
+          return {
+            vendor: supplierName,
+            products: data.products,
+            stockCost: data.stockCost
+          };
+        })
+        .sort((a, b) => b.stockCost - a.stockCost)
+        .slice(0, 5);
 
-      console.log(`📦 Closing Stock Calculation (${endDate}) - Using Vendor Method:`, {
-        totalVendors: vendors?.length || 0,
+      console.log(`📦 Closing Stock Calculation (${endDate}) - OPTIMIZED Single Query:`, {
+        totalVendors: vendorMap.size,
         totalValue: totalClosingStock.toFixed(2),
-        method: 'Individual vendor calculations (same as vendor stats API)',
-        vendorBreakdown: vendorCalculations.slice(0, 5)
+        method: 'Single optimized query (was 174 queries)',
+        vendorBreakdown: vendorCalculations
       });
 
       return totalClosingStock;

@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     const page = parseInt(pageParam || '1');
     const offset = (page - 1) * limit;
 
-    // Build the query to join inventory_items with products
+    // Build the query to join inventory_items with products and suppliers
     let query = supabase
       .from('inventory_items')
       .select(`
@@ -44,7 +44,11 @@ export async function GET(request: NextRequest) {
           description,
           supplier_id,
           image_url,
-          created_at
+          created_at,
+          suppliers (
+            id,
+            name
+          )
         )
       `, { count: usePagination ? 'exact' : undefined });
 
@@ -78,7 +82,11 @@ export async function GET(request: NextRequest) {
             cost,
             supplier_id,
             created_at,
-            image_url
+            image_url,
+            suppliers (
+              id,
+              name
+            )
           )
         `, { count: 'exact', head: true });
 
@@ -117,6 +125,9 @@ export async function GET(request: NextRequest) {
       // Transform to ProductWithInventory format
       const transformedItems = inventoryItems?.map(item => {
         const product = Array.isArray(item.products) ? item.products[0] : item.products;
+        const supplier = product?.suppliers 
+          ? (Array.isArray(product.suppliers) ? product.suppliers[0] : product.suppliers)
+          : null;
         
         // Calculate margin: ((selling_price - cost_price) / cost_price) * 100
         const cost = Number(product?.cost || 0);
@@ -134,7 +145,7 @@ export async function GET(request: NextRequest) {
           reorder_point: item.reorder_point,
           updated_at: item.updated_at,
           product_created_at: product?.created_at,
-          supplier_name: `Supplier ${product?.supplier_id || 'Unknown'}`, // We'll improve this later
+          supplier_name: supplier?.name || 'Unknown Supplier',
           supplier_id: product?.supplier_id,
           price: product?.price,
           product_name: product?.name || '',
@@ -178,6 +189,9 @@ export async function GET(request: NextRequest) {
       // Transform to ProductWithInventory format
       const transformedItems = inventoryItems?.map(item => {
         const product = Array.isArray(item.products) ? item.products[0] : item.products;
+        const supplier = product?.suppliers 
+          ? (Array.isArray(product.suppliers) ? product.suppliers[0] : product.suppliers)
+          : null;
         
         // Calculate margin: ((selling_price - cost_price) / cost_price) * 100
         const cost = Number(product?.cost || 0);
@@ -195,7 +209,7 @@ export async function GET(request: NextRequest) {
           reorder_point: item.reorder_point,
           updated_at: item.updated_at,
           product_created_at: product?.created_at,
-          supplier_name: `Supplier ${product?.supplier_id || 'Unknown'}`, // We'll improve this later
+          supplier_name: supplier?.name || 'Unknown Supplier',
           supplier_id: product?.supplier_id,
           price: product?.price,
           product_name: product?.name || '',

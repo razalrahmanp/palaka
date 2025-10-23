@@ -3,9 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import { List, Tags, Package, CheckCircle, AlertTriangle, Users } from 'lucide-react'
-import { LiveInventoryAlerts } from '@/components/inventory/LiveInventoryAlerts'
+import { List, Tags, Package, Users } from 'lucide-react'
 import InventoryItemForm from '@/components/inventory/InventoryItemForm'
 import { SupplierForm } from '@/components/inventory/SupplierForm'
 import { StockAdjustmentForm } from '@/components/inventory/StockAdjustmentForm'
@@ -13,7 +11,7 @@ import { ProductWithInventory, Supplier } from '@/types'
 import { PaginatedInventoryTable } from '@/components/inventory/PaginatedInventoryTable'
 import { ProductLabels } from '@/components/inventory/ProductLabels'
 import { ProfitMarginManager } from '@/components/inventory/ProfitMarginManager'
-
+import { ProductSummary } from '@/components/inventory/ProductSummary'
 
 export default function InventoryPage() {
   const [items, setItems] = useState<ProductWithInventory[]>([])
@@ -155,112 +153,15 @@ export default function InventoryPage() {
   const allProductsForLabels = items
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 p-6 space-y-8">
-      {/* Header Section */}
-      <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-xl p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-              Inventory Management
-            </h1>
-            <p className="text-gray-600 mt-2">Track stock levels, manage products, and monitor alerts</p>
-          </div>
-          <div className="flex gap-3">
-            <Button
-              onClick={() => setAddSupplierOpen(true)}
-              variant="outline"
-              className="border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-4 py-2 rounded-xl transition-all duration-300"
-            >
-              Add Supplier
-            </Button>
-            <Button
-              onClick={() => setAddItemOpen(true)}
-              className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
-            >
-              Add Item
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Items</p>
-                <p className="text-2xl font-bold text-gray-900">{items.length}</p>
-              </div>
-              <div className="h-12 w-12 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl flex items-center justify-center">
-                <Package className="h-6 w-6 text-white" />
-              </div>
-            </div>
-            <div className="mt-4 flex items-center text-sm">
-              <span className="text-green-600 font-medium">{uniqueProducts.length}</span>
-              <span className="text-gray-600 ml-1">unique products</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">In Stock</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {items.filter(item => (item.quantity || 0) > 0).length}
-                </p>
-              </div>
-              <div className="h-12 w-12 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center">
-                <CheckCircle className="h-6 w-6 text-white" />
-              </div>
-            </div>
-            <div className="mt-4 flex items-center text-sm">
-              <span className="text-green-600 font-medium">
-                {Math.round((items.filter(item => (item.quantity || 0) > 0).length / items.length) * 100)}%
-              </span>
-              <span className="text-gray-600 ml-1">availability</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Low Stock</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {items.filter(item => (item.quantity || 0) <= (item.reorder_point || 5)).length}
-                </p>
-              </div>
-              <div className="h-12 w-12 bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center">
-                <AlertTriangle className="h-6 w-6 text-white" />
-              </div>
-            </div>
-            <div className="mt-4 flex items-center text-sm">
-              <span className="text-red-600 font-medium">Need reorder</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Suppliers</p>
-                <p className="text-2xl font-bold text-gray-900">{suppliers.length}</p>
-              </div>
-              <div className="h-12 w-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center">
-                <Users className="h-6 w-6 text-white" />
-              </div>
-            </div>
-            <div className="mt-4 flex items-center text-sm">
-              <span className="text-purple-600 font-medium">Active vendors</span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 p-6 space-y-8 relative">
+      {/* Floating Add Supplier Button */}
+      <Button
+        onClick={() => setAddSupplierOpen(true)}
+        className="fixed right-8 bottom-8 z-50 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-6 py-6 rounded-full shadow-2xl hover:shadow-3xl transition-all duration-300 hover:scale-110"
+      >
+        <Users className="mr-2 h-5 w-5" />
+        Add Supplier
+      </Button>
 
       {/* Main Content */}
       <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-xl overflow-hidden">
@@ -279,38 +180,22 @@ export default function InventoryPage() {
               >
                 <Tags className="mr-2 h-4 w-4" /> Product Labels
               </TabsTrigger>
+              <TabsTrigger 
+                value="summary"
+                className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-indigo-600 data-[state=active]:to-purple-600 data-[state=active]:text-white rounded-lg transition-all duration-300"
+              >
+                <Package className="mr-2 h-4 w-4" /> Product Summary
+              </TabsTrigger>
             </TabsList>
           </div>
 
-          <TabsContent value="list" className="p-6 space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900">Inventory Overview</h2>
-                <p className="text-gray-600">Complete inventory tracking and management</p>
-              </div>
-              <Button
-                onClick={() => setManageMarginsOpen(true)}
-                variant="outline"
-                className="border-purple-200 text-purple-600 hover:bg-purple-50 px-4 py-2 rounded-xl transition-all duration-300"
-              >
-                Manage Margins
-              </Button>
-            </div>
-            
+          <TabsContent value="list" className="p-6">
             <PaginatedInventoryTable
               onAdjustClick={handleAdjustClick}
               onAddItem={() => setAddItemOpen(true)}
               onManageMargins={() => setManageMarginsOpen(true)}
               onAddSupplier={() => setAddSupplierOpen(true)}
             />
-            
-            <div className="bg-gradient-to-r from-red-50 to-orange-50 rounded-xl border border-red-100/50 p-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
-                <AlertTriangle className="h-5 w-5 text-red-500 mr-2" />
-                Live Inventory Alerts
-              </h3>
-              <LiveInventoryAlerts />
-            </div>
           </TabsContent>
 
           <TabsContent value="labels" className="p-6">
@@ -319,6 +204,14 @@ export default function InventoryPage() {
               <p className="text-gray-600">Generate and print product labels</p>
             </div>
             <ProductLabels products={allProductsForLabels} />
+          </TabsContent>
+
+          <TabsContent value="summary" className="p-6">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Product Summary</h2>
+              <p className="text-gray-600">Detailed product analytics and sales tracking</p>
+            </div>
+            <ProductSummary />
           </TabsContent>
         </Tabs>
       </div>

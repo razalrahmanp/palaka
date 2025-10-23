@@ -4075,6 +4075,7 @@ export function SalesOrderInvoiceManager() {
                         <TableRow className="hover:bg-transparent">
                           <TableHead className="font-semibold min-w-[120px]">Order ID</TableHead>
                           <TableHead className="font-semibold min-w-[200px]">Customer Details</TableHead>
+                          <TableHead className="font-semibold min-w-[150px]">Sales Rep</TableHead>
                           <TableHead className="font-semibold min-w-[120px]">Date</TableHead>
                           <TableHead className="font-semibold min-w-[150px]">Order Value</TableHead>
                           <TableHead className="font-semibold min-w-[140px]">Status</TableHead>
@@ -4093,7 +4094,7 @@ export function SalesOrderInvoiceManager() {
                           if (paginatedOrders.length === 0) {
                             return (
                               <TableRow>
-                                <TableCell colSpan={10} className="text-center py-8">
+                                <TableCell colSpan={11} className="text-center py-8">
                                   <div className="flex flex-col items-center gap-2">
                                     <Package className="h-8 w-8 text-gray-400" />
                                     <p className="text-gray-500">
@@ -4137,6 +4138,20 @@ export function SalesOrderInvoiceManager() {
                                       {order.customer?.formatted_address || order.customer?.address}
                                     </span>
                                   </span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col">
+                                {order.sales_representative ? (
+                                  <>
+                                    <span className="font-medium text-gray-900">{order.sales_representative.name}</span>
+                                    {order.sales_representative.email && (
+                                      <span className="text-xs text-gray-500 mt-1">📧 {order.sales_representative.email}</span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span className="text-xs text-gray-400 italic">Not assigned</span>
                                 )}
                               </div>
                             </TableCell>

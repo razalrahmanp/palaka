@@ -2731,6 +2731,245 @@ export function SalesOrderInvoiceManager() {
     );
   };
 
+  const handlePrintSalesOrders = () => {
+    // Get all filtered orders (not paginated)
+    const filteredOrders = filterSalesOrders(salesOrders, ordersSearchQuery, paymentStatusFilter);
+    
+    // Create a new window for printing
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Please allow popups to print');
+      return;
+    }
+    
+    // Generate print HTML
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Sales Orders Report - ${new Date().toLocaleDateString()}</title>
+        <style>
+          @page {
+            size: landscape;
+            margin: 1cm;
+          }
+          * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+          }
+          body {
+            font-family: Arial, sans-serif;
+            font-size: 10px;
+            color: #333;
+            padding: 20px;
+          }
+          .header {
+            text-align: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+          }
+          .header h1 {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #1e40af;
+          }
+          .header p {
+            font-size: 11px;
+            color: #666;
+          }
+          .summary {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #f3f4f6;
+            border-radius: 5px;
+          }
+          .summary-item {
+            text-align: center;
+          }
+          .summary-label {
+            font-size: 9px;
+            color: #666;
+            margin-bottom: 3px;
+          }
+          .summary-value {
+            font-size: 12px;
+            font-weight: bold;
+            color: #1e40af;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+          }
+          th {
+            background-color: #1e40af;
+            color: white;
+            padding: 8px 4px;
+            text-align: left;
+            font-size: 10px;
+            font-weight: bold;
+            border: 1px solid #1e40af;
+          }
+          td {
+            padding: 6px 4px;
+            border: 1px solid #ddd;
+            font-size: 9px;
+          }
+          tr:nth-child(even) {
+            background-color: #f9fafb;
+          }
+          .text-right {
+            text-align: right;
+          }
+          .text-center {
+            text-align: center;
+          }
+          .status-badge {
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 8px;
+            font-weight: bold;
+            display: inline-block;
+          }
+          .status-paid {
+            background-color: #d1fae5;
+            color: #065f46;
+          }
+          .status-partial {
+            background-color: #fef3c7;
+            color: #92400e;
+          }
+          .status-unpaid {
+            background-color: #fee2e2;
+            color: #991b1b;
+          }
+          .footer {
+            margin-top: 20px;
+            padding-top: 10px;
+            border-top: 1px solid #ddd;
+            text-align: center;
+            font-size: 9px;
+            color: #666;
+          }
+          @media print {
+            body {
+              padding: 10px;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>Sales Orders Report</h1>
+          <p>Generated on ${new Date().toLocaleString('en-IN', { dateStyle: 'full', timeStyle: 'short' })}</p>
+          <p>Total Records: ${filteredOrders.length}</p>
+        </div>
+        
+        <div class="summary">
+          <div class="summary-item">
+            <div class="summary-label">Total Orders Value</div>
+            <div class="summary-value">${formatCurrency(filteredOrders.reduce((sum, o) => sum + (o.final_price || o.total || 0), 0))}</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-label">Total Collected</div>
+            <div class="summary-value">${formatCurrency(filteredOrders.reduce((sum, o) => sum + (o.total_paid || 0), 0))}</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-label">Total Outstanding</div>
+            <div class="summary-value">${formatCurrency(filteredOrders.reduce((sum, o) => sum + (o.balance_due || 0), 0))}</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-label">Total Waived</div>
+            <div class="summary-value">${formatCurrency(filteredOrders.reduce((sum, o) => sum + (o.waived_amount || 0), 0))}</div>
+          </div>
+        </div>
+        
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 8%">Order ID</th>
+              <th style="width: 15%">Customer</th>
+              <th style="width: 12%">Sales Rep</th>
+              <th style="width: 8%">Date</th>
+              <th style="width: 10%" class="text-right">Order Value</th>
+              <th style="width: 8%" class="text-center">Status</th>
+              <th style="width: 9%" class="text-right">Paid</th>
+              <th style="width: 8%" class="text-right">Waived</th>
+              <th style="width: 9%" class="text-right">Balance</th>
+              <th style="width: 8%" class="text-center">Payment</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filteredOrders.map(order => {
+              const totalPaid = order.total_paid || 0;
+              const orderTotal = order.final_price || order.total || 0;
+              const waivedAmount = order.waived_amount || 0;
+              const balanceDue = order.balance_due || 0;
+              const effectivePaid = totalPaid + waivedAmount;
+              
+              let statusBadge = '';
+              let paymentBadge = '';
+              
+              if (!order.is_invoiced) {
+                statusBadge = '<span class="status-badge status-unpaid">Not Invoiced</span>';
+                paymentBadge = '<span class="status-badge status-unpaid">Unpaid</span>';
+              } else if (balanceDue <= 0 || effectivePaid >= orderTotal && orderTotal > 0) {
+                statusBadge = '<span class="status-badge status-paid">Fully Paid</span>';
+                paymentBadge = '<span class="status-badge status-paid">Paid</span>';
+              } else if (totalPaid > 0 || waivedAmount > 0) {
+                statusBadge = '<span class="status-badge status-partial">Partial</span>';
+                paymentBadge = '<span class="status-badge status-partial">Partial</span>';
+              } else {
+                statusBadge = '<span class="status-badge status-unpaid">Unpaid</span>';
+                paymentBadge = '<span class="status-badge status-unpaid">Unpaid</span>';
+              }
+              
+              return `
+                <tr>
+                  <td>#${order.id.slice(0, 8)}</td>
+                  <td>
+                    <strong>${order.customer?.name || 'Unknown'}</strong><br>
+                    <span style="color: #666; font-size: 8px;">${order.customer?.phone || 'N/A'}</span>
+                  </td>
+                  <td>${order.sales_representative?.name || 'Not assigned'}</td>
+                  <td>${formatDate(order.created_at)}</td>
+                  <td class="text-right"><strong>${formatCurrency(orderTotal)}</strong></td>
+                  <td class="text-center">${statusBadge}</td>
+                  <td class="text-right">${formatCurrency(totalPaid)}</td>
+                  <td class="text-right">${formatCurrency(waivedAmount)}</td>
+                  <td class="text-right"><strong>${formatCurrency(balanceDue)}</strong></td>
+                  <td class="text-center">${paymentBadge}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+        
+        <div class="footer">
+          <p>This is a computer-generated report. Page ${filteredOrders.length} records.</p>
+          <p>© ${new Date().getFullYear()} - Sales Orders Management System</p>
+        </div>
+        
+        <script>
+          window.onload = function() {
+            window.print();
+            // Close window after printing (optional)
+            // window.onafterprint = function() { window.close(); };
+          };
+        </script>
+      </body>
+      </html>
+    `;
+    
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+  };
+
   const handlePrintBill = async (order: SalesOrderWithInvoice) => {
     try {
       // Fetch order details with items and customer info
@@ -3735,86 +3974,86 @@ export function SalesOrderInvoiceManager() {
           {/* Summary Cards - Contextual based on active tab */}
           <div className="bg-gray-50 overflow-x-hidden">
             {activeTab === 'orders' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3 mb-4 p-4">
-                <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 shadow-md">
-                  <CardContent className="p-3">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-blue-500 rounded-lg">
-                        <Package className="h-4 w-4 text-white" />
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 mb-3 p-3">
+                <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 shadow-sm">
+                  <CardContent className="p-2">
+                    <div className="flex items-center gap-1.5">
+                      <div className="p-1 bg-blue-500 rounded">
+                        <Package className="h-3 w-3 text-white" />
                       </div>
-                      <div>
-                        <p className="text-xs text-blue-600 font-medium">Total Orders Value</p>
-                        <p className="text-lg font-bold text-blue-900">{formatCurrency(totalOrderValue)}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-yellow-200 shadow-md">
-                  <CardContent className="p-3">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-yellow-500 rounded-lg">
-                        <Clock className="h-4 w-4 text-white" />
-                      </div>
-                      <div>
-                        <p className="text-xs text-yellow-600 font-medium">Pending Invoicing</p>
-                        <p className="text-lg font-bold text-yellow-900">{formatCurrency(pendingInvoicing)}</p>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] text-blue-600 font-medium truncate">Total Orders</p>
+                        <p className="text-sm font-bold text-blue-900 truncate">{formatCurrency(totalOrderValue)}</p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 shadow-md">
-                  <CardContent className="p-3">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-green-500 rounded-lg">
-                        <FileText className="h-4 w-4 text-white" />
+                <Card className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-yellow-200 shadow-sm">
+                  <CardContent className="p-2">
+                    <div className="flex items-center gap-1.5">
+                      <div className="p-1 bg-yellow-500 rounded">
+                        <Clock className="h-3 w-3 text-white" />
                       </div>
-                      <div>
-                        <p className="text-xs text-green-600 font-medium">Already Invoiced</p>
-                        <p className="text-lg font-bold text-green-900">{formatCurrency(totalInvoiced)}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200 shadow-md">
-                  <CardContent className="p-3">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-emerald-500 rounded-lg">
-                        <DollarSign className="h-4 w-4 text-white" />
-                      </div>
-                      <div>
-                        <p className="text-xs text-emerald-600 font-medium">Total Collected</p>
-                        <p className="text-lg font-bold text-emerald-900">{formatCurrency(totalPaid)}</p>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] text-yellow-600 font-medium truncate">Pending</p>
+                        <p className="text-sm font-bold text-yellow-900 truncate">{formatCurrency(pendingInvoicing)}</p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 shadow-md">
-                  <CardContent className="p-3">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-red-500 rounded-lg">
-                        <AlertCircle className="h-4 w-4 text-white" />
+                <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 shadow-sm">
+                  <CardContent className="p-2">
+                    <div className="flex items-center gap-1.5">
+                      <div className="p-1 bg-green-500 rounded">
+                        <FileText className="h-3 w-3 text-white" />
                       </div>
-                      <div>
-                        <p className="text-xs text-red-600 font-medium">Outstanding</p>
-                        <p className="text-lg font-bold text-red-900">{formatCurrency(pendingPayments)}</p>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] text-green-600 font-medium truncate">Invoiced</p>
+                        <p className="text-sm font-bold text-green-900 truncate">{formatCurrency(totalInvoiced)}</p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200 shadow-md">
-                  <CardContent className="p-3">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-purple-500 rounded-lg">
-                        <Receipt className="h-4 w-4 text-white" />
+                <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200 shadow-sm">
+                  <CardContent className="p-2">
+                    <div className="flex items-center gap-1.5">
+                      <div className="p-1 bg-emerald-500 rounded">
+                        <DollarSign className="h-3 w-3 text-white" />
                       </div>
-                      <div>
-                        <p className="text-xs text-purple-600 font-medium">Payment Rate</p>
-                        <p className="text-lg font-bold text-purple-900">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] text-emerald-600 font-medium truncate">Collected</p>
+                        <p className="text-sm font-bold text-emerald-900 truncate">{formatCurrency(totalPaid)}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 shadow-sm">
+                  <CardContent className="p-2">
+                    <div className="flex items-center gap-1.5">
+                      <div className="p-1 bg-red-500 rounded">
+                        <AlertCircle className="h-3 w-3 text-white" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] text-red-600 font-medium truncate">Outstanding</p>
+                        <p className="text-sm font-bold text-red-900 truncate">{formatCurrency(pendingPayments)}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200 shadow-sm">
+                  <CardContent className="p-2">
+                    <div className="flex items-center gap-1.5">
+                      <div className="p-1 bg-purple-500 rounded">
+                        <Receipt className="h-3 w-3 text-white" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] text-purple-600 font-medium truncate">Pay Rate</p>
+                        <p className="text-sm font-bold text-purple-900 truncate">
                           {totalInvoiced > 0 ? Math.round((totalPaid / totalInvoiced) * 100) : 0}%
                         </p>
                       </div>
@@ -3967,60 +4206,30 @@ export function SalesOrderInvoiceManager() {
               <Tabs defaultValue="invoice-orders">
                 
                 <TabsContent value="invoice-orders" className="pt-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">Sales Orders List</h3>
-                      <p className="text-sm text-gray-600 mt-1">
-                        Manage and create invoices for all sales orders
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => fetchData()}
-                        className="flex items-center gap-2"
-                      >
-                        <Clock className="h-4 w-4" />
-                        Refresh List
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Search Bar and Filters for Sales Orders */}
-                  <div className="flex flex-col gap-4 mb-4">
-                    <div className="flex items-center gap-4">
-                      <div className="relative flex-1 max-w-md">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                  {/* Compact Single Line Header with All Controls */}
+                  <div className="flex items-center justify-between gap-2 mb-3 bg-gray-50 p-2 rounded-lg border flex-wrap">
+                    {/* Left: Title and Search */}
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <h3 className="text-sm font-semibold text-gray-900 whitespace-nowrap">Sales Orders List</h3>
+                      <div className="relative max-w-xs flex-1">
+                        <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 h-3 w-3" />
                         <Input
                           type="text"
-                          placeholder="Search orders by ID, customer, status, amount..."
+                          placeholder="Search orders..."
                           value={ordersSearchQuery}
                           onChange={(e) => {
                             setOrdersSearchQuery(e.target.value);
-                            setCurrentPage(1); // Reset to first page when searching
-                          }}
-                          className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                      </div>
-                      {ordersSearchQuery && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setOrdersSearchQuery('');
                             setCurrentPage(1);
                           }}
-                        >
-                          Clear
-                        </Button>
-                      )}
+                          className="pl-7 pr-2 py-1 text-xs h-7 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
                     </div>
                     
-                    {/* Payment Status Filters */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-700">Payment Status:</span>
-                      <div className="flex items-center gap-1">
+                    {/* Center: Payment Status Filters */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-medium text-gray-700 whitespace-nowrap">Payment:</span>
+                      <div className="flex items-center gap-0.5">
                         <Button
                           variant={paymentStatusFilter === 'all' ? 'default' : 'outline'}
                           size="sm"
@@ -4028,7 +4237,7 @@ export function SalesOrderInvoiceManager() {
                             setPaymentStatusFilter('all');
                             setCurrentPage(1);
                           }}
-                          className="text-xs"
+                          className="h-6 px-2 text-[10px]"
                         >
                           All
                         </Button>
@@ -4039,7 +4248,7 @@ export function SalesOrderInvoiceManager() {
                             setPaymentStatusFilter('paid');
                             setCurrentPage(1);
                           }}
-                          className="text-xs bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+                          className={`h-6 px-2 text-[10px] ${paymentStatusFilter === 'paid' ? 'bg-green-600 hover:bg-green-700' : 'border-green-600 text-green-600 hover:bg-green-50'}`}
                         >
                           Paid
                         </Button>
@@ -4050,7 +4259,7 @@ export function SalesOrderInvoiceManager() {
                             setPaymentStatusFilter('unpaid');
                             setCurrentPage(1);
                           }}
-                          className="text-xs bg-red-50 hover:bg-red-100 text-red-700 border-red-200"
+                          className={`h-6 px-2 text-[10px] ${paymentStatusFilter === 'unpaid' ? 'bg-red-600 hover:bg-red-700' : 'border-red-600 text-red-600 hover:bg-red-50'}`}
                         >
                           Unpaid
                         </Button>
@@ -4061,29 +4270,59 @@ export function SalesOrderInvoiceManager() {
                             setPaymentStatusFilter('partial');
                             setCurrentPage(1);
                           }}
-                          className="text-xs bg-yellow-50 hover:bg-yellow-100 text-yellow-700 border-yellow-200"
+                          className={`h-6 px-2 text-[10px] ${paymentStatusFilter === 'partial' ? 'bg-yellow-600 hover:bg-yellow-700' : 'border-yellow-600 text-yellow-600 hover:bg-yellow-50'}`}
                         >
-                          Partially Paid
+                          Partial
                         </Button>
                       </div>
                     </div>
+                    
+                    {/* Right: Action Buttons */}
+                    <div className="flex items-center gap-2 print-hide">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handlePrintSalesOrders}
+                        className="h-7 px-3 text-xs bg-gradient-to-r from-blue-50 to-blue-100 hover:from-blue-100 hover:to-blue-200 text-blue-700 border-blue-300 shadow-sm font-medium"
+                        title="Print Sales Orders"
+                      >
+                        <Printer className="h-3.5 w-3.5 mr-1.5" />
+                        Print
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fetchData()}
+                        className="h-7 w-7 p-0 rounded-full hover:bg-gray-100"
+                        title="Refresh List"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
 
-                  <div className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-x-auto">
+                  <div id="sales-orders-table" className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
+                    {/* Print Header - Only visible when printing */}
+                    <div className="print-only hidden print:block print-header p-4">
+                      <h1 className="text-2xl font-bold text-gray-900">Sales Orders Report</h1>
+                      <p className="text-sm text-gray-600">Generated on {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                      <p className="text-sm text-gray-600">Total Orders: {salesOrders.length} | Total Value: {formatCurrency(totalOrderValue)}</p>
+                    </div>
+                    <div className="overflow-x-auto">
                     <Table>
                       <TableHeader className="bg-gray-50/75">
                         <TableRow className="hover:bg-transparent">
-                          <TableHead className="font-semibold min-w-[120px]">Order ID</TableHead>
-                          <TableHead className="font-semibold min-w-[200px]">Customer Details</TableHead>
-                          <TableHead className="font-semibold min-w-[150px]">Sales Rep</TableHead>
-                          <TableHead className="font-semibold min-w-[120px]">Date</TableHead>
-                          <TableHead className="font-semibold min-w-[150px]">Order Value</TableHead>
-                          <TableHead className="font-semibold min-w-[140px]">Status</TableHead>
-                          <TableHead className="font-semibold min-w-[130px]">Paid Amt</TableHead>
-                          <TableHead className="font-semibold min-w-[120px]">Waived</TableHead>
-                          <TableHead className="font-semibold min-w-[130px]">Balance</TableHead>
-                          <TableHead className="font-semibold min-w-[120px]">Payment</TableHead>
-                          <TableHead className="font-semibold text-center min-w-[120px]">Actions</TableHead>
+                          <TableHead className="font-semibold w-24">Order ID</TableHead>
+                          <TableHead className="font-semibold w-40">Customer</TableHead>
+                          <TableHead className="font-semibold w-32">Sales Rep</TableHead>
+                          <TableHead className="font-semibold w-24">Date</TableHead>
+                          <TableHead className="font-semibold w-28 text-right">Value</TableHead>
+                          <TableHead className="font-semibold w-32">Status</TableHead>
+                          <TableHead className="font-semibold w-24 text-right">Paid</TableHead>
+                          <TableHead className="font-semibold w-20 text-right">Waived</TableHead>
+                          <TableHead className="font-semibold w-24 text-right">Balance</TableHead>
+                          <TableHead className="font-semibold w-24">Payment</TableHead>
+                          <TableHead className="font-semibold text-center w-24">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -4111,57 +4350,36 @@ export function SalesOrderInvoiceManager() {
                           
                           return paginatedOrders.map((order) => (
                             <TableRow key={order.id} className="hover:bg-gray-50/75 transition-colors border-b">
-                            <TableCell className="font-medium">
-                              <div className="flex flex-col">
-                                <span className="text-blue-600 font-semibold">#{order.id.slice(0, 8)}</span>
-                                <span className="text-xs text-gray-500">{order.order_number || `SO-${order.id.slice(0, 8)}`}</span>
+                            <TableCell className="py-2">
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-blue-600 font-semibold text-xs">#{order.id.slice(0, 8)}</span>
+                                <span className="text-[10px] text-gray-500">{order.order_number || `SO-${order.id.slice(0, 8)}`}</span>
                               </div>
                             </TableCell>
-                            <TableCell>
-                              <div className="flex flex-col">
-                                <div className="flex items-center gap-2">
-                                  <User className="h-4 w-4 text-gray-500" />
-                                  <span className="font-medium text-gray-900">{order.customer?.name || 'Unknown Customer'}</span>
-                                </div>
-                                <span className="text-xs text-gray-500 mt-1">
-                                  {order.customer?.phone ? 
-                                    `📞 ${order.customer.phone}` : 
-                                    order.customer?.email ? 
-                                      `📧 ${order.customer.email}` : 
-                                      '⚠️ No contact info'
-                                  }
+                            <TableCell className="py-2">
+                              <div className="flex flex-col gap-0.5">
+                                <span className="font-medium text-gray-900 text-xs truncate">{order.customer?.name || 'Unknown'}</span>
+                                <span className="text-[10px] text-gray-500 truncate">
+                                  {order.customer?.phone ? `📞 ${order.customer.phone}` : '⚠️ No contact'}
                                 </span>
-                                {(order.customer?.formatted_address || order.customer?.address) && (
-                                  <span className="text-xs text-gray-600 mt-1 flex items-start gap-1">
-                                    <span className="text-gray-400">📍</span>
-                                    <span className="line-clamp-2">
-                                      {order.customer?.formatted_address || order.customer?.address}
-                                    </span>
-                                  </span>
-                                )}
                               </div>
                             </TableCell>
-                            <TableCell>
-                              <div className="flex flex-col">
+                            <TableCell className="py-2">
+                              <div className="flex flex-col gap-0.5">
                                 {order.sales_representative ? (
                                   <>
-                                    <span className="font-medium text-gray-900">{order.sales_representative.name}</span>
-                                    {order.sales_representative.email && (
-                                      <span className="text-xs text-gray-500 mt-1">📧 {order.sales_representative.email}</span>
-                                    )}
+                                    <span className="font-medium text-gray-900 text-xs truncate">{order.sales_representative.name}</span>
+                                    <span className="text-[10px] text-gray-500 truncate">📧 {order.sales_representative.email?.split('@')[0]}</span>
                                   </>
                                 ) : (
-                                  <span className="text-xs text-gray-400 italic">Not assigned</span>
+                                  <span className="text-[10px] text-gray-400 italic">Not assigned</span>
                                 )}
                               </div>
                             </TableCell>
-                            <TableCell>
-                              <div className="flex flex-col">
-                                <div className="flex items-center gap-2">
-                                  <Calendar className="h-4 w-4 text-gray-500" />
-                                  <span className="font-medium">{formatDate(order.created_at)}</span>
-                                </div>
-                                <span className="text-xs text-gray-500 mt-1">{
+                            <TableCell className="py-2">
+                              <div className="flex flex-col gap-0.5">
+                                <span className="font-medium text-xs">{formatDate(order.created_at)}</span>
+                                <span className="text-[10px] text-gray-500">{
                                   new Date(order.created_at).toLocaleTimeString('en-US', { 
                                     hour: '2-digit', 
                                     minute: '2-digit'
@@ -4169,82 +4387,67 @@ export function SalesOrderInvoiceManager() {
                                 }</span>
                               </div>
                             </TableCell>
-                            <TableCell>
-                              <div className="flex flex-col">
-                                <span className="font-semibold text-gray-900">{formatCurrency(order.final_price || order.total_price || order.total || 0)}</span>
+                            <TableCell className="py-2 text-right">
+                              <div className="flex flex-col gap-0.5">
+                                <span className="font-semibold text-gray-900 text-xs">{formatCurrency(order.final_price || order.total_price || order.total || 0)}</span>
                                 {order.original_price && order.final_price !== order.original_price && (
-                                  <span className="text-xs text-gray-500 mt-1">Original: {formatCurrency(order.original_price)}</span>
+                                  <span className="text-[10px] text-gray-500">Orig: {formatCurrency(order.original_price)}</span>
                                 )}
                               </div>
                             </TableCell>
-                            <TableCell>
-                              <div className="flex flex-col gap-1">
-                                {/* Calculate invoice status based on actual payment amounts and waived amounts */}
+                            <TableCell className="py-2">
+                              <div className="flex flex-col gap-0.5">
                                 {(() => {
                                   const totalPaid = order.total_paid || 0;
                                   const orderTotal = order.final_price || order.total || 0;
                                   const waivedAmount = order.waived_amount || 0;
                                   const balanceDue = order.balance_due || 0;
-                                  const effectivePaid = totalPaid + waivedAmount; // Consider waived as paid
+                                  const effectivePaid = totalPaid + waivedAmount;
                                   
                                   if (!order.is_invoiced) {
-                                    return <Badge className="bg-gray-100 text-gray-800">Not Invoiced</Badge>;
+                                    return <Badge className="bg-gray-100 text-gray-800 text-[10px] px-1.5 py-0.5">Not Invoiced</Badge>;
                                   } else if (balanceDue <= 0 || effectivePaid >= orderTotal && orderTotal > 0) {
-                                    return <Badge className="bg-green-100 text-green-800">Fully Paid</Badge>;
+                                    return <Badge className="bg-green-100 text-green-800 text-[10px] px-1.5 py-0.5">Fully Paid</Badge>;
                                   } else if (totalPaid > 0 || waivedAmount > 0) {
-                                    return <Badge className="bg-yellow-100 text-yellow-800">Partially Paid</Badge>;
+                                    return <Badge className="bg-yellow-100 text-yellow-800 text-[10px] px-1.5 py-0.5">Partial</Badge>;
                                   } else {
-                                    return <Badge className="bg-red-100 text-red-800">Invoiced - Unpaid</Badge>;
+                                    return <Badge className="bg-red-100 text-red-800 text-[10px] px-1.5 py-0.5">Unpaid</Badge>;
                                   }
                                 })()}
-                                <span className="text-xs text-gray-500">
-                                  {order.invoice_count || 0} invoice(s)
-                                </span>
+                                <span className="text-[10px] text-gray-500">{order.invoice_count || 0} inv.</span>
                               </div>
                             </TableCell>
-                            <TableCell>
-                              <div className="flex flex-col">
-                                <span className="font-medium text-green-600">{formatCurrency(order.total_paid || 0)}</span>
-                                <span className="text-xs text-gray-500 mt-1">
-                                  {order.is_invoiced ? `${order.invoice_count} invoice(s)` : '0 invoices'}
-                                </span>
+                            <TableCell className="py-2 text-right">
+                              <div className="flex flex-col gap-0.5">
+                                <span className="font-medium text-green-600 text-xs">{formatCurrency(order.total_paid || 0)}</span>
+                                <span className="text-[10px] text-gray-500">{order.invoice_count || 0} inv.</span>
                               </div>
                             </TableCell>
-                            <TableCell>
-                              <div className="flex flex-col">
-                                <span className="font-medium text-purple-600">
-                                  {formatCurrency(order.waived_amount || 0)}
-                                </span>
-                                <span className="text-xs text-gray-500 mt-1">
-                                  {(order.waived_amount || 0) > 0 ? 'Waived off' : 'No waiver'}
-                                </span>
+                            <TableCell className="py-2 text-right">
+                              <div className="flex flex-col gap-0.5">
+                                <span className="font-medium text-purple-600 text-xs">{formatCurrency(order.waived_amount || 0)}</span>
+                                <span className="text-[10px] text-gray-500">{(order.waived_amount || 0) > 0 ? 'Waived' : 'No'}</span>
                               </div>
                             </TableCell>
-                            <TableCell>
-                              <div className="flex flex-col">
-                                <span className="font-medium text-orange-600">
-                                  {formatCurrency(order.balance_due || 0)}
-                                </span>
-                                <span className="text-xs text-gray-500 mt-1">
-                                  {(order.balance_due || 0) > 0 ? 'Outstanding' : 'Settled'}
-                                </span>
+                            <TableCell className="py-2 text-right">
+                              <div className="flex flex-col gap-0.5">
+                                <span className="font-medium text-orange-600 text-xs">{formatCurrency(order.balance_due || 0)}</span>
+                                <span className="text-[10px] text-gray-500">{(order.balance_due || 0) > 0 ? 'Due' : 'Settled'}</span>
                               </div>
                             </TableCell>
-                            <TableCell>
-                              <div className="flex flex-col gap-1">
+                            <TableCell className="py-2">
+                              <div className="flex flex-col gap-0.5">
                                 {getPaymentStatusBadge(order.payment_status || 'pending', order.total_paid || 0, order.final_price || order.total || 0, order.waived_amount || 0)}
-                                <span className="text-xs text-gray-500">
-                                  {formatCurrency(order.total_paid || 0)} received
-                                </span>
+                                <span className="text-[10px] text-gray-500">{formatCurrency(order.total_paid || 0)}</span>
                               </div>
                             </TableCell>
-                            <TableCell>
-                              <div className="flex items-center justify-center gap-1">
+                            <TableCell className="py-2">
+                              <div className="flex items-center justify-center gap-0.5">
                                 {/* Print Bill Button */}
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="bg-green-50 hover:bg-green-100 text-green-700 border-green-200 text-xs px-2 py-1"
+                                  className="bg-green-50 hover:bg-green-100 text-green-700 border-green-200 text-[10px] px-1.5 py-0.5 h-6"
                                   onClick={() => handlePrintBill(order)}
                                   title="Print Bill"
                                 >
@@ -4292,6 +4495,7 @@ export function SalesOrderInvoiceManager() {
                   </TableBody>
                 </Table>
                 </div>
+                  </div>
                 
                 {/* Pagination */}
                 <PaginationComponent />

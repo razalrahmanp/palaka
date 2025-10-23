@@ -155,9 +155,10 @@ export async function POST(req: Request) {
 
     if (expErr) return NextResponse.json({ error: expErr.message }, { status: 500 });
 
-    // 2. Create bank transaction (only for non-cash payments with valid bank account)
-    if (bank_account_id && bank_account_id.trim() !== '' && payment_method !== 'cash') {
-      console.log(`Creating bank transaction for ${payment_method} payment of ₹${amount}`);
+    // 2. Create bank transaction for ALL account types (BANK, UPI, CASH)
+    // KEY FIX: Removed payment_method !== 'cash' condition to support unified cash handling
+    if (bank_account_id && bank_account_id.trim() !== '') {
+      console.log(`💰 Creating bank transaction for ${payment_method} payment of ₹${amount} (account: ${bank_account_id})`);
       
       const { data: bankTransaction, error: bankTransError } = await supabase
         .from("bank_transactions")
@@ -183,10 +184,10 @@ export async function POST(req: Request) {
         console.log(`✅ Bank transaction created successfully: ${bankTransaction.id}`);
       }
 
-      // 3. Update bank account balance
+      // 3. Update bank account balance (works for BANK, UPI, and CASH accounts)
       const { data: bankAccount, error: bankError } = await supabase
         .from("bank_accounts")
-        .select("current_balance")
+        .select("current_balance, account_type")
         .eq("id", bank_account_id)
         .single();
       
@@ -202,11 +203,11 @@ export async function POST(req: Request) {
         if (updateError) {
           console.error('❌ Failed to update bank account balance:', updateError);
         } else {
-          console.log(`✅ Bank account balance updated: ${bankAccount.current_balance} → ${newBalance}`);
+          console.log(`✅ ${bankAccount.account_type} account balance updated: ${bankAccount.current_balance} → ${newBalance}`);
         }
       }
     } else {
-      console.log(`Cash expense of ₹${amount} - no bank transaction created (payment_method: ${payment_method}, bank_account_id: '${bank_account_id}')`);
+      console.log(`⚠️ No bank account specified for ${payment_method} expense of ₹${amount} - no transaction created`);
     }
 
     // 4. Update cashflow

@@ -92,27 +92,29 @@ export async function POST(request: Request) {
       }
     }
 
-    // Create bank transaction and update bank balance if bank account is used
-    if (bank_account_id && payment_method !== 'cash') {
+    // ✅ Update bank balance for ALL account types (BANK, UPI, CASH)
+    if (bank_account_id && bank_account_id.trim() !== '') {
       // NOTE: We do NOT create a bank_transaction here to avoid double-entry
       // The liability_payment record itself will be picked up by the bank-transactions API
       
-      // Only update bank account balance directly
+      // Get bank account details to determine account type
       const { data: bankAccount, error: bankError } = await supabase
         .from("bank_accounts")
-        .select("current_balance")
+        .select("current_balance, account_type, name")
         .eq("id", bank_account_id)
         .single();
       
       if (!bankError && bankAccount) {
+        // Update bank account balance (decrease for payment) - works for ALL account types
         const newBalance = (bankAccount.current_balance || 0) - total_amount;
         await supabase
           .from("bank_accounts")
           .update({ current_balance: newBalance })
           .eq("id", bank_account_id);
         
-        console.log('💰 Updated bank balance without creating duplicate transaction:', {
-          bankAccountId: bank_account_id,
+        console.log(`✅ ${bankAccount.account_type || 'BANK'} account balance updated:`, {
+          accountName: bankAccount.name,
+          accountType: bankAccount.account_type,
           oldBalance: bankAccount.current_balance,
           newBalance,
           deductedAmount: total_amount
@@ -249,6 +251,7 @@ async function createLiabilityPaymentJournalEntry({
   interest_amount,
   total_amount,
   description,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   payment_method,
   bank_account_id,
   created_by
@@ -292,9 +295,9 @@ async function createLiabilityPaymentJournalEntry({
 
   const interestExpenseAccount = '7010'; // Interest Expense
   
-  // Determine cash/bank account code
+  // ✅ Determine cash/bank account code for ALL account types (BANK, UPI, CASH)
   let cashAccountCode = '1110'; // Default: Cash
-  if (payment_method !== 'cash' && bank_account_id) {
+  if (bank_account_id && bank_account_id.trim() !== '') {
     // Fetch bank account details to get the correct account code
     const { data: bankAccount } = await supabase
       .from('bank_accounts')

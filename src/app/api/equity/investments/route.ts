@@ -152,32 +152,41 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: investmentError.message }, { status: 500 });
     }
 
-    // Create bank transaction and update bank balance if bank account is used
-    if (bank_account_id && payment_method !== 'cash') {
-      // Create bank transaction (investment increases bank balance)
-      await supabase
-        .from("bank_transactions")
-        .insert([{
-          bank_account_id,
-          date: investment_date,
-          type: "deposit",
-          amount: investmentAmount,
-          description: `Investment from ${partner.name}: ${description}`,
-        }]);
-
-      // Update bank account balance (increase for investment)
+    // ✅ Create bank transaction and update bank balance for ALL account types (BANK, UPI, CASH)
+    if (bank_account_id && bank_account_id.trim() !== '') {
+      // Get bank account details to determine account type
       const { data: bankAccount, error: bankError } = await supabase
         .from("bank_accounts")
-        .select("current_balance")
+        .select("current_balance, account_type, name")
         .eq("id", bank_account_id)
         .single();
       
       if (!bankError && bankAccount) {
+        // Create bank transaction (investment increases balance) - works for ALL account types
+        await supabase
+          .from("bank_transactions")
+          .insert([{
+            bank_account_id,
+            date: investment_date,
+            type: "deposit",
+            amount: investmentAmount,
+            description: `Investment from ${partner.name}: ${description}`,
+          }]);
+
+        // Update bank account balance (increase for investment)
         const newBalance = (bankAccount.current_balance || 0) + investmentAmount;
         await supabase
           .from("bank_accounts")
           .update({ current_balance: newBalance })
           .eq("id", bank_account_id);
+        
+        console.log(`✅ ${bankAccount.account_type || 'BANK'} account balance updated:`, {
+          accountName: bankAccount.name,
+          accountType: bankAccount.account_type,
+          oldBalance: bankAccount.current_balance,
+          newBalance,
+          depositAmount: investmentAmount
+        });
       }
     }
 

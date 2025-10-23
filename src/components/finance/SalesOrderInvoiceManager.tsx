@@ -74,7 +74,6 @@ import { getCurrentUser } from '@/lib/auth';
 import { RefundDialog } from './RefundDialog';
 import { InvoiceReturnExchangeDialog } from './InvoiceReturnExchangeDialog';
 import { FloatingActionMenu, createFinanceActions } from './FloatingActionMenu';
-import { CashTransactionManager } from '@/lib/cashTransactionManager';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 
@@ -558,7 +557,8 @@ export function SalesOrderInvoiceManager() {
     fetchData();
     fetchCustomers();
     fetchAllAccounts(); // Load accounts for fund transfer
-  }, [fetchCustomers]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Generate week dates (Monday to Sunday) based on selected date
   useEffect(() => {
@@ -1085,7 +1085,7 @@ export function SalesOrderInvoiceManager() {
     }
   };
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -1316,7 +1316,7 @@ export function SalesOrderInvoiceManager() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // Fetch all accounts for fund transfer dropdown
   const fetchAllAccounts = async () => {
@@ -1384,24 +1384,10 @@ export function SalesOrderInvoiceManager() {
       if (result.success) {
         const transferId = result.transfer_id;
 
-        // Handle cash transaction if cash account is involved
-        const fromAccount = allAccounts.find(acc => acc.id === fundTransfer.fromAccountId);
-        const toAccount = allAccounts.find(acc => acc.id === fundTransfer.toAccountId);
-        
-        // Check if either account is a cash account (assuming cash accounts have 'cash' in name or type)
-        const isFromCash = Boolean(fromAccount?.name?.toLowerCase().includes('cash') || fromAccount?.type?.toLowerCase().includes('cash'));
-        const isToCash = Boolean(toAccount?.name?.toLowerCase().includes('cash') || toAccount?.type?.toLowerCase().includes('cash'));
-        
-        if (isFromCash || isToCash) {
-          await CashTransactionManager.handleFundTransferCash(
-            transferId,
-            parseFloat(fundTransfer.amount),
-            fundTransfer.description || `Transfer from ${fromAccount?.name} to ${toAccount?.name}`,
-            fundTransfer.date,
-            isFromCash, // true if transferring FROM cash (debit), false if transferring TO cash (credit)
-            fundTransfer.reference
-          );
-        }
+        // ✅ REMOVED: No longer need CashTransactionManager call
+        // Cash transactions now handled by unified bank_transactions system
+        // The backend API automatically creates bank_transactions for ALL account types including CASH
+        console.log(`✅ Fund transfer created successfully: ${transferId}`);
 
         alert(`Fund transfer successful! ₹${fundTransfer.amount.toLocaleString()} transferred successfully.`);
         
@@ -3255,12 +3241,14 @@ export function SalesOrderInvoiceManager() {
         receipt_number: null // Could be added to form
       };
 
-      // Include cash_account_id for cash payments
+      // KEY FIX: Send cash_account_id AS bank_account_id for cash payments
+      // This ensures cash transactions create bank_transactions records
       if (expenseForm.payment_method === 'cash' && expenseForm.cash_account_id) {
-        expenseData.cash_account_id = expenseForm.cash_account_id;
+        expenseData.bank_account_id = expenseForm.cash_account_id; // Use cash account as bank account
+        expenseData.cash_account_id = expenseForm.cash_account_id; // Also keep for reference
       }
 
-      // Only include bank_account_id for non-cash payments (but not for cash deposits)
+      // Include bank_account_id for non-cash payments (but not for cash deposits)
       if (expenseForm.payment_method !== 'cash' && expenseForm.bank_account_id && expenseForm.category !== 'Cash to Bank Deposit') {
         expenseData.bank_account_id = expenseForm.bank_account_id;
       }
@@ -3290,16 +3278,10 @@ export function SalesOrderInvoiceManager() {
         const expenseResult = await response.json();
         const expenseId = expenseResult.id;
 
-        // Handle cash transaction if payment method is cash
-        if (expenseForm.payment_method === 'cash') {
-          await CashTransactionManager.handleExpenseCashPayment(
-            expenseId,
-            parseFloat(expenseForm.amount),
-            expenseForm.description + (getSelectedEntityDetails() ? ` [${getSelectedEntityDetails()?.name}]` : ''),
-            expenseForm.date,
-            getCurrentUser()?.id
-          );
-        }
+        // ✅ REMOVED: No longer need CashTransactionManager call
+        // Cash transactions now handled by unified bank_transactions system
+        // The backend API automatically creates bank_transactions for CASH accounts
+        console.log(`✅ Expense created successfully: ${expenseId}`);
 
         setCreateExpenseOpen(false);
         setExpenseForm({
@@ -3582,41 +3564,44 @@ export function SalesOrderInvoiceManager() {
       // Get current user for created_by field
       const currentUser = getCurrentUser();
       
+      // ✅ KEY FIX: Send cash_account_id AS bank_account_id for cash payments
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const investmentData: any = {
+        partner_id: investmentForm.investor_id,
+        category_id: investmentForm.category,
+        amount: parseFloat(investmentForm.amount),
+        description: investmentForm.description,
+        payment_method: investmentForm.payment_method,
+        upi_reference: investmentForm.upi_reference || null,
+        reference_number: investmentForm.reference_number || null,
+        investment_date: investmentForm.date,
+        notes: null,
+        created_by: currentUser?.id
+      };
+
+      // Send cash_account_id as bank_account_id when cash payment
+      if (investmentForm.payment_method === 'cash' && investmentForm.cash_account_id) {
+        investmentData.bank_account_id = investmentForm.cash_account_id; // Use cash account as bank account
+        investmentData.cash_account_id = investmentForm.cash_account_id; // Also keep for reference
+      } else if (investmentForm.payment_method !== 'cash' && investmentForm.bank_account_id) {
+        investmentData.bank_account_id = investmentForm.bank_account_id;
+      }
+
       const response = await fetch('/api/equity/investments', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          partner_id: investmentForm.investor_id,
-          category_id: investmentForm.category,
-          amount: parseFloat(investmentForm.amount),
-          description: investmentForm.description,
-          payment_method: investmentForm.payment_method,
-          bank_account_id: investmentForm.payment_method === 'cash' ? null : (investmentForm.bank_account_id || null),
-          cash_account_id: investmentForm.payment_method === 'cash' ? investmentForm.cash_account_id : null,
-          upi_reference: investmentForm.upi_reference || null,
-          reference_number: investmentForm.reference_number || null,
-          investment_date: investmentForm.date,
-          notes: null,
-          created_by: currentUser?.id // Add current user ID from auth
-        }),
+        body: JSON.stringify(investmentData),
       });
 
       if (response.ok) {
         const result = await response.json();
         const investmentId = result.id;
 
-        // Handle cash transaction if payment method is cash
-        if (investmentForm.payment_method === 'cash') {
-          await CashTransactionManager.handleInvestmentCashPayment(
-            investmentId,
-            parseFloat(investmentForm.amount),
-            investmentForm.description,
-            investmentForm.date,
-            getCurrentUser()?.id
-          );
-        }
+        // ✅ REMOVED: No longer need CashTransactionManager call
+        // Cash transactions now handled by unified bank_transactions system
+        console.log(`✅ Investment created successfully: ${investmentId}`);
 
         setCreateInvestmentOpen(false);
         
@@ -3690,43 +3675,46 @@ export function SalesOrderInvoiceManager() {
     setWithdrawalLoading(true);
 
     try {
+      // ✅ KEY FIX: Send cash_account_id AS bank_account_id for cash payments
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const withdrawalData: any = {
+        partner_id: withdrawalForm.partner_id,
+        category_id: withdrawalForm.category_id,
+        subcategory_id: withdrawalForm.subcategory_id || null,
+        amount: parseFloat(withdrawalForm.amount),
+        description: withdrawalForm.description,
+        payment_method: withdrawalForm.payment_method,
+        upi_reference: withdrawalForm.upi_reference || null,
+        reference_number: withdrawalForm.reference_number || null,
+        withdrawal_date: withdrawalForm.date,
+        withdrawal_type: withdrawalForm.withdrawal_type,
+        notes: null,
+        created_by: getCurrentUser()?.id
+      };
+
+      // Send cash_account_id as bank_account_id when cash payment
+      if (withdrawalForm.payment_method === 'cash' && withdrawalForm.cash_account_id) {
+        withdrawalData.bank_account_id = withdrawalForm.cash_account_id; // Use cash account as bank account
+        withdrawalData.cash_account_id = withdrawalForm.cash_account_id; // Also keep for reference
+      } else if (withdrawalForm.payment_method !== 'cash' && withdrawalForm.bank_account_id) {
+        withdrawalData.bank_account_id = withdrawalForm.bank_account_id;
+      }
+
       const response = await fetch('/api/equity/withdrawals', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          partner_id: withdrawalForm.partner_id,
-          category_id: withdrawalForm.category_id,
-          subcategory_id: withdrawalForm.subcategory_id || null,
-          amount: parseFloat(withdrawalForm.amount),
-          description: withdrawalForm.description,
-          payment_method: withdrawalForm.payment_method,
-          bank_account_id: withdrawalForm.payment_method === 'cash' ? null : (withdrawalForm.bank_account_id || null),
-          cash_account_id: withdrawalForm.payment_method === 'cash' ? withdrawalForm.cash_account_id : null,
-          upi_reference: withdrawalForm.upi_reference || null,
-          reference_number: withdrawalForm.reference_number || null,
-          withdrawal_date: withdrawalForm.date,
-          withdrawal_type: withdrawalForm.withdrawal_type, // Add withdrawal type
-          notes: null,
-          created_by: getCurrentUser()?.id
-        }),
+        body: JSON.stringify(withdrawalData),
       });
 
       if (response.ok) {
         const result = await response.json();
         const withdrawalId = result.id;
 
-        // Handle cash transaction if payment method is cash
-        if (withdrawalForm.payment_method === 'cash') {
-          await CashTransactionManager.handleWithdrawalCashPayment(
-            withdrawalId,
-            parseFloat(withdrawalForm.amount),
-            withdrawalForm.description,
-            withdrawalForm.date,
-            getCurrentUser()?.id
-          );
-        }
+        // ✅ REMOVED: No longer need CashTransactionManager call
+        // Cash transactions now handled by unified bank_transactions system
+        console.log(`✅ Withdrawal created successfully: ${withdrawalId}`);
 
         setCreateWithdrawalOpen(false);
         
@@ -3817,42 +3805,45 @@ export function SalesOrderInvoiceManager() {
         payment_method: liabilityForm.payment_method
       });
       
+      // ✅ KEY FIX: Send cash_account_id AS bank_account_id for cash payments
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const liabilityData: any = {
+        date: liabilityForm.date,
+        liability_type: liabilityForm.liability_type,
+        loan_id: loan_id,
+        principal_amount: principalAmount,
+        interest_amount: interestAmount,
+        total_amount: totalAmount,
+        description: liabilityForm.description,
+        payment_method: liabilityForm.payment_method,
+        upi_reference: liabilityForm.upi_reference || null,
+        reference_number: liabilityForm.reference_number || null,
+        created_by: getCurrentUser()?.id
+      };
+
+      // Send cash_account_id as bank_account_id when cash payment
+      if (liabilityForm.payment_method === 'cash' && liabilityForm.cash_account_id) {
+        liabilityData.bank_account_id = liabilityForm.cash_account_id; // Use cash account as bank account
+        liabilityData.cash_account_id = liabilityForm.cash_account_id; // Also keep for reference
+      } else if (liabilityForm.payment_method !== 'cash' && liabilityForm.bank_account_id) {
+        liabilityData.bank_account_id = liabilityForm.bank_account_id;
+      }
+
       const response = await fetch('/api/finance/liability-payments', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          date: liabilityForm.date,
-          liability_type: liabilityForm.liability_type,
-          loan_id: loan_id,
-          principal_amount: principalAmount,
-          interest_amount: interestAmount,
-          total_amount: totalAmount,
-          description: liabilityForm.description,
-          payment_method: liabilityForm.payment_method,
-          bank_account_id: liabilityForm.payment_method === 'cash' ? null : (liabilityForm.bank_account_id || null),
-          cash_account_id: liabilityForm.payment_method === 'cash' ? liabilityForm.cash_account_id : null,
-          upi_reference: liabilityForm.upi_reference || null,
-          reference_number: liabilityForm.reference_number || null,
-          created_by: getCurrentUser()?.id
-        }),
+        body: JSON.stringify(liabilityData),
       });
 
       if (response.ok) {
         const result = await response.json();
         const liabilityPaymentId = result.id;
 
-        // Handle cash transaction if payment method is cash
-        if (liabilityForm.payment_method === 'cash') {
-          await CashTransactionManager.handleLiabilityCashPayment(
-            liabilityPaymentId,
-            totalAmount,
-            liabilityForm.description,
-            liabilityForm.date,
-            getCurrentUser()?.id
-          );
-        }
+        // ✅ REMOVED: No longer need CashTransactionManager call
+        // Cash transactions now handled by unified bank_transactions system
+        console.log(`✅ Liability payment created successfully: ${liabilityPaymentId}`);
 
         setCreateLiabilityOpen(false);
         

@@ -279,46 +279,37 @@ export const ProductLabels: React.FC<Props> = ({ products }) => {
 
   return (
     <div className="space-y-6">
-      {/* Enhanced Filter Section */}
-      <Card className="border-none shadow-lg bg-gradient-to-r from-blue-50 to-indigo-50">
-        <CardHeader className="pb-3">
+      {/* Compact Filter Section */}
+      <Card className="bg-white border shadow-sm">
+        <CardHeader className="pb-2 pt-3 px-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Filter className="h-5 w-5 text-blue-600" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">Product Filters</h3>
-                <p className="text-sm text-gray-600">Refine your product search</p>
-              </div>
-            </div>
             <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-blue-600" />
+              <h3 className="text-sm font-semibold text-gray-900">Filters</h3>
               {hasActiveFilters && (
-                <Badge variant="secondary" className="bg-blue-100 text-blue-700">
-                  {Object.values(filters).filter(Boolean).length} active
+                <Badge variant="secondary" className="bg-blue-100 text-blue-700 text-xs h-5">
+                  {Object.values(filters).filter(Boolean).length}
                 </Badge>
               )}
+            </div>
+            <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setIsFiltersCollapsed(!isFiltersCollapsed)}
-                className="text-gray-600 hover:text-gray-900"
+                className="h-7 w-7 p-0"
               >
-                {isFiltersCollapsed ? (
-                  <ChevronDown className="h-4 w-4" />
-                ) : (
-                  <ChevronUp className="h-4 w-4" />
-                )}
+                {isFiltersCollapsed ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
               </Button>
               {hasActiveFilters && (
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
                   onClick={clearFilters}
-                  className="border-red-200 text-red-600 hover:bg-red-50"
+                  className="h-7 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
                 >
-                  <X className="h-4 w-4 mr-1" />
-                  Clear All
+                  <X className="h-3 w-3 mr-1" />
+                  Clear
                 </Button>
               )}
             </div>
@@ -326,283 +317,206 @@ export const ProductLabels: React.FC<Props> = ({ products }) => {
         </CardHeader>
         
         {!isFiltersCollapsed && (
-          <CardContent className="pt-0">
-            {/* Primary Filters Row */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              {/* Enhanced Search Input */}
-              <div className="lg:col-span-2 space-y-2">
-                <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                  <Search className="h-4 w-4" />
-                  Quick Search
-                </label>
+          <CardContent className="p-4 pt-2 space-y-3">
+            {/* Row 1: Search + Product + Supplier + Location */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Search */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-600">Quick Search</label>
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
                   <Input
-                    placeholder="Search by name, SKU, category..."
+                    placeholder="Name, SKU, category..."
                     value={filters.search}
-                    onChange={(e) => {
-                      // Instant update - no delays!
-                      setFilters(prev => ({ ...prev, search: e.target.value }))
-                    }}
-                    className="pl-10 pr-10 border-gray-200 focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                    onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+                    className="pl-8 pr-8 h-8 text-sm"
                   />
                   {isSearching ? (
-                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                      <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
-                    </div>
+                    <Loader2 className="absolute right-2 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 animate-spin text-blue-500" />
                   ) : filters.search && (
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => setFilters(prev => ({ ...prev, search: '' }))}
-                      className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0 hover:bg-gray-100"
+                      className="absolute right-0 top-1/2 transform -translate-y-1/2 h-7 w-7 p-0"
                     >
                       <X className="h-3 w-3" />
                     </Button>
                   )}
                 </div>
-                {filters.search && filters.search.length >= 2 && (
-                  <div className="text-xs text-gray-500 bg-white px-2 py-1 rounded border">
-                    {searchResults.length > 0 ? (
-                      <span className="text-green-600">✓ Found {searchResults.length} products via search</span>
-                    ) : isSearching ? (
-                      <span className="text-blue-600">🔍 Searching...</span>
-                    ) : (
-                      <span className="text-gray-600">📱 Using local filter</span>
-                    )}
-                  </div>
-                )}
               </div>
 
-              {/* Product Selection */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Product Name</label>
+              {/* Product */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-600">Product Name</label>
                 <Select
                   value={filters.selectedProduct}
-                  onValueChange={(value) => setFilters(prev => ({ 
-                    ...prev, 
-                    selectedProduct: value === 'all' ? '' : value 
-                  }))}
+                  onValueChange={(value) => setFilters(prev => ({ ...prev, selectedProduct: value === 'all' ? '' : value }))}
                 >
-                  <SelectTrigger className="border-gray-200 focus:border-blue-500">
+                  <SelectTrigger className="h-8 text-sm">
                     <SelectValue placeholder="All products" />
                   </SelectTrigger>
                   <SelectContent className="max-h-48">
-                    <SelectItem value="all">
-                      <span className="font-medium">All products</span>
-                    </SelectItem>
+                    <SelectItem value="all">All products</SelectItem>
                     {uniqueProductNames.map((name) => (
-                      <SelectItem key={name} value={name}>
-                        {name}
-                      </SelectItem>
+                      <SelectItem key={name} value={name}>{name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
 
-              {/* Supplier Filter */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Supplier</label>
+              {/* Supplier */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-600">Supplier</label>
                 <Select
                   value={filters.supplier}
-                  onValueChange={(value) => setFilters(prev => ({ 
-                    ...prev, 
-                    supplier: value === 'all' ? '' : value 
-                  }))}
+                  onValueChange={(value) => setFilters(prev => ({ ...prev, supplier: value === 'all' ? '' : value }))}
                 >
-                  <SelectTrigger className="border-gray-200 focus:border-blue-500">
+                  <SelectTrigger className="h-8 text-sm">
                     <SelectValue placeholder="All suppliers" />
                   </SelectTrigger>
                   <SelectContent className="max-h-48">
-                    <SelectItem value="all">
-                      <span className="font-medium">All suppliers</span>
-                    </SelectItem>
-                    {suppliers.map((supplier) => (
-                      <SelectItem key={supplier.id} value={supplier.id}>
-                        {supplier.name}
-                      </SelectItem>
+                    <SelectItem value="all">All suppliers</SelectItem>
+                    {suppliers.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Location */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-600">Location</label>
+                <Select
+                  value={filters.location}
+                  onValueChange={(value) => setFilters(prev => ({ ...prev, location: value === 'all' ? '' : value }))}
+                >
+                  <SelectTrigger className="h-8 text-sm">
+                    <SelectValue placeholder="All locations" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-48">
+                    <SelectItem value="all">All locations</SelectItem>
+                    {uniqueLocations.map((loc) => (
+                      <SelectItem key={loc} value={loc}>{loc}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
-            {/* Secondary Filters Row */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              {/* Location Filter */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Location</label>
-                <Select
-                  value={filters.location}
-                  onValueChange={(value) => setFilters(prev => ({ 
-                    ...prev, 
-                    location: value === 'all' ? '' : value 
-                  }))}
-                >
-                  <SelectTrigger className="border-gray-200 focus:border-blue-500">
-                    <SelectValue placeholder="All locations" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-48">
-                    <SelectItem value="all">
-                      <span className="font-medium">All locations</span>
-                    </SelectItem>
-                    {uniqueLocations.map((location) => (
-                      <SelectItem key={location} value={location}>
-                        {location}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Date Type Toggle */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Date Filter Type</label>
+            {/* Row 2: Date Type + Date From + Date To + Quick Dates */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3 items-end">
+              {/* Date Type */}
+              <div className="space-y-1 lg:col-span-1">
+                <label className="text-xs font-medium text-gray-600">Date Type</label>
                 <Select
                   value={filters.dateType}
-                  onValueChange={(value: 'created' | 'updated') => setFilters(prev => ({ 
-                    ...prev, 
-                    dateType: value 
-                  }))}
+                  onValueChange={(value: 'created' | 'updated') => setFilters(prev => ({ ...prev, dateType: value }))}
                 >
-                  <SelectTrigger className="border-gray-200 focus:border-blue-500">
+                  <SelectTrigger className="h-8 text-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="updated">📅 Updated Date</SelectItem>
-                    <SelectItem value="created">🆕 Created Date</SelectItem>
+                    <SelectItem value="updated">📅 Updated</SelectItem>
+                    <SelectItem value="created">🆕 Created</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               {/* Date From */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">
-                  {filters.dateType === 'created' ? 'Created From' : 'Updated From'}
-                </label>
+              <div className="space-y-1 lg:col-span-2">
+                <label className="text-xs font-medium text-gray-600">From</label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start text-left font-normal border-gray-200 hover:border-blue-500"
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4 text-gray-500" />
-                      {filters.dateFrom ? (
-                        <span className="text-gray-900">{format(filters.dateFrom, "MMM dd, yyyy")}</span>
-                      ) : (
-                        <span className="text-gray-500">Select start date</span>
-                      )}
+                    <Button variant="outline" className="w-full h-8 justify-start text-left text-sm font-normal">
+                      <CalendarIcon className="mr-1 h-3.5 w-3.5 text-gray-400" />
+                      {filters.dateFrom ? format(filters.dateFrom, "MMM dd, yyyy") : "Start date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={filters.dateFrom}
-                      onSelect={(date) => setFilters(prev => ({ ...prev, dateFrom: date }))}
-                      initialFocus
-                    />
+                    <Calendar mode="single" selected={filters.dateFrom} onSelect={(date) => setFilters(prev => ({ ...prev, dateFrom: date }))} initialFocus />
                   </PopoverContent>
                 </Popover>
               </div>
 
               {/* Date To */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">
-                  {filters.dateType === 'created' ? 'Created To' : 'Updated To'}
-                </label>
+              <div className="space-y-1 lg:col-span-2">
+                <label className="text-xs font-medium text-gray-600">To</label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start text-left font-normal border-gray-200 hover:border-blue-500"
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4 text-gray-500" />
-                      {filters.dateTo ? (
-                        <span className="text-gray-900">{format(filters.dateTo, "MMM dd, yyyy")}</span>
-                      ) : (
-                        <span className="text-gray-500">Select end date</span>
-                      )}
+                    <Button variant="outline" className="w-full h-8 justify-start text-left text-sm font-normal">
+                      <CalendarIcon className="mr-1 h-3.5 w-3.5 text-gray-400" />
+                      {filters.dateTo ? format(filters.dateTo, "MMM dd, yyyy") : "End date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={filters.dateTo}
-                      onSelect={(date) => setFilters(prev => ({ ...prev, dateTo: date }))}
-                      initialFocus
-                    />
+                    <Calendar mode="single" selected={filters.dateTo} onSelect={(date) => setFilters(prev => ({ ...prev, dateTo: date }))} initialFocus />
                   </PopoverContent>
                 </Popover>
               </div>
-            </div>
 
-            {/* Quick Filter Buttons */}
-            <div className="flex flex-wrap gap-2 mb-4">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const today = new Date()
-                  setFilters(prev => ({ ...prev, dateFrom: today, dateTo: today }))
-                  setCurrentPage(1) // Reset to first page
-                }}
-                className="text-xs bg-white hover:bg-blue-50 border-blue-200 text-blue-700"
-              >
-                📅 Today
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const today = new Date()
-                  const lastWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
-                  setFilters(prev => ({ ...prev, dateFrom: lastWeek, dateTo: today }))
-                  setCurrentPage(1) // Reset to first page
-                }}
-                className="text-xs bg-white hover:bg-green-50 border-green-200 text-green-700"
-              >
-                📊 Last 7 Days
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const today = new Date()
-                  const lastMonth = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
-                  setFilters(prev => ({ ...prev, dateFrom: lastMonth, dateTo: today }))
-                  setCurrentPage(1) // Reset to first page
-                }}
-                className="text-xs bg-white hover:bg-purple-50 border-purple-200 text-purple-700"
-              >
-                📈 Last 30 Days
-              </Button>
-            </div>
-
-            {/* Enhanced Filter Results Summary */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="text-sm font-medium text-gray-900">
-                    Showing {paginatedProducts.length} of {filteredProducts.length} products
-                  </div>
-                  {filteredProducts.length > itemsPerPage && (
-                    <Badge variant="outline" className="text-xs">
-                      Page {currentPage} of {totalPages}
-                    </Badge>
-                  )}
-                  {hasActiveFilters && (
-                    <Badge className="bg-blue-100 text-blue-700 border-blue-200">
-                      Filtered
-                    </Badge>
-                  )}
-                </div>
-                <div className="text-xs text-gray-500">
-                  {filteredProducts.length === products.length ? 
-                    "All products shown" : 
-                    `${products.length - filteredProducts.length} products hidden by filters`
-                  }
+              {/* Quick Date Buttons */}
+              <div className="space-y-1 lg:col-span-2">
+                <label className="text-xs font-medium text-gray-600">Quick</label>
+                <div className="flex gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const today = new Date()
+                      setFilters(prev => ({ ...prev, dateFrom: today, dateTo: today }))
+                      setCurrentPage(1)
+                    }}
+                    className="h-8 px-2 text-xs flex-1"
+                    title="Today"
+                  >
+                    📅
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const today = new Date()
+                      const lastWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
+                      setFilters(prev => ({ ...prev, dateFrom: lastWeek, dateTo: today }))
+                      setCurrentPage(1)
+                    }}
+                    className="h-8 px-2 text-xs flex-1"
+                    title="Last 7 Days"
+                  >
+                    7D
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const today = new Date()
+                      const lastMonth = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
+                      setFilters(prev => ({ ...prev, dateFrom: lastMonth, dateTo: today }))
+                      setCurrentPage(1)
+                    }}
+                    className="h-8 px-2 text-xs flex-1"
+                    title="Last 30 Days"
+                  >
+                    30D
+                  </Button>
                 </div>
               </div>
+            </div>
+
+            {/* Results Summary - Compact */}
+            <div className="flex items-center justify-between pt-2 border-t text-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-gray-900">
+                  Showing {paginatedProducts.length} of {filteredProducts.length}
+                </span>
+                {filteredProducts.length > itemsPerPage && (
+                  <Badge variant="outline" className="text-xs h-5">Page {currentPage}/{totalPages}</Badge>
+                )}
+              </div>
+              <span className="text-gray-500">
+                {filteredProducts.length === products.length ? "All products" : `${products.length - filteredProducts.length} filtered out`}
+              </span>
             </div>
           </CardContent>
         )}

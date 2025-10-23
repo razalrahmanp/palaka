@@ -94,6 +94,7 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefil
   const [currentView, setCurrentView] = useState<'create' | 'list'>('list');
   const [refunds, setRefunds] = useState<RefundRequest[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [cashAccounts, setCashAccounts] = useState<BankAccount[]>([]); // ✅ Add cash accounts state
   const [selectedBankAccount, setSelectedBankAccount] = useState<BankAccount | null>(null);
   const [editingRefund, setEditingRefund] = useState<RefundRequest | null>(null);
   const [formData, setFormData] = useState({
@@ -102,6 +103,7 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefil
     reason: '',
     refund_method: 'bank_transfer',
     bank_account_id: '',
+    cash_account_id: '', // ✅ Add cash account ID
     reference_number: '',
     refund_date: new Date().toISOString().split('T')[0], // Add refund date field
     notes: ''
@@ -128,6 +130,23 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefil
     }
   }, []);
 
+  // ✅ Add fetch cash accounts function
+  const fetchCashAccounts = useCallback(async () => {
+    try {
+      const response = await fetch('/api/finance/bank-accounts?type=CASH');
+      const result = await response.json();
+      if (result.success) {
+        const cashTypeAccounts = (result.data || []).filter(
+          (account: BankAccount) => account.account_type === 'CASH'
+        );
+        setCashAccounts(cashTypeAccounts);
+        console.log('💵 Cash accounts loaded for refunds:', cashTypeAccounts.length);
+      }
+    } catch (error) {
+      console.error('Error fetching cash accounts:', error);
+    }
+  }, []);
+
   const fetchRefunds = useCallback(async () => {
     if (!invoice) return;
 
@@ -147,8 +166,9 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefil
     if (isOpen && invoice) {
       fetchRefunds();
       fetchBankAccounts();
+      fetchCashAccounts(); // ✅ Fetch cash accounts
     }
-  }, [isOpen, invoice, fetchRefunds, fetchBankAccounts]);
+  }, [isOpen, invoice, fetchRefunds, fetchBankAccounts, fetchCashAccounts]);
 
   // Update selected bank account when bank_account_id changes
   useEffect(() => {
@@ -223,6 +243,18 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefil
       return;
     }
 
+    // ✅ Validate cash account selection for cash refunds
+    if (formData.refund_method === 'cash' && !formData.cash_account_id) {
+      alert('Please select a cash account for cash refund');
+      return;
+    }
+
+    // Validate bank account for bank transfers and cheques
+    if ((formData.refund_method === 'bank_transfer' || formData.refund_method === 'cheque') && !formData.bank_account_id) {
+      alert('Please select a bank account for this refund method');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -243,13 +275,20 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefil
 
       console.log('📤 Sending refund request with user ID:', currentUser.id);
 
-      const requestBody = {
+      // ✅ KEY FIX: Send cash_account_id AS bank_account_id for cash refunds
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const requestBody: Record<string, any> = {
         ...formData,
         refund_amount: refundAmount,
         requested_by: currentUser.id,
         processed_at: formData.refund_date, // Use the selected date as processed_at
         return_id: returnId || null // ✅ Include return_id if provided
       };
+
+      // Send cash_account_id as bank_account_id when cash refund
+      if (formData.refund_method === 'cash' && formData.cash_account_id) {
+        requestBody.bank_account_id = formData.cash_account_id; // Use cash account as bank account
+      }
 
       console.log('🔍 CRITICAL DEBUG - Request Body Construction:', {
         returnIdProp: returnId,
@@ -287,6 +326,7 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefil
           reason: '',
           refund_method: 'bank_transfer',
           bank_account_id: '',
+          cash_account_id: '', // ✅ Add cash account ID
           reference_number: '',
           refund_date: new Date().toISOString().split('T')[0],
           notes: ''
@@ -327,6 +367,7 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefil
       reason: refund.reason,
       refund_method: refund.refund_method,
       bank_account_id: refund.bank_account_id || '',
+      cash_account_id: '', // ✅ Add cash account ID (will be populated if refund method is cash)
       reference_number: refund.reference_number || '',
       refund_date: refund.processed_at ? new Date(refund.processed_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
       notes: refund.notes || ''
@@ -410,6 +451,7 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefil
                     reason: '',
                     refund_method: 'bank_transfer',
                     bank_account_id: '',
+                    cash_account_id: '', // ✅ Add cash account ID
                     reference_number: '',
                     refund_date: new Date().toISOString().split('T')[0],
                     notes: ''
@@ -718,6 +760,50 @@ export function RefundDialog({ isOpen, onClose, invoice, onRefundCreated, prefil
                     )}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ✅ Cash Account Selection - Show only for cash refunds */}
+            {formData.refund_method === 'cash' && (
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="cash_account_id">Cash Account *</Label>
+                  <Select 
+                    value={formData.cash_account_id} 
+                    onValueChange={(value) => setFormData({...formData, cash_account_id: value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select cash account (e.g., CASH-PETTY)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {cashAccounts && cashAccounts.length > 0 ? (
+                        cashAccounts.map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            {account.name} - ₹{account.current_balance.toLocaleString()}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="no-accounts" disabled>
+                          No cash accounts available
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {(!cashAccounts || cashAccounts.length === 0) && (
+                    <p className="text-xs text-red-600 mt-1">
+                      ⚠️ Please create a cash account first (e.g., CASH-PETTY)
+                    </p>
+                  )}
+                </div>
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="h-4 w-4 text-green-600" />
+                    <span className="text-sm font-medium text-green-900">Cash Refund</span>
+                  </div>
+                  <div className="mt-1 text-sm text-green-700">
+                    This refund will be deducted from the selected cash account balance
+                  </div>
+                </div>
               </div>
             )}
 

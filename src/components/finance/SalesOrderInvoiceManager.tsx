@@ -76,6 +76,7 @@ import { InvoiceReturnExchangeDialog } from './InvoiceReturnExchangeDialog';
 import { FloatingActionMenu, createFinanceActions } from './FloatingActionMenu';
 import { CashTransactionManager } from '@/lib/cashTransactionManager';
 import { toast } from 'sonner';
+import * as XLSX from 'xlsx';
 
 // Component interfaces and types
 
@@ -2970,6 +2971,104 @@ export function SalesOrderInvoiceManager() {
     printWindow.document.close();
   };
 
+  const handleExportToExcel = () => {
+    // Get all filtered orders (not paginated)
+    const filteredOrders = filterSalesOrders(salesOrders, ordersSearchQuery, paymentStatusFilter);
+    
+    // Calculate summary totals
+    const totalOrdersValue = filteredOrders.reduce((sum, o) => sum + (o.final_price || o.total || 0), 0);
+    const totalCollected = filteredOrders.reduce((sum, o) => sum + (o.total_paid || 0), 0);
+    const totalOutstanding = filteredOrders.reduce((sum, o) => sum + (o.balance_due || 0), 0);
+    const totalWaived = filteredOrders.reduce((sum, o) => sum + (o.waived_amount || 0), 0);
+    
+    // Prepare data for Excel
+    const excelData = filteredOrders.map(order => {
+      const totalPaid = order.total_paid || 0;
+      const orderTotal = order.final_price || order.total || 0;
+      const waivedAmount = order.waived_amount || 0;
+      const balanceDue = order.balance_due || 0;
+      const effectivePaid = totalPaid + waivedAmount;
+      
+      let status = '';
+      let paymentStatus = '';
+      
+      if (!order.is_invoiced) {
+        status = 'Not Invoiced';
+        paymentStatus = 'Unpaid';
+      } else if (balanceDue <= 0 || (effectivePaid >= orderTotal && orderTotal > 0)) {
+        status = 'Fully Paid';
+        paymentStatus = 'Paid';
+      } else if (totalPaid > 0 || waivedAmount > 0) {
+        status = 'Partial';
+        paymentStatus = 'Partial';
+      } else {
+        status = 'Unpaid';
+        paymentStatus = 'Unpaid';
+      }
+      
+      return {
+        'Order ID': `#${order.id.slice(0, 8)}`,
+        'Customer Name': order.customer?.name || 'Unknown',
+        'Customer Phone': order.customer?.phone || 'N/A',
+        'Sales Representative': order.sales_representative?.name || 'Not assigned',
+        'Sales Rep Email': order.sales_representative?.email || 'N/A',
+        'Order Date': formatDate(order.created_at),
+        'Order Value': orderTotal,
+        'Status': status,
+        'Amount Paid': totalPaid,
+        'Amount Waived': waivedAmount,
+        'Balance Due': balanceDue,
+        'Payment Status': paymentStatus
+      };
+    });
+    
+    // Create summary rows
+    const summaryData = [
+      {},
+      { 'Order ID': 'SUMMARY' },
+      { 'Order ID': 'Total Records:', 'Customer Name': filteredOrders.length },
+      { 'Order ID': 'Total Orders Value:', 'Customer Name': totalOrdersValue },
+      { 'Order ID': 'Total Collected:', 'Customer Name': totalCollected },
+      { 'Order ID': 'Total Outstanding:', 'Customer Name': totalOutstanding },
+      { 'Order ID': 'Total Waived:', 'Customer Name': totalWaived }
+    ];
+    
+    // Combine data with summary at the bottom
+    const fullData = [...excelData, ...summaryData];
+    
+    // Create workbook and worksheet
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(fullData);
+    
+    // Set column widths
+    ws['!cols'] = [
+      { wch: 12 },  // Order ID
+      { wch: 20 },  // Customer Name
+      { wch: 15 },  // Customer Phone
+      { wch: 18 },  // Sales Representative
+      { wch: 25 },  // Sales Rep Email
+      { wch: 12 },  // Order Date
+      { wch: 12 },  // Order Value
+      { wch: 12 },  // Status
+      { wch: 12 },  // Amount Paid
+      { wch: 12 },  // Amount Waived
+      { wch: 12 },  // Balance Due
+      { wch: 14 }   // Payment Status
+    ];
+    
+    // Add worksheet to workbook
+    XLSX.utils.book_append_sheet(wb, ws, 'Sales Orders');
+    
+    // Generate filename with timestamp
+    const timestamp = new Date().toLocaleDateString('en-IN').replace(/\//g, '-');
+    const filename = `Sales_Orders_Report_${timestamp}.xlsx`;
+    
+    // Download file
+    XLSX.writeFile(wb, filename);
+    
+    toast.success(`Excel file downloaded: ${filename}`);
+  };
+
   const handlePrintBill = async (order: SalesOrderWithInvoice) => {
     try {
       // Fetch order details with items and customer info
@@ -4279,6 +4378,16 @@ export function SalesOrderInvoiceManager() {
                     
                     {/* Right: Action Buttons */}
                     <div className="flex items-center gap-2 print-hide">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleExportToExcel}
+                        className="h-7 px-3 text-xs bg-gradient-to-r from-green-50 to-green-100 hover:from-green-100 hover:to-green-200 text-green-700 border-green-300 shadow-sm font-medium"
+                        title="Export to Excel"
+                      >
+                        <Download className="h-3.5 w-3.5 mr-1.5" />
+                        Excel
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"

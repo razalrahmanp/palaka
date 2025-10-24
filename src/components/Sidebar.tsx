@@ -7,7 +7,8 @@ import {
   Home, Users, Receipt, Warehouse, ShoppingCart, Wrench, Truck, 
   DollarSign, Star, Users2, Building2, Package, 
   FileText, TrendingUp, BookOpen, BarChart, ChevronDown, ChevronRight,
-  Mail, LogOut, Pin, PinOff
+  Mail, LogOut, Pin, PinOff, Fingerprint, Clock, Calendar, GraduationCap,
+  Wallet, FolderOpen, Settings
 } from 'lucide-react';
 import { hasPermission, hasAnyPermission, getCurrentUser } from '@/lib/auth';
 
@@ -73,8 +74,16 @@ const financeItems: NavItem[] = [
 
 // Human Resources
 const hrNavItems: NavItem[] = [
+  { href: "/hr", icon: Home, label: "HR Dashboard", permission: 'employee:manage' },
   { href: "/hr/employees", icon: Users2, label: "Employees", permission: 'employee:manage' },
+  { href: "/hr/attendance", icon: Clock, label: "Attendance", permission: 'employee:manage' },
+  { href: "/hr/devices", icon: Fingerprint, label: "Biometric Devices", permission: 'employee:manage' },
+  { href: "/hr/leaves", icon: Calendar, label: "Leave Management", permission: 'employee:manage' },
   { href: "/hr/performance", icon: Star, label: "Performance", permission: 'performance_review:read' },
+  { href: "/hr/training", icon: GraduationCap, label: "Training", permission: 'employee:manage' },
+  { href: "/hr/payroll", icon: Wallet, label: "Payroll", permission: 'employee:manage' },
+  { href: "/hr/documents", icon: FolderOpen, label: "Documents", permission: 'employee:manage' },
+  { href: "/hr/settings", icon: Settings, label: "HR Settings", permission: 'employee:manage' },
 ];
 
 // Reports & Analytics

@@ -40,7 +40,14 @@ export async function GET() {
       name: employee.user?.name || employee.name
     }));
 
+    const employmentStatusCounts = transformedEmployees.reduce((acc: Record<string, number>, emp: { employment_status?: string }) => {
+      const status = emp.employment_status || 'unknown';
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
     console.log(`GET /api/hr/employees - Success: ${transformedEmployees?.length || 0} employees found`);
+    console.log('Employment status breakdown:', employmentStatusCounts);
     return NextResponse.json(transformedEmployees);
   } catch (error) {
     console.error('Error fetching employees:', {

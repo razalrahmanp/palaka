@@ -232,12 +232,12 @@ export default function AttendancePage() {
               onChange={(e) => setSelectedDate(e.target.value)}
               className="w-auto"
             />
-            <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
+            <Select value={selectedEmployee || undefined} onValueChange={(value) => setSelectedEmployee(value === 'ALL' ? '' : value)}>
               <SelectTrigger className="w-64">
                 <SelectValue placeholder="All employees" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All employees</SelectItem>
+                <SelectItem value="ALL">All employees</SelectItem>
                 {employees.map((employee) => (
                   <SelectItem key={employee.id} value={employee.id}>
                     {employee.name} ({employee.employee_id})

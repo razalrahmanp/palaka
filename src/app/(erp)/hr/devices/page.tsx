@@ -85,6 +85,7 @@ export default function ESSLDevicesPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [pendingMappings, setPendingMappings] = useState<Record<string, string>>({});
 
   // New device form
   const [deviceForm, setDeviceForm] = useState({
@@ -258,6 +259,13 @@ export default function ESSLDevicesPage() {
 
   // Map employee to device user
   const handleMapEmployee = async (employeeId: string, deviceUserId: string) => {
+    // Optimistic update - update UI immediately
+    setEmployees(prev => prev.map(emp => 
+      emp.id === employeeId 
+        ? { ...emp, essl_device_id: deviceUserId || undefined }
+        : emp
+    ));
+    
     try {
       const response = await fetch('/api/hr/employees/map-device-user', {
         method: 'POST',
@@ -270,14 +278,19 @@ export default function ESSLDevicesPage() {
 
       if (response.ok) {
         toast.success('Employee mapped successfully');
+        // Refresh to ensure data is in sync
         fetchEmployees();
       } else {
         const data = await response.json();
         toast.error(data.error || 'Failed to map employee');
+        // Revert optimistic update on error
+        fetchEmployees();
       }
     } catch (error) {
       console.error('Error:', error);
       toast.error('Failed to map employee');
+      // Revert optimistic update on error
+      fetchEmployees();
     }
   };
 
@@ -356,9 +369,12 @@ export default function ESSLDevicesPage() {
   };
 
   const filteredEmployees = employees.filter(emp =>
-    emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    emp.employee_id.toLowerCase().includes(searchTerm.toLowerCase())
+    (emp.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+    (emp.employee_id?.toLowerCase() || '').includes(searchTerm.toLowerCase())
   );
+
+  // Get list of mapped device user IDs
+  const mappedDeviceUserIds = new Set(employees.map(emp => emp.essl_device_id).filter(Boolean));
 
   return (
     <div className="p-6 space-y-6">
@@ -612,6 +628,39 @@ export default function ESSLDevicesPage() {
                 </div>
               </div>
 
+              {/* Unmapped Device Users Warning */}
+              {deviceUsers.length > 0 && (() => {
+                const unmappedUsers = deviceUsers.filter(user => !mappedDeviceUserIds.has(user.userId));
+                return unmappedUsers.length > 0 ? (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
+                      <div className="flex-1">
+                        <h4 className="font-medium text-yellow-900 mb-1">
+                          {unmappedUsers.length} Unmapped Device User{unmappedUsers.length !== 1 ? 's' : ''}
+                        </h4>
+                        <p className="text-sm text-yellow-700 mb-2">
+                          These fingerprints are enrolled on the device but not mapped to any employee. 
+                          Attendance records for these users will be skipped during sync.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {unmappedUsers.slice(0, 10).map(user => (
+                            <Badge key={user.userId} variant="outline" className="bg-white text-yellow-800 border-yellow-300">
+                              ID: {user.userId} {user.name ? `- ${user.name}` : ''}
+                            </Badge>
+                          ))}
+                          {unmappedUsers.length > 10 && (
+                            <Badge variant="outline" className="bg-white text-yellow-800 border-yellow-300">
+                              +{unmappedUsers.length - 10} more
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null;
+              })()}
+
               {/* Mapping Table */}
               {filteredEmployees.length > 0 ? (
                 <Table>
@@ -623,6 +672,7 @@ export default function ESSLDevicesPage() {
                       <TableHead>Current Device ID</TableHead>
                       <TableHead>Map to Device User</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Action</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -646,19 +696,34 @@ export default function ESSLDevicesPage() {
                         <TableCell>
                           {deviceUsers.length > 0 ? (
                             <Select
-                              value={employee.essl_device_id || undefined}
-                              onValueChange={(value) => handleMapEmployee(employee.id, value === 'UNMAP' ? '' : value)}
+                              value={pendingMappings[employee.id] || employee.essl_device_id || undefined}
+                              onValueChange={(value) => {
+                                setPendingMappings(prev => ({
+                                  ...prev,
+                                  [employee.id]: value === 'UNMAP' ? '' : value
+                                }));
+                              }}
                             >
                               <SelectTrigger className="w-40">
                                 <SelectValue placeholder="Select user ID" />
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="UNMAP">Unmap</SelectItem>
-                                {deviceUsers.map((user) => (
-                                  <SelectItem key={user.userId} value={user.userId}>
-                                    ID: {user.userId} {user.name ? `- ${user.name}` : ''}
-                                  </SelectItem>
-                                ))}
+                                {deviceUsers.map((user) => {
+                                  const isAlreadyMapped = mappedDeviceUserIds.has(user.userId) && 
+                                                         employee.essl_device_id !== user.userId;
+                                  return (
+                                    <SelectItem 
+                                      key={user.userId} 
+                                      value={user.userId}
+                                      disabled={isAlreadyMapped}
+                                    >
+                                      ID: {user.userId} {user.name ? `- ${user.name}` : ''}
+                                      {isAlreadyMapped ? ' (Already mapped)' : ''}
+                                      {!mappedDeviceUserIds.has(user.userId) ? ' ⚠️ Unmapped' : ''}
+                                    </SelectItem>
+                                  );
+                                })}
                               </SelectContent>
                             </Select>
                           ) : (
@@ -677,6 +742,26 @@ export default function ESSLDevicesPage() {
                               Unmapped
                             </Badge>
                           )}
+                        </TableCell>
+                        <TableCell>
+                          {pendingMappings[employee.id] !== undefined && 
+                           pendingMappings[employee.id] !== employee.essl_device_id ? (
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                handleMapEmployee(employee.id, pendingMappings[employee.id]);
+                                setPendingMappings(prev => {
+                                  const updated = { ...prev };
+                                  delete updated[employee.id];
+                                  return updated;
+                                });
+                              }}
+                              className="bg-blue-600 hover:bg-blue-700"
+                            >
+                              <Link2 className="h-3 w-3 mr-1" />
+                              Map
+                            </Button>
+                          ) : null}
                         </TableCell>
                       </TableRow>
                     ))}

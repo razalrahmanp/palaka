@@ -291,6 +291,8 @@ export function mapPunchType(direction: number): 'IN' | 'OUT' | 'BREAK' {
     case 2:
       return 'BREAK';
     default:
+      // If device doesn't send proper direction, default to IN
+      // The processing logic will handle alternating IN/OUT based on time sequence
       return 'IN';
   }
 }

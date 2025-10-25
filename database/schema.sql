@@ -243,7 +243,8 @@ CREATE TABLE public.attendance_punch_logs (
   CONSTRAINT attendance_punch_logs_pkey PRIMARY KEY (id),
   CONSTRAINT attendance_punch_logs_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id),
   CONSTRAINT attendance_punch_logs_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.essl_devices(id),
-  CONSTRAINT attendance_punch_logs_attendance_record_id_fkey FOREIGN KEY (attendance_record_id) REFERENCES public.attendance_records(id)
+  CONSTRAINT attendance_punch_logs_attendance_record_id_fkey FOREIGN KEY (attendance_record_id) REFERENCES public.attendance_records(id),
+  CONSTRAINT attendance_punch_logs_unique_punch UNIQUE (employee_id, device_id, punch_time)
 );
 CREATE TABLE public.attendance_records (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

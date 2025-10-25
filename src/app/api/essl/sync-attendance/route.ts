@@ -13,15 +13,89 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function POST(request: Request) {
   try {
-    const { deviceId, clearAfterSync = false } = await request.json();
+    let body = {};
+    const contentType = request.headers.get('content-type');
+    
+    // Only parse JSON if content-type is application/json and body is not empty
+    if (contentType?.includes('application/json')) {
+      const text = await request.text();
+      if (text) {
+        body = JSON.parse(text);
+      }
+    }
+    
+    const { deviceId, clearAfterSync = false } = body as { deviceId?: string; clearAfterSync?: boolean };
 
+    // If no deviceId provided, sync all active devices
     if (!deviceId) {
-      return NextResponse.json(
-        { error: 'Device ID is required' },
-        { status: 400 }
-      );
+      console.log('No deviceId provided, syncing all active devices...');
+      
+      const { data: devices, error: devicesError } = await supabase
+        .from('essl_devices')
+        .select('*')
+        .eq('status', 'active');
+
+      if (devicesError) {
+        throw devicesError;
+      }
+
+      if (!devices || devices.length === 0) {
+        return NextResponse.json({
+          success: true,
+          message: 'No active devices found to sync',
+          totalRecords: 0
+        });
+      }
+
+      // Sync all devices
+      let totalRecords = 0;
+      const results = [];
+
+      for (const device of devices) {
+        try {
+          const deviceResult = await syncSingleDevice(device.id, clearAfterSync);
+          const resultData = await deviceResult.json();
+          totalRecords += resultData.stats?.synced || 0;
+          results.push({
+            deviceId: device.id,
+            deviceName: device.device_name,
+            success: true,
+            records: resultData.stats?.synced || 0
+          });
+        } catch (error) {
+          console.error(`Failed to sync device ${device.id}:`, error);
+          results.push({
+            deviceId: device.id,
+            deviceName: device.device_name,
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Synced ${devices.length} devices`,
+        totalRecords,
+        results
+      });
     }
 
+    // Sync single device
+    const result = await syncSingleDevice(deviceId, clearAfterSync);
+    return NextResponse.json(result);
+
+  } catch (error) {
+    console.error('Attendance sync error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to sync attendance' },
+      { status: 500 }
+    );
+  }
+}
+
+async function syncSingleDevice(deviceId: string, clearAfterSync: boolean = false) {
+  try {
     console.log(`Starting attendance sync for device: ${deviceId}`);
 
     // Get device details from database
@@ -64,58 +138,98 @@ export async function POST(request: Request) {
       let syncedCount = 0;
       let skippedCount = 0;
       const errors: string[] = [];
+      const missingUserIds = new Set<string>();
 
-      // Process each log
+      // Fetch all employee mappings in one query
+      const { data: employeeMappings } = await supabase
+        .from('employees')
+        .select('id, essl_device_id')
+        .not('essl_device_id', 'is', null);
+
+      // Create a map for quick lookup
+      const deviceUserToEmployeeMap = new Map(
+        employeeMappings?.map(emp => [emp.essl_device_id, emp.id]) || []
+      );
+
+      // Prepare batch insert data
+      const punchLogsToInsert = [];
+      
       for (const log of logs) {
+        const employeeId = deviceUserToEmployeeMap.get(log.deviceUserId);
+
+        if (!employeeId) {
+          if (!missingUserIds.has(log.deviceUserId)) {
+            missingUserIds.add(log.deviceUserId);
+          }
+          skippedCount++;
+          continue;
+        }
+
+        // Device sends IST time, store it as-is without any conversion
+        const deviceTime = log.recordTime;
+        
+        // Format as ISO string but preserve the IST timezone
+        // Don't use .toISOString() as it converts to UTC
+        const year = deviceTime.getFullYear();
+        const month = String(deviceTime.getMonth() + 1).padStart(2, '0');
+        const day = String(deviceTime.getDate()).padStart(2, '0');
+        const hours = String(deviceTime.getHours()).padStart(2, '0');
+        const minutes = String(deviceTime.getMinutes()).padStart(2, '0');
+        const seconds = String(deviceTime.getSeconds()).padStart(2, '0');
+        
+        // Store as IST timestamp (no timezone conversion)
+        const istTimestamp = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}+05:30`;
+
+        punchLogsToInsert.push({
+          employee_id: employeeId,
+          device_id: deviceId,
+          punch_time: istTimestamp, // Store IST time without UTC conversion
+          punch_type: mapPunchType(log.direction),
+          verification_method: mapVerificationMethod(log.verifyMode),
+          verification_quality: 90,
+          device_user_id: log.deviceUserId,
+          raw_data: {
+            userSN: log.userSN,
+            direction: log.direction,
+            verifyMode: log.verifyMode,
+          },
+          processed: false,
+        });
+      }
+
+      // Batch insert in chunks of 500 to avoid payload limits
+      const BATCH_SIZE = 500;
+      console.log(`Inserting ${punchLogsToInsert.length} punch logs in batches of ${BATCH_SIZE}...`);
+      console.log(`Duplication will be automatically handled by unique constraint: (employee_id, device_id, punch_time)`);
+      
+      for (let i = 0; i < punchLogsToInsert.length; i += BATCH_SIZE) {
+        const batch = punchLogsToInsert.slice(i, i + BATCH_SIZE);
+        const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+        
         try {
-          // Find employee by device user ID (essl_device_id)
-          const { data: employee } = await supabase
-            .from('employees')
-            .select('id')
-            .eq('essl_device_id', log.deviceUserId)
-            .single();
-
-          if (!employee) {
-            console.warn(`Employee not found for device user ID: ${log.deviceUserId}`);
-            skippedCount++;
-            continue;
-          }
-
-          // Insert punch log (raw log entry)
-          const { error: punchError } = await supabase
+          // Use upsert with column names for the unique constraint
+          // This will skip duplicates automatically (ignoreDuplicates: true)
+          const { error: batchError } = await supabase
             .from('attendance_punch_logs')
-            .insert({
-              employee_id: employee.id,
-              device_id: deviceId,
-              punch_time: log.recordTime.toISOString(),
-              punch_type: mapPunchType(log.direction),
-              verification_method: mapVerificationMethod(log.verifyMode),
-              verification_quality: 90, // Default quality
-              device_user_id: log.deviceUserId,
-              raw_data: {
-                userSN: log.userSN,
-                direction: log.direction,
-                verifyMode: log.verifyMode,
-              },
-              processed: false,
-            })
-            .select()
-            .single();
+            .upsert(batch, { 
+              onConflict: 'employee_id,device_id,punch_time',
+              ignoreDuplicates: true // Skip duplicates, don't throw error
+            });
 
-          if (punchError) {
-            // Check if duplicate
-            if (punchError.code === '23505') {
-              skippedCount++;
-              continue;
-            }
-            errors.push(`Error inserting punch log: ${punchError.message}`);
-            continue;
+          if (batchError) {
+            console.error(`Batch ${batchNum} error:`, batchError.message);
+            errors.push(`Batch ${batchNum}: ${batchError.message}`);
+            skippedCount += batch.length;
+          } else {
+            // Count successful inserts (batch.length = all records processed)
+            // With ignoreDuplicates, duplicates are silently skipped
+            syncedCount += batch.length;
+            console.log(`Batch ${batchNum}: Processed ${batch.length} records (duplicates auto-skipped)`);
           }
-
-          syncedCount++;
-        } catch (logError) {
-          console.error('Error processing log:', logError);
-          errors.push(logError instanceof Error ? logError.message : 'Unknown error');
+        } catch (error) {
+          console.error(`Batch ${batchNum} exception:`, error);
+          errors.push(`Batch ${batchNum}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          skippedCount += batch.length;
         }
       }
 
@@ -135,6 +249,13 @@ export async function POST(request: Request) {
 
       const duration = Math.round((Date.now() - startTime) / 1000);
 
+      // Log summary of missing user IDs
+      if (missingUserIds.size > 0) {
+        console.log(`ℹ️ Attendance Sync Complete: ${syncedCount} synced, ${skippedCount} skipped (unmapped device users: ${Array.from(missingUserIds).sort().join(', ')})`);
+      } else {
+        console.log(`✅ Attendance Sync Complete: ${syncedCount} records synced successfully`);
+      }
+
       // Update sync log
       await supabase
         .from('device_sync_logs')
@@ -152,6 +273,7 @@ export async function POST(request: Request) {
           totalFetched: logs.length,
           synced: syncedCount,
           skipped: skippedCount,
+          unmappedUserIds: Array.from(missingUserIds),
           errors: errors.length,
           duration: `${duration}s`,
         },

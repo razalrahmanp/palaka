@@ -7,7 +7,7 @@ import {
   Home, Users, Receipt, Warehouse, ShoppingCart, Wrench, Truck, 
   DollarSign, Star, Users2, Building2, Package, 
   FileText, TrendingUp, BookOpen, BarChart, ChevronDown, ChevronRight,
-  Mail, LogOut, Pin, PinOff, Fingerprint, Clock, Calendar, GraduationCap,
+  Mail, LogOut, Fingerprint, Clock, Calendar, GraduationCap,
   Wallet, FolderOpen, Settings
 } from 'lucide-react';
 import { hasPermission, hasAnyPermission, getCurrentUser } from '@/lib/auth';
@@ -95,40 +95,62 @@ export const Sidebar = () => {
   const pathname = usePathname();
   const [isHydrated, setIsHydrated] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
-  const [isManuallyExpanded, setIsManuallyExpanded] = useState(false);
   
-  // State for collapsible sections - All collapsed by default, only selected expands
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    new Set() // Empty set means all sections start collapsed
-  );
+  // State for collapsible sections
+  // HR managers get HR section expanded by default
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set();
+    const sections = new Set<string>();
+    if (isHRManager() || isSystemAdmin()) {
+      sections.add('hr'); // HR section always expanded for HR managers
+    }
+    return sections;
+  });
 
   useEffect(() => {
     setIsHydrated(true);
   }, []);
 
   // Collapse sidebar when pathname changes (navigation occurs)
+  // Collapse sidebar when pathname changes (navigation occurs)
   useEffect(() => {
     if (pathname) {
       setIsHovered(false);
-      setIsManuallyExpanded(false);
-      setExpandedSections(new Set());
+      // For HR Managers/Admins, keep HR section expanded
+      if (isHRManager() || isSystemAdmin()) {
+        setExpandedSections(new Set(['hr']));
+      } else {
+        setExpandedSections(new Set()); // Clear all sections
+      }
     }
   }, [pathname]);
 
   const toggleSection = (section: string) => {
     setExpandedSections(prev => {
       const newSet = new Set<string>();
-      // If clicking the same section, collapse it. Otherwise, expand only the clicked section
-      if (!prev.has(section)) {
-        newSet.add(section);
+      
+      // For HR managers/admins, prevent collapsing the HR section
+      if (section === 'hr' && (isHRManager() || isSystemAdmin())) {
+        if (!prev.has(section)) {
+          newSet.add(section); // Can expand
+        } else {
+          newSet.add(section); // Cannot collapse - keep expanded
+        }
+      } else {
+        // Normal behavior for other sections
+        // If clicking the same section, collapse it. Otherwise, expand only the clicked section
+        if (!prev.has(section)) {
+          newSet.add(section);
+        }
       }
+      
+      // Always preserve HR section for HR managers/admins
+      if ((isHRManager() || isSystemAdmin()) && section !== 'hr') {
+        newSet.add('hr');
+      }
+      
       return newSet;
     });
-  };
-
-  // Function to toggle manual expansion
-  const toggleManualExpansion = () => {
-    setIsManuallyExpanded(prev => !prev);
   };
 
   if (!isHydrated) {
@@ -147,7 +169,7 @@ export const Sidebar = () => {
     );
   }
 
-  const isExpanded = isHovered || isManuallyExpanded;
+  const isExpanded = isHovered;
 
   // Collapsible Section Component
   const CollapsibleSection = ({ 
@@ -214,21 +236,6 @@ export const Sidebar = () => {
     <div className="flex-shrink-0 flex items-center justify-center h-14 bg-gradient-to-r from-purple-600 to-blue-600 text-white relative">
       <Package className="h-6 w-6 text-white flex-shrink-0" />
       {isExpanded && <span className="ml-2 text-lg font-bold whitespace-nowrap">Palaka ERP</span>}
-      
-      {/* Pin/Unpin Button */}
-      {isExpanded && (
-        <button
-          onClick={toggleManualExpansion}
-          className="absolute right-2 p-1 hover:bg-white/20 rounded transition-colors"
-          title={isManuallyExpanded ? "Unpin sidebar" : "Pin sidebar"}
-        >
-          {isManuallyExpanded ? (
-            <PinOff className="w-4 h-4" />
-          ) : (
-            <Pin className="w-4 h-4" />
-          )}
-        </button>
-      )}
     </div>
     
     {/* Compact Navigation */}

@@ -14,6 +14,8 @@ export async function GET(request: Request) {
     const startDate = searchParams.get('start_date');
     const endDate = searchParams.get('end_date');
 
+    console.log('GET /api/hr/attendance - Params:', { date, employeeId, startDate, endDate });
+
     let query = supabaseAdmin
       .from('attendance_records')
       .select(`
@@ -46,6 +48,8 @@ export async function GET(request: Request) {
       console.error('Error fetching attendance records:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    console.log(`GET /api/hr/attendance - Found ${attendanceRecords?.length || 0} records`);
 
     return NextResponse.json(attendanceRecords);
   } catch (error) {

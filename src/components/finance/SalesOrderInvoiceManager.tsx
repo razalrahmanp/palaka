@@ -2237,8 +2237,6 @@ export function SalesOrderInvoiceManager() {
           <table>
             <thead>
               <tr>
-                <th>Invoice ID</th>
-                <th>Sales Order</th>
                 <th>Customer</th>
                 <th>Date</th>
                 <th class="text-right">Amount</th>
@@ -2271,9 +2269,11 @@ export function SalesOrderInvoiceManager() {
 
                 return `
                   <tr>
-                    <td>${invoice.id.slice(0, 8)}</td>
-                    <td>${invoice.sales_order_id?.slice(0, 8) || 'N/A'}</td>
-                    <td>${invoice.customer_name || 'N/A'}</td>
+                    <td>
+                      <strong>${invoice.customer_name || 'N/A'}</strong><br>
+                      ${invoice.customer_phone ? `📞 ${invoice.customer_phone}<br>` : ''}
+                      ${invoice.customer_address ? `📍 ${invoice.customer_address}` : ''}
+                    </td>
                     <td>${formatDate(invoice.created_at)}</td>
                     <td class="text-right">₹${invoice.total?.toLocaleString() || '0'}</td>
                     <td class="text-right">₹${totalPaid.toLocaleString()}</td>
@@ -3049,6 +3049,7 @@ export function SalesOrderInvoiceManager() {
         'Order ID': `#${order.id.slice(0, 8)}`,
         'Customer Name': order.customer?.name || 'Unknown',
         'Customer Phone': order.customer?.phone || 'N/A',
+        'Customer Address': order.customer?.address || 'N/A',
         'Sales Representative': order.sales_representative?.name || 'Not assigned',
         'Sales Rep Email': order.sales_representative?.email || 'N/A',
         'Order Date': formatDate(order.created_at),
@@ -3084,6 +3085,7 @@ export function SalesOrderInvoiceManager() {
       { wch: 12 },  // Order ID
       { wch: 20 },  // Customer Name
       { wch: 15 },  // Customer Phone
+      { wch: 25 },  // Customer Address
       { wch: 18 },  // Sales Representative
       { wch: 25 },  // Sales Rep Email
       { wch: 12 },  // Order Date
@@ -3101,6 +3103,115 @@ export function SalesOrderInvoiceManager() {
     // Generate filename with timestamp
     const timestamp = new Date().toLocaleDateString('en-IN').replace(/\//g, '-');
     const filename = `Sales_Orders_Report_${timestamp}.xlsx`;
+    
+    // Download file
+    XLSX.writeFile(wb, filename);
+    
+    toast.success(`Excel file downloaded: ${filename}`);
+  };
+
+  const handleExportInvoicesToExcel = () => {
+    // Get all filtered invoices (not paginated)
+    const filteredInvoices = filterInvoices(
+      invoices, 
+      invoicesSearchQuery, 
+      invoiceStatusFilter, 
+      invoiceDateFilter, 
+      invoiceFromDate, 
+      invoiceToDate
+    );
+    
+    // Calculate summary totals
+    const totalInvoiceValue = filteredInvoices.reduce((sum, inv) => sum + (inv.total || 0), 0);
+    const totalPaid = filteredInvoices.reduce((sum, inv) => sum + (inv.paid_amount || 0), 0);
+    const totalWaived = filteredInvoices.reduce((sum, inv) => sum + (inv.waived_amount || 0), 0);
+    const totalRefunded = filteredInvoices.reduce((sum, inv) => sum + (inv.total_refunded || 0), 0);
+    const totalOutstanding = filteredInvoices.reduce((sum, inv) => {
+      const paidAmount = inv.paid_amount || 0;
+      const invoiceTotal = inv.total || 0;
+      const waivedAmount = inv.waived_amount || 0;
+      const refundedAmount = inv.total_refunded || 0;
+      const effectivePaid = paidAmount + waivedAmount;
+      return sum + Math.max(0, invoiceTotal - effectivePaid - refundedAmount);
+    }, 0);
+    
+    // Prepare data for Excel
+    const excelData = filteredInvoices.map(invoice => {
+      const totalPaid = invoice.paid_amount || 0;
+      const invoiceTotal = invoice.total || 0;
+      const waivedAmount = invoice.waived_amount || 0;
+      const totalRefunded = invoice.total_refunded || 0;
+      const effectivePaid = totalPaid + waivedAmount;
+      const balanceDue = Math.max(0, invoiceTotal - effectivePaid - totalRefunded);
+      
+      let status = '';
+      if (effectivePaid >= invoiceTotal && invoiceTotal > 0) {
+        status = 'Paid';
+      } else if (totalPaid > 0 || waivedAmount > 0) {
+        status = 'Partially Paid';
+      } else {
+        status = 'Unpaid';
+      }
+      
+      return {
+        'Invoice Number': invoice.invoice_number || `INV-${invoice.id.slice(0, 8)}`,
+        'Customer Name': invoice.customer_name || 'Unknown',
+        'Customer Phone': invoice.customer_phone || 'N/A',
+        'Customer Address': invoice.customer_address || 'N/A',
+        'Invoice Date': formatDate(invoice.created_at),
+        'Due Date': invoice.due_date ? formatDate(invoice.due_date) : 'N/A',
+        'Invoice Amount': invoiceTotal,
+        'Amount Paid': totalPaid,
+        'Amount Waived': waivedAmount,
+        'Amount Refunded': totalRefunded,
+        'Balance Due': balanceDue,
+        'Status': status,
+        'Refund Count': invoice.refund_count || 0
+      };
+    });
+    
+    // Create summary rows
+    const summaryData = [
+      {},
+      { 'Invoice Number': 'SUMMARY' },
+      { 'Invoice Number': 'Total Records:', 'Customer Name': filteredInvoices.length },
+      { 'Invoice Number': 'Total Invoice Value:', 'Customer Name': totalInvoiceValue },
+      { 'Invoice Number': 'Total Paid:', 'Customer Name': totalPaid },
+      { 'Invoice Number': 'Total Waived:', 'Customer Name': totalWaived },
+      { 'Invoice Number': 'Total Refunded:', 'Customer Name': totalRefunded },
+      { 'Invoice Number': 'Total Outstanding:', 'Customer Name': totalOutstanding }
+    ];
+    
+    // Combine data with summary at the bottom
+    const fullData = [...excelData, ...summaryData];
+    
+    // Create workbook and worksheet
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(fullData);
+    
+    // Set column widths
+    ws['!cols'] = [
+      { wch: 15 },  // Invoice Number
+      { wch: 20 },  // Customer Name
+      { wch: 15 },  // Customer Phone
+      { wch: 25 },  // Customer Address
+      { wch: 12 },  // Invoice Date
+      { wch: 12 },  // Due Date
+      { wch: 14 },  // Invoice Amount
+      { wch: 12 },  // Amount Paid
+      { wch: 12 },  // Amount Waived
+      { wch: 14 },  // Amount Refunded
+      { wch: 12 },  // Balance Due
+      { wch: 14 },  // Status
+      { wch: 12 }   // Refund Count
+    ];
+    
+    // Add worksheet to workbook
+    XLSX.utils.book_append_sheet(wb, ws, 'Invoices');
+    
+    // Generate filename with timestamp
+    const timestamp = new Date().toLocaleDateString('en-IN').replace(/\//g, '-');
+    const filename = `Invoices_Report_${timestamp}.xlsx`;
     
     // Download file
     XLSX.writeFile(wb, filename);
@@ -4804,6 +4915,15 @@ export function SalesOrderInvoiceManager() {
                     >
                       <Plus className="h-3 w-3 mr-1" />
                       New
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleExportInvoicesToExcel}
+                      className="bg-green-50 hover:bg-green-100 text-green-700 border-green-200 h-7 px-2 text-xs"
+                    >
+                      <Download className="h-3 w-3 mr-1" />
+                      Excel
                     </Button>
                     <Button
                       variant="outline"

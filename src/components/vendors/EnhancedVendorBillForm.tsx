@@ -8,7 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
-import { Plus, FileText, Trash2, Calculator } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Plus, FileText, Trash2, Calculator, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface VendorBillFormProps {
@@ -113,6 +114,8 @@ export function EnhancedVendorBillForm({
   billToEdit = null 
 }: VendorBillFormProps) {
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
 
   const [lineItems, setLineItems] = useState<BillLineItem[]>([]);
@@ -523,6 +526,33 @@ export function EnhancedVendorBillForm({
     });
   };
 
+  const handleDelete = async () => {
+    if (!editMode || !billToEdit) return;
+    
+    try {
+      setDeleting(true);
+      const response = await fetch(`/api/finance/vendor-bills/${billToEdit.id}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        toast.success('Vendor bill deleted successfully!');
+        setShowDeleteConfirm(false);
+        resetForm();
+        onOpenChange(false);
+        onSuccess();
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Failed to delete vendor bill');
+      }
+    } catch (error) {
+      console.error('Error deleting vendor bill:', error);
+      toast.error('Error deleting vendor bill');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -886,18 +916,74 @@ export function EnhancedVendorBillForm({
 
             {/* Footer - Fixed at bottom */}
             <div className="flex-none bg-gray-50 border-t border-gray-200 px-6 py-4">
-              <div className="flex justify-end gap-4">
-                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={loading}>
-                  {loading ? (editMode ? 'Updating...' : 'Creating...') : (editMode ? 'Update Bill' : 'Create Bill')}
-                </Button>
+              <div className="flex justify-between items-center">
+                {/* Delete button - only show in edit mode */}
+                <div>
+                  {editMode && billToEdit && (
+                    <Button 
+                      type="button" 
+                      variant="destructive" 
+                      onClick={() => setShowDeleteConfirm(true)}
+                      disabled={loading || deleting}
+                      className="flex items-center gap-2"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Delete Bill
+                    </Button>
+                  )}
+                </div>
+                
+                {/* Action buttons */}
+                <div className="flex gap-4">
+                  <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={loading}>
+                    {loading ? (editMode ? 'Updating...' : 'Creating...') : (editMode ? 'Update Bill' : 'Create Bill')}
+                  </Button>
+                </div>
               </div>
             </div>
           </form>
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              Delete Vendor Bill
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this vendor bill <strong>{billToEdit?.bill_number}</strong>?
+              <br />
+              <span className="text-red-600 font-medium">
+                This action cannot be undone. All associated line items will also be deleted.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setShowDeleteConfirm(false)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleDelete}
+              disabled={deleting}
+              className="flex items-center gap-2"
+            >
+              <Trash2 className="h-4 w-4" />
+              {deleting ? 'Deleting...' : 'Delete Bill'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

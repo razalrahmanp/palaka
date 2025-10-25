@@ -347,6 +347,11 @@ export function SalesOrderInvoiceManager() {
   const [selectedInvoiceForWaiveOff, setSelectedInvoiceForWaiveOff] = useState<Invoice | null>(null);
   const [waiveOffType, setWaiveOffType] = useState<'order' | 'invoice'>('order');
   
+  // Return delete states
+  const [showDeleteReturnConfirm, setShowDeleteReturnConfirm] = useState(false);
+  const [selectedReturnForDelete, setSelectedReturnForDelete] = useState<ReturnDetail | null>(null);
+  const [deleteReturnLoading, setDeleteReturnLoading] = useState(false);
+  
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(20);
@@ -1807,6 +1812,54 @@ export function SalesOrderInvoiceManager() {
     } catch (error) {
       console.error('Error processing refund:', error);
       alert(`Failed to process refund: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  // Delete return handler
+  const handleDeleteReturn = async () => {
+    if (!selectedReturnForDelete) return;
+    
+    try {
+      setDeleteReturnLoading(true);
+      
+      const response = await fetch(`/api/sales/returns/${selectedReturnForDelete.id}`, {
+        method: 'DELETE',
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to delete return');
+      }
+      
+      // Success - refresh data and close dialog
+      alert('Return deleted successfully!');
+      setShowDeleteReturnConfirm(false);
+      setSelectedReturnForDelete(null);
+      
+      // Refresh invoices data to update the UI
+      await fetchData();
+      
+      // Also refresh return details for the affected invoice
+      // Find the invoice ID from the expanded invoices
+      for (const [invId, returns] of invoiceReturns.entries()) {
+        const hasReturn = returns.some(r => r.id === selectedReturnForDelete.id);
+        if (hasReturn) {
+          const updatedReturns = await fetchReturnDetails(invId);
+          setInvoiceReturns(prevReturns => {
+            const newReturns = new Map(prevReturns);
+            newReturns.set(invId, updatedReturns);
+            return newReturns;
+          });
+          break;
+        }
+      }
+      
+    } catch (error) {
+      console.error('Error deleting return:', error);
+      alert(`Failed to delete return: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setDeleteReturnLoading(false);
     }
   };
 
@@ -4462,6 +4515,11 @@ export function SalesOrderInvoiceManager() {
                                 <span className="text-[10px] text-gray-500 truncate">
                                   {order.customer?.phone ? `📞 ${order.customer.phone}` : '⚠️ No contact'}
                                 </span>
+                                {order.customer?.address && (
+                                  <span className="text-[10px] text-gray-500 truncate">
+                                    📍 {order.customer.address}
+                                  </span>
+                                )}
                               </div>
                             </TableCell>
                             <TableCell className="py-2">
@@ -4791,9 +4849,7 @@ export function SalesOrderInvoiceManager() {
                 <Table>
                   <TableHeader className="bg-gray-50">
                     <TableRow>
-                      <TableHead className="font-semibold min-w-[120px]">Invoice ID</TableHead>
-                      <TableHead className="font-semibold min-w-[120px]">Sales Order</TableHead>
-                      <TableHead className="font-semibold min-w-[180px]">Customer</TableHead>
+                      <TableHead className="font-semibold min-w-[200px]">Customer</TableHead>
                       <TableHead className="font-semibold min-w-[100px]">Date</TableHead>
                       <TableHead className="font-semibold min-w-[120px]">Amount</TableHead>
                       <TableHead className="font-semibold min-w-[120px]">Paid</TableHead>
@@ -4832,7 +4888,7 @@ export function SalesOrderInvoiceManager() {
                       if (paginatedInvoices.length === 0) {
                         return (
                           <TableRow>
-                            <TableCell colSpan={11} className="text-center py-8 text-gray-500">
+                            <TableCell colSpan={9} className="text-center py-8 text-gray-500">
                               {invoicesSearchQuery ? 'No invoices found matching your search.' : 'No invoices available.'}
                             </TableCell>
                           </TableRow>
@@ -4845,21 +4901,29 @@ export function SalesOrderInvoiceManager() {
                             className="hover:bg-gray-50 transition-colors cursor-pointer"
                             onClick={() => toggleInvoiceExpansion(invoice.id)}
                           >
-                            <TableCell className="font-medium text-blue-600">
-                              <div className="flex items-center gap-2">
-                                {expandedInvoices.has(invoice.id) ? (
-                                  <ChevronUp className="h-4 w-4 text-gray-500" />
-                                ) : (
-                                  <ChevronDown className="h-4 w-4 text-gray-500" />
-                                )}
-                                {invoice.id.slice(0, 8)}
-                              </div>
-                            </TableCell>
-                        <TableCell>{invoice.sales_order_id?.slice(0, 8) || 'N/A'}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <User className="h-4 w-4 text-gray-500" />
-                            <span className="font-medium">{invoice.customer_name}</span>
+                            {expandedInvoices.has(invoice.id) ? (
+                              <ChevronUp className="h-4 w-4 text-gray-500" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4 text-gray-500" />
+                            )}
+                            <div className="flex flex-col">
+                              <div className="flex items-center gap-2">
+                                <User className="h-4 w-4 text-gray-500" />
+                                <span className="font-medium text-gray-900">{invoice.customer_name}</span>
+                              </div>
+                              {invoice.customer_phone && (
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="text-xs text-blue-600">📞 {invoice.customer_phone}</span>
+                                </div>
+                              )}
+                              {invoice.customer_address && (
+                                <div className="text-xs text-gray-600 mt-1 max-w-[180px] truncate" title={invoice.customer_address}>
+                                  📍 {invoice.customer_address}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </TableCell>
                         <TableCell>
@@ -5190,8 +5254,26 @@ export function SalesOrderInvoiceManager() {
                                               {formatDate(returnDetail.created_at)}
                                             </span>
                                           </div>
-                                          <div className="text-sm font-medium text-red-600">
-                                            Total: {formatCurrency(returnDetail.return_value)}
+                                          <div className="flex items-center gap-3">
+                                            <div className="text-sm font-medium text-red-600">
+                                              Total: {formatCurrency(returnDetail.return_value)}
+                                            </div>
+                                            {/* Delete button - only show for pending returns */}
+                                            {returnDetail.status === 'pending' && (
+                                              <Button
+                                                size="sm"
+                                                variant="destructive"
+                                                onClick={() => {
+                                                  setSelectedReturnForDelete(returnDetail);
+                                                  setShowDeleteReturnConfirm(true);
+                                                }}
+                                                className="h-6 px-2 text-xs flex items-center gap-1"
+                                                title="Delete Return"
+                                              >
+                                                <Trash2 className="h-3 w-3" />
+                                                Delete
+                                              </Button>
+                                            )}
                                           </div>
                                         </div>
                                         
@@ -9540,6 +9622,71 @@ export function SalesOrderInvoiceManager() {
               Transfer Funds
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Return Confirmation Dialog */}
+      <Dialog open={showDeleteReturnConfirm} onOpenChange={setShowDeleteReturnConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="h-5 w-5" />
+              Delete Return Entry
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this return entry?
+              <br />
+              <span className="text-red-600 font-medium">
+                This action cannot be undone. All associated return items and data will be permanently deleted.
+              </span>
+              {selectedReturnForDelete && (
+                <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+                  <div className="text-sm text-gray-700">
+                    <strong>Return Type:</strong> {selectedReturnForDelete.return_type}
+                  </div>
+                  <div className="text-sm text-gray-700">
+                    <strong>Status:</strong> {selectedReturnForDelete.status}
+                  </div>
+                  <div className="text-sm text-gray-700">
+                    <strong>Total Value:</strong> {formatCurrency(selectedReturnForDelete.return_value)}
+                  </div>
+                  <div className="text-sm text-gray-700">
+                    <strong>Items:</strong> {selectedReturnForDelete.return_items?.length || 0} item(s)
+                  </div>
+                </div>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowDeleteReturnConfirm(false);
+                setSelectedReturnForDelete(null);
+              }}
+              disabled={deleteReturnLoading}
+            >
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleDeleteReturn}
+              disabled={deleteReturnLoading}
+              className="flex items-center gap-2"
+            >
+              {deleteReturnLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4" />
+                  Delete Return
+                </>
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

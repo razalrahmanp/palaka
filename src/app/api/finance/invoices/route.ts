@@ -82,7 +82,7 @@ export async function GET() {
     // Fetch customers
     const { data: customers } = await supabase
       .from("customers")
-      .select("id, name, phone, email")
+      .select("id, name, phone, email, address")
       .in("id", customerIds);
 
     // First, fetch return data for invoice items to calculate return status
@@ -225,17 +225,21 @@ export async function GET() {
       const invoicePayments = paymentsByInvoice.get(invoice.id) || [];
       const actualPaidAmount = invoicePayments.reduce((sum: number, payment: Payment) => sum + (Number(payment.amount) || 0), 0);
       const waived = Number(invoice.waived_amount) || 0;
-      const totalInvoice = Number(invoice.total) || 0;
+      
+      // Get customer and sales order from maps first
+      const customer = customersMap.get(invoice.customer_id);
+      const salesOrder = salesOrdersMap.get(invoice.sales_order_id);
+      
+      // Calculate total from sales order items' final_price instead of invoice.total
+      const totalInvoice = salesOrder?.sales_order_items?.reduce((sum: number, item: SalesOrderItemFromDB) => {
+        return sum + (Number(item.final_price) || 0);
+      }, 0) || Number(invoice.total) || 0;
       
       // Get refund data for this invoice
       const invoiceRefundData = refundsByInvoice.get(invoice.id) || { total: 0, refunds: [] };
       const totalRefunded = invoiceRefundData.total;
       
       const balance = totalInvoice - actualPaidAmount - waived - totalRefunded;
-
-      // Get customer and sales order from maps
-      const customer = customersMap.get(invoice.customer_id);
-      const salesOrder = salesOrdersMap.get(invoice.sales_order_id);
       const customerName = customer?.name || invoice.customer_name || 'Unknown Customer';
 
       return {
@@ -245,6 +249,7 @@ export async function GET() {
         customer_name: customerName,
         customer_phone: customer?.phone || '',
         customer_email: customer?.email || '',
+        customer_address: customer?.address || '',
         total: totalInvoice,
         paid_amount: actualPaidAmount,
         waived_amount: waived,

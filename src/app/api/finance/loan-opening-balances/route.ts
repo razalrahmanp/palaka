@@ -118,9 +118,17 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    console.log('📋 Fetching loan opening balances for liability payments...');
+    const { searchParams } = new URL(request.url);
+    const refresh = searchParams.get('refresh') === 'true';
+    const timestamp = searchParams.get('_t');
+    
+    console.log('📋 Fetching loan opening balances for liability payments...', {
+      refresh,
+      timestamp,
+      bypassCache: refresh || !!timestamp
+    });
 
     // Get all loans with their details for liability payment dropdown
     const { data: loanBalances, error } = await supabase
@@ -153,10 +161,19 @@ export async function GET() {
 
     console.log(`🏦 Found ${loanBalances?.length || 0} loan opening balances`);
 
-    return NextResponse.json({ 
+    const response = NextResponse.json({ 
       success: true,
       loanBalances: loanBalances || []
     });
+    
+    // Add cache-busting headers when refresh is requested
+    if (refresh || timestamp) {
+      response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      response.headers.set('Pragma', 'no-cache');
+      response.headers.set('Expires', '0');
+    }
+    
+    return response;
 
   } catch (error) {
     console.error('❌ Error in loan opening balances GET API:', error);

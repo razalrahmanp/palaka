@@ -8,15 +8,29 @@ export async function GET(request: NextRequest) {
     try {
       const { searchParams } = new URL(request.url)
       const includeOutstanding = searchParams.get('include_outstanding') === 'true'
+      const refresh = searchParams.get('refresh') === 'true'
+      const timestamp = searchParams.get('_t')
+      const bypassCache = refresh || !!timestamp
+      
+      console.log('🏪 Fetching vendors...', {
+        refresh,
+        timestamp,
+        bypassCache,
+        includeOutstanding
+      });
       
       // Create cache key
       const cacheKey = `vendors-list-${includeOutstanding ? 'with-outstanding' : 'basic'}`
       
-      // Check cache first
-      const cachedData = getCachedData(cacheKey)
-      if (cachedData) {
-        console.log('📦 Cache hit for vendors list')
-        return createCachedResponse(cachedData, { cacheKey })
+      // Check cache first (only if not bypassing)
+      if (!bypassCache) {
+        const cachedData = getCachedData(cacheKey)
+        if (cachedData) {
+          console.log('📦 Cache hit for vendors list')
+          return createCachedResponse(cachedData, { cacheKey })
+        }
+      } else {
+        console.log('🔄 Bypassing cache for fresh vendor data from database')
       }
 
       // Get vendors/suppliers list
@@ -60,16 +74,24 @@ export async function GET(request: NextRequest) {
       }))
     }
 
-    // Cache the result
+    // Cache the result (only if not bypassing cache)
     const responseData = {
       success: true,
       vendors: result || [],
       total: result?.length || 0
     }
     
-    setCachedData(cacheKey, responseData, 300) // Cache for 5 minutes
-    
-    return createCachedResponse(responseData, { cacheKey, ttl: 300 })
+    if (!bypassCache) {
+      setCachedData(cacheKey, responseData, 300) // Cache for 5 minutes
+      return createCachedResponse(responseData, { cacheKey, ttl: 300 })
+    } else {
+      // Return fresh data with cache-busting headers
+      const response = NextResponse.json(responseData)
+      response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate')
+      response.headers.set('Pragma', 'no-cache')
+      response.headers.set('Expires', '0')
+      return response
+    }
 
   } catch (error) {
     console.error('Error in vendors API:', error)

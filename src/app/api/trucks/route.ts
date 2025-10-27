@@ -5,6 +5,15 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const select = searchParams.get('select');
+    const refresh = searchParams.get('refresh') === 'true';
+    const timestamp = searchParams.get('_t');
+    
+    console.log('🚛 Fetching trucks...', {
+      refresh,
+      timestamp,
+      bypassCache: refresh || !!timestamp,
+      select
+    });
 
     try {
         const query = supabase
@@ -19,7 +28,16 @@ export async function GET(req: NextRequest) {
             throw error;
         }
 
-        return NextResponse.json(data);
+        const response = NextResponse.json(data);
+        
+        // Add cache-busting headers when refresh is requested
+        if (refresh || timestamp) {
+          response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+          response.headers.set('Pragma', 'no-cache');
+          response.headers.set('Expires', '0');
+        }
+        
+        return response;
     } catch (error) {
         console.error('GET /api/trucks error:', error);
         return NextResponse.json({ error: error }, { status: 500 });

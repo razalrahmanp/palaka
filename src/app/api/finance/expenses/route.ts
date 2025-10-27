@@ -13,6 +13,17 @@ import {
     const entity_type = searchParams.get('entity_type');
     const start_date = searchParams.get('start_date');
     const end_date = searchParams.get('end_date');
+    const refresh = searchParams.get('refresh') === 'true';
+    const timestamp = searchParams.get('_t');
+    
+    console.log('💸 Fetching expenses for finance management...', {
+      refresh,
+      timestamp,
+      bypassCache: refresh || !!timestamp,
+      entity_id,
+      entity_type,
+      date_range: start_date && end_date ? `${start_date} to ${end_date}` : 'all'
+    });
 
     // Fetch all expenses using pagination to bypass the 1000 record limit
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -66,7 +77,17 @@ import {
     }
 
     console.log(`✅ Fetched ${allExpenses.length} total expenses`);
-    return NextResponse.json({ data: allExpenses });
+    
+    const response = NextResponse.json({ data: allExpenses });
+    
+    // Add cache-busting headers when refresh is requested
+    if (refresh || timestamp) {
+      response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      response.headers.set('Pragma', 'no-cache');
+      response.headers.set('Expires', '0');
+    }
+    
+    return response;
   } catch (error) {
     console.error('Error in GET /api/finance/expenses:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

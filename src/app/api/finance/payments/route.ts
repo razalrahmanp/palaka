@@ -2,9 +2,17 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseAdmin";
 import { createPaymentJournalEntry } from "@/lib/journalHelper";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    console.log('💰 Fetching ALL payments for finance management...');
+    const { searchParams } = new URL(request.url);
+    const refresh = searchParams.get('refresh') === 'true';
+    const timestamp = searchParams.get('_t');
+    
+    console.log('💰 Fetching ALL payments for finance management...', {
+      refresh,
+      timestamp,
+      bypassCache: refresh || !!timestamp
+    });
 
     // Fetch ALL payments with comprehensive data - no pagination since frontend handles it
     const { data: payments, error } = await supabase
@@ -107,7 +115,16 @@ export async function GET() {
 
     console.log(`✅ Enhanced ${enhancedPayments.length} payments with invoice/customer data`);
 
-    return NextResponse.json(enhancedPayments);
+    const response = NextResponse.json(enhancedPayments);
+    
+    // Add cache-busting headers when refresh is requested
+    if (refresh || timestamp) {
+      response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      response.headers.set('Pragma', 'no-cache');
+      response.headers.set('Expires', '0');
+    }
+    
+    return response;
   } catch (error) {
     console.error('💥 Payments API Error:', error);
     return NextResponse.json({ 

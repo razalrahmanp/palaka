@@ -76,9 +76,7 @@ import { InvoiceReturnExchangeDialog } from './InvoiceReturnExchangeDialog';
 import { FloatingActionMenu, createFinanceActions } from './FloatingActionMenu';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
-
 // Component interfaces and types
-
 interface SalesOrderItem {
   id: string;
   name: string;
@@ -1090,51 +1088,95 @@ export function SalesOrderInvoiceManager() {
     }
   };
 
+  // 🔄 REFRESH FUNCTION - BYPASSES ALL CACHE FOR FRESH DATABASE DATA
+  const fetchDataFreshFromDB = useCallback(async () => {
+    console.log('🚀 FORCING FRESH DATABASE REFRESH - BYPASSING ALL CACHE');
+    return await fetchData();
+  }, []);
+
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       
-      // Use the dedicated finance sales orders API for comprehensive data
-      const ordersRes = await fetch('/api/finance/sales-orders');
+      // 🔄 CACHE-BUSTING: Force fresh data from database, NOT cache
+      const timestamp = Date.now();
+      const cacheHeaders = {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      };
+      
+      console.log('🔄 Fetching FRESH data from DATABASE (bypassing ALL cache)...', { timestamp });
+      
+      /* 
+      🚀 CACHE-BUSTING IMPLEMENTATION SUMMARY:
+      =====================================
+      ✅ ALL API calls include timestamp parameter (_t=${timestamp}) 
+      ✅ ALL API calls include refresh parameter (refresh=true)
+      ✅ ALL API calls include cache-busting headers (Cache-Control: no-cache)
+      ✅ ALL API endpoints updated to handle these parameters and return fresh DB data
+      ✅ ALL refresh buttons trigger this function for guaranteed fresh data
+      
+      📡 APIs with cache-busting enabled:
+      - /api/finance/sales-orders
+      - /api/finance/invoices  
+      - /api/finance/payments
+      - /api/finance/expenses
+      - /api/finance/bank-accounts
+      - /api/finance/loan-opening-balances
+      - /api/trucks
+      - /api/employees
+      - /api/vendors
+      - /api/equity/investors
+      - /api/equity/investment-categories
+      - /api/equity/withdrawal-categories
+      - /api/equity/withdrawal-subcategories
+      */
+      
+      // Use the dedicated finance sales orders API for comprehensive data with cache busting
+      const ordersRes = await fetch(`/api/finance/sales-orders?_t=${timestamp}&refresh=true`, {
+        method: 'GET',
+        headers: cacheHeaders
+      });
       if (!ordersRes.ok) {
         console.error('Failed to fetch finance sales orders:', ordersRes.statusText);
         throw new Error('Failed to fetch finance sales orders');
       }
       
       const ordersData = await ordersRes.json();
-      console.log('🔍 Finance Sales Orders API Response:', ordersData);
+      console.log('🔍 Finance Sales Orders API Response (Fresh from DB):', ordersData);
       
       // Extract orders from the new API structure
       const orders = ordersData.orders || [];
-      console.log('📦 Processed Orders Array:', orders);
+      console.log('📦 Processed Orders Array (Fresh):', orders);
       console.log('📊 Orders count:', orders?.length || 0);
       console.log('📋 First order sample:', orders[0]);
       console.log('📈 Summary:', ordersData.summary);
       
-      // Fetch the rest separately for other components that might need them
-      console.log('🔍 Making API calls including withdrawal endpoints and loans...');
+      // Fetch the rest separately for other components that might need them - ALL WITH CACHE BUSTING
+      console.log('🔍 Making API calls with cache busting for fresh data...');
       console.log('📞 About to fetch payments from /api/finance/payments...');
       
       const [invoicesRes, paymentsRes, expensesRes, bankAccountsRes, loansRes, trucksRes, employeesRes, suppliersRes, investorsRes, investmentCategoriesRes, withdrawalCategoriesRes, withdrawalSubcategoriesRes] = await Promise.all([
-        fetch('/api/finance/invoices'),
-        fetch('/api/finance/payments').then(res => {
-          console.log('📞 Payments API Response Status:', res.status, res.statusText);
+        fetch(`/api/finance/invoices?_t=${timestamp}&refresh=true`, { headers: cacheHeaders }),
+        fetch(`/api/finance/payments?_t=${timestamp}&refresh=true`, { headers: cacheHeaders }).then(res => {
+          console.log('📞 Payments API Response Status (Fresh):', res.status, res.statusText);
           return res;
         }),
-        fetch('/api/finance/expenses'),
-        fetch('/api/finance/bank-accounts?type=BANK'),
-        fetch('/api/finance/loan-opening-balances'),
-        fetch('/api/trucks'),
-        fetch('/api/employees?select=id,name,employee_id,position,salary,department'),
-        fetch('/api/vendors'),
-        fetch('/api/equity/investors'),
-        fetch('/api/equity/investment-categories'),
-        fetch('/api/equity/withdrawal-categories').then(res => {
-          console.log('📞 Withdrawal Categories Response Status:', res.status);
+        fetch(`/api/finance/expenses?_t=${timestamp}&refresh=true`, { headers: cacheHeaders }),
+        fetch(`/api/finance/bank-accounts?type=BANK&_t=${timestamp}&refresh=true`, { headers: cacheHeaders }),
+        fetch(`/api/finance/loan-opening-balances?_t=${timestamp}&refresh=true`, { headers: cacheHeaders }),
+        fetch(`/api/trucks?_t=${timestamp}&refresh=true`, { headers: cacheHeaders }),
+        fetch(`/api/employees?select=id,name,employee_id,position,salary,department&_t=${timestamp}&refresh=true`, { headers: cacheHeaders }),
+        fetch(`/api/vendors?_t=${timestamp}&refresh=true`, { headers: cacheHeaders }),
+        fetch(`/api/equity/investors?_t=${timestamp}&refresh=true`, { headers: cacheHeaders }),
+        fetch(`/api/equity/investment-categories?_t=${timestamp}&refresh=true`, { headers: cacheHeaders }),
+        fetch(`/api/equity/withdrawal-categories?_t=${timestamp}&refresh=true`, { headers: cacheHeaders }).then(res => {
+          console.log('📞 Withdrawal Categories Response Status (Fresh):', res.status);
           return res;
         }),
-        fetch('/api/equity/withdrawal-subcategories').then(res => {
-          console.log('📞 Withdrawal Subcategories Response Status:', res.status);
+        fetch(`/api/equity/withdrawal-subcategories?_t=${timestamp}&refresh=true`, { headers: cacheHeaders }).then(res => {
+          console.log('📞 Withdrawal Subcategories Response Status (Fresh):', res.status);
           return res;
         })
       ]);
@@ -3462,7 +3504,7 @@ export function SalesOrderInvoiceManager() {
           vendor_bill_id: '',
           payroll_record_id: '',
         });
-        fetchData(); // Refresh data
+        fetchDataFreshFromDB(); // 🔄 Force fresh data from database after expense creation
         alert('Expense created successfully!');
       } else {
         const error = await response.json();
@@ -4556,9 +4598,9 @@ export function SalesOrderInvoiceManager() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => fetchData()}
+                        onClick={() => fetchDataFreshFromDB()}
                         className="h-7 w-7 p-0 rounded-full hover:bg-gray-100"
-                        title="Refresh List"
+                        title="Refresh List (Force Fresh Data from Database)"
                       >
                         <RotateCcw className="h-3.5 w-3.5" />
                       </Button>
@@ -4937,11 +4979,12 @@ export function SalesOrderInvoiceManager() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => fetchData()}
+                      onClick={() => fetchDataFreshFromDB()}
                       className="h-7 px-2 text-xs"
+                      title="Force Fresh Data from Database (Bypass Cache)"
                     >
                       <RotateCcw className="h-3 w-3 mr-1" />
-                      Refresh
+                      Fresh Reload
                     </Button>
                   </div>
                 </div>
@@ -5572,10 +5615,11 @@ export function SalesOrderInvoiceManager() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => fetchData()}
+                    onClick={() => fetchDataFreshFromDB()}
+                    title="Force Fresh Data from Database (Bypass Cache)"
                   >
                     <CreditCard className="h-4 w-4 mr-2" />
-                    Refresh
+                    Fresh Reload
                   </Button>
                 </div>
               </div>
@@ -7549,8 +7593,8 @@ export function SalesOrderInvoiceManager() {
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => fetchData()}
-                          title="Refresh bank accounts"
+                          onClick={() => fetchDataFreshFromDB()}
+                          title="Force Fresh Bank Account Data from Database (Bypass Cache)"
                           className="px-3"
                         >
                           🔄

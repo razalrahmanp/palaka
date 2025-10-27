@@ -24,9 +24,17 @@ interface PaymentDetail {
   description: string;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    console.log('🔍 Finance Sales Orders API - Starting comprehensive fetch...');
+    const { searchParams } = new URL(request.url);
+    const refresh = searchParams.get('refresh') === 'true';
+    const timestamp = searchParams.get('_t');
+    
+    console.log('🔍 Finance Sales Orders API - Starting comprehensive fetch...', {
+      refresh,
+      timestamp,
+      bypassCache: refresh || !!timestamp
+    });
 
     // Fetch sales orders with comprehensive payment and invoice data
     const { data: salesOrders, error: salesOrdersError } = await supabase
@@ -288,7 +296,7 @@ export async function GET() {
       console.log('📋 Sample enriched order:', JSON.stringify(enrichedOrders[0], null, 2));
     }
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       orders: enrichedOrders,
       count: enrichedOrders.length,
       summary: {
@@ -297,8 +305,23 @@ export async function GET() {
         paid_orders: enrichedOrders.filter(o => o.payment_status === 'paid').length,
         partial_paid_orders: enrichedOrders.filter(o => o.payment_status === 'partial').length,
         pending_orders: enrichedOrders.filter(o => o.payment_status === 'pending').length
+      },
+      _meta: {
+        refresh_requested: refresh,
+        timestamp: timestamp || new Date().toISOString(),
+        cache_bypassed: refresh || !!timestamp
       }
     });
+
+    // Add cache-busting headers when refresh is requested
+    if (refresh || timestamp) {
+      response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      response.headers.set('Pragma', 'no-cache');
+      response.headers.set('Expires', '0');
+      response.headers.set('X-Fresh-Data', 'true');
+    }
+
+    return response;
 
   } catch (error) {
     console.error('💥 Finance Sales Orders API Error:', error);

@@ -111,7 +111,11 @@ export async function POST() {
     }
 
     // Mark all DRAFT journal entries as POSTED
-    const journalEntryIds = [...new Set(draftLines.map(line => line.journal_entries?.journal_number))];
+    const journalEntryIds = [...new Set(draftLines
+      .map(line => line.journal_entries && typeof line.journal_entries === 'object' && 'journal_number' in line.journal_entries 
+        ? line.journal_entries.journal_number 
+        : null)
+      .filter(Boolean))];
     
     const { error: postError } = await supabase
       .from('journal_entries')

@@ -2,8 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabaseClient'
 
 // GET - Fetch all active investment categories
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const refresh = searchParams.get('refresh') === 'true';
+    const timestamp = searchParams.get('_t');
+    
+    console.log('💰 Fetching investment categories...', {
+      refresh,
+      timestamp,
+      bypassCache: refresh || !!timestamp
+    });
     const { data: categories, error } = await supabase
       .from('investment_categories')
       .select('*')
@@ -21,10 +30,19 @@ export async function GET() {
       )
     }
     
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: categories || []
     })
+    
+    // Add cache-busting headers when refresh is requested
+    if (refresh || timestamp) {
+      response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      response.headers.set('Pragma', 'no-cache');
+      response.headers.set('Expires', '0');
+    }
+    
+    return response
     
   } catch (error) {
     console.error('Error fetching investment categories:', error)

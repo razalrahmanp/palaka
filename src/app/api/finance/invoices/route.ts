@@ -48,9 +48,17 @@ interface ReturnItemWithDetails {
   }[];
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    console.log('🧾 Fetching ALL invoices for finance management...');
+    const { searchParams } = new URL(request.url);
+    const refresh = searchParams.get('refresh') === 'true';
+    const timestamp = searchParams.get('_t');
+    
+    console.log('🧾 Fetching ALL invoices for finance management...', {
+      refresh,
+      timestamp,
+      bypassCache: refresh || !!timestamp
+    });
 
     // First fetch invoices without complex joins to avoid schema issues
     const { data: invoices, error } = await supabase
@@ -267,7 +275,16 @@ export async function GET() {
 
     console.log(`✅ Enhanced ${enhancedInvoices.length} invoices with payment data`);
 
-    return NextResponse.json(enhancedInvoices);
+    const response = NextResponse.json(enhancedInvoices);
+    
+    // Add cache-busting headers when refresh is requested
+    if (refresh || timestamp) {
+      response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      response.headers.set('Pragma', 'no-cache');
+      response.headers.set('Expires', '0');
+    }
+    
+    return response;
   } catch (error) {
     console.error('💥 Invoices API Error:', error);
     return NextResponse.json({ 

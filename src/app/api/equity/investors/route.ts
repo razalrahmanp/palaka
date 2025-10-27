@@ -7,8 +7,17 @@ const supabase = createClient(
 );
 
 // GET - Fetch all investors
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const refresh = searchParams.get('refresh') === 'true';
+    const timestamp = searchParams.get('_t');
+    
+    console.log('💼 Fetching investors...', {
+      refresh,
+      timestamp,
+      bypassCache: refresh || !!timestamp
+    });
     const { data: investors, error } = await supabase
       .from('partners')
       .select('*')
@@ -19,11 +28,20 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       investors: investors || [],
       data: investors || []
     });
+    
+    // Add cache-busting headers when refresh is requested
+    if (refresh || timestamp) {
+      response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      response.headers.set('Pragma', 'no-cache');
+      response.headers.set('Expires', '0');
+    }
+    
+    return response;
   } catch (error) {
     console.error('Error in investors GET:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

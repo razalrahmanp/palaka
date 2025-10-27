@@ -6,6 +6,15 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const accountType = searchParams.get('type');
+    const refresh = searchParams.get('refresh') === 'true';
+    const timestamp = searchParams.get('_t');
+    
+    console.log('🏦 Fetching bank accounts...', {
+      refresh,
+      timestamp,
+      bypassCache: refresh || !!timestamp,
+      accountType
+    });
 
     let query = supabase
       .from("bank_accounts")
@@ -54,10 +63,19 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    return NextResponse.json({ 
+    const response = NextResponse.json({ 
       success: true, 
       data: enhancedData 
     });
+    
+    // Add cache-busting headers when refresh is requested
+    if (refresh || timestamp) {
+      response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      response.headers.set('Pragma', 'no-cache');
+      response.headers.set('Expires', '0');
+    }
+    
+    return response;
   } catch (error) {
     console.error('Unexpected error fetching bank accounts:', error);
     return NextResponse.json({ 

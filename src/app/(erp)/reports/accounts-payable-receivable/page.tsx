@@ -1039,64 +1039,7 @@ export default function AccountsPayableReceivablePage() {
         </Card>
       </div>
 
-      <FloatingActionMenu actions={[
-        {
-          id: 'profit-loss',
-          label: 'Profit & Loss Statement',
-          icon: React.createElement(TrendingUp, { className: "h-5 w-5 text-white" }),
-          onClick: () => router.push('/reports/profit-loss'),
-          color: 'bg-blue-600',
-          hoverColor: 'hover:bg-blue-700',
-        },
-        {
-          id: 'trial-balance',
-          label: 'Trial Balance',
-          icon: React.createElement(Calculator, { className: "h-5 w-5 text-white" }),
-          onClick: () => router.push('/reports/trial-balance'),
-          color: 'bg-blue-600',
-          hoverColor: 'hover:bg-blue-700',
-        },
-        {
-          id: 'cash-flow',
-          label: 'Cash Flow Statement',
-          icon: React.createElement(CreditCard, { className: "h-5 w-5 text-white" }),
-          onClick: () => router.push('/reports/cash-flow'),
-          color: 'bg-blue-600',
-          hoverColor: 'hover:bg-blue-700',
-        },
-        {
-          id: 'balance-sheet',
-          label: 'Balance Sheet',
-          icon: React.createElement(BarChart3, { className: "h-5 w-5 text-white" }),
-          onClick: () => router.push('/reports/balance-sheet'),
-          color: 'bg-blue-600',
-          hoverColor: 'hover:bg-blue-700',
-        },
-        {
-          id: 'accounts-payable-receivable',
-          label: 'Accounts Payable & Receivable',
-          icon: React.createElement(Users, { className: "h-5 w-5 text-white" }),
-          onClick: () => router.push('/reports/accounts-payable-receivable'),
-          color: 'bg-blue-600',
-          hoverColor: 'hover:bg-blue-700',
-        },
-        {
-          id: 'day-sheet',
-          label: 'Day Sheet',
-          icon: React.createElement(Calendar, { className: "h-5 w-5 text-white" }),
-          onClick: () => router.push('/reports/day-sheet'),
-          color: 'bg-blue-600',
-          hoverColor: 'hover:bg-blue-700',
-        },
-        {
-          id: 'aging-report',
-          label: 'Aging Report',
-          icon: React.createElement(Clock, { className: "h-5 w-5 text-white" }),
-          onClick: () => router.push('/reports/aging-report'),
-          color: 'bg-blue-600',
-          hoverColor: 'hover:bg-blue-700',
-        },
-      ]} />
+
     </div>
   );
 }

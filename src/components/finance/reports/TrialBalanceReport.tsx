@@ -161,7 +161,7 @@ export default function TrialBalanceReport({ onBack }: TrialBalanceReportProps) 
   };
 
   return (
-    <div className="h-full flex flex-col bg-white">
+    <div className="min-h-screen w-full flex flex-col bg-white">
       {/* Header */}
       <div className="flex items-center justify-between p-6 border-b">
         <div>
@@ -189,13 +189,13 @@ export default function TrialBalanceReport({ onBack }: TrialBalanceReportProps) 
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-6 w-full">
         {loading ? (
           <div className="flex items-center justify-center h-64">
             <div className="text-gray-500">Loading trial balance...</div>
           </div>
         ) : (
-          <div className="max-w-6xl mx-auto">
+          <div className="w-full">
             <div className="bg-white rounded-lg shadow-sm border">
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -322,7 +322,7 @@ export default function TrialBalanceReport({ onBack }: TrialBalanceReportProps) 
       </div>
 
       {/* Floating Action Buttons */}
-      <div className="fixed left-4 top-1/2 transform -translate-y-1/2 flex flex-col gap-3 z-50">
+      <div className="fixed right-6 top-1/2 transform translate-y-4 flex flex-col gap-3 z-50">
         <Button
           variant="outline"
           size="icon"

@@ -2275,7 +2275,7 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
       </Card>
 
       {/* Navigation & Document Actions - Left Side */}
-      <div className="fixed top-20 left-4 z-50 flex flex-col gap-2">
+      <div className="fixed top-20 right-4 z-50 flex flex-col gap-2">
         <Button
           variant="outline"
           size="sm"

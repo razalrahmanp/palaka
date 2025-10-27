@@ -196,7 +196,7 @@ export default function AccountBalancesReport({ asOfDate: initialAsOfDate }: Acc
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Floating Action Buttons - Left Side */}
-      <div className="fixed left-6 top-24 z-20 flex flex-col gap-3">
+      <div className="fixed right-6 top-1/2 transform translate-y-4 z-20 flex flex-col gap-3">
         <Button
           variant="default"
           size="icon"
@@ -280,7 +280,7 @@ export default function AccountBalancesReport({ asOfDate: initialAsOfDate }: Acc
       </div>
 
       {/* Content */}
-      <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <div className="p-6 w-full space-y-6">
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="border-green-200 bg-green-50">

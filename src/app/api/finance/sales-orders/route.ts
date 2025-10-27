@@ -111,10 +111,11 @@ export async function GET() {
         order_id,
         quantity,
         unit_price,
-        product_name,
+        name,
         product_id,
-        sku,
-        products(name, supplier_id, suppliers(name))
+        final_price,
+        cost,
+        products(name, sku, supplier_id, suppliers(name))
       `)
       .in("order_id", salesOrders?.map(order => order.id) || []);
 

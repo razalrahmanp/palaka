@@ -8,11 +8,12 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowLeft, Download, Printer, Calendar as CalendarIcon, Info } from 'lucide-react';
+import { ArrowLeft, Download, Printer, Calendar as CalendarIcon, Info, LayoutList, LayoutGrid, Columns } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
@@ -74,6 +75,8 @@ export default function CashFlowReport({ startDate: initialStartDate, endDate: i
   const [endDate, setEndDate] = useState<Date>(initialEndDate);
   const [showCalculationDialog, setShowCalculationDialog] = useState(false);
   const [selectedSection, setSelectedSection] = useState<'operating' | 'investing' | 'financing' | null>(null);
+  const [viewMode, setViewMode] = useState<'vertical' | 'horizontal' | 'accounting'>('vertical');
+  const [showViewMenu, setShowViewMenu] = useState(false);
 
   useEffect(() => {
     fetchReport();
@@ -336,6 +339,384 @@ export default function CashFlowReport({ startDate: initialStartDate, endDate: i
     doc.save(`Cash_Flow_${format(startDate, 'yyyy-MM-dd')}_to_${format(endDate, 'yyyy-MM-dd')}.pdf`);
   };
 
+  // View Mode Rendering Functions
+  const renderVerticalView = () => {
+    return (
+      <div className="space-y-6">
+        {/* Operating Activities */}
+        {reportData?.sections?.OPERATING && reportData.sections.OPERATING.length > 0 && (
+          <Card>
+            <CardHeader className="bg-green-50">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-green-900">OPERATING ACTIVITIES</CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0 text-green-700 hover:bg-green-200"
+                  onClick={() => {
+                    setSelectedSection('operating');
+                    setShowCalculationDialog(true);
+                  }}
+                  title="View calculation details"
+                >
+                  <Info className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-32">Account Code</TableHead>
+                    <TableHead>Account Name</TableHead>
+                    <TableHead className="text-right w-40">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {reportData.sections.OPERATING.map((item, index) => (
+                    <TableRow key={index} className="hover:bg-gray-50">
+                      <TableCell className="font-mono text-sm">{item.account_code}</TableCell>
+                      <TableCell>{item.account_name}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatCurrency(item.amount)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <div className="border-t bg-green-50 p-4 font-bold text-green-900">
+                <div className="flex justify-between">
+                  <span>Net Operating Cash Flow</span>
+                  <span>{formatCurrency(reportData.summary?.net_operating || 0)}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Investing Activities */}
+        {reportData?.sections?.INVESTING && reportData.sections.INVESTING.length > 0 && (
+          <Card>
+            <CardHeader className="bg-blue-50">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-blue-900">INVESTING ACTIVITIES</CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0 text-blue-700 hover:bg-blue-200"
+                  onClick={() => {
+                    setSelectedSection('investing');
+                    setShowCalculationDialog(true);
+                  }}
+                  title="View calculation details"
+                >
+                  <Info className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-32">Account Code</TableHead>
+                    <TableHead>Account Name</TableHead>
+                    <TableHead className="text-right w-40">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {reportData.sections.INVESTING.map((item, index) => (
+                    <TableRow key={index} className="hover:bg-gray-50">
+                      <TableCell className="font-mono text-sm">{item.account_code}</TableCell>
+                      <TableCell>{item.account_name}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatCurrency(item.amount)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <div className="border-t bg-blue-50 p-4 font-bold text-blue-900">
+                <div className="flex justify-between">
+                  <span>Net Investing Cash Flow</span>
+                  <span>{formatCurrency(reportData.summary?.net_investing || 0)}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Financing Activities */}
+        {reportData?.sections?.FINANCING && reportData.sections.FINANCING.length > 0 && (
+          <Card>
+            <CardHeader className="bg-orange-50">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-orange-900">FINANCING ACTIVITIES</CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0 text-orange-700 hover:bg-orange-200"
+                  onClick={() => {
+                    setSelectedSection('financing');
+                    setShowCalculationDialog(true);
+                  }}
+                  title="View calculation details"
+                >
+                  <Info className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-32">Account Code</TableHead>
+                    <TableHead>Account Name</TableHead>
+                    <TableHead className="text-right w-40">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {reportData.sections.FINANCING.map((item, index) => (
+                    <TableRow key={index} className="hover:bg-gray-50">
+                      <TableCell className="font-mono text-sm">{item.account_code}</TableCell>
+                      <TableCell>{item.account_name}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatCurrency(item.amount)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <div className="border-t bg-orange-50 p-4 font-bold text-orange-900">
+                <div className="flex justify-between">
+                  <span>Net Financing Cash Flow</span>
+                  <span>{formatCurrency(reportData.summary?.net_financing || 0)}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  };
+
+  const renderHorizontalView = () => {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardContent className="p-6">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-48">Account</TableHead>
+                    <TableHead className="text-center w-32">Operating</TableHead>
+                    <TableHead className="text-center w-32">Investing</TableHead>
+                    <TableHead className="text-center w-32">Financing</TableHead>
+                    <TableHead className="text-center w-32">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {/* Create a consolidated view of all accounts */}
+                  {(() => {
+                    const allAccounts = new Map();
+                    
+                    // Collect all accounts from all sections
+                    (['OPERATING', 'INVESTING', 'FINANCING'] as const).forEach(section => {
+                      if (reportData?.sections?.[section]) {
+                        reportData.sections[section].forEach((item: CashFlowItem) => {
+                          if (!allAccounts.has(item.account_name)) {
+                            allAccounts.set(item.account_name, {
+                              name: item.account_name,
+                              code: item.account_code,
+                              operating: 0,
+                              investing: 0,
+                              financing: 0
+                            });
+                          }
+                          const sectionKey = section.toLowerCase() as 'operating' | 'investing' | 'financing';
+                          allAccounts.get(item.account_name)![sectionKey] = item.amount;
+                        });
+                      }
+                    });
+
+                    return Array.from(allAccounts.values()).map((account, index) => {
+                      const total = account.operating + account.investing + account.financing;
+                      return (
+                        <TableRow key={index} className="hover:bg-gray-50">
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">{account.name}</div>
+                              <div className="text-sm text-gray-500 font-mono">{account.code}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {account.operating !== 0 ? formatCurrency(account.operating) : '-'}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {account.investing !== 0 ? formatCurrency(account.investing) : '-'}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {account.financing !== 0 ? formatCurrency(account.financing) : '-'}
+                          </TableCell>
+                          <TableCell className="text-center font-medium">
+                            {total !== 0 ? formatCurrency(total) : '-'}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    });
+                  })()}
+                </TableBody>
+                <TableFooter>
+                  <TableRow className="bg-gray-100 font-bold">
+                    <TableCell>Net Cash Flow</TableCell>
+                    <TableCell className="text-center">
+                      {formatCurrency(reportData?.summary?.net_operating || 0)}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {formatCurrency(reportData?.summary?.net_investing || 0)}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {formatCurrency(reportData?.summary?.net_financing || 0)}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {formatCurrency(reportData?.summary?.net_change || 0)}
+                    </TableCell>
+                  </TableRow>
+                </TableFooter>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
+  const renderAccountingView = () => {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardContent className="p-6">
+            <div className="grid grid-cols-2 gap-8">
+              {/* Cash Inflows */}
+              <div>
+                <h3 className="text-lg font-bold text-green-700 mb-4 border-b-2 border-green-200 pb-2">
+                  CASH INFLOWS
+                </h3>
+                <div className="space-y-3">
+                  {(() => {
+                    const inflows: Array<CashFlowItem & { section: string }> = [];
+                    (['OPERATING', 'INVESTING', 'FINANCING'] as const).forEach(section => {
+                      if (reportData?.sections?.[section]) {
+                        reportData.sections[section].forEach((item: CashFlowItem) => {
+                          if (item.amount > 0) {
+                            inflows.push({
+                              ...item,
+                              section: section.charAt(0) + section.slice(1).toLowerCase()
+                            });
+                          }
+                        });
+                      }
+                    });
+                    
+                    return inflows.map((item, index) => (
+                      <div key={index} className="flex justify-between items-center py-2 border-b border-gray-100">
+                        <div>
+                          <div className="font-medium">{item.account_name}</div>
+                          <div className="text-sm text-gray-500">
+                            {item.section} • {item.account_code}
+                          </div>
+                        </div>
+                        <div className="font-medium text-green-600">
+                          +{formatCurrency(item.amount)}
+                        </div>
+                      </div>
+                    ));
+                  })()}
+                  {(() => {
+                    const totalInflows = (['OPERATING', 'INVESTING', 'FINANCING'] as const).reduce((total, section) => {
+                      if (reportData?.sections?.[section]) {
+                        return total + reportData.sections[section]
+                          .filter((item: CashFlowItem) => item.amount > 0)
+                          .reduce((sum: number, item: CashFlowItem) => sum + item.amount, 0);
+                      }
+                      return total;
+                    }, 0);
+                    
+                    return (
+                      <div className="border-t-2 border-green-200 pt-3 mt-4">
+                        <div className="flex justify-between font-bold text-green-700">
+                          <span>Total Inflows</span>
+                          <span>+{formatCurrency(totalInflows)}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* Cash Outflows */}
+              <div>
+                <h3 className="text-lg font-bold text-red-700 mb-4 border-b-2 border-red-200 pb-2">
+                  CASH OUTFLOWS
+                </h3>
+                <div className="space-y-3">
+                  {(() => {
+                    const outflows: Array<CashFlowItem & { section: string }> = [];
+                    (['OPERATING', 'INVESTING', 'FINANCING'] as const).forEach(section => {
+                      if (reportData?.sections?.[section]) {
+                        reportData.sections[section].forEach((item: CashFlowItem) => {
+                          if (item.amount < 0) {
+                            outflows.push({
+                              ...item,
+                              section: section.charAt(0) + section.slice(1).toLowerCase()
+                            });
+                          }
+                        });
+                      }
+                    });
+                    
+                    return outflows.map((item, index) => (
+                      <div key={index} className="flex justify-between items-center py-2 border-b border-gray-100">
+                        <div>
+                          <div className="font-medium">{item.account_name}</div>
+                          <div className="text-sm text-gray-500">
+                            {item.section} • {item.account_code}
+                          </div>
+                        </div>
+                        <div className="font-medium text-red-600">
+                          {formatCurrency(item.amount)}
+                        </div>
+                      </div>
+                    ));
+                  })()}
+                  {(() => {
+                    const totalOutflows = (['OPERATING', 'INVESTING', 'FINANCING'] as const).reduce((total, section) => {
+                      if (reportData?.sections?.[section]) {
+                        return total + reportData.sections[section]
+                          .filter((item: CashFlowItem) => item.amount < 0)
+                          .reduce((sum: number, item: CashFlowItem) => sum + item.amount, 0);
+                      }
+                      return total;
+                    }, 0);
+                    
+                    return (
+                      <div className="border-t-2 border-red-200 pt-3 mt-4">
+                        <div className="flex justify-between font-bold text-red-700">
+                          <span>Total Outflows</span>
+                          <span>{formatCurrency(totalOutflows)}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -360,8 +741,8 @@ export default function CashFlowReport({ startDate: initialStartDate, endDate: i
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Floating Action Buttons - Left Side */}
-      <div className="fixed left-6 top-24 z-20 flex flex-col gap-3">
+      {/* Floating Action Buttons - Right Side */}
+      <div className="fixed right-6 top-1/2 transform translate-y-4 z-20 flex flex-col gap-3">
         <Button
           variant="default"
           size="icon"
@@ -371,6 +752,68 @@ export default function CashFlowReport({ startDate: initialStartDate, endDate: i
         >
           <ArrowLeft className="h-5 w-5" />
         </Button>
+        
+        {/* View Mode Toggle with Dropdown */}
+        <div className="relative">
+          <Button
+            variant="default"
+            size="icon"
+            onMouseEnter={() => setShowViewMenu(true)}
+            onMouseLeave={() => setShowViewMenu(false)}
+            className="h-12 w-12 rounded-full shadow-lg bg-purple-600 hover:bg-purple-700 transition-all duration-200"
+            title="View Mode"
+          >
+            {viewMode === 'vertical' && <LayoutList className="h-5 w-5" />}
+            {viewMode === 'horizontal' && <LayoutGrid className="h-5 w-5" />}
+            {viewMode === 'accounting' && <Columns className="h-5 w-5" />}
+          </Button>
+          
+          {/* View Mode Dropdown */}
+          {showViewMenu && (
+            <div
+              className="absolute right-full mr-3 top-0 bg-white rounded-lg shadow-lg border border-gray-200 p-2 min-w-[140px] z-30"
+              onMouseEnter={() => setShowViewMenu(true)}
+              onMouseLeave={() => setShowViewMenu(false)}
+            >
+              <div className="space-y-1">
+                <button
+                  onClick={() => setViewMode('vertical')}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors ${
+                    viewMode === 'vertical'
+                      ? 'bg-purple-100 text-purple-700'
+                      : 'hover:bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  <LayoutList className="h-4 w-4" />
+                  Vertical
+                </button>
+                <button
+                  onClick={() => setViewMode('horizontal')}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors ${
+                    viewMode === 'horizontal'
+                      ? 'bg-purple-100 text-purple-700'
+                      : 'hover:bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                  Horizontal
+                </button>
+                <button
+                  onClick={() => setViewMode('accounting')}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors ${
+                    viewMode === 'accounting'
+                      ? 'bg-purple-100 text-purple-700'
+                      : 'hover:bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  <Columns className="h-4 w-4" />
+                  Accounting
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
         <Button
           variant="default"
           size="icon"
@@ -464,7 +907,7 @@ export default function CashFlowReport({ startDate: initialStartDate, endDate: i
       </div>
 
       {/* Content */}
-      <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <div className="p-6 w-full space-y-6">
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card className="border-green-200 bg-green-50">
@@ -512,152 +955,10 @@ export default function CashFlowReport({ startDate: initialStartDate, endDate: i
           </Card>
         </div>
 
-        {/* Operating Activities */}
-        {reportData.sections?.OPERATING && reportData.sections.OPERATING.length > 0 && (
-          <Card>
-            <CardHeader className="bg-green-600 text-white">
-              <div className="flex items-center justify-between">
-                <CardTitle>OPERATING ACTIVITIES</CardTitle>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 text-white hover:bg-green-700"
-                  onClick={() => {
-                    setSelectedSection('operating');
-                    setShowCalculationDialog(true);
-                  }}
-                  title="View calculation details"
-                >
-                  <Info className="h-5 w-5" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-32 font-semibold">Code</TableHead>
-                    <TableHead className="font-semibold">Account Name</TableHead>
-                    <TableHead className="text-right font-semibold w-40">Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {reportData.sections.OPERATING.map((item, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-mono text-sm">{item.account_code}</TableCell>
-                      <TableCell>{item.account_name}</TableCell>
-                      <TableCell className="text-right font-mono">{formatCurrency(item.amount)}</TableCell>
-                    </TableRow>
-                  ))}
-                  <TableRow className="bg-green-50 font-semibold">
-                    <TableCell colSpan={2}>Net Operating Cash Flow</TableCell>
-                    <TableCell className="text-right font-mono text-green-700">
-                      {formatCurrency(reportData.summary?.net_operating || 0)}
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Investing Activities */}
-        {reportData.sections?.INVESTING && reportData.sections.INVESTING.length > 0 && (
-          <Card>
-            <CardHeader className="bg-blue-600 text-white">
-              <div className="flex items-center justify-between">
-                <CardTitle>INVESTING ACTIVITIES</CardTitle>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 text-white hover:bg-blue-700"
-                  onClick={() => {
-                    setSelectedSection('investing');
-                    setShowCalculationDialog(true);
-                  }}
-                  title="View calculation details"
-                >
-                  <Info className="h-5 w-5" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-32 font-semibold">Code</TableHead>
-                    <TableHead className="font-semibold">Account Name</TableHead>
-                    <TableHead className="text-right font-semibold w-40">Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {reportData.sections.INVESTING.map((item, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-mono text-sm">{item.account_code}</TableCell>
-                      <TableCell>{item.account_name}</TableCell>
-                      <TableCell className="text-right font-mono">{formatCurrency(item.amount)}</TableCell>
-                    </TableRow>
-                  ))}
-                  <TableRow className="bg-blue-50 font-semibold">
-                    <TableCell colSpan={2}>Net Investing Cash Flow</TableCell>
-                    <TableCell className="text-right font-mono text-blue-700">
-                      {formatCurrency(reportData.summary?.net_investing || 0)}
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Financing Activities */}
-        {reportData.sections?.FINANCING && reportData.sections.FINANCING.length > 0 && (
-          <Card>
-            <CardHeader className="bg-orange-600 text-white">
-              <div className="flex items-center justify-between">
-                <CardTitle>FINANCING ACTIVITIES</CardTitle>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 text-white hover:bg-orange-700"
-                  onClick={() => {
-                    setSelectedSection('financing');
-                    setShowCalculationDialog(true);
-                  }}
-                  title="View calculation details"
-                >
-                  <Info className="h-5 w-5" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-32 font-semibold">Code</TableHead>
-                    <TableHead className="font-semibold">Account Name</TableHead>
-                    <TableHead className="text-right font-semibold w-40">Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {reportData.sections.FINANCING.map((item, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-mono text-sm">{item.account_code}</TableCell>
-                      <TableCell>{item.account_name}</TableCell>
-                      <TableCell className="text-right font-mono">{formatCurrency(item.amount)}</TableCell>
-                    </TableRow>
-                  ))}
-                  <TableRow className="bg-orange-50 font-semibold">
-                    <TableCell colSpan={2}>Net Financing Cash Flow</TableCell>
-                    <TableCell className="text-right font-mono text-orange-700">
-                      {formatCurrency(reportData.summary?.net_financing || 0)}
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        )}
+        {/* Conditional View Rendering */}
+        {viewMode === 'vertical' && renderVerticalView()}
+        {viewMode === 'horizontal' && renderHorizontalView()}
+        {viewMode === 'accounting' && renderAccountingView()}
 
         {/* Net Change Summary */}
         <Card className="border-2 border-purple-300 bg-gradient-to-br from-purple-50 to-blue-50">

@@ -8,7 +8,7 @@ import {
   DollarSign, Star, Users2, Building2, Package, 
   FileText, TrendingUp, BookOpen, BarChart, ChevronDown, ChevronRight,
   Mail, LogOut, Fingerprint, Clock, Calendar, GraduationCap,
-  Wallet, FolderOpen, Settings
+  Wallet, FolderOpen, Settings, Calculator
 } from 'lucide-react';
 import { hasPermission, hasAnyPermission, getCurrentUser } from '@/lib/auth';
 
@@ -88,7 +88,14 @@ const hrNavItems: NavItem[] = [
 
 // Reports & Analytics
 const reportItems: NavItem[] = [
-  { href: "/reports", icon: BarChart, label: "Reports & Analytics", permission: 'analytics:read' },
+  { href: "/reports", icon: BarChart, label: "Reports Overview", permission: 'analytics:read' },
+  { href: "/reports/profit-loss", icon: TrendingUp, label: "Profit & Loss Statement", permission: 'analytics:read' },
+  { href: "/reports/trial-balance", icon: Calculator, label: "Trial Balance", permission: 'analytics:read' },
+  { href: "/reports/cash-flow", icon: DollarSign, label: "Cash Flow Statement", permission: 'analytics:read' },
+  { href: "/reports/balance-sheet", icon: BarChart, label: "Balance Sheet", permission: 'analytics:read' },
+  { href: "/reports/accounts-payable-receivable", icon: Users, label: "Accounts Payable & Receivable", permission: 'analytics:read' },
+  { href: "/reports/day-sheet", icon: Calendar, label: "Day Sheet", permission: 'analytics:read' },
+  { href: "/reports/aging-report", icon: Clock, label: "Aging Report", permission: 'analytics:read' },
 ];
 
 export const Sidebar = () => {
@@ -97,12 +104,12 @@ export const Sidebar = () => {
   const [isHovered, setIsHovered] = useState(false);
   
   // State for collapsible sections
-  // HR managers get HR section expanded by default
+  // HR managers get HR section expanded by default, but can collapse it
   const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') return new Set();
     const sections = new Set<string>();
     if (isHRManager() || isSystemAdmin()) {
-      sections.add('hr'); // HR section always expanded for HR managers
+      sections.add('hr'); // HR section starts expanded for HR managers, but can be collapsed
     }
     return sections;
   });
@@ -112,16 +119,11 @@ export const Sidebar = () => {
   }, []);
 
   // Collapse sidebar when pathname changes (navigation occurs)
-  // Collapse sidebar when pathname changes (navigation occurs)
   useEffect(() => {
     if (pathname) {
       setIsHovered(false);
-      // For HR Managers/Admins, keep HR section expanded
-      if (isHRManager() || isSystemAdmin()) {
-        setExpandedSections(new Set(['hr']));
-      } else {
-        setExpandedSections(new Set()); // Clear all sections
-      }
+      // Collapse all sections when navigating to keep sidebar clean
+      setExpandedSections(new Set());
     }
   }, [pathname]);
 
@@ -129,25 +131,12 @@ export const Sidebar = () => {
     setExpandedSections(prev => {
       const newSet = new Set<string>();
       
-      // For HR managers/admins, prevent collapsing the HR section
-      if (section === 'hr' && (isHRManager() || isSystemAdmin())) {
-        if (!prev.has(section)) {
-          newSet.add(section); // Can expand
-        } else {
-          newSet.add(section); // Cannot collapse - keep expanded
-        }
-      } else {
-        // Normal behavior for other sections
-        // If clicking the same section, collapse it. Otherwise, expand only the clicked section
-        if (!prev.has(section)) {
-          newSet.add(section);
-        }
+      // Normal behavior for all sections - expand/collapse toggle
+      // If clicking the same section, collapse it. Otherwise, expand only the clicked section
+      if (!prev.has(section)) {
+        newSet.add(section);
       }
-      
-      // Always preserve HR section for HR managers/admins
-      if ((isHRManager() || isSystemAdmin()) && section !== 'hr') {
-        newSet.add('hr');
-      }
+      // If section was expanded, clicking it will collapse it (newSet stays empty)
       
       return newSet;
     });
@@ -288,7 +277,7 @@ export const Sidebar = () => {
         <div>
           <button
             onClick={() => toggleSection('hr')}
-            className="w-full flex items-center gap-3 px-3 py-2 text-gray-700 hover:bg-purple-50 hover:text-purple-600 rounded-lg transition-all"
+            className="w-full flex items-center gap-3 px-3 py-2 text-gray-700 hover:bg-purple-50 hover:text-purple-600 rounded-lg transition-all group"
             title={!isExpanded ? 'Human Resources' : ''}
           >
             <Users2 className="h-5 w-5 flex-shrink-0" />

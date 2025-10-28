@@ -112,13 +112,40 @@ export async function POST(
       // ✅ CRITICAL FIX: Also insert into expenses table for data consistency
       console.log('📝 Creating corresponding expense record for vendor payment...');
       
+      // Get supplier name for description
+      const { data: supplierData } = await supabase
+        .from('suppliers')
+        .select('name')
+        .eq('id', vendorId)
+        .single();
+      
+      const supplierName = supplierData?.name || 'Unknown Vendor';
+      
+      // Determine the correct bank_account_id based on payment method
+      let selectedBankAccountId = null;
+      if (payment_method === 'upi' && upi_account_id) {
+        selectedBankAccountId = upi_account_id;
+      } else if (payment_method === 'bank_transfer' && bank_account_id) {
+        selectedBankAccountId = bank_account_id;
+      } else if (payment_method === 'cash') {
+        // Get the cash account ID
+        const { data: cashAccount } = await supabase
+          .from('bank_accounts')
+          .select('id')
+          .eq('account_type', 'CASH')
+          .eq('is_active', true)
+          .single();
+        selectedBankAccountId = cashAccount?.id || null;
+      }
+      
       const expenseData = {
         amount: parseFloat(amount),
-        category: 'Vendor Payment',
-        subcategory: 'Smart Settlement',
-        description: notes || `Smart payment settlement: ${reference_number || ''}`,
+        category: 'Manufacturing',
+        subcategory: 'Vendor Payment',
+        description: `Payment for vendor bill - ${supplierName} (Smart payment settlement: ${notes || ''})`,
         date: payment_date,
         payment_method: payment_method || 'cash',
+        bank_account_id: selectedBankAccountId,
         entity_type: 'vendor',
         entity_id: vendorId,
         reference_number: reference_number,

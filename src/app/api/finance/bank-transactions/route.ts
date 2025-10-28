@@ -364,6 +364,37 @@ export async function GET(request: NextRequest) {
     // Sort all transactions by date (most recent first)
     allTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
+    // Calculate running balance for ALL transactions (oldest to newest)
+    console.log('📊 Calculating running balance for', allTransactions.length, 'transactions...');
+    
+    // Create a copy sorted chronologically (oldest first) for balance calculation
+    const sortedForBalance = [...allTransactions].sort((a, b) => 
+      new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+    
+    // Calculate running balance
+    const balanceMap = new Map<string, number>();
+    let runningBalance = 0;
+    
+    sortedForBalance.forEach((txn) => {
+      if (txn.type === 'deposit') {
+        runningBalance += Math.abs(txn.amount || 0);
+      } else {
+        runningBalance -= Math.abs(txn.amount || 0);
+      }
+      balanceMap.set(txn.id, runningBalance);
+    });
+
+    console.log('💰 Final running balance:', runningBalance);
+    console.log('📊 Balance map size:', balanceMap.size);
+
+    // Apply the calculated running balance to all transactions
+    allTransactions.forEach(transaction => {
+      const balance = balanceMap.get(transaction.id);
+      // @ts-expect-error - adding running_balance field dynamically
+      transaction.running_balance = balance || 0;
+    });
+
     // Get paginated results
     const paginatedTransactions = allTransactions.slice(offset, offset + limit);
 

@@ -55,124 +55,167 @@ export async function GET(request: NextRequest) {
       page, limit, cash_account_id, source_type, transaction_type, date_from, date_to, search, export_data
     });
 
-    const offset = (page - 1) * limit;
-
-    // Step 1: Get all CASH type account IDs from bank_accounts table
-    // This ensures we only show transactions for accounts marked as CASH type
-    console.log('🔍 Step 1: Fetching CASH account IDs from bank_accounts...');
-    const { data: cashAccountsData, error: cashAccountError } = await supabaseAdmin
-      .from('bank_accounts')
-      .select('id')
-      .eq('account_type', 'CASH');
-
-    if (cashAccountError) {
-      console.error('❌ Error fetching cash account IDs:', cashAccountError);
-      return NextResponse.json({
-        success: false,
-        error: `Failed to fetch cash accounts: ${cashAccountError.message}`
-      }, { status: 500 });
-    }
-
-    const cashAccountIds = (cashAccountsData || []).map(acc => acc.id);
-    console.log('✅ Found CASH accounts:', cashAccountIds.length, 'accounts');
-
-    if (cashAccountIds.length === 0) {
-      console.log('⚠️ No cash accounts found, returning empty result');
-      // No cash accounts found, return empty result
-      return NextResponse.json({
-        success: true,
-        transactions: [],
-        total_count: 0,
-        current_page: page,
-        total_pages: 0,
-        filters_applied: {
-          cash_account_id,
-          source_type,
-          transaction_type,
-          date_from,
-          date_to,
-          search
-        }
-      });
-    }
-
-    // Step 2: Fetch transactions from bank_transactions table for these CASH accounts
-    // Using the same unified table as BANK and UPI account types
-    console.log('🔍 Step 2: Building query for bank_transactions...');
+    // Using direct Supabase query instead of RPC to bypass 1000 row limit
+    console.log('🔍 Using direct query with high limit to fetch all transactions');
+    
+    // Call RPC function without any limit to fetch ALL transactions
+    // Supabase RPC functions don't respect .limit(), so we need to use .select() instead
+    console.log('🔍 Using direct query instead of RPC to bypass 1000 row limit');
+    
     let query = supabaseAdmin
       .from('bank_transactions')
       .select(`
-        *,
-        bank_account:bank_accounts!bank_transactions_bank_account_id_fkey (
+        id,
+        date,
+        type,
+        amount,
+        description,
+        reference,
+        bank_account_id,
+        bank_accounts!inner (
           id,
           name,
-          account_type,
-          current_balance
+          account_number,
+          account_type
         )
       `, { count: 'exact' })
-      .in('bank_account_id', cashAccountIds);
+      .eq('bank_accounts.account_type', 'CASH')
+      .order('date', { ascending: false });
 
     // Apply filters
     if (cash_account_id) {
       query = query.eq('bank_account_id', cash_account_id);
     }
-    // Note: bank_transactions table uses 'date' and 'type' columns, not 'transaction_date' and 'transaction_type'
+    if (transaction_type) {
+      // Map CREDIT/DEBIT to deposit/withdrawal
+      const dbType = transaction_type === 'CREDIT' ? 'deposit' : 'withdrawal';
+      query = query.eq('type', dbType);
+    }
     if (date_from) {
       query = query.gte('date', date_from);
     }
     if (date_to) {
       query = query.lte('date', date_to);
     }
-
-    // Apply search filter if provided
     if (search) {
-      const searchPattern = `%${search}%`;
-      query = query.or(`description.ilike.${searchPattern},reference_number.ilike.${searchPattern}`);
+      query = query.or(`description.ilike.%${search}%,reference.ilike.%${search}%`);
     }
 
-    // Apply ordering and pagination
-    query = query
-      .order('date', { ascending: false });
-
-    if (!export_data) {
-      query = query.range(offset, offset + limit - 1);
-    }
-
-    console.log('🔍 Step 3: Executing query...');
-    const { data, error, count } = await query;
+    // Implement proper pagination
+    const offset = (page - 1) * limit;
+    const rangeEnd = offset + limit - 1;
+    
+    console.log(`📄 Fetching page ${page}, offset ${offset}, limit ${limit}`);
+    const { data, error, count } = await query.range(offset, rangeEnd);
 
     if (error) {
-      console.error('❌ Error fetching cash transactions from cash_transactions table:', error);
+      console.error('❌ Error querying transactions:', error);
       return NextResponse.json({
         success: false,
-        error: `Database query failed: ${error.message}`,
+        error: `Query failed: ${error.message}`,
         details: error
       }, { status: 500 });
     }
 
     console.log('✅ Query successful, received', data?.length || 0, 'transactions');
+    if (count !== null) {
+      console.log('📊 Total count from query:', count);
+    }
+    if (data && data.length > 0) {
+      console.log('📝 First transaction:', data[0]);
+    } else {
+      console.log('⚠️ No transactions returned from query');
+    }
 
-    // Transform the data from bank_transactions table to match the expected cash transactions format
-    // bank_transactions columns: id, date, type (deposit/withdrawal), amount, description, reference
+    // Transform the data to match the expected cash transactions format
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const transactions = (data || []).map((transaction: any) => ({
+    const mappedTransactions = (data || []).map((transaction: any) => ({
       id: transaction.id,
-      transaction_date: transaction.date, // map 'date' to 'transaction_date'
-      transaction_type: transaction.type === 'deposit' ? 'CREDIT' : 'DEBIT', // map 'deposit' to 'CREDIT', 'withdrawal' to 'DEBIT'
+      transaction_date: transaction.date,
+      transaction_type: transaction.type === 'deposit' ? 'CREDIT' : 'DEBIT',
       amount: Math.abs(transaction.amount || 0),
       description: transaction.description || 'Cash Transaction',
       source_type: extractSourceType(transaction.description || ''),
       source_id: null,
       reference_number: transaction.reference || null,
-      running_balance: 0, // bank_transactions doesn't have running_balance, will need to calculate
+      running_balance: 0, // Will be calculated below
       cash_account_id: transaction.bank_account_id,
-      cash_account_name: transaction.bank_account?.name || 'Unknown Account',
+      cash_account_name: transaction.bank_accounts?.name || transaction.bank_accounts?.account_number || 'Unknown Account',
       source_description: extractSourceDescription(transaction.description || ''),
       created_at: transaction.date
     }));
 
-    const total_count = count || 0;
-    const total_pages = Math.ceil(total_count / limit);
+    // Calculate running balance properly:
+    // We need to fetch ALL transactions for this cash account (not just current page)
+    // to calculate the correct running balance for each transaction
+    console.log('📊 Fetching ALL transactions for running balance calculation...');
+    
+    const { data: allTransactionsData, error: balanceError } = await supabaseAdmin
+      .from('bank_transactions')
+      .select(`
+        id,
+        date,
+        type,
+        amount,
+        bank_account_id
+      `)
+      .eq('bank_account_id', cash_account_id || mappedTransactions[0]?.cash_account_id)
+      .order('date', { ascending: true })
+      .order('id', { ascending: true }); // Secondary sort by ID for same-date transactions
+
+    if (balanceError) {
+      console.error('❌ Error fetching transactions for balance calculation:', balanceError);
+    } else {
+      console.log('✅ Fetched', allTransactionsData?.length || 0, 'transactions for balance calculation');
+      if (allTransactionsData && allTransactionsData.length > 0) {
+        console.log('📝 First transaction for balance:', {
+          id: allTransactionsData[0].id,
+          date: allTransactionsData[0].date,
+          type: allTransactionsData[0].type,
+          amount: allTransactionsData[0].amount
+        });
+        console.log('📝 Last transaction for balance:', {
+          id: allTransactionsData[allTransactionsData.length - 1].id,
+          date: allTransactionsData[allTransactionsData.length - 1].date,
+          type: allTransactionsData[allTransactionsData.length - 1].type,
+          amount: allTransactionsData[allTransactionsData.length - 1].amount
+        });
+      }
+    }
+
+    // Calculate running balance for ALL transactions
+    const balanceMap = new Map<string, number>();
+    let runningBalance = 0;
+    
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (allTransactionsData || []).forEach((txn: any) => {
+      if (txn.type === 'deposit') {
+        runningBalance += Math.abs(txn.amount || 0);
+      } else {
+        runningBalance -= Math.abs(txn.amount || 0);
+      }
+      balanceMap.set(txn.id, runningBalance);
+    });
+
+    console.log('💰 Final running balance:', runningBalance);
+    console.log('📊 Balance map size:', balanceMap.size);
+
+    // Apply the calculated running balance to our mapped transactions
+    mappedTransactions.forEach(transaction => {
+      const balance = balanceMap.get(transaction.id);
+      transaction.running_balance = balance || 0;
+      if (!balance && balance !== 0) {
+        console.log('⚠️ No balance found for transaction:', transaction.id);
+      }
+    });
+
+    console.log('✅ Running balance calculated for', allTransactionsData?.length || 0, 'total transactions');
+
+    // Return transactions in original order (DESC by date from RPC function)
+    const transactions = mappedTransactions;
+
+    const total_count = data?.length || 0;
+    const total_pages = limit > 0 ? Math.ceil(total_count / limit) : 1;
 
     // If export is requested, return CSV data
     if (export_data) {
@@ -188,7 +231,8 @@ export async function GET(request: NextRequest) {
         'Created At'
       ].join(',');
 
-      const csvRows = transactions.map((transaction) => [
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const csvRows = transactions.map((transaction: any) => [
         transaction.transaction_date,
         transaction.transaction_type,
         transaction.amount.toString(),

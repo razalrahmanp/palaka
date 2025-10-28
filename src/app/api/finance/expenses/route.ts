@@ -181,6 +181,15 @@ export async function POST(req: Request) {
     if (bank_account_id && bank_account_id.trim() !== '') {
       console.log(`💰 Creating bank transaction for ${payment_method} payment of ₹${amount} (account: ${bank_account_id})`);
       
+      // Get bank account details to use actual account name in description
+      const { data: accountDetails } = await supabase
+        .from("bank_accounts")
+        .select("name, account_type")
+        .eq("id", bank_account_id)
+        .single();
+      
+      const accountLabel = accountDetails?.name || payment_method?.toUpperCase() || 'bank';
+      
       const { data: bankTransaction, error: bankTransError } = await supabase
         .from("bank_transactions")
         .insert([{
@@ -188,7 +197,7 @@ export async function POST(req: Request) {
           date,
           type: "withdrawal",
           amount,
-          description: `Expense: ${description} (${payment_method?.toUpperCase()})`,
+          description: `Expense: ${category} - ${description} [${accountLabel}]`,
           reference: receipt_number || `EXP-${exp.id.slice(-8)}`
         }])
         .select()
@@ -341,8 +350,6 @@ export async function DELETE(req: Request) {
 
     // If this expense is linked to a vendor bill, we need to handle the relationships
     if (targetVendorBillId) {
-      console.log(`🔗 Expense ${expense_id} is linked to vendor bill ${targetVendorBillId}. Handling relationships...`);
-      console.log(`🔗 Expense ${expense_id} is linked to vendor bill ${targetVendorBillId}. Handling relationships...`);
 
       // Get the current vendor bill details
       const { data: vendorBill, error: billError } = await supabase

@@ -162,6 +162,8 @@ export async function POST(request: NextRequest) {
         .single();
       
       if (!bankError && bankAccount) {
+        const accountLabel = bankAccount.name || payment_method?.toUpperCase() || 'bank';
+        
         // Create bank transaction (investment increases balance) - works for ALL account types
         await supabase
           .from("bank_transactions")
@@ -170,7 +172,7 @@ export async function POST(request: NextRequest) {
             date: investment_date,
             type: "deposit",
             amount: investmentAmount,
-            description: `Investment from ${partner.name}: ${description}`,
+            description: `Investment from ${partner.name}: ${description} [${accountLabel}]`,
           }]);
 
         // Update bank account balance (increase for investment)

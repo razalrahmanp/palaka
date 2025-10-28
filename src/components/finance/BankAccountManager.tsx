@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -20,9 +20,6 @@ import {
 import { 
   Building2, 
   Plus, 
- 
-  ArrowUpCircle, 
-  ArrowDownCircle,
   Receipt,
   Wallet,
   Smartphone,
@@ -30,9 +27,7 @@ import {
   ArrowRightLeft,
   Banknote,
   IndianRupee,
-  Loader2,
-  ChevronDown,
-  ChevronUp
+  Loader2
 } from 'lucide-react';
 
 interface BankAccount {
@@ -90,42 +85,22 @@ interface CashAccount {
   created_at: string;
 }
 
-interface BankTransaction {
-  id: string;
-  date: string;
-  type: 'deposit' | 'withdrawal';
-  amount: number;
-  description: string;
-  reference: string;
-  transaction_type: 'bank_transaction' | 'vendor_payment' | 'withdrawal' | 'liability_payment';
-}
+
 
 export function BankAccountManager() {
   const router = useRouter();
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [upiAccounts, setUpiAccounts] = useState<UpiAccount[]>([]);
   const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([]);
-  const [cashTransactions, setCashTransactions] = useState<{
-    id: string;
-    transaction_date: string;
-    description: string;
-    amount: number;
-    transaction_type: string;
-    reference_number: string;
-    cash_account_name: string;
-    source_description: string;
-    running_balance: number;
-    balance_after?: number;
-    source?: string;
-  }[]>([]);
-  const [transactions, setTransactions] = useState<BankTransaction[]>([]);
+
+
   const [showAddAccount, setShowAddAccount] = useState(false);
-  const [showAddUpi, setShowAddUpi] = useState(false);
+
   const [showFundTransfer, setShowFundTransfer] = useState(false);
-  const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
+
   const [loading, setLoading] = useState(true);
   const [transferLoading, setTransferLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'bank' | 'upi' | 'cash'>('bank');
+
   
   const [newAccount, setNewAccount] = useState({
     name: '',
@@ -134,12 +109,7 @@ export function BankAccountManager() {
     current_balance: 0
   });
 
-  const [newUpiAccount, setNewUpiAccount] = useState({
-    name: '',
-    upi_id: '',
-    linked_bank_account_id: '',
-    current_balance: 0
-  });
+
 
   const [fundTransfer, setFundTransfer] = useState({
     fromAccountId: '',
@@ -151,97 +121,15 @@ export function BankAccountManager() {
     isContraEntry: false
   });
 
-  // Cash transaction filters
-  const [cashFilters, setCashFilters] = useState({
-    sourceType: 'all',
-    dateFrom: '',
-    dateTo: '',
-    transactionType: 'all'
-  });
 
-  // Pagination for cash transactions
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 25;
 
-  // Filtered cash transactions
-  const allFilteredTransactions = cashTransactions.filter(transaction => {
-    // Source type filter
-    if (cashFilters.sourceType !== 'all') {
-      const sourceType = transaction.source_description?.toLowerCase() || '';
-      if (cashFilters.sourceType === 'sales' && !sourceType.includes('sales') && !sourceType.includes('receipt')) return false;
-      if (cashFilters.sourceType === 'expense' && !sourceType.includes('expense') && !sourceType.includes('payment')) return false;
-      if (cashFilters.sourceType === 'investment' && !sourceType.includes('investment')) return false;
-      if (cashFilters.sourceType === 'withdrawal' && !sourceType.includes('withdrawal')) return false;
-      if (cashFilters.sourceType === 'fund_transfer' && !sourceType.includes('fund') && !sourceType.includes('transfer')) return false;
-    }
 
-    // Transaction type filter
-    if (cashFilters.transactionType !== 'all') {
-      if (cashFilters.transactionType === 'credit' && transaction.transaction_type !== 'CREDIT') return false;
-      if (cashFilters.transactionType === 'debit' && transaction.transaction_type !== 'DEBIT') return false;
-    }
-
-    // Date range filter
-    const transactionDate = new Date(transaction.transaction_date);
-    if (cashFilters.dateFrom) {
-      const fromDate = new Date(cashFilters.dateFrom);
-      if (transactionDate < fromDate) return false;
-    }
-    if (cashFilters.dateTo) {
-      const toDate = new Date(cashFilters.dateTo);
-      toDate.setHours(23, 59, 59, 999); // End of day
-      if (transactionDate > toDate) return false;
-    }
-
-    return true;
-  });
-
-  // Paginated transactions
-  const totalPages = Math.ceil(allFilteredTransactions.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const filteredCashTransactions = allFilteredTransactions.slice(startIndex, startIndex + itemsPerPage);
-
-  // Helper function to format source type for display
-  const formatSourceType = (sourceDescription: string) => {
-    if (!sourceDescription) return 'Unknown';
-    
-    const lower = sourceDescription.toLowerCase();
-    if (lower.includes('sales') || lower.includes('receipt')) return 'Sales Receipt';
-    if (lower.includes('expense') || lower.includes('payment')) return 'Expense Payment';
-    if (lower.includes('investment')) return 'Investment Receipt';
-    if (lower.includes('withdrawal')) return 'Cash Withdrawal';
-    if (lower.includes('fund') || lower.includes('transfer')) return 'Fund Transfer';
-    if (lower.includes('liability')) return 'Liability Payment';
-    
-    return sourceDescription;
-  };
-
-  // Helper function to get badge color for source type
-  const getSourceBadgeColor = (sourceDescription: string) => {
-    if (!sourceDescription) return 'bg-gray-100 text-gray-800';
-    
-    const lower = sourceDescription.toLowerCase();
-    if (lower.includes('sales') || lower.includes('receipt')) return 'bg-green-100 text-green-800';
-    if (lower.includes('expense') || lower.includes('payment')) return 'bg-red-100 text-red-800';
-    if (lower.includes('investment')) return 'bg-blue-100 text-blue-800';
-    if (lower.includes('withdrawal')) return 'bg-orange-100 text-orange-800';
-    if (lower.includes('fund') || lower.includes('transfer')) return 'bg-purple-100 text-purple-800';
-    if (lower.includes('liability')) return 'bg-yellow-100 text-yellow-800';
-    
-    return 'bg-gray-100 text-gray-800';
-  };
 
   useEffect(() => {
     fetchBankAccounts();
     fetchUpiAccounts();
     fetchCashAccounts();
-    fetchCashTransactions();
   }, []);
-
-  // Reset to first page when filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [cashFilters]);
 
   const fetchBankAccounts = async () => {
     try {
@@ -296,46 +184,9 @@ export function BankAccountManager() {
     }
   };
 
-  const fetchCashTransactions = async () => {
-    try {
-      setLoading(true);
-      console.log('🔍 Fetching cash transactions from API...');
-      const response = await fetch('/api/finance/cash-transactions');
-      console.log('📡 API Response status:', response.status, response.statusText);
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('❌ API Error response:', errorData);
-        throw new Error(`Failed to fetch cash transactions: ${errorData.error || response.statusText}`);
-      }
-      
-      const data = await response.json();
-      console.log('✅ Cash transactions data received:', data);
-      // Extract the transactions array from the API response
-      setCashTransactions(data.transactions || []);
-    } catch (error) {
-      console.error('Error fetching cash transactions:', error);
-      alert(`Failed to fetch cash transactions: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      // Set empty array on error to prevent map function errors
-      setCashTransactions([]);
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const fetchTransactions = async (bankAccountId: string) => {
-    try {
-      // Use the comprehensive bank-transactions API that includes all transaction types
-      const response = await fetch(`/api/finance/bank-transactions?bank_account_id=${bankAccountId}&limit=100`);
-      if (response.ok) {
-        const result = await response.json();
-        // The API returns comprehensive transactions including vendor payments, withdrawals, liability payments
-        setTransactions(result.data?.transactions || []);
-      }
-    } catch (error) {
-      console.error('Error fetching comprehensive bank transactions:', error);
-    }
-  };
+
+
 
   const addBankAccount = async () => {
     try {
@@ -363,50 +214,11 @@ export function BankAccountManager() {
     }
   };
 
-  const addUpiAccount = async () => {
-    try {
-      const response = await fetch('/api/finance/bank-accounts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: newUpiAccount.name,
-          upi_id: newUpiAccount.upi_id,
-          linked_bank_account_id: newUpiAccount.linked_bank_account_id || null,
-          current_balance: newUpiAccount.current_balance,
-          account_type: 'UPI',
-          currency: 'INR'
-        })
-      });
-
-      if (response.ok) {
-        setNewUpiAccount({
-          name: '',
-          upi_id: '',
-          linked_bank_account_id: '',
-          current_balance: 0
-        });
-        setShowAddUpi(false);
-        fetchUpiAccounts();
-        fetchBankAccounts(); // Refresh bank accounts in case balance changed
-      }
-    } catch (error) {
-      console.error('Error adding UPI account:', error);
-    }
-  };
 
 
 
-  const toggleAccountExpanded = (accountId: string) => {
-    const newExpandedAccounts = new Set(expandedAccounts);
-    if (newExpandedAccounts.has(accountId)) {
-      newExpandedAccounts.delete(accountId);
-    } else {
-      newExpandedAccounts.add(accountId);
-      // Fetch all transactions for this account when expanding
-      fetchTransactions(accountId);
-    }
-    setExpandedAccounts(newExpandedAccounts);
-  };
+
+
 
   // Combine all accounts for fund transfer dropdowns
   const allAccounts = [
@@ -559,6 +371,11 @@ export function BankAccountManager() {
     router.push('/finance/transactions');
   };
 
+  const handleAccountClick = (account: BankAccount | UpiAccount | CashAccount, accountType: 'BANK' | 'UPI' | 'CASH') => {
+    // Navigate to account-specific transactions page
+    router.push(`/finance/transactions/${accountType.toLowerCase()}/${account.id}`);
+  };
+
   const formatCurrency = (amount: number, currency: string = 'INR') => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -573,20 +390,11 @@ export function BankAccountManager() {
   };
 
   const getTotalBalance = () => {
-    // Only sum current_balance from the database for all account types
-    if (activeTab === 'bank') {
-      return bankAccounts.reduce((total, account) => total + (account.current_balance ?? 0), 0);
-    } else if (activeTab === 'upi') {
-      return upiAccounts.reduce((total, account) => total + (account.current_balance ?? 0), 0);
-    } else if (activeTab === 'cash') {
-      return cashAccounts.reduce((total, account) => total + (account.current_balance ?? 0), 0);
-    } else {
-      // For 'all' tab, sum all account types
-      const bankTotal = bankAccounts.reduce((total, account) => total + (account.current_balance ?? 0), 0);
-      const upiTotal = upiAccounts.reduce((total, account) => total + (account.current_balance ?? 0), 0);
-      const cashTotal = cashAccounts.reduce((total, account) => total + (account.current_balance ?? 0), 0);
-      return bankTotal + upiTotal + cashTotal;
-    }
+    // Sum current_balance from all account types
+    const bankTotal = bankAccounts.reduce((total, account) => total + (account.current_balance ?? 0), 0);
+    const upiTotal = upiAccounts.reduce((total, account) => total + (account.current_balance ?? 0), 0);
+    const cashTotal = cashAccounts.reduce((total, account) => total + (account.current_balance ?? 0), 0);
+    return bankTotal + upiTotal + cashTotal;
   };
 
   const getTotalPaymentMethods = () => {
@@ -653,13 +461,28 @@ export function BankAccountManager() {
     return <div className="flex justify-center items-center h-64">Loading bank accounts...</div>;
   }
 
+  // Get color class for account balance
+  const getBalanceColorClass = (balance: number) => {
+    if (balance < -100000) return 'from-red-500 to-red-700 border-red-300'; // Deep red for large negative
+    if (balance < 0) return 'from-red-400 to-red-600 border-red-200'; // Red for negative
+    if (balance < 100000) return 'from-amber-400 to-amber-600 border-amber-200'; // Amber for low balance
+    if (balance < 500000) return 'from-blue-400 to-blue-600 border-blue-200'; // Blue for medium balance
+    return 'from-green-400 to-green-600 border-green-200'; // Green for good balance
+  };
+
+  // Get text color for balance
+  const getBalanceTextColor = (balance: number) => {
+    if (balance < 0) return 'text-red-100';
+    return 'text-white';
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-3xl font-bold text-gray-900">Bank Account Management</h2>
-          <p className="text-gray-600 mt-1">Manage bank accounts, UPI accounts and view all payment transactions</p>
+          <h2 className="text-3xl font-bold text-gray-900">Finance Management</h2>
+          <p className="text-gray-600 mt-1">Comprehensive financial management and reporting</p>
         </div>
         <Button 
           onClick={handleViewAllTransactions}
@@ -667,77 +490,69 @@ export function BankAccountManager() {
           className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 hover:bg-green-100"
         >
           <Receipt className="h-4 w-4 mr-2" />
-          All Transactions
+          Refresh
         </Button>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-blue-600">Total Balance</p>
-                <p className="text-xl font-bold text-blue-900">
-                  {formatCurrency(getTotalBalance())}
-                </p>
+      {/* Overview Section */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">Overview</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-blue-600">Total Balance</p>
+                  <p className="text-xl font-bold text-blue-900">
+                    {formatCurrency(getTotalBalance())}
+                  </p>
+                </div>
+                <div className="p-2 bg-blue-500 rounded-lg">
+                  <Wallet className="h-5 w-5 text-white" />
+                </div>
               </div>
-              <div className="p-2 bg-blue-500 rounded-lg">
-                <Wallet className="h-5 w-5 text-white" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-green-600">Active Accounts</p>
-                <p className="text-xl font-bold text-green-900">{bankAccounts.length}</p>
+          <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-green-600">Active Accounts</p>
+                  <p className="text-xl font-bold text-green-900">{bankAccounts.length + upiAccounts.length}</p>
+                </div>
+                <div className="p-2 bg-green-500 rounded-lg">
+                  <Building2 className="h-5 w-5 text-white" />
+                </div>
               </div>
-              <div className="p-2 bg-green-500 rounded-lg">
-                <Building2 className="h-5 w-5 text-white" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-orange-600">Payment Methods</p>
-                <p className="text-xl font-bold text-orange-900">{getTotalPaymentMethods()}</p>
+          <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-orange-600">Payment Methods</p>
+                  <p className="text-xl font-bold text-orange-900">{getTotalPaymentMethods()}</p>
+                </div>
+                <div className="p-2 bg-orange-500 rounded-lg">
+                  <Receipt className="h-5 w-5 text-white" />
+                </div>
               </div>
-              <div className="p-2 bg-orange-500 rounded-lg">
-                <Receipt className="h-5 w-5 text-white" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
-      {/* Tabbed Interface for Bank, UPI and Cash Transactions */}
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'bank' | 'upi' | 'cash')}>
-        <div className="flex justify-between items-center mb-4">
-          <TabsList className="grid w-[600px] grid-cols-3">
-            <TabsTrigger value="bank" className="flex items-center gap-2">
-              <Building2 className="h-4 w-4" />
-              Bank Accounts
-            </TabsTrigger>
-            <TabsTrigger value="upi" className="flex items-center gap-2">
-              <Smartphone className="h-4 w-4" />
-              UPI Accounts
-            </TabsTrigger>
-            <TabsTrigger value="cash" className="flex items-center gap-2">
-              <Wallet className="h-4 w-4" />
-              Cash Transactions
-            </TabsTrigger>
-          </TabsList>
-          
+      {/* Bank Account Management */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-800">Bank Accounts</h3>
+            <p className="text-gray-600 text-sm">Manage bank accounts, UPI accounts and view all payment transactions</p>
+          </div>
           <div className="flex gap-2">
-            {/* Fund Transfer Button */}
+            {/* Action Buttons */}
             <Dialog open={showFundTransfer} onOpenChange={setShowFundTransfer}>
               <DialogTrigger asChild>
                 <Button className="bg-purple-600 hover:bg-purple-700">
@@ -747,11 +562,9 @@ export function BankAccountManager() {
               </DialogTrigger>
             </Dialog>
             
-            {/* Cash Deposit Button (Shortcut for Contra Entry) */}
             <Button
               className="bg-green-600 hover:bg-green-700"
               onClick={() => {
-                // Find first cash account and bank account
                 const cashAccount = cashAccounts[0]?.id || '';
                 const bankAccount = bankAccounts[0]?.id || '';
                 
@@ -760,7 +573,6 @@ export function BankAccountManager() {
                   return;
                 }
                 
-                // Set up the contra entry form
                 setFundTransfer({
                   fromAccountId: cashAccount,
                   toAccountId: bankAccount,
@@ -779,493 +591,151 @@ export function BankAccountManager() {
 
             <Dialog open={showAddAccount} onOpenChange={setShowAddAccount}>
               <DialogTrigger asChild>
-                <Button className="bg-blue-600 hover:bg-blue-700" disabled={activeTab !== 'bank'}>
+                <Button className="bg-blue-600 hover:bg-blue-700">
                   <Plus className="h-4 w-4 mr-2" />
                   Add Bank Account
                 </Button>
               </DialogTrigger>
             </Dialog>
             
-            <Dialog open={showAddUpi} onOpenChange={setShowAddUpi}>
-              <DialogTrigger asChild>
-                <Button className="bg-green-600 hover:bg-green-700" disabled={activeTab !== 'upi'}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add UPI Account
-                </Button>
-              </DialogTrigger>
-            </Dialog>
+
           </div>
         </div>
 
-        {/* Bank Accounts Tab */}
-        <TabsContent value="bank">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Building2 className="h-5 w-5" />
-                Bank Accounts ({bankAccounts.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-6">
-                {bankAccounts.map((account) => (
-                  <Card key={account.id} className="border border-gray-200 hover:shadow-md transition-shadow">
-                    <CardContent className="p-0">
-                      {/* Account Header */}
-                      <div className="p-4 border-b bg-gray-50">
-                        <div className="flex justify-between items-center">
-                          <div className="flex items-center gap-3">
-                            {getBankIcon(account.name)}
-                            <div>
-                              <h3 className="font-semibold text-gray-900">{account.name}</h3>
-                              <p className="text-sm text-gray-600">
-                                Account: ****{account.account_number?.slice(-4) || '0000'}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-lg font-bold text-gray-900">
-                              {getDisplayBalance(account)}
-                            </p>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => toggleAccountExpanded(account.id)}
-                              className="mt-2"
-                            >
-                              {expandedAccounts.has(account.id) ? (
-                                <>
-                                  <ChevronUp className="h-4 w-4 mr-1" />
-                                  Hide All Transactions
-                                </>
-                              ) : (
-                                <>
-                                  <ChevronDown className="h-4 w-4 mr-1" />
-                                  View All Transactions
-                                </>
-                              )}
-                            </Button>
-                          </div>
+        {/* Bank Account Cards - Small Horizontal Layout */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-gray-600" />
+              <span className="font-medium text-gray-700">All Accounts ({bankAccounts.length + upiAccounts.length + cashAccounts.length})</span>
+            </div>
+          </div>
+          
+          {/* All Account Cards in Grid Layout */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Bank Accounts */}
+            {bankAccounts.map((account) => (
+              <Card 
+                key={account.id} 
+                className={`bg-gradient-to-r ${getBalanceColorClass(account.current_balance)} border shadow-md hover:shadow-lg transition-all duration-300 cursor-pointer transform hover:scale-105`}
+                onClick={() => handleAccountClick(account, 'BANK')}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="bg-white/20 rounded-lg p-2 flex items-center justify-center backdrop-blur-sm">
+                      <div className="w-5 h-5 flex items-center justify-center">
+                        {getBankIcon(account.name)}
+                      </div>
+                    </div>
+                    <div className="text-white min-w-0 flex-1">
+                      <h3 className="font-semibold text-sm truncate">{account.name}</h3>
+                      <p className="text-white/70 text-xs">****{account.account_number?.slice(-4) || '0000'}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="text-white">
+                    <p className={`text-lg font-bold ${getBalanceTextColor(account.current_balance)} mb-2`}>
+                      {getDisplayBalance(account)}
+                    </p>
+                    <div className="text-center text-white/80 text-xs">
+                      Click to view transactions →
+                    </div>
+                  </div>
+
+
+                </CardContent>
+              </Card>
+            ))}
+            
+            {/* UPI Accounts */}
+            {upiAccounts.map((account) => (
+              <Card 
+                key={account.id} 
+                className="bg-gradient-to-r from-teal-400 to-teal-600 border shadow-md hover:shadow-lg transition-all duration-300 cursor-pointer transform hover:scale-105"
+                onClick={() => handleAccountClick(account, 'UPI')}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="bg-white/20 rounded-lg p-2 flex items-center justify-center backdrop-blur-sm">
+                      <Smartphone className="h-5 w-5 text-white" />
+                    </div>
+                    <div className="text-white min-w-0 flex-1">
+                      <h3 className="font-semibold text-sm truncate">{account.name}</h3>
+                      <p className="text-white/70 text-xs truncate">{account.upi_id}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="text-white">
+                    <p className="text-lg font-bold mb-2">
+                      {getDisplayBalance(account)}
+                    </p>
+                    <div className="flex items-center justify-between mb-2">
+                      <Badge className={`${account.is_active ? "bg-green-200 text-green-800" : "bg-gray-200 text-gray-800"} text-xs px-2 py-0.5`}>
+                        {account.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                      {account.linked_bank_name && (
+                        <div className="flex items-center gap-1 text-white/60">
+                          <Link className="h-3 w-3" />
+                          <span className="text-xs truncate max-w-16">{account.linked_bank_name}</span>
                         </div>
-                      </div>
-                      
-                      {/* Expanded All Transactions */}
-                      <div className="p-4">
-                        {expandedAccounts.has(account.id) && (
-                          <div>
-                            <h4 className="font-medium text-gray-900 mb-3">All Transactions</h4>
-                            {transactions && transactions.length > 0 ? (
-                              <div className="space-y-2 max-h-96 overflow-y-auto">
-                                {transactions.map((transaction, index) => (
-                                  <div 
-                                    key={transaction.id || index} 
-                                    className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                                  >
-                                    <div className="flex items-center gap-3">
-                                      <div className={`p-1 rounded-full ${
-                                        transaction.type === 'deposit' 
-                                          ? 'bg-green-100 text-green-600' 
-                                          : 'bg-red-100 text-red-600'
-                                      }`}>
-                                        {transaction.type === 'deposit' ? (
-                                          <ArrowUpCircle className="h-3 w-3" />
-                                        ) : (
-                                          <ArrowDownCircle className="h-3 w-3" />
-                                        )}
-                                      </div>
-                                      <div>
-                                        <div className="flex items-center gap-2 mb-1">
-                                          <p className="text-sm font-medium text-gray-900">
-                                            {transaction.description}
-                                          </p>
-                                          {transaction.transaction_type && (
-                                            <Badge 
-                                              variant="secondary" 
-                                              className={`text-xs px-1.5 py-0.5 ${
-                                                transaction.transaction_type === 'vendor_payment' ? 'bg-blue-100 text-blue-700' :
-                                                transaction.transaction_type === 'withdrawal' ? 'bg-orange-100 text-orange-700' :
-                                                transaction.transaction_type === 'liability_payment' ? 'bg-purple-100 text-purple-700' :
-                                                'bg-gray-100 text-gray-700'
-                                              }`}
-                                            >
-                                              {transaction.transaction_type === 'vendor_payment' ? 'Vendor' :
-                                               transaction.transaction_type === 'withdrawal' ? 'Withdrawal' :
-                                               transaction.transaction_type === 'liability_payment' ? 'Loan Payment' :
-                                               'Bank Transfer'}
-                                            </Badge>
-                                          )}
-                                        </div>
-                                        <p className="text-xs text-gray-500">
-                                          {new Date(transaction.date).toLocaleDateString()} • {transaction.reference}
-                                        </p>
-                                      </div>
-                                    </div>
-                                    <div className="text-right">
-                                      <p className={`text-sm font-semibold ${
-                                        transaction.type === 'deposit' 
-                                          ? 'text-green-600' 
-                                          : 'text-red-600'
-                                      }`}>
-                                        {transaction.type === 'deposit' ? '+' : '-'}
-                                        {formatCurrency(transaction.amount, account.currency)}
-                                      </p>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="text-center py-6 text-gray-500">
-                                <Receipt className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                                <p className="text-sm">No transactions found</p>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-                {bankAccounts.length === 0 && (
-                  <div className="text-center py-8 text-gray-500">
-                    <Building2 className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                    <p>No bank accounts found</p>
-                    <p className="text-sm">Add your first bank account to get started</p>
+                      )}
+                    </div>
+                    <div className="text-center text-white/80 text-xs">
+                      Click to view transactions →
+                    </div>
                   </div>
-                )}
+                </CardContent>
+              </Card>
+            ))}
+            
+            {/* Cash Accounts */}
+            {cashAccounts.map((account) => (
+              <Card 
+                key={account.id} 
+                className="bg-gradient-to-r from-emerald-400 to-emerald-600 border shadow-md hover:shadow-lg transition-all duration-300 cursor-pointer transform hover:scale-105"
+                onClick={() => handleAccountClick(account, 'CASH')}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="bg-white/20 rounded-lg p-2 flex items-center justify-center backdrop-blur-sm">
+                      <Wallet className="h-5 w-5 text-white" />
+                    </div>
+                    <div className="text-white min-w-0 flex-1">
+                      <h3 className="font-semibold text-sm truncate">{account.name}</h3>
+                      <p className="text-white/70 text-xs">Cash Account</p>
+                    </div>
+                  </div>
+                  
+                  <div className="text-white">
+                    <p className="text-lg font-bold mb-2">
+                      {getDisplayBalance(account)}
+                    </p>
+                    <div className="mb-2">
+                      <Badge className={`${account.is_active ? "bg-green-200 text-green-800" : "bg-gray-200 text-gray-800"} text-xs px-2 py-0.5`}>
+                        {account.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </div>
+                    <div className="text-center text-white/80 text-xs">
+                      Click to view transactions →
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+            
+            {/* Empty State */}
+            {bankAccounts.length === 0 && upiAccounts.length === 0 && cashAccounts.length === 0 && (
+              <div className="col-span-full text-center py-8 text-gray-500 border-2 border-dashed border-gray-300 rounded-lg">
+                <Building2 className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                <p>No accounts found</p>
+                <p className="text-sm">Add your first account to get started</p>
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+            )}
+          </div>
+        </div>
+      </div>
 
-        {/* UPI Accounts Tab */}
-        <TabsContent value="upi">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Smartphone className="h-5 w-5" />
-                UPI Accounts ({upiAccounts.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4">
-                {upiAccounts.map((account) => (
-                  <Card key={account.id} className="border border-gray-200 hover:shadow-md transition-shadow">
-                    <CardContent className="p-4">
-                      <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-green-100 rounded-lg">
-                            <Smartphone className="h-6 w-6 text-green-600" />
-                          </div>
-                          <div>
-                            <h3 className="font-semibold text-gray-900">{account.name}</h3>
-                            <p className="text-sm text-gray-600">UPI ID: {account.upi_id}</p>
-                            {account.linked_bank_name && (
-                              <div className="flex items-center gap-1 mt-1">
-                                <Link className="h-3 w-3 text-blue-500" />
-                                <p className="text-xs text-blue-600">
-                                  Linked to: {account.linked_bank_name}
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-lg font-bold text-gray-900">
-                            {getDisplayBalance(account)}
-                          </p>
-                          <Badge className={account.is_active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}>
-                            {account.is_active ? 'Active' : 'Inactive'}
-                          </Badge>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-                {upiAccounts.length === 0 && (
-                  <div className="text-center py-8 text-gray-500">
-                    <Smartphone className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                    <p>No UPI accounts found</p>
-                    <p className="text-sm">Add your first UPI account to get started</p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
 
-        {/* Cash Transactions Tab */}
-        <TabsContent value="cash">
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex justify-between items-center">
-                <CardTitle className="flex items-center gap-2">
-                  <Wallet className="h-5 w-5" />
-                  Cash Transactions
-                </CardTitle>
-                <div className="text-right">
-                  <p className="text-sm text-gray-500">Current Cash Balance</p>
-                  <p className="text-2xl font-bold text-green-600">
-                    ₹{(Array.isArray(cashTransactions) && cashTransactions.length > 0 ? cashTransactions[0]?.running_balance || cashTransactions[0]?.balance_after || 0 : 0).toLocaleString()}
-                  </p>
-                </div>
-              </div>
-
-              {/* Filter Controls */}
-              <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div>
-                    <Label htmlFor="sourceType" className="text-sm font-medium">Source Type</Label>
-                    <Select 
-                      value={cashFilters.sourceType} 
-                      onValueChange={(value) => setCashFilters({...cashFilters, sourceType: value})}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All Sources" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Sources</SelectItem>
-                        <SelectItem value="sales">Sales Receipts</SelectItem>
-                        <SelectItem value="expense">Expense Payments</SelectItem>
-                        <SelectItem value="investment">Investment Receipts</SelectItem>
-                        <SelectItem value="withdrawal">Cash Withdrawals</SelectItem>
-                        <SelectItem value="fund_transfer">Fund Transfers</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="transactionType" className="text-sm font-medium">Transaction Type</Label>
-                    <Select 
-                      value={cashFilters.transactionType} 
-                      onValueChange={(value) => setCashFilters({...cashFilters, transactionType: value})}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All Types" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Types</SelectItem>
-                        <SelectItem value="credit">Cash In (Credit)</SelectItem>
-                        <SelectItem value="debit">Cash Out (Debit)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="dateFrom" className="text-sm font-medium">From Date</Label>
-                    <Input
-                      id="dateFrom"
-                      type="date"
-                      value={cashFilters.dateFrom}
-                      onChange={(e) => setCashFilters({...cashFilters, dateFrom: e.target.value})}
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="dateTo" className="text-sm font-medium">To Date</Label>
-                    <Input
-                      id="dateTo"
-                      type="date"
-                      value={cashFilters.dateTo}
-                      onChange={(e) => setCashFilters({...cashFilters, dateTo: e.target.value})}
-                    />
-                  </div>
-                </div>
-
-                {/* Filter Summary with Totals */}
-                <div className="mt-4 space-y-3">
-                  <div className="flex items-center justify-between text-sm text-gray-600">
-                    <span>
-                      Showing {startIndex + 1}-{Math.min(startIndex + itemsPerPage, allFilteredTransactions.length)} of {allFilteredTransactions.length} filtered transactions ({cashTransactions.length} total)
-                    </span>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCashFilters({
-                          sourceType: 'all',
-                          dateFrom: '',
-                          dateTo: '',
-                          transactionType: 'all'
-                        })}
-                      >
-                        Clear Filters
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const csvContent = [
-                            ['Date', 'Description', 'Source', 'Type', 'Amount', 'Balance', 'Reference'].join(','),
-                            ...allFilteredTransactions.map(t => [
-                              new Date(t.transaction_date).toLocaleDateString('en-IN'),
-                              `"${t.description}"`,
-                              `"${formatSourceType(t.source_description || t.source || 'Unknown')}"`,
-                              t.transaction_type,
-                              t.transaction_type === 'CREDIT' ? t.amount : -Math.abs(t.amount),
-                              t.running_balance || t.balance_after || 0,
-                              `"${t.reference_number || 'N/A'}"`
-                            ].join(','))
-                          ].join('\n');
-                          
-                          const blob = new Blob([csvContent], { type: 'text/csv' });
-                          const url = window.URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = `cash-transactions-${new Date().toISOString().split('T')[0]}.csv`;
-                          a.click();
-                          window.URL.revokeObjectURL(url);
-                        }}
-                      >
-                        Export CSV
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Summary Totals */}
-                  {allFilteredTransactions.length > 0 && (
-                    <div className="grid grid-cols-3 gap-4 p-3 bg-white rounded border">
-                      <div className="text-center">
-                        <p className="text-xs text-gray-500">Cash In (Credits)</p>
-                        <p className="text-sm font-semibold text-green-600">
-                          +₹{allFilteredTransactions
-                            .filter(t => t.transaction_type === 'CREDIT')
-                            .reduce((sum, t) => sum + t.amount, 0)
-                            .toLocaleString()}
-                        </p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-xs text-gray-500">Cash Out (Debits)</p>
-                        <p className="text-sm font-semibold text-red-600">
-                          -₹{allFilteredTransactions
-                            .filter(t => t.transaction_type === 'DEBIT')
-                            .reduce((sum, t) => sum + Math.abs(t.amount), 0)
-                            .toLocaleString()}
-                        </p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-xs text-gray-500">Net Movement</p>
-                        <p className="text-sm font-semibold text-blue-600">
-                          ₹{allFilteredTransactions
-                            .reduce((sum, t) => sum + (t.transaction_type === 'CREDIT' ? t.amount : -Math.abs(t.amount)), 0)
-                            .toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Pagination Controls */}
-                  {totalPages > 1 && (
-                    <div className="flex items-center justify-center space-x-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={currentPage === 1}
-                        onClick={() => setCurrentPage(currentPage - 1)}
-                      >
-                        Previous
-                      </Button>
-                      <span className="text-sm text-gray-600">
-                        Page {currentPage} of {totalPages}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={currentPage === totalPages}
-                        onClick={() => setCurrentPage(currentPage + 1)}
-                      >
-                        Next
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              {loading ? (
-                <div className="text-center py-8 px-6">
-                  <p>Loading cash transactions...</p>
-                </div>
-              ) : (
-                <>
-                  {!Array.isArray(cashTransactions) || cashTransactions.length === 0 ? (
-                    <div className="text-center py-8 px-6 text-gray-500">
-                      <Wallet className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                      <p>No cash transactions found</p>
-                      <p className="text-sm">Cash transactions from sales, investments, and other operations will appear here</p>
-                    </div>
-                  ) : allFilteredTransactions.length === 0 ? (
-                    <div className="text-center py-8 px-6 text-gray-500">
-                      <Wallet className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                      <p>No transactions match the current filters</p>
-                      <p className="text-sm">Try adjusting your filters to see more transactions</p>
-                    </div>
-                  ) : (
-                    <div className="overflow-hidden">
-                      {/* Header Row */}
-                      <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-gray-50 border-b text-sm font-medium text-gray-700">
-                        <div className="col-span-2">Date</div>
-                        <div className="col-span-4">Description</div>
-                        <div className="col-span-2">Source</div>
-                        <div className="col-span-2 text-right">Amount</div>
-                        <div className="col-span-2 text-right">Balance</div>
-                      </div>
-                      
-                      {/* Transaction Rows */}
-                      <div className="divide-y divide-gray-100">
-                        {filteredCashTransactions.map((transaction) => (
-                          <div key={transaction.id} className="grid grid-cols-12 gap-4 px-6 py-3 hover:bg-gray-50 transition-colors">
-                            {/* Date */}
-                            <div className="col-span-2 text-sm text-gray-600">
-                              {new Date(transaction.transaction_date).toLocaleDateString('en-IN', {
-                                day: '2-digit',
-                                month: 'short',
-                                year: 'numeric'
-                              })}
-                            </div>
-                            
-                            {/* Description */}
-                            <div className="col-span-4">
-                              <p className="text-sm font-medium text-gray-900">{transaction.description}</p>
-                              <p className="text-xs text-gray-500">
-                                Ref: {transaction.reference_number || 'N/A'}
-                              </p>
-                            </div>
-                            
-                            {/* Source */}
-                            <div className="col-span-2">
-                              <Badge className={`text-xs ${getSourceBadgeColor(transaction.source_description || transaction.source || '')}`}>
-                                {formatSourceType(transaction.source_description || transaction.source || 'Unknown')}
-                              </Badge>
-                            </div>
-                            
-                            {/* Amount */}
-                            <div className="col-span-2 text-right">
-                              <span className={`text-sm font-semibold ${
-                                transaction.transaction_type === 'CREDIT' 
-                                  ? 'text-green-600' 
-                                  : 'text-red-600'
-                              }`}>
-                                {transaction.transaction_type === 'CREDIT' ? '+' : '-'}₹{Math.abs(transaction.amount).toLocaleString()}
-                              </span>
-                            </div>
-                            
-                            {/* Running Balance */}
-                            <div className="col-span-2 text-right">
-                              <span className="text-sm font-medium text-gray-900">
-                                ₹{(transaction.running_balance || transaction.balance_after || 0).toLocaleString()}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
 
       {/* Add Bank Account Dialog */}
       <Dialog open={showAddAccount} onOpenChange={setShowAddAccount}>
@@ -1321,86 +791,7 @@ export function BankAccountManager() {
         </DialogContent>
       </Dialog>
 
-      {/* Add UPI Account Dialog */}
-      <Dialog open={showAddUpi} onOpenChange={setShowAddUpi}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Smartphone className="h-5 w-5" />
-              Add UPI Account
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="upi_name">UPI Account Name</Label>
-              <Input
-                id="upi_name"
-                value={newUpiAccount.name}
-                onChange={(e) => setNewUpiAccount({ ...newUpiAccount, name: e.target.value })}
-                placeholder="e.g., Personal PayTM, Business GPay"
-              />
-            </div>
-            <div>
-              <Label htmlFor="upi_id">UPI ID</Label>
-              <Input
-                id="upi_id"
-                value={newUpiAccount.upi_id}
-                onChange={(e) => setNewUpiAccount({ ...newUpiAccount, upi_id: e.target.value })}
-                placeholder="e.g., yourname@paytm, yourname@okaxis"
-              />
-            </div>
-            <div>
-              <Label htmlFor="linked_bank">Linked Bank Account (Optional)</Label>
-              <Select
-                value={newUpiAccount.linked_bank_account_id || "none"}
-                onValueChange={(value) => setNewUpiAccount({ ...newUpiAccount, linked_bank_account_id: value === "none" ? "" : value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select bank account (optional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No linked bank account</SelectItem>
-                  {bankAccounts.map((account) => (
-                    <SelectItem key={account.id} value={account.id}>
-                      <div className="flex items-center gap-2">
-                        <Building2 className="h-4 w-4" />
-                        <span>{account.name}</span>
-                        {account.account_number && (
-                          <span className="text-gray-500 text-xs">
-                            (****{account.account_number.slice(-4)})
-                          </span>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-gray-500 mt-1">
-                UPI payments will automatically deposit to this bank account
-              </p>
-            </div>
-            <div>
-              <Label htmlFor="upi_balance">Initial Balance</Label>
-              <Input
-                id="upi_balance"
-                type="number"
-                value={newUpiAccount.current_balance}
-                onChange={(e) => setNewUpiAccount({ ...newUpiAccount, current_balance: parseFloat(e.target.value) || 0 })}
-                placeholder="0.00"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddUpi(false)}>
-              Cancel
-            </Button>
-            <Button onClick={addUpiAccount} className="bg-green-600 hover:bg-green-700">
-              <Smartphone className="h-4 w-4 mr-2" />
-              Add UPI Account
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
 
 
 

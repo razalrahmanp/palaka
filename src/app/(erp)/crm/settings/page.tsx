@@ -21,11 +21,11 @@ export default function MetaAdsSettingsPage() {
 
   useEffect(() => {
     // Generate webhook URL - use localhost for local development, or current domain
-    const currentDomain = window.location.origin;
-    const isLocalhost = currentDomain.includes('localhost');
-    const webhookEndpoint = isLocalhost 
-      ? 'http://localhost:3000/api/crm/meta-webhook'
-      : `${currentDomain}/api/crm/meta-webhook`;
+    // Use production domain for webhook URL (Meta can't reach localhost)
+    const productionDomain = 'https://www.alramsfurniture.shop';
+    
+    // Always show production URL for Meta webhook
+    const webhookEndpoint = `${productionDomain}/api/crm/meta-webhook`;
     setWebhookUrl(webhookEndpoint);
     
     // Load saved settings from localStorage (in production, fetch from database)

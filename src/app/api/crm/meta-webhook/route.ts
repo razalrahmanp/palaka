@@ -47,13 +47,23 @@ export async function GET(request: NextRequest) {
   const token = searchParams.get('hub.verify_token');
   const challenge = searchParams.get('hub.challenge');
 
-  console.log('📞 Meta Webhook Verification Request:', { mode, token });
+  console.log('📞 Meta Webhook Verification Request:', { 
+    mode, 
+    receivedToken: token,
+    expectedToken: META_VERIFY_TOKEN,
+    tokensMatch: token === META_VERIFY_TOKEN
+  });
 
   if (mode === 'subscribe' && token === META_VERIFY_TOKEN) {
     console.log('✅ Webhook verified successfully');
     return new NextResponse(challenge, { status: 200 });
   } else {
-    console.error('❌ Webhook verification failed');
+    console.error('❌ Webhook verification failed', {
+      modeMatches: mode === 'subscribe',
+      tokenMatches: token === META_VERIFY_TOKEN,
+      receivedToken: token,
+      expectedToken: META_VERIFY_TOKEN
+    });
     return NextResponse.json({ error: 'Verification failed' }, { status: 403 });
   }
 }

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Customer, Interaction, User } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -16,18 +16,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { 
-  Users, Search, PlusCircle, Edit, Trash2, MessageSquare,
-  DollarSign, Calendar, X, Package, FileText, MapPin,
+  Users, PlusCircle, Edit, Trash2, MessageSquare,
+  DollarSign, Package, FileText,
   ChevronRight, ChevronDown, ArrowUp, ArrowDown, ArrowUpDown,
-  TrendingUp, BarChart3, PhoneCall, Mail, Target, Activity
+  TrendingUp, BarChart3, PhoneCall, Target, Activity
 } from 'lucide-react';
 import { CustomerForm } from '@/components/crm/CustomerForm';
 import { InteractionLogForm } from '@/components/crm/InteractionLogForm';
@@ -68,7 +61,6 @@ interface SalesOrder {
 export default function SalesCRMPage() {
   const qc = useQueryClient();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [customerModalOpen, setCustomerModalOpen] = useState(false);
   const [interactionModalOpen, setInteractionModalOpen] = useState(false);
@@ -87,12 +79,11 @@ export default function SalesCRMPage() {
       if (storedUser) {
         const user: User = JSON.parse(storedUser);
         setCurrentUser(user);
-        setIsAdmin(['System Administrator', 'HR Manager', 'HR'].includes(user.role));
       }
     }
   }, []);
 
-  const { data: customers = [], isLoading: isLoadingCustomers } = useQuery<Customer[]>({
+  const { data: customers = [] } = useQuery<Customer[]>({
     queryKey: ['customers'],
     queryFn: async () => {
       const res = await fetch('/api/crm/customers');
@@ -109,7 +100,7 @@ export default function SalesCRMPage() {
     }),
   });
 
-  const { data: salesOrders = [], isLoading: isLoadingSalesOrders } = useQuery<SalesOrder[]>({
+  const { data: salesOrders = [] } = useQuery<SalesOrder[]>({
     queryKey: ['crm-sales-orders'],
     queryFn: async () => {
       const res = await fetch('/api/crm/sales-orders');
@@ -981,16 +972,36 @@ export default function SalesCRMPage() {
       </Card>
 
       {/* Modals */}
-      <CustomerModal
-        open={customerModalOpen}
-        onOpenChange={setCustomerModalOpen}
-        onSave={handleSaveCustomer}
-        customer={selectedCustomer || undefined}
-      />
-      <InteractionModal
-        open={interactionModalOpen}
-        onOpenChange={setInteractionModalOpen}
-        onSave={handleAddInteraction}
-      />
+      <Dialog open={customerModalOpen} onOpenChange={setCustomerModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{selectedCustomer ? 'Edit Customer' : 'Add New Customer'}</DialogTitle>
+            <DialogDescription>
+              {selectedCustomer ? 'Update customer information' : 'Create a new customer record'}
+            </DialogDescription>
+          </DialogHeader>
+          <CustomerForm
+            initialData={selectedCustomer || undefined}
+            onSubmit={handleSaveCustomer}
+            onCancel={() => setCustomerModalOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={interactionModalOpen} onOpenChange={setInteractionModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Log Interaction</DialogTitle>
+            <DialogDescription>
+              Record a new interaction with {selectedCustomer?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <InteractionLogForm
+            onSubmit={handleAddInteraction}
+            onCancel={() => setInteractionModalOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}

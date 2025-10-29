@@ -3,6 +3,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Customer, Interaction, User } from '@/types';
+import { Button } from '@/components/ui/button';
+import { LayoutDashboard } from 'lucide-react';
+import ModernCRMDashboard from '@/components/crm/ModernCRMDashboard';
 
 // Enhanced Sales Order interface for comprehensive customer analytics
 interface SalesOrder {
@@ -52,7 +55,6 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -71,6 +73,7 @@ export default function CrmPage() {
   const qc = useQueryClient();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [viewMode, setViewMode] = useState<'modern' | 'classic'>('modern'); // New state for view toggle
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [isCustomerModalOpen, setCustomerModalOpen] = useState(false);
@@ -584,24 +587,40 @@ export default function CrmPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-6 space-y-8">
-      {/* Header Section */}
-      <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-xl p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-              Customer Relationship Management
-            </h1>
-            <p className="text-gray-600 mt-2">Manage customer relationships and track interactions</p>
+    <>
+      {/* View Toggle at the Top */}
+      {viewMode === 'modern' ? (
+        <ModernCRMDashboard />
+      ) : (
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-6 space-y-8">
+          {/* Header Section */}
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-xl p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+                  Customer Relationship Management
+                </h1>
+                <p className="text-gray-600 mt-2">Manage customer relationships and track interactions</p>
+              </div>
+              <div className="flex gap-3">
+                {/* View Mode Toggle */}
+                <Button 
+                  onClick={() => setViewMode('modern')}
+                  variant="outline"
+                  className="px-4 py-2 rounded-xl border-2 hover:border-purple-500 transition-all"
+                >
+                  <LayoutDashboard className="mr-2 h-4 w-4" /> Modern Dashboard
+                </Button>
+                
+                <Button 
+                  onClick={() => { setSelectedCustomer(null); setCustomerModalOpen(true); }}
+                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
+                >
+                  <PlusCircle className="mr-2 h-5 w-5" /> Add Customer
+                </Button>
+              </div>
+            </div>
           </div>
-          <Button 
-            onClick={() => { setSelectedCustomer(null); setCustomerModalOpen(true); }}
-            className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
-          >
-            <PlusCircle className="mr-2 h-5 w-5" /> Add Customer
-          </Button>
-        </div>
-      </div>
 
       {/* Enhanced Summary Cards */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
@@ -1464,6 +1483,8 @@ export default function CrmPage() {
           />
         </DialogContent>
       </Dialog>
-    </div>
+        </div>
+      )}
+    </>
   );
 }

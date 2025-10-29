@@ -243,8 +243,7 @@ CREATE TABLE public.attendance_punch_logs (
   CONSTRAINT attendance_punch_logs_pkey PRIMARY KEY (id),
   CONSTRAINT attendance_punch_logs_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id),
   CONSTRAINT attendance_punch_logs_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.essl_devices(id),
-  CONSTRAINT attendance_punch_logs_attendance_record_id_fkey FOREIGN KEY (attendance_record_id) REFERENCES public.attendance_records(id),
-  CONSTRAINT attendance_punch_logs_unique_punch UNIQUE (employee_id, device_id, punch_time)
+  CONSTRAINT attendance_punch_logs_attendance_record_id_fkey FOREIGN KEY (attendance_record_id) REFERENCES public.attendance_records(id)
 );
 CREATE TABLE public.attendance_records (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -322,6 +321,7 @@ CREATE TABLE public.bank_transactions (
   amount numeric NOT NULL,
   description text,
   reference text,
+  balance numeric DEFAULT 0,
   CONSTRAINT bank_transactions_pkey PRIMARY KEY (id),
   CONSTRAINT bank_transactions_bank_account_id_fkey FOREIGN KEY (bank_account_id) REFERENCES public.bank_accounts(id)
 );
@@ -1286,6 +1286,29 @@ CREATE TABLE public.journal_entry_templates (
   CONSTRAINT journal_entry_templates_pkey PRIMARY KEY (id),
   CONSTRAINT journal_entry_templates_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
 );
+CREATE TABLE public.lead_activities (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  lead_id uuid,
+  activity_type text NOT NULL CHECK (activity_type = ANY (ARRAY['call'::text, 'email'::text, 'meeting'::text, 'note'::text, 'status_change'::text, 'assigned'::text, 'converted'::text])),
+  description text,
+  performed_by uuid,
+  metadata jsonb DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT lead_activities_pkey PRIMARY KEY (id),
+  CONSTRAINT lead_activities_lead_id_fkey FOREIGN KEY (lead_id) REFERENCES public.meta_ads_leads(id),
+  CONSTRAINT lead_activities_performed_by_fkey FOREIGN KEY (performed_by) REFERENCES public.users(id)
+);
+CREATE TABLE public.lead_assignment_rules (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  conditions jsonb NOT NULL,
+  assigned_to uuid,
+  priority integer DEFAULT 0,
+  is_active boolean DEFAULT true,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT lead_assignment_rules_pkey PRIMARY KEY (id),
+  CONSTRAINT lead_assignment_rules_assigned_to_fkey FOREIGN KEY (assigned_to) REFERENCES public.users(id)
+);
 CREATE TABLE public.leave_requests (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   employee_id uuid NOT NULL,
@@ -1358,6 +1381,40 @@ CREATE TABLE public.loan_opening_balances (
   updated_at timestamp with time zone DEFAULT now(),
   opening_balance_set_date date DEFAULT CURRENT_DATE,
   CONSTRAINT loan_opening_balances_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.meta_ads_leads (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  lead_id text NOT NULL UNIQUE,
+  form_id text NOT NULL,
+  ad_id text,
+  ad_name text,
+  full_name text NOT NULL,
+  email text,
+  phone text,
+  form_data jsonb DEFAULT '{}'::jsonb,
+  source text DEFAULT 'meta_ads'::text,
+  campaign_name text,
+  ad_set_name text,
+  platform text CHECK (platform = ANY (ARRAY['facebook'::text, 'instagram'::text, 'messenger'::text, 'audience_network'::text])),
+  status text DEFAULT 'new'::text CHECK (status = ANY (ARRAY['new'::text, 'contacted'::text, 'qualified'::text, 'converted'::text, 'lost'::text, 'invalid'::text])),
+  priority text DEFAULT 'medium'::text CHECK (priority = ANY (ARRAY['low'::text, 'medium'::text, 'high'::text, 'urgent'::text])),
+  assigned_to uuid,
+  converted_to_customer boolean DEFAULT false,
+  customer_id uuid,
+  conversion_date timestamp with time zone,
+  conversion_value numeric,
+  notes text,
+  next_follow_up_date timestamp with time zone,
+  follow_up_count integer DEFAULT 0,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  contacted_at timestamp with time zone,
+  raw_webhook_data jsonb,
+  ip_address inet,
+  user_agent text,
+  CONSTRAINT meta_ads_leads_pkey PRIMARY KEY (id),
+  CONSTRAINT meta_ads_leads_assigned_to_fkey FOREIGN KEY (assigned_to) REFERENCES public.users(id),
+  CONSTRAINT meta_ads_leads_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id)
 );
 CREATE TABLE public.opening_balances (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

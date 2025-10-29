@@ -8,7 +8,7 @@ import {
   DollarSign, Star, Users2, Building2, Package, 
   FileText, TrendingUp, BookOpen, BarChart, ChevronDown, ChevronRight,
   Mail, LogOut, Fingerprint, Clock, Calendar, GraduationCap,
-  Wallet, FolderOpen, Settings, Calculator
+  Wallet, FolderOpen, Settings, Calculator, Activity, MessageSquare
 } from 'lucide-react';
 import { hasPermission, hasAnyPermission, getCurrentUser } from '@/lib/auth';
 
@@ -44,9 +44,21 @@ const dashboardItems: NavItem[] = [
   { href: "/dashboard", icon: Home, label: "Dashboard", permission: 'dashboard:read' },
 ];
 
-// Sales & CRM
+// CRM (Customer Relationship Management)
+const crmItems: NavItem[] = [
+  { href: "/crm", icon: Users, label: "CRM Dashboard", permission: ['customer:read','customer:read_own'] },
+  { href: "/crm/overview", icon: BarChart, label: "Overview", permission: ['customer:read','customer:read_own'] },
+  { href: "/crm/leads", icon: Users, label: "Leads", permission: ['customer:read','customer:read_own'] },
+  { href: "/crm/report", icon: FileText, label: "Report", permission: ['customer:read','customer:read_own'] },
+  { href: "/crm/revenue", icon: DollarSign, label: "Revenue", permission: ['customer:read','customer:read_own'] },
+  { href: "/crm/reference", icon: Activity, label: "Reference", permission: ['customer:read','customer:read_own'] },
+  { href: "/crm/contacts", icon: Users, label: "Contacts", permission: ['customer:read','customer:read_own'] },
+  { href: "/crm/feedback", icon: MessageSquare, label: "Feedback", permission: ['customer:read','customer:read_own'] },
+  { href: "/crm/settings", icon: Settings, label: "Meta Ads Settings", permission: ['customer:read','customer:read_own'] },
+];
+
+// Sales
 const salesItems: NavItem[] = [
-  { href: "/crm", icon: Users, label: "CRM", permission: ['customer:read','customer:read_own'] },
   { href: "/sales", icon: ShoppingCart, label: "Sales Orders", permission: ['sales_order:read','sales_order:read_own'] },
   { href: "/billing", icon: Receipt, label: "Billing", permission: 'product:read' },
   { href: "/invoices", icon: FileText, label: "Invoices", permission: ['invoice:create','invoice:read'] },
@@ -96,6 +108,12 @@ const reportItems: NavItem[] = [
   { href: "/reports/accounts-payable-receivable", icon: Users, label: "Accounts Payable & Receivable", permission: 'analytics:read' },
   { href: "/reports/day-sheet", icon: Calendar, label: "Day Sheet", permission: 'analytics:read' },
   { href: "/reports/aging-report", icon: Clock, label: "Aging Report", permission: 'analytics:read' },
+];
+
+// Legal & Compliance
+const legalItems: NavItem[] = [
+  { href: "/privacy-policy", icon: FileText, label: "Privacy Policy", permission: 'dashboard:read' }, // Everyone can access
+  { href: "/terms-of-use", icon: FileText, label: "Terms of Use", permission: 'dashboard:read' }, // Everyone can access
 ];
 
 export const Sidebar = () => {
@@ -245,7 +263,14 @@ export const Sidebar = () => {
       <div className="space-y-2 flex-1 flex flex-col justify-evenly py-4">
         {/* Collapsible Sections */}
         <CollapsibleSection 
-          title="Sales & CRM" 
+          title="CRM" 
+          items={crmItems} 
+          sectionKey="crm"
+          icon={Users}
+        />
+
+        <CollapsibleSection 
+          title="Sales" 
           items={salesItems} 
           sectionKey="sales"
           icon={ShoppingCart}
@@ -311,6 +336,13 @@ export const Sidebar = () => {
         items={reportItems} 
         sectionKey="reports"
         icon={BarChart}
+      />
+
+      <CollapsibleSection 
+        title="Legal & Compliance" 
+        items={legalItems} 
+        sectionKey="legal"
+        icon={FileText}
       />
       </div>
     </nav>

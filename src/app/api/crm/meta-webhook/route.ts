@@ -123,16 +123,16 @@ async function processLeadGenEvent(leadGenData: MetaLeadGenData, rawWebhookData:
     // Check if field_data is already provided (from import script)
     let leadDetails: MetaLeadDetails | null = null;
     
-    if (leadGenData.field_data) {
-      // Use provided field_data
+    if (leadGenData.field_data && leadGenData.field_data.length > 0) {
+      // Use provided field_data (from import script or direct webhook with field_data)
       leadDetails = { field_data: leadGenData.field_data };
       console.log('✅ Using provided field_data from webhook payload');
     } else {
-      // Fetch lead details from Meta Graph API
+      // Fetch lead details from Meta Graph API (real-time webhook from Meta)
       leadDetails = await fetchLeadDetails(leadgen_id);
       
       if (!leadDetails) {
-        console.error('❌ Could not fetch lead details');
+        console.error('❌ Could not fetch lead details from Meta API');
         return;
       }
     }

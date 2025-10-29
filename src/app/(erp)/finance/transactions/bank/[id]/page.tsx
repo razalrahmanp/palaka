@@ -18,6 +18,7 @@ interface BankTransaction {
   reference?: string;
   transaction_type: 'bank_transaction' | 'vendor_payment' | 'withdrawal' | 'liability_payment';
   balance_after?: number;
+  running_balance?: number;
 }
 
 interface BankAccount {
@@ -108,11 +109,17 @@ export default function BankAccountTransactions() {
 
   const fetchAccountDetails = useCallback(async () => {
     try {
-      const response = await fetch(`/api/finance/bank-accounts?type=BANK&id=${accountId}`);
+      const response = await fetch(`/api/finance/bank-accounts?id=${accountId}`);
       if (response.ok) {
         const result = await response.json();
         if (result.data && result.data.length > 0) {
-          setAccount(result.data[0]);
+          const accountData = result.data[0];
+          console.log('📋 Bank account details loaded:', {
+            id: accountData.id,
+            name: accountData.name,
+            account_type: accountData.account_type
+          });
+          setAccount(accountData);
         }
       }
     } catch (error) {
@@ -123,10 +130,64 @@ export default function BankAccountTransactions() {
   const fetchTransactions = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/finance/bank-transactions?bank_account_id=${accountId}&limit=500`);
-      if (response.ok) {
-        const result = await response.json();
-        setTransactions(result.data?.transactions || []);
+      
+      console.log('🔍 Fetching bank transactions for account:', accountId);
+      
+      // Fetch all transactions using pagination (100 rows at a time)
+      const allTransactions: BankTransaction[] = [];
+      let page = 1;
+      const pageSize = 100;
+      let hasMore = true;
+      
+      while (hasMore) {
+        const response = await fetch(
+          `/api/finance/bank-transactions?bank_account_id=${accountId}&page=${page}&limit=${pageSize}`
+        );
+        
+        if (response.ok) {
+          const result = await response.json();
+          const transactions = result.data?.transactions || [];
+          
+          if (transactions.length > 0) {
+            allTransactions.push(...transactions);
+            console.log(`Page ${page}: Fetched ${transactions.length} transactions, Total: ${allTransactions.length}`);
+            
+            // If we got less than pageSize, we've reached the end
+            if (transactions.length < pageSize) {
+              hasMore = false;
+            } else {
+              page++;
+            }
+          } else {
+            hasMore = false;
+          }
+        } else {
+          console.error('Failed to fetch transactions');
+          hasMore = false;
+        }
+      }
+      
+      setTransactions(allTransactions);
+      console.log('✅ Fetched all bank transactions:', allTransactions.length, 'total');
+      
+      // Debug: Check if transactions have running_balance
+      if (allTransactions.length > 0) {
+        console.log('📊 Sample bank transaction data:', {
+          first: {
+            id: allTransactions[0].id,
+            date: allTransactions[0].date,
+            amount: allTransactions[0].amount,
+            running_balance: allTransactions[0].running_balance,
+            balance_after: allTransactions[0].balance_after
+          },
+          last: {
+            id: allTransactions[allTransactions.length - 1].id,
+            date: allTransactions[allTransactions.length - 1].date,
+            amount: allTransactions[allTransactions.length - 1].amount,
+            running_balance: allTransactions[allTransactions.length - 1].running_balance,
+            balance_after: allTransactions[allTransactions.length - 1].balance_after
+          }
+        });
       }
     } catch (error) {
       console.error('Error fetching transactions:', error);
@@ -654,8 +715,12 @@ export default function BankAccountTransactions() {
                       </td>
                       
                       <td className="px-4 py-3 text-right">
-                        <span className="text-sm font-medium text-blue-600">
-                          {formatCurrency(transaction.balance_after || 0)}
+                        <span className={`text-sm font-semibold ${
+                          (transaction.running_balance || transaction.balance_after || 0) >= 0
+                            ? 'text-gray-900'
+                            : 'text-red-600'
+                        }`}>
+                          {formatCurrency(transaction.running_balance || transaction.balance_after || 0)}
                         </span>
                       </td>
                     </tr>

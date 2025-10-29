@@ -6,6 +6,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const accountType = searchParams.get('type');
+    const accountId = searchParams.get('id');
     const refresh = searchParams.get('refresh') === 'true';
     const timestamp = searchParams.get('_t');
     
@@ -13,13 +14,19 @@ export async function GET(request: NextRequest) {
       refresh,
       timestamp,
       bypassCache: refresh || !!timestamp,
-      accountType
+      accountType,
+      accountId
     });
 
     let query = supabase
       .from("bank_accounts")
       .select("id, name, account_number, current_balance, account_type, is_active")
       .eq("is_active", true);
+
+    // Filter by account ID if specified
+    if (accountId) {
+      query = query.eq("id", accountId);
+    }
 
     // Filter by account type if specified
     if (accountType) {

@@ -27,6 +27,7 @@ interface CashAccount {
   current_balance: number;
   currency: string;
   is_active: boolean;
+  account_type?: 'CASH' | 'BANK';
 }
 
 type TransactionCategory = 'all' | 'payment' | 'sales' | 'expense' | 'withdrawal' | 'investment' | 'liability' | 'refund';
@@ -111,11 +112,17 @@ export default function CashAccountTransactions() {
 
   const fetchAccountDetails = useCallback(async () => {
     try {
-      const response = await fetch(`/api/finance/bank-accounts?type=CASH&id=${accountId}`);
+      const response = await fetch(`/api/finance/bank-accounts?id=${accountId}`);
       if (response.ok) {
         const result = await response.json();
         if (result.data && result.data.length > 0) {
-          setAccount(result.data[0]);
+          const accountData = result.data[0];
+          console.log('📋 Account details loaded:', {
+            id: accountData.id,
+            name: accountData.name,
+            account_type: accountData.account_type
+          });
+          setAccount(accountData);
         }
       }
     } catch (error) {
@@ -127,6 +134,17 @@ export default function CashAccountTransactions() {
     try {
       setLoading(true);
       
+      // Determine which API to use based on account type
+      const apiEndpoint = account?.account_type === 'BANK' 
+        ? 'bank-transactions' 
+        : 'cash-transactions';
+      
+      const accountParam = account?.account_type === 'BANK'
+        ? `bank_account_id=${accountId}`
+        : `cash_account_id=${accountId}`;
+      
+      console.log(`🔍 Fetching transactions from ${apiEndpoint} API for account type: ${account?.account_type}`);
+      
       // Fetch all transactions using pagination (100 rows at a time)
       const allTransactions: CashTransaction[] = [];
       let page = 1;
@@ -135,12 +153,13 @@ export default function CashAccountTransactions() {
       
       while (hasMore) {
         const response = await fetch(
-          `/api/finance/cash-transactions?cash_account_id=${accountId}&page=${page}&limit=${pageSize}`
+          `/api/finance/${apiEndpoint}?${accountParam}&page=${page}&limit=${pageSize}`
         );
         
         if (response.ok) {
           const result = await response.json();
-          const transactions = result.transactions || [];
+          // Handle both response structures: result.data.transactions (bank) and result.transactions (cash)
+          const transactions = result.data?.transactions || result.transactions || [];
           
           if (transactions.length > 0) {
             allTransactions.push(...transactions);
@@ -163,12 +182,32 @@ export default function CashAccountTransactions() {
       
       setTransactions(allTransactions);
       console.log('✅ Fetched all transactions:', allTransactions.length, 'total');
+      
+      // Debug: Check if transactions have running_balance
+      if (allTransactions.length > 0) {
+        console.log('📊 Sample transaction data:', {
+          first: {
+            id: allTransactions[0].id,
+            date: allTransactions[0].transaction_date,
+            amount: allTransactions[0].amount,
+            running_balance: allTransactions[0].running_balance,
+            balance_after: allTransactions[0].balance_after
+          },
+          last: {
+            id: allTransactions[allTransactions.length - 1].id,
+            date: allTransactions[allTransactions.length - 1].transaction_date,
+            amount: allTransactions[allTransactions.length - 1].amount,
+            running_balance: allTransactions[allTransactions.length - 1].running_balance,
+            balance_after: allTransactions[allTransactions.length - 1].balance_after
+          }
+        });
+      }
     } catch (error) {
       console.error('Error fetching transactions:', error);
     } finally {
       setLoading(false);
     }
-  }, [accountId]);
+  }, [accountId, account?.account_type]);
 
   const filterTransactions = useCallback(() => {
     let filtered = transactions;
@@ -235,9 +274,15 @@ export default function CashAccountTransactions() {
   useEffect(() => {
     if (accountId) {
       fetchAccountDetails();
+    }
+  }, [accountId, fetchAccountDetails]);
+
+  // Fetch transactions AFTER account details are loaded
+  useEffect(() => {
+    if (account) {
       fetchTransactions();
     }
-  }, [accountId, fetchAccountDetails, fetchTransactions]);
+  }, [account, fetchTransactions]);
 
   useEffect(() => {
     filterTransactions();

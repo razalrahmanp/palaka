@@ -46,7 +46,7 @@ const dashboardItems: NavItem[] = [
 
 // Sales & CRM
 const salesItems: NavItem[] = [
-  { href: "/crm", icon: Users, label: "CRM", permission: ['customer:read','customer:read_own'] },
+  { href: "/sales-crm", icon: Users, label: "CRM", permission: ['customer:read','customer:read_own'] },
   { href: "/sales", icon: ShoppingCart, label: "Sales Orders", permission: ['sales_order:read','sales_order:read_own'] },
   { href: "/billing", icon: Receipt, label: "Billing", permission: 'product:read' },
   { href: "/invoices", icon: FileText, label: "Invoices", permission: ['invoice:create','invoice:read'] },

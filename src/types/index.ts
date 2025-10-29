@@ -14,6 +14,7 @@ export type UserRole =
   | 'Finance Manager'
   | 'HR Manager'
   | 'HR'
+  | 'Auditor'
   | 'Employee';
 
 export type Permission =

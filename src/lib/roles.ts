@@ -71,6 +71,22 @@ export const ROLES: Record<UserRole, Permission[]> = {
         'performance:manage',
         'dashboard:read'
     ],
+    "Auditor": [
+        'user:manage',
+        'customer:create', 'customer:read', 'customer:update', 'customer:delete',
+        'product:create', 'product:read', 'product:update', 'product:delete',
+        'inventory:read', 'inventory:update',
+        'sales_order:create', 'sales_order:read', 'sales_order:approve',
+        'purchase_order:create', 'purchase_order:read', 'purchase_order:approve',
+        'bom:manage',
+        'work_order:create', 'work_order:update',
+        'delivery:create', 'delivery:assign', 'delivery:read', 'delivery:update_status',
+        'invoice:create', 'payment:manage',
+        'employee:manage',
+        'salary:manage',
+        'performance_review:create', 'performance_review:read', 'performance:manage',
+        'analytics:read', 'dashboard:read', 'report:read'
+    ],
     "Employee": [
         'employee:read_own',
         'employee:update_own',

@@ -23,8 +23,8 @@ export async function GET() {
     const { data: attendance } = await supabaseAdmin
       .from('attendance_records')
       .select('id, employee_id')
-      .eq('date', today)
-      .eq('status', 'present');
+      .eq('date', today);
+      // Count all attendance records for today (present, late, half day, etc.)
 
     // Get pending leave requests
     const { data: pendingLeaves } = await supabaseAdmin

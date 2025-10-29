@@ -4,13 +4,10 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Edit, DollarSign, Wallet, TrendingUp, Calendar } from 'lucide-react';
+import { DollarSign, Wallet, Users, Calendar, ChevronDown, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
@@ -20,6 +17,32 @@ interface Employee {
   employee_id: string;
   department: string;
   position: string;
+  salary?: number;
+  employment_status?: string;
+}
+
+interface AttendanceRecord {
+  id: string;
+  employee_id: string;
+  month: string;
+  present_days: number;
+  absent_days: number;
+  working_days: number;
+  total_hours_worked: number;
+}
+
+interface MonthlySalaryPayment {
+  employee_id: string;
+  employee_name: string;
+  employee_code: string;
+  department: string;
+  position: string;
+  monthly_salary: number;
+  working_days: number;
+  present_days: number;
+  absent_days: number;
+  attendance_percentage: number;
+  payable_amount: number;
 }
 
 interface SalaryStructure {
@@ -68,40 +91,22 @@ interface PayrollRecord {
 export default function PayrollManagementPage() {
   const [salaryStructures, setSalaryStructures] = useState<SalaryStructure[]>([]);
   const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSalaryDialogOpen, setIsSalaryDialogOpen] = useState(false);
-  const [isPayrollDialogOpen, setIsPayrollDialogOpen] = useState(false);
-  const [editingSalary, setEditingSalary] = useState<SalaryStructure | null>(null);
+  const [monthlySalaries, setMonthlySalaries] = useState<MonthlySalaryPayment[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMonth, setFilterMonth] = useState(format(new Date(), 'yyyy-MM'));
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
-  const [salaryFormData, setSalaryFormData] = useState({
-    employee_id: '',
-    basic_salary: '',
-    house_rent_allowance: '',
-    transport_allowance: '',
-    medical_allowance: '',
-    provident_fund_deduction: '',
-    tax_deduction: '',
-    effective_from: format(new Date(), 'yyyy-MM-dd'),
-  });
-
-  const [payrollFormData, setPayrollFormData] = useState({
-    employee_id: '',
-    salary_structure_id: '',
-    pay_period_start: '',
-    pay_period_end: '',
-    basic_salary: '',
-    total_allowances: '',
-    total_deductions: '',
-    working_days: '',
-    present_days: '',
-    leave_days: '0',
-    overtime_hours: '0',
-    overtime_amount: '0',
-    bonus: '0',
-  });
+  const toggleRowExpansion = (employeeId: string) => {
+    setExpandedRows((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(employeeId)) {
+        newSet.delete(employeeId);
+      } else {
+        newSet.add(employeeId);
+      }
+      return newSet;
+    });
+  };
 
   useEffect(() => {
     fetchData();
@@ -109,224 +114,302 @@ export default function PayrollManagementPage() {
   }, [filterMonth]);
 
   const fetchData = async () => {
-    setIsLoading(true);
     try {
       await Promise.all([
         fetchSalaryStructures(),
         fetchPayrollRecords(),
-        fetchEmployees(),
+        fetchMonthlySalaries(),
       ]);
     } catch (error) {
       console.error('Error fetching data:', error);
       toast.error('Failed to load data');
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const fetchSalaryStructures = async () => {
     try {
       const response = await fetch('/api/hr/salary-structures?is_active=true');
-      if (!response.ok) throw new Error('Failed to fetch salary structures');
+      if (!response.ok) {
+        console.error('❌ Salary structures API error:', response.status);
+        throw new Error('Failed to fetch salary structures');
+      }
       const result = await response.json();
-      setSalaryStructures(result.data || []);
+      console.log('✅ Salary structures raw response:', result);
+      
+      // Handle both result.data and direct array response
+      const data = Array.isArray(result) ? result : (result.data || []);
+      console.log('💼 Salary structures count:', data.length);
+      console.log('💰 Salary structures data:', data);
+      
+      setSalaryStructures(data);
+      
+      if (data.length === 0) {
+        console.warn('⚠️ No active salary structures found');
+        toast.info('No active salary structures found. Create one first.');
+      }
     } catch (error) {
-      console.error('Error:', error);
+      console.error('💥 Error fetching salary structures:', error);
       toast.error('Failed to load salary structures');
+      setSalaryStructures([]);
     }
   };
 
   const fetchPayrollRecords = async () => {
     try {
       const url = `/api/hr/payroll-records?month=${filterMonth}`;
+      console.log('🔍 Fetching payroll records from:', url);
+      console.log('📅 Filter month:', filterMonth);
+      
       const response = await fetch(url);
-      if (!response.ok) throw new Error('Failed to fetch payroll records');
+      if (!response.ok) {
+        console.error('❌ Payroll records API error:', response.status);
+        throw new Error('Failed to fetch payroll records');
+      }
+      
       const result = await response.json();
-      setPayrollRecords(result.data || []);
+      console.log('✅ Payroll records raw response:', result);
+      
+      // Handle both result.data and direct array response
+      const data = Array.isArray(result) ? result : (result.data || []);
+      console.log('📊 Payroll records count:', data.length);
+      console.log('💰 Payroll records data:', data);
+      
+      setPayrollRecords(data);
+      
+      if (data.length === 0) {
+        console.warn('⚠️ No payroll records found for month:', filterMonth);
+        toast.info(`No payroll records found for ${filterMonth}`);
+      }
     } catch (error) {
-      console.error('Error:', error);
+      console.error('💥 Error fetching payroll records:', error);
       toast.error('Failed to load payroll records');
+      setPayrollRecords([]);
     }
   };
 
-  const fetchEmployees = async () => {
+  const fetchMonthlySalaries = async () => {
     try {
-      const response = await fetch('/api/hr/employees');
-      if (!response.ok) throw new Error('Failed to fetch employees');
-      const data = await response.json();
-      setEmployees(data || []);
+      const url = `/api/hr/monthly-salaries?month=${filterMonth}`;
+      console.log('🔍 Fetching monthly salaries from:', url);
+      console.log('📅 Filter month:', filterMonth);
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        console.error('❌ Monthly salaries API error:', response.status);
+        // If API doesn't exist yet, calculate from employees and attendance
+        await calculateMonthlySalaries();
+        return;
+      }
+      
+      const result = await response.json();
+      console.log('✅ Monthly salaries raw response:', result);
+      
+      const data = Array.isArray(result) ? result : (result.data || []);
+      console.log('📊 Monthly salaries count:', data.length);
+      
+      setMonthlySalaries(data);
+      
+      if (data.length === 0) {
+        console.warn('⚠️ No monthly salary data found for month:', filterMonth);
+        // Try to calculate from employees
+        await calculateMonthlySalaries();
+      }
     } catch (error) {
-      console.error('Error:', error);
+      console.error('💥 Error fetching monthly salaries:', error);
+      // Try to calculate from employees and attendance
+      await calculateMonthlySalaries();
     }
   };
 
-  const handleSaveSalaryStructure = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-
+  const calculateMonthlySalaries = async () => {
     try {
-      const url = '/api/hr/salary-structures';
-      const method = editingSalary ? 'PUT' : 'POST';
-      const payload = editingSalary
-        ? { id: editingSalary.id, ...salaryFormData }
-        : salaryFormData;
-
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+      // Fetch employees with salary field
+      const employeesResponse = await fetch('/api/hr/employees?employment_status=active');
+      if (!employeesResponse.ok) {
+        throw new Error('Failed to fetch employees');
+      }
+      const employees: Employee[] = await employeesResponse.json();
+      
+      // Fetch attendance records for the selected month
+      const attendanceResponse = await fetch(`/api/hr/attendance?month=${filterMonth}`);
+      const attendanceData: AttendanceRecord[] = attendanceResponse.ok 
+        ? await attendanceResponse.json() 
+        : [];
+      
+      // Create a map of attendance by employee_id
+      const attendanceMap = new Map<string, AttendanceRecord>();
+      attendanceData.forEach(att => {
+        attendanceMap.set(att.employee_id, att);
       });
-
-      if (!response.ok) throw new Error('Failed to save salary structure');
-
-      toast.success(editingSalary ? 'Salary structure updated' : 'Salary structure created');
-      setIsSalaryDialogOpen(false);
-      resetSalaryForm();
-      fetchSalaryStructures();
+      
+      // Calculate monthly salaries
+      const calculated: MonthlySalaryPayment[] = employees
+        .filter(emp => emp.salary && emp.salary > 0)
+        .map(emp => {
+          const attendance = attendanceMap.get(emp.id);
+          const workingDays = attendance?.working_days || 26; // Default 26 working days
+          const presentDays = attendance?.present_days || workingDays;
+          const absentDays = attendance?.absent_days || 0;
+          const monthlySalary = emp.salary || 0;
+          
+          // Calculate payable amount based on attendance
+          const payableAmount = (monthlySalary / workingDays) * presentDays;
+          const attendancePercentage = (presentDays / workingDays) * 100;
+          
+          return {
+            employee_id: emp.id,
+            employee_name: emp.name,
+            employee_code: emp.employee_id,
+            department: emp.department,
+            position: emp.position,
+            monthly_salary: monthlySalary,
+            working_days: workingDays,
+            present_days: presentDays,
+            absent_days: absentDays,
+            attendance_percentage: Math.round(attendancePercentage * 100) / 100,
+            payable_amount: Math.round(payableAmount * 100) / 100,
+          };
+        });
+      
+      console.log('💰 Calculated monthly salaries:', calculated.length);
+      setMonthlySalaries(calculated);
+      
+      if (calculated.length === 0) {
+        toast.info('No employees with salary information found');
+      }
     } catch (error) {
-      console.error('Error:', error);
-      toast.error('Failed to save salary structure');
-    } finally {
-      setIsLoading(false);
+      console.error('💥 Error calculating monthly salaries:', error);
+      toast.error('Failed to calculate monthly salaries');
+      setMonthlySalaries([]);
     }
   };
 
-  const handleCreatePayroll = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-
+  const fetchAllPayrollRecords = async () => {
     try {
-      const response = await fetch('/api/hr/payroll-records', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payrollFormData),
-      });
-
-      if (!response.ok) throw new Error('Failed to create payroll record');
-
-      toast.success('Payroll record created');
-      setIsPayrollDialogOpen(false);
-      resetPayrollForm();
-      fetchPayrollRecords();
+      const url = '/api/hr/payroll-records'; // No month filter
+      console.log('🔍 Fetching ALL payroll records from:', url);
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        console.error('❌ All payroll records API error:', response.status);
+        throw new Error('Failed to fetch all payroll records');
+      }
+      
+      const result = await response.json();
+      console.log('✅ ALL payroll records raw response:', result);
+      
+      const data = Array.isArray(result) ? result : (result.data || []);
+      console.log('📊 TOTAL payroll records in database:', data.length);
+      console.log('💰 ALL payroll records:', data);
+      
+      setPayrollRecords(data);
+      
+      if (data.length === 0) {
+        toast.error('No payroll records exist in database at all!');
+      } else {
+        toast.success(`Found ${data.length} total payroll records`);
+      }
     } catch (error) {
-      console.error('Error:', error);
-      toast.error('Failed to create payroll record');
-    } finally {
-      setIsLoading(false);
+      console.error('💥 Error fetching all payroll records:', error);
+      toast.error('Failed to load all payroll records');
     }
   };
 
-  const handleUpdatePayrollStatus = async (id: string, status: string) => {
-    setIsLoading(true);
-    try {
-      const response = await fetch('/api/hr/payroll-records', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, status }),
-      });
-
-      if (!response.ok) throw new Error('Failed to update payroll status');
-
-      toast.success(`Payroll marked as ${status}`);
-      fetchPayrollRecords();
-    } catch (error) {
-      console.error('Error:', error);
-      toast.error('Failed to update payroll status');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleEmployeeSelect = (employeeId: string) => {
-    const salary = salaryStructures.find(s => s.employee_id === employeeId && s.is_active);
-    if (salary) {
-      setPayrollFormData(prev => ({
-        ...prev,
-        employee_id: employeeId,
-        salary_structure_id: salary.id,
-        basic_salary: salary.basic_salary.toString(),
-        total_allowances: (
-          salary.house_rent_allowance +
-          salary.transport_allowance +
-          salary.medical_allowance
-        ).toString(),
-        total_deductions: (
-          salary.provident_fund_deduction +
-          salary.tax_deduction
-        ).toString(),
-      }));
-    } else {
-      setPayrollFormData(prev => ({ ...prev, employee_id: employeeId }));
-      toast.warning('No active salary structure found for this employee');
-    }
-  };
-
-  const resetSalaryForm = () => {
-    setSalaryFormData({
-      employee_id: '',
-      basic_salary: '',
-      house_rent_allowance: '',
-      transport_allowance: '',
-      medical_allowance: '',
-      provident_fund_deduction: '',
-      tax_deduction: '',
-      effective_from: format(new Date(), 'yyyy-MM-dd'),
-    });
-    setEditingSalary(null);
-  };
-
-  const resetPayrollForm = () => {
-    setPayrollFormData({
-      employee_id: '',
-      salary_structure_id: '',
-      pay_period_start: '',
-      pay_period_end: '',
-      basic_salary: '',
-      total_allowances: '',
-      total_deductions: '',
-      working_days: '',
-      present_days: '',
-      leave_days: '0',
-      overtime_hours: '0',
-      overtime_amount: '0',
-      bonus: '0',
-    });
-  };
-
-  const handleEditSalary = (salary: SalaryStructure) => {
-    setEditingSalary(salary);
-    setSalaryFormData({
-      employee_id: salary.employee_id,
-      basic_salary: salary.basic_salary.toString(),
-      house_rent_allowance: salary.house_rent_allowance.toString(),
-      transport_allowance: salary.transport_allowance.toString(),
-      medical_allowance: salary.medical_allowance.toString(),
-      provident_fund_deduction: salary.provident_fund_deduction.toString(),
-      tax_deduction: salary.tax_deduction.toString(),
-      effective_from: salary.effective_from,
-    });
-    setIsSalaryDialogOpen(true);
-  };
-
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, string> = {
-      draft: 'bg-gray-100 text-gray-800',
-      processed: 'bg-blue-100 text-blue-800',
-      paid: 'bg-green-100 text-green-800',
+  // Group payroll records by employee_id
+  interface GroupedPayroll {
+    employee: Employee;
+    employee_id: string;
+    records: PayrollRecord[];
+    totalBasicSalary: number;
+    totalAllowances: number;
+    totalDeductions: number;
+    totalGrossSalary: number;
+    totalNetSalary: number;
+    totalPayments: number;
+    firstPaymentDate: string;
+    lastPaymentDate: string;
+    // Breakdown by payment type
+    paymentsByType: {
+      salary: { count: number; total: number };
+      overtime: { count: number; total: number };
+      incentive: { count: number; total: number };
+      bonus: { count: number; total: number };
+      allowance: { count: number; total: number };
+      reimbursement: { count: number; total: number };
     };
-    return <Badge className={variants[status] || ''}>{status}</Badge>;
-  };
+  }
 
-  const filteredSalaries = salaryStructures.filter(salary =>
-    salary.employee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    salary.employee.employee_id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const groupedPayrollRecords = payrollRecords.reduce((acc, record) => {
+    const employeeId = record.employee_id;
+    if (!acc[employeeId]) {
+      acc[employeeId] = {
+        employee: record.employee,
+        employee_id: employeeId,
+        records: [],
+        totalBasicSalary: 0,
+        totalAllowances: 0,
+        totalDeductions: 0,
+        totalGrossSalary: 0,
+        totalNetSalary: 0,
+        totalPayments: 0,
+        firstPaymentDate: record.pay_period_start,
+        lastPaymentDate: record.pay_period_end,
+        paymentsByType: {
+          salary: { count: 0, total: 0 },
+          overtime: { count: 0, total: 0 },
+          incentive: { count: 0, total: 0 },
+          bonus: { count: 0, total: 0 },
+          allowance: { count: 0, total: 0 },
+          reimbursement: { count: 0, total: 0 },
+        },
+      };
+    }
+    acc[employeeId].records.push(record);
+    acc[employeeId].totalBasicSalary += Number(record.basic_salary) || 0;
+    acc[employeeId].totalAllowances += Number(record.total_allowances) || 0;
+    acc[employeeId].totalDeductions += Number(record.total_deductions) || 0;
+    acc[employeeId].totalGrossSalary += Number(record.gross_salary) || 0;
+    acc[employeeId].totalNetSalary += Number(record.net_salary) || 0;
+    acc[employeeId].totalPayments += 1;
+    
+    // Categorize by payment type
+    const paymentType = record.payment_type || 'salary';
+    type PaymentTypeKey = 'salary' | 'overtime' | 'incentive' | 'bonus' | 'allowance' | 'reimbursement';
+    if (paymentType in acc[employeeId].paymentsByType) {
+      const typeKey = paymentType as PaymentTypeKey;
+      acc[employeeId].paymentsByType[typeKey].count += 1;
+      acc[employeeId].paymentsByType[typeKey].total += Number(record.net_salary) || 0;
+    }
+    
+    // Track date range
+    if (record.pay_period_start < acc[employeeId].firstPaymentDate) {
+      acc[employeeId].firstPaymentDate = record.pay_period_start;
+    }
+    if (record.pay_period_end > acc[employeeId].lastPaymentDate) {
+      acc[employeeId].lastPaymentDate = record.pay_period_end;
+    }
+    
+    return acc;
+  }, {} as Record<string, GroupedPayroll>);
+
+  const groupedPayrollArray = Object.values(groupedPayrollRecords);
 
   const stats = {
-    totalPayroll: payrollRecords.reduce((sum, r) => sum + (r.net_salary || 0), 0),
+    totalPayroll: payrollRecords.reduce((sum, r) => sum + (Number(r.net_salary) || 0), 0),
     processedCount: payrollRecords.filter(r => r.status === 'processed' || r.status === 'paid').length,
     pendingCount: payrollRecords.filter(r => r.status === 'draft').length,
     activeSalaries: salaryStructures.length,
+    uniqueEmployees: groupedPayrollArray.length,
+    totalTransactions: payrollRecords.length,
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
   };
 
   return (
@@ -340,337 +423,69 @@ export default function PayrollManagementPage() {
             </h1>
             <p className="text-gray-600 mt-2">Manage employee salaries, deductions, and payments</p>
           </div>
-          <div className="flex gap-3">
-            <Dialog open={isPayrollDialogOpen} onOpenChange={setIsPayrollDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline">
-                  <DollarSign className="h-4 w-4 mr-2" />
-                  Process Payroll
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Process Payroll</DialogTitle>
-                  <DialogDescription>Create payroll record for an employee</DialogDescription>
-                </DialogHeader>
-                <form onSubmit={handleCreatePayroll} className="space-y-4">
-                  <div>
-                    <Label>Employee</Label>
-                    <Select
-                      value={payrollFormData.employee_id}
-                      onValueChange={handleEmployeeSelect}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select employee" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {employees.map((emp) => (
-                          <SelectItem key={emp.id} value={emp.id}>
-                            {emp.name} ({emp.employee_id})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>Pay Period Start</Label>
-                      <Input
-                        type="date"
-                        value={payrollFormData.pay_period_start}
-                        onChange={(e) => setPayrollFormData({ ...payrollFormData, pay_period_start: e.target.value })}
-                        required
-                      />
-                    </div>
-                    <div>
-                      <Label>Pay Period End</Label>
-                      <Input
-                        type="date"
-                        value={payrollFormData.pay_period_end}
-                        onChange={(e) => setPayrollFormData({ ...payrollFormData, pay_period_end: e.target.value })}
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <Label>Basic Salary</Label>
-                      <Input
-                        type="number"
-                        value={payrollFormData.basic_salary}
-                        onChange={(e) => setPayrollFormData({ ...payrollFormData, basic_salary: e.target.value })}
-                        required
-                      />
-                    </div>
-                    <div>
-                      <Label>Total Allowances</Label>
-                      <Input
-                        type="number"
-                        value={payrollFormData.total_allowances}
-                        onChange={(e) => setPayrollFormData({ ...payrollFormData, total_allowances: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <Label>Total Deductions</Label>
-                      <Input
-                        type="number"
-                        value={payrollFormData.total_deductions}
-                        onChange={(e) => setPayrollFormData({ ...payrollFormData, total_deductions: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <Label>Working Days</Label>
-                      <Input
-                        type="number"
-                        value={payrollFormData.working_days}
-                        onChange={(e) => setPayrollFormData({ ...payrollFormData, working_days: e.target.value })}
-                        required
-                      />
-                    </div>
-                    <div>
-                      <Label>Present Days</Label>
-                      <Input
-                        type="number"
-                        value={payrollFormData.present_days}
-                        onChange={(e) => setPayrollFormData({ ...payrollFormData, present_days: e.target.value })}
-                        required
-                      />
-                    </div>
-                    <div>
-                      <Label>Leave Days</Label>
-                      <Input
-                        type="number"
-                        value={payrollFormData.leave_days}
-                        onChange={(e) => setPayrollFormData({ ...payrollFormData, leave_days: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <Label>Overtime Hours</Label>
-                      <Input
-                        type="number"
-                        value={payrollFormData.overtime_hours}
-                        onChange={(e) => setPayrollFormData({ ...payrollFormData, overtime_hours: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <Label>Overtime Amount</Label>
-                      <Input
-                        type="number"
-                        value={payrollFormData.overtime_amount}
-                        onChange={(e) => setPayrollFormData({ ...payrollFormData, overtime_amount: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <Label>Bonus</Label>
-                      <Input
-                        type="number"
-                        value={payrollFormData.bonus}
-                        onChange={(e) => setPayrollFormData({ ...payrollFormData, bonus: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3 pt-4">
-                    <Button type="submit" disabled={isLoading} className="flex-1">
-                      Create Payroll
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setIsPayrollDialogOpen(false)}
-                      disabled={isLoading}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
-
-            <Dialog open={isSalaryDialogOpen} onOpenChange={setIsSalaryDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="bg-gradient-to-r from-blue-600 to-cyan-600">
-                  <Plus className="h-4 w-4 mr-2" />
-                  New Salary Structure
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl">
-                <DialogHeader>
-                  <DialogTitle>{editingSalary ? 'Edit' : 'Create'} Salary Structure</DialogTitle>
-                  <DialogDescription>Set up employee salary components</DialogDescription>
-                </DialogHeader>
-                <form onSubmit={handleSaveSalaryStructure} className="space-y-4">
-                  <div>
-                    <Label>Employee</Label>
-                    <Select
-                      value={salaryFormData.employee_id}
-                      onValueChange={(value) => setSalaryFormData({ ...salaryFormData, employee_id: value })}
-                      disabled={!!editingSalary}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select employee" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {employees.map((emp) => (
-                          <SelectItem key={emp.id} value={emp.id}>
-                            {emp.name} ({emp.employee_id})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label>Basic Salary</Label>
-                    <Input
-                      type="number"
-                      value={salaryFormData.basic_salary}
-                      onChange={(e) => setSalaryFormData({ ...salaryFormData, basic_salary: e.target.value })}
-                      placeholder="50000"
-                      required
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <Label>HRA</Label>
-                      <Input
-                        type="number"
-                        value={salaryFormData.house_rent_allowance}
-                        onChange={(e) => setSalaryFormData({ ...salaryFormData, house_rent_allowance: e.target.value })}
-                        placeholder="10000"
-                      />
-                    </div>
-                    <div>
-                      <Label>Transport Allowance</Label>
-                      <Input
-                        type="number"
-                        value={salaryFormData.transport_allowance}
-                        onChange={(e) => setSalaryFormData({ ...salaryFormData, transport_allowance: e.target.value })}
-                        placeholder="2000"
-                      />
-                    </div>
-                    <div>
-                      <Label>Medical Allowance</Label>
-                      <Input
-                        type="number"
-                        value={salaryFormData.medical_allowance}
-                        onChange={(e) => setSalaryFormData({ ...salaryFormData, medical_allowance: e.target.value })}
-                        placeholder="1500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>PF Deduction</Label>
-                      <Input
-                        type="number"
-                        value={salaryFormData.provident_fund_deduction}
-                        onChange={(e) => setSalaryFormData({ ...salaryFormData, provident_fund_deduction: e.target.value })}
-                        placeholder="6000"
-                      />
-                    </div>
-                    <div>
-                      <Label>Tax Deduction</Label>
-                      <Input
-                        type="number"
-                        value={salaryFormData.tax_deduction}
-                        onChange={(e) => setSalaryFormData({ ...salaryFormData, tax_deduction: e.target.value })}
-                        placeholder="5000"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label>Effective From</Label>
-                    <Input
-                      type="date"
-                      value={salaryFormData.effective_from}
-                      onChange={(e) => setSalaryFormData({ ...salaryFormData, effective_from: e.target.value })}
-                      required
-                    />
-                  </div>
-
-                  <div className="flex gap-3 pt-4">
-                    <Button type="submit" disabled={isLoading} className="flex-1">
-                      {editingSalary ? 'Update' : 'Create'} Salary Structure
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setIsSalaryDialogOpen(false);
-                        resetSalaryForm();
-                      }}
-                      disabled={isLoading}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
-          </div>
         </div>
       </div>
 
       {/* Statistics Cards */}
       <div className="grid gap-6 md:grid-cols-4">
-        <Card className="bg-white/80 backdrop-blur-sm border-white/20 shadow-lg">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Total Payroll</CardTitle>
+        <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0 shadow-lg">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-blue-100">Total Payroll</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center">
-              <Wallet className="h-5 w-5 text-blue-600 mr-2" />
-              <div className="text-2xl font-bold text-gray-900">
-                ${stats.totalPayroll.toLocaleString()}
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-3xl font-bold">
+                  {formatCurrency(stats.totalPayroll)}
+                </div>
+                <p className="text-xs text-blue-100 mt-1">This month</p>
               </div>
+              <Wallet className="h-10 w-10 text-blue-200 opacity-80" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-white/80 backdrop-blur-sm border-white/20 shadow-lg">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Processed</CardTitle>
+        <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-0 shadow-lg">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-green-100">Employees Paid</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center">
-              <TrendingUp className="h-5 w-5 text-green-600 mr-2" />
-              <div className="text-2xl font-bold text-gray-900">{stats.processedCount}</div>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-3xl font-bold">{stats.uniqueEmployees}</div>
+                <p className="text-xs text-green-100 mt-1">{stats.totalTransactions} transactions</p>
+              </div>
+              <Users className="h-10 w-10 text-green-200 opacity-80" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-white/80 backdrop-blur-sm border-white/20 shadow-lg">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Pending</CardTitle>
+        <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-0 shadow-lg">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-orange-100">Total Transactions</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center">
-              <Calendar className="h-5 w-5 text-yellow-600 mr-2" />
-              <div className="text-2xl font-bold text-gray-900">{stats.pendingCount}</div>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-3xl font-bold">{stats.totalTransactions}</div>
+                <p className="text-xs text-orange-100 mt-1">Payment records</p>
+              </div>
+              <Calendar className="h-10 w-10 text-orange-200 opacity-80" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-white/80 backdrop-blur-sm border-white/20 shadow-lg">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Active Salaries</CardTitle>
+        <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-0 shadow-lg">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-purple-100">Active Salaries</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center">
-              <DollarSign className="h-5 w-5 text-purple-600 mr-2" />
-              <div className="text-2xl font-bold text-gray-900">{stats.activeSalaries}</div>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-3xl font-bold">{stats.activeSalaries}</div>
+                <p className="text-xs text-purple-100 mt-1">Structures</p>
+              </div>
+              <DollarSign className="h-10 w-10 text-purple-200 opacity-80" />
             </div>
           </CardContent>
         </Card>
@@ -691,77 +506,261 @@ export default function PayrollManagementPage() {
                   <CardTitle>Payroll Records</CardTitle>
                   <CardDescription>Track employee payments</CardDescription>
                 </div>
-                <Input
-                  type="month"
-                  value={filterMonth}
-                  onChange={(e) => setFilterMonth(e.target.value)}
-                  className="w-48"
-                />
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={fetchAllPayrollRecords}
+                    className="text-xs"
+                  >
+                    Show All Records
+                  </Button>
+                  <Input
+                    type="month"
+                    value={filterMonth}
+                    onChange={(e) => setFilterMonth(e.target.value)}
+                    className="w-48"
+                  />
+                </div>
               </div>
             </CardHeader>
             <CardContent>
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12"></TableHead>
                     <TableHead>Employee</TableHead>
                     <TableHead>Period</TableHead>
-                    <TableHead>Days</TableHead>
-                    <TableHead>Basic</TableHead>
-                    <TableHead>Allowances</TableHead>
-                    <TableHead>Deductions</TableHead>
-                    <TableHead>Gross</TableHead>
-                    <TableHead>Net Salary</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead>Salary</TableHead>
+                    <TableHead>Overtime</TableHead>
+                    <TableHead>Incentive</TableHead>
+                    <TableHead>Bonus</TableHead>
+                    <TableHead>Allowance</TableHead>
+                    <TableHead>Reimbursement</TableHead>
+                    <TableHead>Total Paid</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {payrollRecords.map((record) => (
-                    <TableRow key={record.id}>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{record.employee.name}</div>
-                          <div className="text-xs text-gray-500">{record.employee.employee_id}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          {format(new Date(record.pay_period_start), 'MMM dd')} - {format(new Date(record.pay_period_end), 'MMM dd, yyyy')}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {record.present_days}/{record.working_days}
-                      </TableCell>
-                      <TableCell>${record.basic_salary?.toLocaleString() || 0}</TableCell>
-                      <TableCell>${record.total_allowances?.toLocaleString() || 0}</TableCell>
-                      <TableCell>${record.total_deductions?.toLocaleString() || 0}</TableCell>
-                      <TableCell className="font-medium">${record.gross_salary?.toLocaleString() || 0}</TableCell>
-                      <TableCell className="font-bold text-green-600">
-                        ${record.net_salary?.toLocaleString() || 0}
-                      </TableCell>
-                      <TableCell>{getStatusBadge(record.status)}</TableCell>
-                      <TableCell>
-                        {record.status === 'draft' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleUpdatePayrollStatus(record.id, 'processed')}
-                          >
-                            Process
-                          </Button>
-                        )}
-                        {record.status === 'processed' && (
-                          <Button
-                            size="sm"
-                            className="bg-green-600"
-                            onClick={() => handleUpdatePayrollStatus(record.id, 'paid')}
-                          >
-                            Mark Paid
-                          </Button>
-                        )}
+                  {groupedPayrollArray.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={10} className="text-center text-gray-500 py-8">
+                        No payroll records found for {filterMonth}
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ) : (
+                    groupedPayrollArray.map((group) => {
+                      const isExpanded = expandedRows.has(group.employee_id);
+                      return (
+                        <>
+                          <TableRow 
+                            key={group.employee_id}
+                            className="cursor-pointer hover:bg-blue-50/50 transition-colors"
+                            onClick={() => toggleRowExpansion(group.employee_id)}
+                          >
+                            <TableCell>
+                              {isExpanded ? (
+                                <ChevronDown className="h-4 w-4 text-gray-500" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4 text-gray-500" />
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div>
+                                <div className="font-medium">{group.employee.name}</div>
+                                <div className="text-xs text-gray-500">{group.employee.employee_id}</div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="text-sm">
+                                {format(new Date(group.firstPaymentDate), 'MMM dd')} - {format(new Date(group.lastPaymentDate), 'MMM dd, yyyy')}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {group.paymentsByType.salary.count > 0 && (
+                                <div className="text-sm">
+                                  <div className="font-medium">{formatCurrency(group.paymentsByType.salary.total)}</div>
+                                  <div className="text-xs text-gray-500">{group.paymentsByType.salary.count}x</div>
+                                </div>
+                              )}
+                              {group.paymentsByType.salary.count === 0 && <span className="text-gray-400">-</span>}
+                            </TableCell>
+                            <TableCell>
+                              {group.paymentsByType.overtime.count > 0 && (
+                                <div className="text-sm">
+                                  <div className="font-medium">{formatCurrency(group.paymentsByType.overtime.total)}</div>
+                                  <div className="text-xs text-gray-500">{group.paymentsByType.overtime.count}x</div>
+                                </div>
+                              )}
+                              {group.paymentsByType.overtime.count === 0 && <span className="text-gray-400">-</span>}
+                            </TableCell>
+                            <TableCell>
+                              {group.paymentsByType.incentive.count > 0 && (
+                                <div className="text-sm">
+                                  <div className="font-medium">{formatCurrency(group.paymentsByType.incentive.total)}</div>
+                                  <div className="text-xs text-gray-500">{group.paymentsByType.incentive.count}x</div>
+                                </div>
+                              )}
+                              {group.paymentsByType.incentive.count === 0 && <span className="text-gray-400">-</span>}
+                            </TableCell>
+                            <TableCell>
+                              {group.paymentsByType.bonus.count > 0 && (
+                                <div className="text-sm">
+                                  <div className="font-medium">{formatCurrency(group.paymentsByType.bonus.total)}</div>
+                                  <div className="text-xs text-gray-500">{group.paymentsByType.bonus.count}x</div>
+                                </div>
+                              )}
+                              {group.paymentsByType.bonus.count === 0 && <span className="text-gray-400">-</span>}
+                            </TableCell>
+                            <TableCell>
+                              {group.paymentsByType.allowance.count > 0 && (
+                                <div className="text-sm">
+                                  <div className="font-medium">{formatCurrency(group.paymentsByType.allowance.total)}</div>
+                                  <div className="text-xs text-gray-500">{group.paymentsByType.allowance.count}x</div>
+                                </div>
+                              )}
+                              {group.paymentsByType.allowance.count === 0 && <span className="text-gray-400">-</span>}
+                            </TableCell>
+                            <TableCell>
+                              {group.paymentsByType.reimbursement.count > 0 && (
+                                <div className="text-sm">
+                                  <div className="font-medium">{formatCurrency(group.paymentsByType.reimbursement.total)}</div>
+                                  <div className="text-xs text-gray-500">{group.paymentsByType.reimbursement.count}x</div>
+                                </div>
+                              )}
+                              {group.paymentsByType.reimbursement.count === 0 && <span className="text-gray-400">-</span>}
+                            </TableCell>
+                            <TableCell className="font-bold text-green-600">
+                              <div className="text-base">{formatCurrency(group.totalNetSalary)}</div>
+                              <div className="text-xs text-gray-500 font-normal">{group.totalPayments} transactions</div>
+                            </TableCell>
+                          </TableRow>
+                          
+                          {/* Expanded Ledger View */}
+                          {isExpanded && (
+                            <TableRow key={`${group.employee_id}-details`} className="bg-slate-50">
+                              <TableCell colSpan={10} className="p-0">
+                                <div className="p-6 space-y-4">
+                                  <div className="flex items-center justify-between border-b pb-3">
+                                    <h3 className="text-lg font-semibold text-gray-900">
+                                      Payment Ledger - {group.employee.name}
+                                    </h3>
+                                    <Badge variant="outline" className="bg-white">
+                                      {group.totalPayments} Transactions
+                                    </Badge>
+                                  </div>
+                                  
+                                  {/* Ledger Table */}
+                                  <div className="bg-white rounded-lg border overflow-hidden">
+                                    <Table>
+                                      <TableHeader>
+                                        <TableRow className="bg-gray-50">
+                                          <TableHead className="font-semibold">Date</TableHead>
+                                          <TableHead className="font-semibold">Type</TableHead>
+                                          <TableHead className="font-semibold text-right">Salary</TableHead>
+                                          <TableHead className="font-semibold text-right">Overtime</TableHead>
+                                          <TableHead className="font-semibold text-right">Incentive</TableHead>
+                                          <TableHead className="font-semibold text-right">Bonus</TableHead>
+                                          <TableHead className="font-semibold text-right">Allowance</TableHead>
+                                          <TableHead className="font-semibold text-right">Reimbursement</TableHead>
+                                          <TableHead className="font-semibold text-right">Net Amount</TableHead>
+                                          <TableHead className="font-semibold">Status</TableHead>
+                                        </TableRow>
+                                      </TableHeader>
+                                      <TableBody>
+                                        {group.records
+                                          .sort((a, b) => new Date(b.pay_period_start).getTime() - new Date(a.pay_period_start).getTime())
+                                          .map((record, idx) => (
+                                          <TableRow key={record.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+                                            <TableCell className="font-medium">
+                                              {format(new Date(record.pay_period_start), 'MMM dd, yyyy')}
+                                            </TableCell>
+                                            <TableCell>
+                                              <Badge 
+                                                variant="outline"
+                                                className={
+                                                  record.payment_type === 'salary' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                                  record.payment_type === 'overtime' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                                                  record.payment_type === 'incentive' ? 'bg-green-50 text-green-700 border-green-200' :
+                                                  record.payment_type === 'bonus' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                                                  record.payment_type === 'allowance' ? 'bg-cyan-50 text-cyan-700 border-cyan-200' :
+                                                  'bg-gray-50 text-gray-700 border-gray-200'
+                                                }
+                                              >
+                                                {record.payment_type}
+                                              </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono">
+                                              {record.payment_type === 'salary' ? formatCurrency(Number(record.net_salary) || 0) : '-'}
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono text-purple-600">
+                                              {record.payment_type === 'overtime' ? formatCurrency(Number(record.net_salary) || 0) : '-'}
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono text-green-600">
+                                              {record.payment_type === 'incentive' ? formatCurrency(Number(record.net_salary) || 0) : '-'}
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono text-yellow-600">
+                                              {record.payment_type === 'bonus' ? formatCurrency(Number(record.net_salary) || 0) : '-'}
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono text-cyan-600">
+                                              {record.payment_type === 'allowance' ? formatCurrency(Number(record.net_salary) || 0) : '-'}
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono text-gray-600">
+                                              {record.payment_type === 'reimbursement' ? formatCurrency(Number(record.net_salary) || 0) : '-'}
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono font-bold text-green-700">
+                                              {formatCurrency(Number(record.net_salary) || 0)}
+                                            </TableCell>
+                                            <TableCell>
+                                              <Badge 
+                                                className={
+                                                  record.status === 'paid' ? 'bg-green-100 text-green-800' :
+                                                  record.status === 'processed' ? 'bg-blue-100 text-blue-800' :
+                                                  'bg-gray-100 text-gray-800'
+                                                }
+                                              >
+                                                {record.status}
+                                              </Badge>
+                                            </TableCell>
+                                          </TableRow>
+                                        ))}
+                                        
+                                        {/* Totals Row */}
+                                        <TableRow className="bg-blue-50 font-bold border-t-2 border-blue-200">
+                                          <TableCell colSpan={2} className="text-right">TOTAL:</TableCell>
+                                          <TableCell className="text-right font-mono text-blue-700">
+                                            {formatCurrency(group.paymentsByType.salary.total)}
+                                          </TableCell>
+                                          <TableCell className="text-right font-mono text-purple-700">
+                                            {formatCurrency(group.paymentsByType.overtime.total)}
+                                          </TableCell>
+                                          <TableCell className="text-right font-mono text-green-700">
+                                            {formatCurrency(group.paymentsByType.incentive.total)}
+                                          </TableCell>
+                                          <TableCell className="text-right font-mono text-yellow-700">
+                                            {formatCurrency(group.paymentsByType.bonus.total)}
+                                          </TableCell>
+                                          <TableCell className="text-right font-mono text-cyan-700">
+                                            {formatCurrency(group.paymentsByType.allowance.total)}
+                                          </TableCell>
+                                          <TableCell className="text-right font-mono text-gray-700">
+                                            {formatCurrency(group.paymentsByType.reimbursement.total)}
+                                          </TableCell>
+                                          <TableCell className="text-right font-mono text-green-800 text-lg">
+                                            {formatCurrency(group.totalNetSalary)}
+                                          </TableCell>
+                                          <TableCell></TableCell>
+                                        </TableRow>
+                                      </TableBody>
+                                    </Table>
+                                  </div>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </>
+                      );
+                    })
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -773,8 +772,8 @@ export default function PayrollManagementPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>Salary Structures</CardTitle>
-                  <CardDescription>Manage employee compensation</CardDescription>
+                  <CardTitle>Monthly Salary Payments</CardTitle>
+                  <CardDescription>Employee salary based on attendance records for {filterMonth}</CardDescription>
                 </div>
                 <Input
                   placeholder="Search employees..."
@@ -789,46 +788,92 @@ export default function PayrollManagementPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Employee</TableHead>
-                    <TableHead>Basic Salary</TableHead>
-                    <TableHead>HRA</TableHead>
-                    <TableHead>Transport</TableHead>
-                    <TableHead>Medical</TableHead>
-                    <TableHead>PF Deduction</TableHead>
-                    <TableHead>Tax</TableHead>
-                    <TableHead>Effective From</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead>Department</TableHead>
+                    <TableHead>Monthly Salary</TableHead>
+                    <TableHead>Working Days</TableHead>
+                    <TableHead>Present Days</TableHead>
+                    <TableHead>Absent Days</TableHead>
+                    <TableHead>Attendance %</TableHead>
+                    <TableHead>Payable Amount</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredSalaries.map((salary) => (
-                    <TableRow key={salary.id}>
+                  {monthlySalaries
+                    .filter(salary =>
+                      salary.employee_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                      salary.employee_code?.toLowerCase().includes(searchTerm.toLowerCase())
+                    )
+                    .map((salary) => (
+                    <TableRow key={salary.employee_id}>
                       <TableCell>
                         <div>
-                          <div className="font-medium">{salary.employee.name}</div>
-                          <div className="text-xs text-gray-500">{salary.employee.employee_id}</div>
+                          <div className="font-medium">{salary.employee_name}</div>
+                          <div className="text-xs text-gray-500">{salary.employee_code}</div>
                         </div>
                       </TableCell>
-                      <TableCell className="font-medium">${salary.basic_salary.toLocaleString()}</TableCell>
-                      <TableCell>${salary.house_rent_allowance.toLocaleString()}</TableCell>
-                      <TableCell>${salary.transport_allowance.toLocaleString()}</TableCell>
-                      <TableCell>${salary.medical_allowance.toLocaleString()}</TableCell>
-                      <TableCell>${salary.provident_fund_deduction.toLocaleString()}</TableCell>
-                      <TableCell>${salary.tax_deduction.toLocaleString()}</TableCell>
-                      <TableCell>{format(new Date(salary.effective_from), 'MMM dd, yyyy')}</TableCell>
                       <TableCell>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleEditSalary(salary)}
+                        <div>
+                          <div className="font-medium">{salary.department}</div>
+                          <div className="text-xs text-gray-500">{salary.position}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-medium font-mono">₹{salary.monthly_salary.toLocaleString('en-IN')}</TableCell>
+                      <TableCell className="text-center">{salary.working_days}</TableCell>
+                      <TableCell className="text-center">
+                        <span className="font-medium text-green-600">{salary.present_days}</span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="font-medium text-red-600">{salary.absent_days}</span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge 
+                          className={
+                            salary.attendance_percentage >= 95 ? 'bg-green-100 text-green-800' :
+                            salary.attendance_percentage >= 80 ? 'bg-blue-100 text-blue-800' :
+                            salary.attendance_percentage >= 60 ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-red-100 text-red-800'
+                          }
                         >
-                          <Edit className="h-3 w-3 mr-1" />
-                          Edit
-                        </Button>
+                          {salary.attendance_percentage.toFixed(1)}%
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="font-bold font-mono text-green-600">
+                        ₹{salary.payable_amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+              
+              {monthlySalaries.length === 0 && (
+                <div className="text-center py-8 text-gray-500">
+                  <p>No salary data available for {filterMonth}</p>
+                  <p className="text-sm mt-2">Make sure employees have salary information and attendance records</p>
+                </div>
+              )}
+
+              {monthlySalaries.length > 0 && (
+                <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border border-blue-200">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <p className="text-sm text-gray-600">Total Employees</p>
+                      <p className="text-2xl font-bold text-blue-600">{monthlySalaries.length}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Total Monthly Salary</p>
+                      <p className="text-2xl font-bold text-purple-600">
+                        ₹{monthlySalaries.reduce((sum, s) => sum + s.monthly_salary, 0).toLocaleString('en-IN')}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Total Payable Amount</p>
+                      <p className="text-2xl font-bold text-green-600">
+                        ₹{monthlySalaries.reduce((sum, s) => sum + s.payable_amount, 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

@@ -42,25 +42,8 @@ export default function LoginPage() {
             })
         );
 
-        // Redirect by role
-        const map: Record<string, string> = {
-            "System Administrator": "/dashboard",
-            "Executive": "/dashboard",
-            "Sales Representative": "/sales",
-            "Sales Manager": "/sales",
-            "Procurement Manager": "/procurement",
-            "Warehouse Manager": "/inventory",
-            "Warehouse Staff": "/inventory",
-            "Production Manager": "/manufacturing",
-            "Production Staff": "/manufacturing",
-            "Delivery Driver": "/logistics",
-            "Logistics Coordinator": "/logistics",
-            "Finance Manager": "/finance",
-            "HR Manager": "/hr",
-            "Employee": "/hr/performance",
-        };
-
-        router.push(map[user.role] || "/unauthorized");
+        // Redirect all users to dashboard after successful login
+        router.push("/dashboard");
 
     } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';

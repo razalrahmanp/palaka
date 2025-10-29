@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Calendar, Clock, Users, UserCheck, UserX, Search, Plus, Eye, Edit, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Calendar, Clock, Users, UserCheck, UserX, Search, Plus, Eye, Edit, ChevronLeft, ChevronRight, X, MessageSquare, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths } from 'date-fns';
 
@@ -182,12 +182,19 @@ export default function AttendancePage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [hasAutoProcessed, setHasAutoProcessed] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    check_in_time: '',
+    check_out_time: '',
+    status: 'present' as AttendanceRecord['status'],
+    notes: ''
+  });
 
   const fetchAttendanceRecords = useCallback(async () => {
     try {
@@ -316,15 +323,15 @@ export default function AttendancePage() {
   };
 
   const getTodayStats = () => {
-    const today = format(new Date(), 'yyyy-MM-dd');
-    const todayRecords = attendanceRecords.filter(record => record.date === today);
+    const todayRecords = attendanceRecords.filter(record => record.date === selectedDate);
     
     return {
       total: todayRecords.length,
       present: todayRecords.filter(r => r.status === 'present').length,
       absent: todayRecords.filter(r => r.status === 'absent').length,
       late: todayRecords.filter(r => r.status === 'late').length,
-      onLeave: todayRecords.filter(r => r.status === 'on_leave').length
+      onLeave: todayRecords.filter(r => r.status === 'on_leave').length,
+      halfDay: todayRecords.filter(r => r.status === 'half_day').length
     };
   };
 
@@ -333,6 +340,43 @@ export default function AttendancePage() {
   const handleViewRecord = (record: AttendanceRecord) => {
     setSelectedRecord(record);
     setIsViewModalOpen(true);
+  };
+
+  const handleEditRecord = (record: AttendanceRecord) => {
+    setSelectedRecord(record);
+    setEditFormData({
+      check_in_time: record.check_in_time ? format(new Date(record.check_in_time), "HH:mm") : '',
+      check_out_time: record.check_out_time ? format(new Date(record.check_out_time), "HH:mm") : '',
+      status: record.status,
+      notes: record.notes || ''
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdateAttendance = async () => {
+    if (!selectedRecord) return;
+    
+    try {
+      const response = await fetch(`/api/hr/attendance/${selectedRecord.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          check_in_time: editFormData.check_in_time ? `${selectedRecord.date}T${editFormData.check_in_time}:00` : null,
+          check_out_time: editFormData.check_out_time ? `${selectedRecord.date}T${editFormData.check_out_time}:00` : null,
+          status: editFormData.status,
+          notes: editFormData.notes
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to update attendance');
+
+      toast.success('Attendance updated successfully');
+      setIsEditModalOpen(false);
+      fetchAttendanceRecords();
+    } catch (error) {
+      console.error('Error updating attendance:', error);
+      toast.error('Failed to update attendance');
+    }
   };
 
   const formatTime = (time: string | undefined) => {
@@ -400,230 +444,271 @@ export default function AttendancePage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
+      {/* Compact Header */}
+      <div className="bg-white border-b border-gray-200 px-4 py-3">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Attendance Management</h1>
-          <p className="text-gray-600 mt-1">Track employee attendance and working hours</p>
+          <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            Attendance Management
+          </h1>
+          <p className="text-xs text-gray-600">Track employee attendance and working hours</p>
         </div>
       </div>
 
-      {/* Floating Action Buttons */}
-      <div className="fixed bottom-8 right-8 flex flex-col gap-3 z-40">
+      {/* Floating Action Buttons - Bottom Right Corner */}
+      <div className="fixed bottom-6 right-6 flex flex-col gap-2 z-50">
         <Button 
           onClick={() => setIsCalendarOpen(!isCalendarOpen)} 
-          className="bg-purple-600 hover:bg-purple-700 text-white shadow-lg hover:shadow-xl transition-all"
-          size="lg"
+          className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white shadow-lg hover:shadow-xl transition-all"
+          size="sm"
         >
-          <Calendar className="h-5 w-5 mr-2" />
+          <Calendar className="h-4 w-4 mr-2" />
           Calendar
         </Button>
         <Button 
           onClick={handleProcessAttendance} 
           disabled={isProcessing || isSyncing}
-          className="bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl transition-all"
-          size="lg"
+          className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white shadow-lg hover:shadow-xl transition-all"
+          size="sm"
         >
-          <Clock className="h-5 w-5 mr-2" />
-          {isProcessing ? 'Processing...' : isSyncing ? 'Syncing...' : 'Process Attendance'}
+          <Clock className="h-4 w-4 mr-2" />
+          {isProcessing ? 'Processing...' : isSyncing ? 'Syncing...' : 'Process'}
         </Button>
         <Button 
           onClick={() => setIsAddModalOpen(true)} 
-          className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all"
-          size="lg"
+          className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg hover:shadow-xl transition-all"
+          size="sm"
         >
-          <Plus className="h-5 w-5 mr-2" />
-          Mark Attendance
+          <Plus className="h-4 w-4 mr-2" />
+          Mark
         </Button>
       </div>
-
-      {/* Main Content - Full Width */}
-      <div className="space-y-6">
-          {/* Today's Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.total}</div>
-                <p className="text-xs text-muted-foreground">Marked today</p>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Present</CardTitle>
-                <UserCheck className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-green-600">{stats.present}</div>
-                <p className="text-xs text-muted-foreground">Currently present</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Absent</CardTitle>
-                <UserX className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-red-600">{stats.absent}</div>
-                <p className="text-xs text-muted-foreground">Absent today</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Late</CardTitle>
-                <Clock className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-orange-600">{stats.late}</div>
-                <p className="text-xs text-muted-foreground">Late arrivals</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">On Leave</CardTitle>
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-blue-600">{stats.onLeave}</div>
-                <p className="text-xs text-muted-foreground">On approved leave</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Filters */}
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex flex-col md:flex-row gap-4">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <Input
-                    placeholder="Search by employee name, ID, or department..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-                <Input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="w-auto"
-                />
-                <Select value={selectedEmployee || undefined} onValueChange={(value) => setSelectedEmployee(value === 'ALL' ? '' : value)}>
-                  <SelectTrigger className="w-64">
-                    <SelectValue placeholder="All employees" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">All employees</SelectItem>
-                    {employees.map((employee) => (
-                      <SelectItem key={employee.id} value={employee.id}>
-                        {employee.name} ({employee.employee_id})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setSelectedDate(format(new Date(), 'yyyy-MM-dd'));
-                    setSelectedEmployee('');
-                    setSearchTerm('');
-                  }}
-                >
-                  Clear Filters
-                </Button>
+      {/* Main Content */}
+      <div className="space-y-0">
+        {/* Summary Cards - Full Width, No Gaps */}
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-0">
+          <Card className="bg-gradient-to-br from-slate-600 to-slate-700 text-white border-0 rounded-none shadow-none">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between mb-1">
+                <CardTitle className="text-xs font-medium text-slate-200">Total</CardTitle>
+                <Users className="h-4 w-4 text-slate-300" />
               </div>
+              <div className="text-2xl font-bold">{stats.total}</div>
+              <p className="text-xs text-slate-300 mt-0.5">Marked</p>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-0 rounded-none shadow-none">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between mb-1">
+                <CardTitle className="text-xs font-medium text-green-100">Present</CardTitle>
+                <UserCheck className="h-4 w-4 text-green-100" />
+              </div>
+              <div className="text-2xl font-bold">{stats.present}</div>
+              <p className="text-xs text-green-100 mt-0.5">{stats.total > 0 ? Math.round((stats.present / stats.total) * 100) : 0}% attendance</p>
             </CardContent>
           </Card>
 
-      {/* Attendance Records Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Attendance Records</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="text-center py-8">Loading attendance records...</div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Check In</TableHead>
-                  <TableHead>Check Out</TableHead>
-                  <TableHead>Total Hours</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredRecords.map((record) => (
-                  <TableRow key={record.id}>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{record.employee.name}</div>
-                        <div className="text-sm text-gray-500">
-                          {record.employee.employee_id} • {record.employee.department}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {format(new Date(record.date), 'MMM dd, yyyy')}
-                    </TableCell>
-                    <TableCell>{formatTime(record.check_in_time)}</TableCell>
-                    <TableCell>{formatTime(record.check_out_time)}</TableCell>
-                    <TableCell>
-                      {record.total_hours ? `${record.total_hours.toFixed(1)}h` : '-'}
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={getStatusColor(record.status)}>
-                        <span className="flex items-center gap-1">
-                          {getStatusIcon(record.status)}
-                          {record.status.replace('_', ' ')}
-                        </span>
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleViewRecord(record)}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-0 rounded-none shadow-none">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between mb-1">
+                <CardTitle className="text-xs font-medium text-orange-100">Late</CardTitle>
+                <Clock className="h-4 w-4 text-orange-100" />
+              </div>
+              <div className="text-2xl font-bold">{stats.late}</div>
+              <p className="text-xs text-orange-100 mt-0.5">Late arrivals</p>
+            </CardContent>
+          </Card>
 
-          {!isLoading && filteredRecords.length === 0 && (
-            <div className="text-center py-8">
-              <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <Card className="bg-gradient-to-br from-yellow-500 to-yellow-600 text-white border-0 rounded-none shadow-none">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between mb-1">
+                <CardTitle className="text-xs font-medium text-yellow-100">Half Day</CardTitle>
+                <Clock className="h-4 w-4 text-yellow-100" />
+              </div>
+              <div className="text-2xl font-bold">{stats.halfDay}</div>
+              <p className="text-xs text-yellow-100 mt-0.5">Partial work</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-red-500 to-red-600 text-white border-0 rounded-none shadow-none">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between mb-1">
+                <CardTitle className="text-xs font-medium text-red-100">Absent</CardTitle>
+                <UserX className="h-4 w-4 text-red-100" />
+              </div>
+              <div className="text-2xl font-bold">{stats.absent}</div>
+              <p className="text-xs text-red-100 mt-0.5">Not present</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0 rounded-none shadow-none">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between mb-1">
+                <CardTitle className="text-xs font-medium text-blue-100">On Leave</CardTitle>
+                <Calendar className="h-4 w-4 text-blue-100" />
+              </div>
+              <div className="text-2xl font-bold">{stats.onLeave}</div>
+              <p className="text-xs text-blue-100 mt-0.5">Approved</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Filters and Table - Combined Card with No Gap */}
+        <Card className="bg-white/80 backdrop-blur-sm border-0 rounded-none shadow-none">
+          {/* Filters Section */}
+          <CardContent className="p-2 border-b border-gray-200">
+            <div className="flex flex-col md:flex-row gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 h-3.5 w-3.5" />
+                <Input
+                  placeholder="Search employee..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-8 h-8 text-sm border-gray-300"
+                />
+              </div>
+              <Input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="w-auto md:w-40 h-8 text-sm border-gray-300"
+              />
+              <Select value={selectedEmployee || 'ALL'} onValueChange={(value) => setSelectedEmployee(value === 'ALL' ? '' : value)}>
+                <SelectTrigger className="w-full md:w-44 h-8 text-sm border-gray-300">
+                  <SelectValue placeholder="All employees" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All employees</SelectItem>
+                  {employees.map((employee) => (
+                    <SelectItem key={employee.id} value={employee.id}>
+                      {employee.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSelectedDate(format(new Date(), 'yyyy-MM-dd'));
+                  setSelectedEmployee('');
+                  setSearchTerm('');
+                }}
+                className="whitespace-nowrap h-8 text-sm"
+              >
+                Clear
+              </Button>
+            </div>
+          </CardContent>
+
+          {/* Attendance Records Table - Same Card */}
+          <CardHeader className="pb-2 pt-2 px-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base font-semibold text-gray-900">Attendance Records</CardTitle>
+              <Badge variant="outline" className="text-xs">
+                {filteredRecords.length} {filteredRecords.length === 1 ? 'record' : 'records'}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+          {isLoading ? (
+            <div className="text-center py-12">
+              <Clock className="h-8 w-8 text-gray-400 mx-auto mb-3 animate-spin" />
+              <p className="text-gray-600">Loading attendance records...</p>
+            </div>
+          ) : filteredRecords.length === 0 ? (
+            <div className="text-center py-12">
+              <Clock className="h-12 w-12 text-gray-300 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No attendance records found</h3>
-              <p className="text-gray-600">
+              <p className="text-gray-600 text-sm">
                 {searchTerm || selectedEmployee || selectedDate !== format(new Date(), 'yyyy-MM-dd')
                   ? 'Try adjusting your search criteria.'
                   : 'Start by marking attendance for today.'}
               </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100 hover:from-gray-100 hover:to-gray-150">
+                    <TableHead className="font-semibold">Employee</TableHead>
+                    <TableHead className="font-semibold">Date</TableHead>
+                    <TableHead className="font-semibold">Check In</TableHead>
+                    <TableHead className="font-semibold">Check Out</TableHead>
+                    <TableHead className="font-semibold">Hours</TableHead>
+                    <TableHead className="font-semibold">Status</TableHead>
+                    <TableHead className="text-right font-semibold">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredRecords.map((record) => (
+                    <TableRow key={record.id} className="hover:bg-blue-50/50 transition-colors border-b border-gray-100">
+                      <TableCell className="py-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`h-10 w-10 rounded-full flex items-center justify-center text-white font-semibold text-sm ${
+                            record.status === 'present' ? 'bg-gradient-to-br from-green-500 to-green-600' :
+                            record.status === 'late' ? 'bg-gradient-to-br from-orange-500 to-orange-600' :
+                            record.status === 'absent' ? 'bg-gradient-to-br from-red-500 to-red-600' :
+                            record.status === 'half_day' ? 'bg-gradient-to-br from-yellow-500 to-yellow-600' :
+                            'bg-gradient-to-br from-blue-500 to-blue-600'
+                          }`}>
+                            {record.employee.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-gray-900">{record.employee.name}</div>
+                            <div className="text-xs text-gray-500">
+                              {record.employee.employee_id} • {record.employee.department}
+                            </div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-gray-700">
+                        {format(new Date(record.date), 'MMM dd, yyyy')}
+                      </TableCell>
+                      <TableCell className="text-sm font-medium text-gray-900">
+                        {formatTime(record.check_in_time)}
+                      </TableCell>
+                      <TableCell className="text-sm font-medium text-gray-900">
+                        {formatTime(record.check_out_time)}
+                      </TableCell>
+                      <TableCell className="text-sm font-semibold text-gray-900">
+                        {record.total_hours ? `${record.total_hours.toFixed(1)}h` : '-'}
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={`${getStatusColor(record.status)} font-medium`}>
+                          <span className="flex items-center gap-1.5">
+                            {getStatusIcon(record.status)}
+                            {record.status.replace('_', ' ')}
+                          </span>
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex gap-1 justify-end">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleViewRecord(record)}
+                            className="h-8 w-8 p-0 hover:bg-blue-100"
+                            title="View Details"
+                          >
+                            <Eye className="h-4 w-4 text-blue-600" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleEditRecord(record)}
+                            className="h-8 w-8 p-0 hover:bg-purple-100"
+                            title="Edit Attendance"
+                          >
+                            <Edit className="h-4 w-4 text-purple-600" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>
@@ -667,88 +752,201 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {/* View Record Modal */}
+      {/* View Record Modal - Professional Design */}
       <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Attendance Record Details</DialogTitle>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader className="bg-gradient-to-r from-blue-600 to-purple-600 -m-6 mb-6 p-6 rounded-t-lg">
+            <DialogTitle className="text-white text-xl flex items-center gap-2">
+              <Eye className="h-5 w-5" />
+              Attendance Record Details
+            </DialogTitle>
           </DialogHeader>
           {selectedRecord && (
             <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">Employee</label>
-                    <p className="text-sm text-gray-900 mt-1">{selectedRecord.employee.name}</p>
-                    <p className="text-xs text-gray-500">{selectedRecord.employee.employee_id}</p>
+              {/* Employee Info Card */}
+              <div className="bg-gradient-to-r from-gray-50 to-blue-50 p-4 rounded-lg border border-blue-100">
+                <div className="flex items-center gap-4">
+                  <div className="h-16 w-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-2xl shadow-lg">
+                    {selectedRecord.employee.name.charAt(0).toUpperCase()}
                   </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">Department</label>
-                    <p className="text-sm text-gray-900 mt-1">{selectedRecord.employee.department}</p>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold text-gray-900">{selectedRecord.employee.name}</h3>
+                    <p className="text-sm text-gray-600">{selectedRecord.employee.employee_id} • {selectedRecord.employee.department}</p>
+                    <p className="text-sm text-gray-500">{selectedRecord.employee.position}</p>
                   </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">Position</label>
-                    <p className="text-sm text-gray-900 mt-1">{selectedRecord.employee.position}</p>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">Date</label>
-                    <p className="text-sm text-gray-900 mt-1">
-                      {format(new Date(selectedRecord.date), 'MMMM dd, yyyy')}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">Check In Time</label>
-                    <p className="text-sm text-gray-900 mt-1">{formatTime(selectedRecord.check_in_time)}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">Check Out Time</label>
-                    <p className="text-sm text-gray-900 mt-1">{formatTime(selectedRecord.check_out_time)}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">Total Hours</label>
-                    <p className="text-sm text-gray-900 mt-1">
-                      {selectedRecord.total_hours ? `${selectedRecord.total_hours.toFixed(1)} hours` : 'Not calculated'}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">Status</label>
-                    <div className="mt-1">
-                      <Badge className={getStatusColor(selectedRecord.status)}>
-                        {selectedRecord.status.replace('_', ' ')}
-                      </Badge>
-                    </div>
-                  </div>
+                  <Badge className={`${getStatusColor(selectedRecord.status)} text-sm px-3 py-1`}>
+                    {selectedRecord.status.replace('_', ' ').toUpperCase()}
+                  </Badge>
                 </div>
               </div>
-              {selectedRecord.notes && (
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Notes</label>
-                  <p className="text-sm text-gray-900 mt-1 p-3 bg-gray-50 rounded-md">
-                    {selectedRecord.notes}
+
+              {/* Attendance Details Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                  <label className="text-xs font-medium text-gray-500 uppercase">Date</label>
+                  <p className="text-lg font-semibold text-gray-900 mt-1">
+                    {format(new Date(selectedRecord.date), 'MMM dd, yyyy')}
                   </p>
                 </div>
+                <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                  <label className="text-xs font-medium text-gray-500 uppercase">Check In</label>
+                  <p className="text-lg font-semibold text-green-600 mt-1">{formatTime(selectedRecord.check_in_time)}</p>
+                </div>
+                <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                  <label className="text-xs font-medium text-gray-500 uppercase">Check Out</label>
+                  <p className="text-lg font-semibold text-red-600 mt-1">{formatTime(selectedRecord.check_out_time)}</p>
+                </div>
+                <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                  <label className="text-xs font-medium text-gray-500 uppercase">Total Hours</label>
+                  <p className="text-lg font-semibold text-blue-600 mt-1">
+                    {selectedRecord.total_hours ? `${selectedRecord.total_hours.toFixed(1)}h` : '-'}
+                  </p>
+                </div>
+              </div>
+
+              {selectedRecord.notes && (
+                <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                  <label className="text-sm font-semibold text-yellow-900 flex items-center gap-2 mb-2">
+                    <MessageSquare className="h-4 w-4" />
+                    Notes
+                  </label>
+                  <p className="text-sm text-gray-700">{selectedRecord.notes}</p>
+                </div>
               )}
+
+              <div className="flex justify-end gap-2 pt-4 border-t">
+                <Button variant="outline" onClick={() => setIsViewModalOpen(false)}>
+                  Close
+                </Button>
+                <Button 
+                  onClick={() => {
+                    setIsViewModalOpen(false);
+                    handleEditRecord(selectedRecord);
+                  }}
+                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                >
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit Record
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Add Attendance Modal */}
+      {/* Edit Attendance Modal - Professional Design */}
+      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader className="bg-gradient-to-r from-purple-600 to-blue-600 -m-6 mb-6 p-6 rounded-t-lg">
+            <DialogTitle className="text-white text-xl flex items-center gap-2">
+              <Edit className="h-5 w-5" />
+              Edit Attendance Record
+            </DialogTitle>
+          </DialogHeader>
+          {selectedRecord && (
+            <div className="space-y-6">
+              {/* Employee Info */}
+              <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 bg-gradient-to-br from-purple-500 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
+                    {selectedRecord.employee.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-900">{selectedRecord.employee.name}</p>
+                    <p className="text-xs text-gray-600">{format(new Date(selectedRecord.date), 'MMMM dd, yyyy')}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Edit Form */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-2 block">Check In Time</label>
+                  <Input
+                    type="time"
+                    value={editFormData.check_in_time}
+                    onChange={(e) => setEditFormData({ ...editFormData, check_in_time: e.target.value })}
+                    className="w-full"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-2 block">Check Out Time</label>
+                  <Input
+                    type="time"
+                    value={editFormData.check_out_time}
+                    onChange={(e) => setEditFormData({ ...editFormData, check_out_time: e.target.value })}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-2 block">Status</label>
+                <Select value={editFormData.status} onValueChange={(value) => setEditFormData({ ...editFormData, status: value as AttendanceRecord['status'] })}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="present">Present</SelectItem>
+                    <SelectItem value="absent">Absent</SelectItem>
+                    <SelectItem value="late">Late</SelectItem>
+                    <SelectItem value="half_day">Half Day</SelectItem>
+                    <SelectItem value="on_leave">On Leave</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-2 block">Notes (Optional)</label>
+                <Input
+                  value={editFormData.notes}
+                  onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
+                  placeholder="Add any notes about this attendance record..."
+                  className="w-full"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t">
+                <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={handleUpdateAttendance}
+                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Changes
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Attendance Modal - Professional Design */}
       <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Mark Attendance</DialogTitle>
+          <DialogHeader className="bg-gradient-to-r from-green-600 to-blue-600 -m-6 mb-6 p-6 rounded-t-lg">
+            <DialogTitle className="text-white text-xl flex items-center gap-2">
+              <Plus className="h-5 w-5" />
+              Mark Attendance
+            </DialogTitle>
           </DialogHeader>
-          <div className="text-center py-8">
-            <p className="text-gray-600">Attendance marking form will be implemented here.</p>
-            <Button 
-              onClick={() => setIsAddModalOpen(false)} 
-              className="mt-4"
-            >
-              Close
-            </Button>
+          <div className="space-y-6">
+            <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+              <Users className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Manual Attendance Form</h3>
+              <p className="text-sm text-gray-600 mb-4">This feature allows you to manually mark attendance for employees</p>
+              <p className="text-xs text-gray-500">Form implementation coming soon...</p>
+            </div>
+            <div className="flex justify-end">
+              <Button 
+                variant="outline"
+                onClick={() => setIsAddModalOpen(false)}
+              >
+                Close
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

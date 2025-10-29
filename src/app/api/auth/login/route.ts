@@ -127,36 +127,66 @@ export async function POST(req: Request) {
 
     console.log('✅ Password verification successful');
 
-    // Step 3: Fetch all permissions associated with the user's role
-    const { data: permissions, error: permsError } = await supabase
-      .from('role_permissions')
-      .select('permission:permissions(name)')
-      .eq('role_id', user.role_id) as { data: RolePermission[]; error: Error | null };
+    // Get role name first
+    const roleName = Array.isArray(user.role)
+      ? user.role[0]?.name || 'Unknown Role'
+      : user.role?.name || 'Unknown Role';
 
-    if (permsError) {
-      throw permsError;
+    console.log('🔍 Getting permissions for role:', roleName);
+
+    // Always use code-based permissions from RBAC for consistency
+    let permissionNames: string[] = [];
+    
+    try {
+      const { ROLES } = await import('@/lib/roles');
+      const codePermissions = ROLES[roleName as keyof typeof ROLES];
+      
+      if (codePermissions && codePermissions.length > 0) {
+        permissionNames = codePermissions;
+        console.log('✅ Using RBAC permissions:', permissionNames.length, 'permissions');
+        console.log('📋 Permissions:', permissionNames);
+      } else {
+        console.log('⚠️ Role not found in RBAC, trying database...');
+        throw new Error('Role not in RBAC');
+      }
+    } catch (rbacError) {
+      // Fallback to database permissions if code-based not found
+      console.log('⚠️ RBAC error, using database fallback:', rbacError);
+      
+      const { data: permissions, error: permsError } = await supabase
+        .from('role_permissions')
+        .select('permission:permissions(name)')
+        .eq('role_id', user.role_id) as { data: RolePermission[]; error: Error | null };
+
+      if (permsError) {
+        console.error('⚠️ Error fetching permissions from database:', permsError);
+      }
+
+      permissionNames =
+        permissions?.map((p) =>
+          Array.isArray(p.permission)
+            ? p.permission[0]?.name
+            : p.permission?.name
+        ).filter(Boolean) || [];
+        
+      console.log('📊 Database permissions:', permissionNames.length, 'permissions');
     }
 
     // Step 4: Prepare the final user object for the client
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _, ...userWithoutPassword } = user;
 
-    const roleName = Array.isArray(user.role)
-      ? user.role[0]?.name || 'Unknown Role'
-      : user.role?.name || 'Unknown Role';
-
-    const permissionNames =
-      permissions?.map((p) =>
-        Array.isArray(p.permission)
-          ? p.permission[0]?.name
-          : p.permission?.name
-      ).filter(Boolean) || [];
-
     const finalUser = {
       ...userWithoutPassword,
       role: roleName,
       permissions: permissionNames,
     };
+
+    console.log('✅ Final user object:', { 
+      email: finalUser.email, 
+      role: finalUser.role, 
+      permissionsCount: finalUser.permissions.length 
+    });
 
     return NextResponse.json(finalUser);
 

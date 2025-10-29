@@ -35,7 +35,7 @@ export async function GET(request: Request) {
         ),
         processor:users!payroll_records_processed_by_fkey (
           id,
-          full_name
+          name
         )
       `)
       .order('pay_period_start', { ascending: false });

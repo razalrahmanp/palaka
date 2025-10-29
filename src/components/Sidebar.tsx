@@ -11,6 +11,7 @@ import {
   Wallet, FolderOpen, Settings, Calculator
 } from 'lucide-react';
 import { hasPermission, hasAnyPermission, getCurrentUser } from '@/lib/auth';
+import { useRoleAccess, clearRoleAccessCache } from '@/hooks/useRoleAccess';
 
 // Nav item definition
 interface NavItem {
@@ -30,11 +31,6 @@ const isSystemAdmin = (): boolean => {
 const isHRManager = (): boolean => {
   const user = getCurrentUser();
   return user?.role === 'HR Manager';
-};
-
-// Helper function to check if user should see HR section
-const canSeeHRSection = (): boolean => {
-  return isSystemAdmin() || isHRManager() || hrNavItems.some(i => hasPermission(i.permission as string));
 };
 
 // Menu definitions organized by logical groups
@@ -98,10 +94,16 @@ const reportItems: NavItem[] = [
   { href: "/reports/aging-report", icon: Clock, label: "Aging Report", permission: 'analytics:read' },
 ];
 
+// Settings (System Administrator only)
+const settingsItems: NavItem[] = [
+  { href: "/settings", icon: Settings, label: "Settings", permission: 'user:manage' }, // System Admin permission
+];
+
 export const Sidebar = () => {
   const pathname = usePathname();
   const [isHydrated, setIsHydrated] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const { hasRouteAccess, loading: accessLoading } = useRoleAccess();
   
   // State for collapsible sections
   // HR managers get HR section expanded by default, but can collapse it
@@ -126,6 +128,16 @@ export const Sidebar = () => {
       setExpandedSections(new Set());
     }
   }, [pathname]);
+
+  // Helper function to check if user should see HR section
+  const canSeeHRSection = (): boolean => {
+    if (accessLoading) return true; // Show while loading to prevent flicker
+    return isSystemAdmin() || isHRManager() || hrNavItems.some(i => {
+      const hasPermissionCheck = hasPermission(i.permission as string);
+      if (!hasPermissionCheck) return false;
+      return hasRouteAccess(i.href);
+    });
+  };
 
   const toggleSection = (section: string) => {
     setExpandedSections(prev => {
@@ -173,11 +185,22 @@ export const Sidebar = () => {
     icon: React.ElementType;
   }) => {
     const isSectionExpanded = expandedSections.has(sectionKey);
-    const visibleItems = items.filter(i =>
-      Array.isArray(i.permission)
+    const visibleItems = items.filter(i => {
+      // First check permissions
+      const hasPermissionCheck = Array.isArray(i.permission)
         ? hasAnyPermission(i.permission)
-        : hasPermission(i.permission)
-    );
+        : hasPermission(i.permission);
+      
+      // If no permission, don't show
+      if (!hasPermissionCheck) return false;
+      
+      // Then check route access from database
+      if (!accessLoading && !hasRouteAccess(i.href)) {
+        return false;
+      }
+      
+      return true;
+    });
 
     if (visibleItems.length === 0) return null;
 
@@ -231,11 +254,20 @@ export const Sidebar = () => {
     <nav className="flex-1 px-2 py-4 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 flex flex-col justify-between">
       <div className="space-y-2">
         {/* Dashboard - Always visible */}
-        {dashboardItems.filter(i => 
-          Array.isArray(i.permission)
+        {dashboardItems.filter(i => {
+          const hasPermissionCheck = Array.isArray(i.permission)
             ? hasAnyPermission(i.permission)
-            : hasPermission(i.permission)
-        ).map(i => (
+            : hasPermission(i.permission);
+          
+          if (!hasPermissionCheck) return false;
+          
+          // Check route access from database
+          if (!accessLoading && !hasRouteAccess(i.href)) {
+            return false;
+          }
+          
+          return true;
+        }).map(i => (
           <NavLink key={i.href} href={i.href} icon={i.icon}>
             {isExpanded && i.label}
           </NavLink>
@@ -295,7 +327,17 @@ export const Sidebar = () => {
           {expandedSections.has('hr') && isExpanded && (
             <div className="mt-1 ml-8 space-y-0.5">
               {hrNavItems
-                .filter(i => hasPermission(i.permission as string) || isSystemAdmin() || isHRManager())
+                .filter(i => {
+                  const hasPermissionCheck = hasPermission(i.permission as string) || isSystemAdmin() || isHRManager();
+                  if (!hasPermissionCheck) return false;
+                  
+                  // Check route access from database
+                  if (!accessLoading && !hasRouteAccess(i.href)) {
+                    return false;
+                  }
+                  
+                  return true;
+                })
                 .map(i => (
                   <NavLink key={i.href} href={i.href} icon={i.icon}>
                     {i.label}
@@ -312,6 +354,25 @@ export const Sidebar = () => {
         sectionKey="reports"
         icon={BarChart}
       />
+
+      {/* Settings - System Administrator Only */}
+      {isSystemAdmin() && settingsItems
+        .filter(i => {
+          const hasPermissionCheck = hasPermission(i.permission as string);
+          if (!hasPermissionCheck) return false;
+          
+          // Check route access from database
+          if (!accessLoading && !hasRouteAccess(i.href)) {
+            return false;
+          }
+          
+          return true;
+        })
+        .map(i => (
+          <NavLink key={i.href} href={i.href} icon={i.icon}>
+            {isExpanded && i.label}
+          </NavLink>
+        ))}
       </div>
     </nav>
 
@@ -341,6 +402,7 @@ export const Sidebar = () => {
             {/* Logout Button */}
             <button
               onClick={() => {
+                clearRoleAccessCache();
                 localStorage.removeItem('user');
                 window.location.href = '/login';
               }}

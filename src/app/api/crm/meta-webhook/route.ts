@@ -19,6 +19,7 @@ interface MetaLeadGenData {
   campaign_name?: string;
   created_time?: string;
   platform?: string;
+  field_data?: LeadFieldData[]; // Support field_data directly in webhook
 }
 
 interface LeadFieldData {
@@ -119,12 +120,21 @@ async function processLeadGenEvent(leadGenData: MetaLeadGenData, rawWebhookData:
 
     const { leadgen_id, form_id, ad_id, ad_name, adgroup_name, campaign_name, created_time } = leadGenData;
 
-    // Fetch lead details from Meta Graph API
-    const leadDetails = await fetchLeadDetails(leadgen_id);
-
-    if (!leadDetails) {
-      console.error('❌ Could not fetch lead details');
-      return;
+    // Check if field_data is already provided (from import script)
+    let leadDetails: MetaLeadDetails | null = null;
+    
+    if (leadGenData.field_data) {
+      // Use provided field_data
+      leadDetails = { field_data: leadGenData.field_data };
+      console.log('✅ Using provided field_data from webhook payload');
+    } else {
+      // Fetch lead details from Meta Graph API
+      leadDetails = await fetchLeadDetails(leadgen_id);
+      
+      if (!leadDetails) {
+        console.error('❌ Could not fetch lead details');
+        return;
+      }
     }
 
     // Extract form fields

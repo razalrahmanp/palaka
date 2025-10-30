@@ -28,15 +28,9 @@ import {
   UserCheck,
   Banknote,
   RotateCcw,
-  BarChart3,
-  Calculator,
-  CreditCard,
-  Calendar,
-  Clock,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
-import { FloatingActionMenu } from '@/components/finance/FloatingActionMenu';
 
 interface AccountSummary {
   id: string;
@@ -57,6 +51,7 @@ interface LedgerData {
   phone?: string;
   total_amount?: number;
   paid_amount?: number;
+  balance_due?: number;
   status?: string;
 }
 
@@ -100,22 +95,190 @@ export default function AccountsPayableReceivablePage() {
     try {
       setLoading(true);
 
-      // Fetch Accounts Receivable (Customers)
-      const receivablesResponse = await fetch('/api/finance/ledgers-summary?type=customer&limit=1000');
-      if (receivablesResponse.ok) {
-        const data = await receivablesResponse.json();
-        const customers = (data.data || []).map((c: LedgerData) => ({
-          id: c.id,
-          name: c.name,
-          email: c.email,
-          phone: c.phone,
-          totalAmount: c.total_amount || 0,
-          paidAmount: c.paid_amount || 0,
-          balance: (c.total_amount || 0) - (c.paid_amount || 0),
-          status: c.status || 'pending',
-        }));
-        setReceivables(customers.filter((c: AccountSummary) => c.balance > 0));
+      // Fetch Accounts Receivable (Sales Orders + Purchase Returns)
+      const allReceivables: AccountSummary[] = [];
+      
+      // 1. Fetch Sales Orders (list each order separately)
+      const salesReceivablesResponse = await fetch('/api/sales/orders?limit=1000');
+      if (salesReceivablesResponse.ok) {
+        const salesData = await salesReceivablesResponse.json();
+        console.log('📊 Sales Orders Response:', {
+          total: salesData.orders?.length || 0,
+          sample: salesData.orders?.[0]
+        });
+        
+        // Get all invoices - API returns array directly, not wrapped
+        const invoicesResponse = await fetch('/api/finance/invoices?limit=1000');
+        const invoicesData = invoicesResponse.ok ? await invoicesResponse.json() : [];
+        // Invoices API returns array directly, not wrapped in a property
+        const invoices = Array.isArray(invoicesData) ? invoicesData : [];
+        
+        console.log('📄 Invoices Response:', {
+          total: invoices.length,
+          sample: invoices[0],
+          isArray: Array.isArray(invoicesData)
+        });
+        
+        // Get all payments - API returns array directly, not wrapped
+        const paymentsResponse = await fetch('/api/finance/payments?limit=1000');
+        const paymentsData = paymentsResponse.ok ? await paymentsResponse.json() : [];
+        // Payments API returns array directly, not wrapped in a property
+        const payments = Array.isArray(paymentsData) ? paymentsData : [];
+        
+        console.log('💳 Payments Response:', {
+          total: payments.length,
+          sample: payments[0],
+          isArray: Array.isArray(paymentsData)
+        });
+        
+        // Process each sales order separately (don't aggregate by customer)
+        // Sales orders API already includes customer data via join
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (salesData.orders || []).forEach((order: any) => {
+          const orderId = order.id;
+          
+          // Get customer details from order data (already joined in API)
+          const customerData = order.customer || order.customers;
+          const customerName = customerData?.name || 'Unknown Customer';
+          const customerAddress = customerData?.address || '';
+          const customerEmail = customerData?.email || '';
+          const customerPhone = customerData?.phone || '';
+          const orderTotal = order.final_price || order.grand_total || 0;
+          
+          // Find related invoices
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const orderInvoices = invoices.filter((inv: any) => inv.sales_order_id === orderId);
+          
+          // Calculate total invoiced and paid
+          let totalInvoiced = 0;
+          let totalPaid = 0;
+          
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          orderInvoices.forEach((invoice: any) => {
+            totalInvoiced += invoice.total || 0;
+            
+            // Calculate paid amount by summing all payments for this invoice
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const invoicePayments = payments.filter((p: any) => p.invoice_id === invoice.id);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const invoicePaid = invoicePayments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
+            totalPaid += invoicePaid;
+            
+            console.log('📄 Invoice Payment Detail:', {
+              invoiceId: invoice.id,
+              invoiceTotal: invoice.total,
+              paymentsCount: invoicePayments.length,
+              invoicePaid,
+              invoicePaidAmount: invoice.paid_amount
+            });
+          });
+          
+          // If no invoices, use order total as invoiced
+          if (orderInvoices.length === 0 && orderTotal > 0) {
+            totalInvoiced = orderTotal;
+          }
+          
+          const balance = totalInvoiced - totalPaid;
+          
+          console.log('� Processing Order:', {
+            orderId,
+            customerName,
+            customerAddress,
+            orderTotal,
+            invoicesCount: orderInvoices.length,
+            totalInvoiced,
+            totalPaid,
+            balance
+          });
+          
+          // Only include if there's an outstanding balance - list each order separately
+          if (balance > 0.01) {
+            allReceivables.push({
+              id: orderId,
+              name: customerAddress 
+                ? `${customerName} - ${customerAddress}` 
+                : customerName,
+              email: customerEmail,
+              phone: customerPhone,
+              totalAmount: totalInvoiced,
+              paidAmount: totalPaid,
+              balance: balance,
+              status: totalPaid > 0 ? 'partial' : 'pending',
+            });
+          }
+        });
+        
+        console.log('✅ Sales Order Receivables:', {
+          total: allReceivables.length,
+          orders: allReceivables
+        });
       }
+      
+      // 2. Fetch Purchase Returns (list each return separately)
+      const purchaseReturnsResponse = await fetch('/api/purchases/returns?limit=1000');
+      if (purchaseReturnsResponse.ok) {
+        const returnsData = await purchaseReturnsResponse.json();
+        console.log('📦 Purchase Returns Response:', {
+          total: returnsData.returns?.length || 0,
+          sample: returnsData.returns?.[0]
+        });
+        
+        // Get suppliers for name lookup
+        const suppliersResponse = await fetch('/api/suppliers?limit=1000');
+        const suppliersData = suppliersResponse.ok ? await suppliersResponse.json() : { suppliers: [] };
+        const suppliers = suppliersData.suppliers || suppliersData.data || [];
+        const supplierMap = new Map(suppliers.map((s: {id: string; name: string; email?: string; phone?: string}) => [s.id, s]));
+        
+        console.log('🏢 Suppliers Response:', {
+          total: suppliers.length,
+          mapSize: supplierMap.size
+        });
+        
+        // Process each purchase return separately
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (returnsData.returns || []).forEach((r: any) => {
+          const returnValue = r.net_return_amount || r.total_return_amount || 0;
+          const isReversed = r.is_payment_reversed || false;
+          const status = r.status || 'pending';
+          const returnNumber = r.return_number || r.id.substring(0, 8);
+          
+          console.log('📥 Purchase Return:', {
+            returnId: r.id.substring(0, 8),
+            returnNumber,
+            returnValue,
+            isReversed,
+            status
+          });
+          
+          // Only include if not reversed and has value
+          if (returnValue > 0.01 && !isReversed && (status === 'approved' || status === 'processed' || status === 'pending')) {
+            const supplier = r.supplier_id ? supplierMap.get(r.supplier_id) as {id: string; name: string; email?: string; phone?: string} | undefined : null;
+            
+            allReceivables.push({
+              id: r.id,
+              name: `${supplier?.name || 'Unknown Supplier'} - Return #${returnNumber}`,
+              email: supplier?.email || '',
+              phone: supplier?.phone || '',
+              totalAmount: returnValue,
+              paidAmount: 0, // Not reversed yet
+              balance: returnValue,
+              status: status,
+            });
+          }
+        });
+        
+        console.log('📥 Purchase Returns Receivables:', {
+          total: allReceivables.filter(r => r.name.includes('Return')).length
+        });
+      }
+      
+      console.log('💰 Total Receivables:', {
+        total: allReceivables.length,
+        totalBalance: allReceivables.reduce((sum, r) => sum + r.balance, 0),
+        receivables: allReceivables
+      });
+      
+      setReceivables(allReceivables);
 
       // Fetch Accounts Payable (Suppliers + Employees + Loans)
       const allPayables: AccountSummary[] = [];

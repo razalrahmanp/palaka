@@ -16,7 +16,12 @@ type OrderRow = {
   discount_amount?: number | null;
   emi_enabled?: boolean | null;
   bajaj_finance_amount?: number | null;
-  customer: { name: string } | null;
+  customer: { 
+    name: string;
+    address?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  } | null;
   sales_representative?: {
     id: string;
     name: string;
@@ -104,9 +109,15 @@ type SupabaseOrderRow = {
   emi_enabled?: boolean | null;
   bajaj_finance_amount?: number | null;
   customers?: { 
-    name: string 
+    name: string;
+    address?: string | null;
+    email?: string | null;
+    phone?: string | null;
   } | { 
-    name: string
+    name: string;
+    address?: string | null;
+    email?: string | null;
+    phone?: string | null;
   }[] | null;
   users?: {
     id: string;
@@ -137,7 +148,7 @@ export async function GET() {
         discount_amount,
         emi_enabled,
         bajaj_finance_amount,
-        customers!customer_id(name)
+        customers!customer_id(name, address, email, phone)
       `)
       .order('created_at', { ascending: false });
 
@@ -183,8 +194,18 @@ export async function GET() {
     bajaj_finance_amount: o.bajaj_finance_amount,
     customer: o.customers 
       ? Array.isArray(o.customers) 
-        ? (o.customers.length > 0 ? { name: o.customers[0].name } : null)
-        : { name: o.customers.name }
+        ? (o.customers.length > 0 ? { 
+            name: o.customers[0].name,
+            address: o.customers[0].address,
+            email: o.customers[0].email,
+            phone: o.customers[0].phone
+          } : null)
+        : { 
+            name: o.customers.name,
+            address: o.customers.address,
+            email: o.customers.email,
+            phone: o.customers.phone
+          }
       : null,
     sales_representative: o.created_by && userMap.has(o.created_by)
       ? userMap.get(o.created_by)

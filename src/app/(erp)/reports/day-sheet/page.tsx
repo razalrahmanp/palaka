@@ -163,98 +163,69 @@ export default function DaySheetPage() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b sticky top-0 z-10">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => router.push('/reports')}
-                className="gap-2"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Back
-              </Button>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Day Sheet Report</h1>
-                <p className="text-sm text-gray-600 mt-1">
-                  Daily transaction summary and cash flow
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && /^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) {
-                    fetchDaySheet();
-                  }
-                }}
-                className="w-48"
-              />
-              <Button variant="outline" size="sm" onClick={fetchDaySheet} className="gap-2">
-                <RefreshCw className="h-4 w-4" />
-                Refresh
-              </Button>
-              <Button variant="outline" size="sm" className="gap-2">
-                <Download className="h-4 w-4" />
-                Export
-              </Button>
-              <Button variant="outline" size="sm" className="gap-2">
-                <Printer className="h-4 w-4" />
-                Print
-              </Button>
+        <div className="px-6 py-3">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push('/reports')}
+              className="gap-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </Button>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">Day Sheet Report</h1>
+              <p className="text-xs text-gray-600">Daily transaction summary and cash flow</p>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 space-y-4">
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-            <CardContent className="p-6">
+            <CardContent className="p-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-green-600">Total Receipts</p>
-                  <p className="text-2xl font-bold text-green-900 mt-1">{formatCurrency(totalDebits)}</p>
-                  <p className="text-xs text-green-600 mt-1">Cash In • {summary?.transactionCount || 0} transactions</p>
+                  <p className="text-xs font-medium text-green-600">Total Receipts</p>
+                  <p className="text-xl font-bold text-green-900">{formatCurrency(totalDebits)}</p>
+                  <p className="text-[10px] text-green-600">Cash In • {summary?.transactionCount || 0} transactions</p>
                 </div>
-                <TrendingUp className="h-10 w-10 text-green-600 opacity-50" />
+                <TrendingUp className="h-8 w-8 text-green-600 opacity-50" />
               </div>
             </CardContent>
           </Card>
 
           <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
-            <CardContent className="p-6">
+            <CardContent className="p-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-red-600">Total Payments</p>
-                  <p className="text-2xl font-bold text-red-900 mt-1">{formatCurrency(totalCredits)}</p>
-                  <p className="text-xs text-red-600 mt-1">Cash Out</p>
+                  <p className="text-xs font-medium text-red-600">Total Payments</p>
+                  <p className="text-xl font-bold text-red-900">{formatCurrency(totalCredits)}</p>
+                  <p className="text-[10px] text-red-600">Cash Out</p>
                 </div>
-                <TrendingDown className="h-10 w-10 text-red-600 opacity-50" />
+                <TrendingDown className="h-8 w-8 text-red-600 opacity-50" />
               </div>
             </CardContent>
           </Card>
 
           <Card className={`bg-gradient-to-br ${netCashFlow >= 0 ? 'from-blue-50 to-blue-100 border-blue-200' : 'from-orange-50 to-orange-100 border-orange-200'}`}>
-            <CardContent className="p-6">
+            <CardContent className="p-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className={`text-sm font-medium ${netCashFlow >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
+                  <p className={`text-xs font-medium ${netCashFlow >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
                     Net Cash Flow
                   </p>
-                  <p className={`text-2xl font-bold mt-1 ${netCashFlow >= 0 ? 'text-blue-900' : 'text-orange-900'}`}>
+                  <p className={`text-xl font-bold ${netCashFlow >= 0 ? 'text-blue-900' : 'text-orange-900'}`}>
                     {formatCurrency(netCashFlow)}
                   </p>
-                  <p className={`text-xs mt-1 ${netCashFlow >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
+                  <p className={`text-[10px] ${netCashFlow >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
                     {netCashFlow >= 0 ? 'Surplus' : 'Deficit'}
                   </p>
                 </div>
-                <DollarSign className={`h-10 w-10 opacity-50 ${netCashFlow >= 0 ? 'text-blue-600' : 'text-orange-600'}`} />
+                <DollarSign className={`h-8 w-8 opacity-50 ${netCashFlow >= 0 ? 'text-blue-600' : 'text-orange-600'}`} />
               </div>
             </CardContent>
           </Card>
@@ -262,13 +233,13 @@ export default function DaySheetPage() {
 
         {/* Category Breakdown */}
         {summary && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium">Operating Activities</CardTitle>
+              <CardHeader className="pb-2 pt-3 px-3">
+                <CardTitle className="text-xs font-medium">Operating Activities</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-2 text-sm">
+              <CardContent className="px-3 pb-3">
+                <div className="space-y-1 text-xs">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Receipts:</span>
                     <span className="font-mono text-green-600">{formatCurrency(summary.byCategory.operating.receipts)}</span>
@@ -277,7 +248,7 @@ export default function DaySheetPage() {
                     <span className="text-gray-600">Payments:</span>
                     <span className="font-mono text-red-600">{formatCurrency(summary.byCategory.operating.payments)}</span>
                   </div>
-                  <div className="flex justify-between border-t pt-2 font-semibold">
+                  <div className="flex justify-between border-t pt-1 font-semibold">
                     <span>Net:</span>
                     <span className={`font-mono ${summary.byCategory.operating.net >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                       {formatCurrency(summary.byCategory.operating.net)}
@@ -288,11 +259,11 @@ export default function DaySheetPage() {
             </Card>
 
             <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium">Investing Activities</CardTitle>
+              <CardHeader className="pb-2 pt-3 px-3">
+                <CardTitle className="text-xs font-medium">Investing Activities</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-2 text-sm">
+              <CardContent className="px-3 pb-3">
+                <div className="space-y-1 text-xs">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Receipts:</span>
                     <span className="font-mono text-green-600">{formatCurrency(summary.byCategory.investing.receipts)}</span>
@@ -301,7 +272,7 @@ export default function DaySheetPage() {
                     <span className="text-gray-600">Payments:</span>
                     <span className="font-mono text-red-600">{formatCurrency(summary.byCategory.investing.payments)}</span>
                   </div>
-                  <div className="flex justify-between border-t pt-2 font-semibold">
+                  <div className="flex justify-between border-t pt-1 font-semibold">
                     <span>Net:</span>
                     <span className={`font-mono ${summary.byCategory.investing.net >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                       {formatCurrency(summary.byCategory.investing.net)}
@@ -312,11 +283,11 @@ export default function DaySheetPage() {
             </Card>
 
             <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium">Financing Activities</CardTitle>
+              <CardHeader className="pb-2 pt-3 px-3">
+                <CardTitle className="text-xs font-medium">Financing Activities</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-2 text-sm">
+              <CardContent className="px-3 pb-3">
+                <div className="space-y-1 text-xs">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Receipts:</span>
                     <span className="font-mono text-green-600">{formatCurrency(summary.byCategory.financing.receipts)}</span>
@@ -325,7 +296,7 @@ export default function DaySheetPage() {
                     <span className="text-gray-600">Payments:</span>
                     <span className="font-mono text-red-600">{formatCurrency(summary.byCategory.financing.payments)}</span>
                   </div>
-                  <div className="flex justify-between border-t pt-2 font-semibold">
+                  <div className="flex justify-between border-t pt-1 font-semibold">
                     <span>Net:</span>
                     <span className={`font-mono ${summary.byCategory.financing.net >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                       {formatCurrency(summary.byCategory.financing.net)}
@@ -340,11 +311,37 @@ export default function DaySheetPage() {
         {/* Transactions Table */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Daily Transactions - {selectedDate ? format(parseISO(selectedDate), 'MMMM dd, yyyy') : 'Loading...'}</CardTitle>
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <CardTitle>Daily Transactions - {selectedDate ? format(parseISO(selectedDate), 'MMMM dd, yyyy') : 'Loading...'}</CardTitle>
+                <Badge variant="outline">{filteredTransactions.length} Transactions</Badge>
+              </div>
               <div className="flex items-center gap-2">
+                <Input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && /^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) {
+                      fetchDaySheet();
+                    }
+                  }}
+                  className="w-40 h-8"
+                />
+                <Button variant="outline" size="sm" onClick={fetchDaySheet} className="gap-1 h-8">
+                  <RefreshCw className="h-3 w-3" />
+                  Refresh
+                </Button>
+                <Button variant="outline" size="sm" className="gap-1 h-8">
+                  <Download className="h-3 w-3" />
+                  Export
+                </Button>
+                <Button variant="outline" size="sm" className="gap-1 h-8">
+                  <Printer className="h-3 w-3" />
+                  Print
+                </Button>
                 <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                  <SelectTrigger className="w-40">
+                  <SelectTrigger className="w-36 h-8">
                     <SelectValue placeholder="Category" />
                   </SelectTrigger>
                   <SelectContent>
@@ -355,7 +352,7 @@ export default function DaySheetPage() {
                   </SelectContent>
                 </Select>
                 <Select value={paymentMethodFilter} onValueChange={setPaymentMethodFilter}>
-                  <SelectTrigger className="w-40">
+                  <SelectTrigger className="w-32 h-8">
                     <SelectValue placeholder="Payment Method" />
                   </SelectTrigger>
                   <SelectContent>
@@ -367,7 +364,6 @@ export default function DaySheetPage() {
                     <SelectItem value="upi">UPI</SelectItem>
                   </SelectContent>
                 </Select>
-                <Badge variant="outline">{filteredTransactions.length} Transactions</Badge>
               </div>
             </div>
           </CardHeader>

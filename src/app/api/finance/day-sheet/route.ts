@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
     // 2. EXPENSES (OUTFLOW) - Operating and capital expenses
     const { data: expenses, error: expensesError } = await supabaseAdmin
       .from('expenses')
-      .select('id, date, amount, description, category, payment_method, receipt_number, entity_type')
+      .select('id, date, amount, description, category, payment_method, entity_type')
       .eq('date', selectedDate)
       .order('created_at', { ascending: true });
 
@@ -116,7 +116,7 @@ export async function GET(request: NextRequest) {
           debit: 0,
           credit: (expense.amount as number) || 0,
           balance: 0,
-          reference: (expense.receipt_number as string) || `EXP-${(expense.id as string).slice(-8)}`,
+          reference: `EXP-${(expense.id as string).slice(-8)}`,
           sourceId: expense.id as string,
           timestamp: expenseDate,
         });
@@ -124,49 +124,19 @@ export async function GET(request: NextRequest) {
     }
 
     // 3. LOAN DISBURSEMENTS (INFLOW) - Money received from loans
-    const { data: loanDisbursements, error: loanDisbError } = await supabaseAdmin
-      .from('loan_opening_balances')
-      .select('id, disbursement_date, original_amount, description, reference_number, payment_method, lender_name')
-      .eq('disbursement_date', selectedDate)
-      .order('disbursement_date', { ascending: true });
-
-    if (!loanDisbError && loanDisbursements) {
-      loanDisbursements.forEach((loan: Record<string, unknown>) => {
-        const dateStr = loan.disbursement_date as string;
-        if (!dateStr) return;
-        
-        const loanDate = new Date(`${dateStr}T12:00:00`);
-        if (isNaN(loanDate.getTime())) return;
-        
-        allTransactions.push({
-          id: `loan_disb_${loan.id}`,
-          time: format(loanDate, 'HH:mm'),
-          date: format(loanDate, 'dd-MM-yyyy'),
-          source: 'loan_disbursement',
-          type: 'Loan Disbursement',
-          description: `Loan from ${(loan.lender_name as string) || 'Lender'}${(loan.description as string) ? ` - ${loan.description}` : ''}`,
-          category: 'Financing',
-          paymentMethod: (loan.payment_method as string) || 'bank_transfer',
-          debit: (loan.original_amount as number) || 0,
-          credit: 0,
-          balance: 0,
-          reference: (loan.reference_number as string) || `LOAN-${(loan.id as string).slice(-8)}`,
-          sourceId: loan.id as string,
-          timestamp: loanDate,
-        });
-      });
-    }
+    // Note: loan_opening_balances is for loan setup, not daily disbursements
+    // If you need to track loan disbursements, create a separate table or use a different approach
 
     // 4. LOAN REPAYMENTS (OUTFLOW) - Loan payments
     const { data: loanPayments, error: loanPayError } = await supabaseAdmin
       .from('liability_payments')
-      .select('id, payment_date, payment_amount, description, reference_number, payment_method')
-      .eq('payment_date', selectedDate)
-      .order('payment_date', { ascending: true });
+      .select('id, date, total_amount, description, reference_number, payment_method')
+      .eq('date', selectedDate)
+      .order('date', { ascending: true });
 
     if (!loanPayError && loanPayments) {
       loanPayments.forEach((payment: Record<string, unknown>) => {
-        const dateStr = payment.payment_date as string;
+        const dateStr = payment.date as string;
         if (!dateStr) return;
         
         const payDate = new Date(`${dateStr}T12:00:00`);
@@ -182,7 +152,7 @@ export async function GET(request: NextRequest) {
           category: 'Financing',
           paymentMethod: (payment.payment_method as string) || 'bank_transfer',
           debit: 0,
-          credit: (payment.payment_amount as number) || 0,
+          credit: (payment.total_amount as number) || 0,
           balance: 0,
           reference: (payment.reference_number as string) || `LP-${(payment.id as string).slice(-8)}`,
           sourceId: payment.id as string,
@@ -194,7 +164,7 @@ export async function GET(request: NextRequest) {
     // 5. INVESTMENTS (INFLOW) - Capital contributions
     const { data: investments, error: investError } = await supabaseAdmin
       .from('investments')
-      .select('id, investment_date, amount, description, reference_number, payment_method, investor_name')
+      .select('id, investment_date, amount, description, reference_number, payment_method, partners!partner_id(name)')
       .eq('investment_date', selectedDate)
       .order('investment_date', { ascending: true });
 
@@ -206,20 +176,23 @@ export async function GET(request: NextRequest) {
         const invDate = new Date(`${dateStr}T12:00:00`);
         if (isNaN(invDate.getTime())) return;
         
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const partnerName = (inv as any).partners?.name || 'Investor';
+        
         allTransactions.push({
           id: `invest_${inv.id}`,
           time: format(invDate, 'HH:mm'),
           date: format(invDate, 'dd-MM-yyyy'),
           source: 'investment',
           type: 'Investment/Capital',
-          description: `Investment from ${(inv.investor_name as string) || 'Investor'}${(inv.description as string) ? ` - ${inv.description}` : ''}`,
+          description: `Investment from ${partnerName}${(inv.description as string) ? ` - ${inv.description}` : ''}`,
           category: 'Financing',
           paymentMethod: (inv.payment_method as string) || 'bank_transfer',
           debit: (inv.amount as number) || 0,
           credit: 0,
           balance: 0,
-          reference: (inv.reference_number as string) || `INV-${(inv.id as string).slice(-8)}`,
-          sourceId: inv.id as string,
+          reference: (inv.reference_number as string) || `INV-${(inv.id as number).toString().slice(-8)}`,
+          sourceId: (inv.id as number).toString(),
           timestamp: invDate,
         });
       });
@@ -262,17 +235,21 @@ export async function GET(request: NextRequest) {
     // 7. CUSTOMER REFUNDS (OUTFLOW) - Refunds to customers
     const { data: refunds, error: refundsError } = await supabaseAdmin
       .from('invoice_refunds')
-      .select('id, refund_date, refund_amount, customer_name, refund_method, status')
-      .eq('refund_date', selectedDate)
-      .order('refund_date', { ascending: true });
+      .select('id, processed_at, refund_amount, refund_method, status, invoices!invoice_id(customer_name)')
+      .gte('processed_at', `${selectedDate}T00:00:00`)
+      .lte('processed_at', `${selectedDate}T23:59:59`)
+      .order('processed_at', { ascending: true });
 
     if (!refundsError && refunds) {
       refunds.forEach((refund: Record<string, unknown>) => {
-        const dateStr = refund.refund_date as string;
+        const dateStr = refund.processed_at as string;
         if (!dateStr) return;
         
-        const refundDate = new Date(`${dateStr}T12:00:00`);
+        const refundDate = new Date(dateStr);
         if (isNaN(refundDate.getTime())) return;
+        
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const customerName = (refund as any).invoices?.customer_name || 'Customer';
         
         allTransactions.push({
           id: `refund_${refund.id}`,
@@ -280,7 +257,7 @@ export async function GET(request: NextRequest) {
           date: format(refundDate, 'dd-MM-yyyy'),
           source: 'refund',
           type: 'Customer Refund',
-          description: `Refund to ${(refund.customer_name as string) || 'Customer'} (${refund.status})`,
+          description: `Refund to ${customerName} (${refund.status})`,
           category: 'Financing',
           paymentMethod: (refund.refund_method as string) || 'cash',
           debit: 0,

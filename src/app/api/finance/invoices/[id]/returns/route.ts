@@ -395,24 +395,72 @@ export async function POST(
       const isCustomProduct = !!salesOrderItem?.custom_product_id;
       
       if (!isCustomProduct && salesOrderItem?.product_id) {
-        // Call inventory update function for regular products
-        const { error: inventoryError } = await supabase.rpc('update_inventory_quantity', {
-          p_product_id: salesOrderItem.product_id,
-          p_quantity_change: requestedQuantity
-        });
+        // Get current inventory
+        const { data: currentInventory, error: fetchError } = await supabase
+          .from('inventory')
+          .select('product_id, quantity_in_stock')
+          .eq('product_id', salesOrderItem.product_id)
+          .maybeSingle();
 
-        if (inventoryError) {
-          console.warn('⚠️ Inventory update failed for product:', {
+        if (fetchError) {
+          console.error('❌ Failed to fetch current inventory:', {
             product_id: salesOrderItem.product_id,
-            quantity: requestedQuantity,
-            error: inventoryError
+            error: fetchError
           });
-          // Don't fail the return, but log the warning
+          continue; // Skip this item but continue with others
+        }
+
+        if (currentInventory) {
+          // Update existing inventory record
+          const newQuantity = (currentInventory.quantity_in_stock || 0) + requestedQuantity;
+          const { error: updateError } = await supabase
+            .from('inventory')
+            .update({ 
+              quantity_in_stock: newQuantity,
+              updated_at: new Date().toISOString()
+            })
+            .eq('product_id', salesOrderItem.product_id);
+
+          if (updateError) {
+            console.error('❌ Inventory update failed for product:', {
+              product_id: salesOrderItem.product_id,
+              old_quantity: currentInventory.quantity_in_stock,
+              quantity_to_add: requestedQuantity,
+              new_quantity: newQuantity,
+              error: updateError
+            });
+          } else {
+            console.log('✅ Inventory updated for return:', {
+              product_id: salesOrderItem.product_id,
+              old_quantity: currentInventory.quantity_in_stock,
+              quantity_added: requestedQuantity,
+              new_quantity: newQuantity
+            });
+          }
         } else {
-          console.log('✅ Inventory updated for return:', {
-            product_id: salesOrderItem.product_id,
-            quantity_added: requestedQuantity
-          });
+          // Create new inventory record if doesn't exist
+          const { error: insertError } = await supabase
+            .from('inventory')
+            .insert({
+              product_id: salesOrderItem.product_id,
+              quantity_in_stock: requestedQuantity,
+              reorder_level: 0,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            });
+
+          if (insertError) {
+            console.error('❌ Failed to create inventory record:', {
+              product_id: salesOrderItem.product_id,
+              quantity: requestedQuantity,
+              error: insertError
+            });
+          } else {
+            console.log('✅ New inventory record created for return:', {
+              product_id: salesOrderItem.product_id,
+              quantity: requestedQuantity
+            });
+          }
         }
       } else if (isCustomProduct) {
         console.log('ℹ️ Skipping inventory update for custom product:', {

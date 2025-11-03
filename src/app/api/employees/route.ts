@@ -1,6 +1,10 @@
 import { supabase } from '@/lib/supabasePool';
 import { NextRequest, NextResponse } from 'next/server';
 
+// Disable Next.js caching for real-time data
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // Handler for GET requests to fetch employees
 export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);

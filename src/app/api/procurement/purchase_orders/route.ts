@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabasePool';
 
+// Disable Next.js caching for real-time data
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // Helper function to create vendor bill from purchase order
 async function createVendorBillFromPO({
   purchase_order_id,

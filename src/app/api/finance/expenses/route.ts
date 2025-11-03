@@ -6,7 +6,13 @@ import { createExpenseJournalEntry } from "@/lib/journalHelper";
 import { 
   processExpenseIntegration,
   EntityExpenseParams
-} from "@/lib/expense-integrations/expenseIntegrationManager";export async function GET(req: Request) {
+} from "@/lib/expense-integrations/expenseIntegrationManager";
+
+// Disable Next.js caching for real-time data
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const entity_id = searchParams.get('entity_id');

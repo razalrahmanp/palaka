@@ -3,6 +3,10 @@ import { supabase } from "@/lib/supabaseClient";
 import { supabase as supabaseAdmin } from "@/lib/supabaseAdmin";
 import { NextResponse } from "next/server";
 
+// Disable Next.js caching for real-time data
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 type OrderRow = {
   id: string;
   quote_id?: string | null;

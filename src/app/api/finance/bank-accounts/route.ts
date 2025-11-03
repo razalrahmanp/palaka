@@ -2,6 +2,10 @@
 import { NextResponse, NextRequest } from "next/server";
 import { supabase } from "@/lib/supabaseAdmin";
 
+// Disable Next.js caching for real-time data
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);

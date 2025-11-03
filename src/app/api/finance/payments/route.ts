@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseAdmin";
 import { createPaymentJournalEntry } from "@/lib/journalHelper";
 
+// Disable Next.js caching for real-time data
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -328,7 +332,7 @@ async function createPaymentManually(body: any) {
 
     console.log(`✅ Manual payment created for invoice ${invoice_id} with journal entry`);
 
-    return NextResponse.json({ 
+    const response = NextResponse.json({ 
       success: true,
       data: { id: payment.id },
       accounting_integration: true,
@@ -337,6 +341,10 @@ async function createPaymentManually(body: any) {
         ? "Payment recorded with automatic journal entries" 
         : "Payment recorded (journal entry failed - check logs)"
     });
+    
+    response.headers.set('Cache-Control', 'no-store, max-age=0');
+    response.headers.set('Pragma', 'no-cache');
+    return response;
   } catch (error) {
     console.error('Error creating payment manually:', error);
     return NextResponse.json({ error: "Failed to create payment" }, { status: 500 });

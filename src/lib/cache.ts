@@ -17,14 +17,14 @@ export function createCachedResponse(
     maxAge?: number; // Browser cache max age
   } = {}
 ) {
-  const { maxAge = 300 } = options; // Default 5 minutes
+  const { maxAge = 30 } = options; // Reduced default from 300s (5min) to 30s for real-time updates
   
   const response = NextResponse.json(data);
   
-  // Set cache headers
+  // Set cache headers - shorter duration for real-time data
   response.headers.set(
     'Cache-Control',
-    `public, max-age=${maxAge}, s-maxage=${maxAge}, stale-while-revalidate=60`
+    `public, max-age=${maxAge}, s-maxage=${maxAge}, stale-while-revalidate=10`
   );
   
   // Set ETag for conditional requests
@@ -53,7 +53,8 @@ export function getCachedData(key: string) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function setCachedData(key: string, data: any, ttl: number = 300) {
+export function setCachedData(key: string, data: any, ttl: number = 30) {
+  // Reduced default TTL from 300s (5min) to 30s for better real-time updates
   cache.set(key, {
     data,
     timestamp: Date.now(),

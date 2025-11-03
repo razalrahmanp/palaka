@@ -1,7 +1,11 @@
 import { supabase } from '@/lib/supabasePool'
 import { NextRequest, NextResponse } from 'next/server'
-import { createCachedResponse, getCachedData, setCachedData } from '@/lib/cache'
+import { createCachedResponse, getCachedData, setCachedData, clearCache } from '@/lib/cache'
 import { PerformanceMonitor } from '@/lib/performance'
+
+// Disable Next.js caching for real-time data
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(request: NextRequest) {
   return PerformanceMonitor.measureAsync('vendors-list', async () => {
@@ -11,6 +15,11 @@ export async function GET(request: NextRequest) {
       const refresh = searchParams.get('refresh') === 'true'
       const timestamp = searchParams.get('_t')
       const bypassCache = refresh || !!timestamp
+      
+      // Clear cache if refresh requested
+      if (refresh) {
+        clearCache('vendors-');
+      }
       
       console.log('🏪 Fetching vendors...', {
         refresh,

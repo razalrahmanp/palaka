@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseAdmin";
 
+// Disable Next.js caching for real-time data
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 interface Payment {
   id: string;
   invoice_id: string;
@@ -374,7 +378,13 @@ export async function POST(req: Request) {
       data: invoice,
       accounting_integration: true,
       message: "Invoice created with automatic journal entry"
-    }, { status: 201 });
+    }, { 
+      status: 201,
+      headers: {
+        'Cache-Control': 'no-store, max-age=0',
+        'Pragma': 'no-cache'
+      }
+    });
   } catch (error) {
     console.error('Error creating invoice:', error);
     return NextResponse.json({ error: "Failed to create invoice" }, { status: 500 });
@@ -451,7 +461,9 @@ export async function PUT(req: Request) {
     }
   }
 
-  return NextResponse.json({ success: true });
+  const response = NextResponse.json({ success: true });
+  response.headers.set('Cache-Control', 'no-store, max-age=0');
+  response.headers.set('Pragma', 'no-cache');
+  return response;
 }
-
 

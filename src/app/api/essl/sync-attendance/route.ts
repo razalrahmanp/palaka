@@ -53,42 +53,56 @@ export async function POST(request: Request) {
 
       for (const device of devices) {
         try {
+          console.log(`\n📱 Syncing device: ${device.device_name} (${device.ip_address}:${device.port || 4370})`);
           const deviceResult = await syncSingleDevice(device.id, clearAfterSync);
           const resultData = await deviceResult.json();
           totalRecords += resultData.stats?.synced || 0;
           results.push({
             deviceId: device.id,
             deviceName: device.device_name,
+            ipAddress: device.ip_address,
             success: true,
-            records: resultData.stats?.synced || 0
+            records: resultData.stats?.synced || 0,
+            message: resultData.message
           });
+          console.log(`✅ Successfully synced ${device.device_name}: ${resultData.stats?.synced || 0} records`);
         } catch (error) {
-          console.error(`Failed to sync device ${device.id}:`, error);
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          console.error(`❌ Failed to sync device ${device.device_name}:`, errorMsg);
           results.push({
             deviceId: device.id,
             deviceName: device.device_name,
+            ipAddress: device.ip_address,
             success: false,
-            error: error instanceof Error ? error.message : 'Unknown error'
+            records: 0,
+            error: errorMsg
           });
         }
       }
 
       return NextResponse.json({
         success: true,
-        message: `Synced ${devices.length} devices`,
+        message: `Sync completed: ${results.filter(r => r.success).length}/${devices.length} devices successful`,
         totalRecords,
+        devicesAttempted: devices.length,
+        devicesSuccessful: results.filter(r => r.success).length,
+        devicesFailed: results.filter(r => !r.success).length,
         results
       });
     }
 
     // Sync single device
     const result = await syncSingleDevice(deviceId, clearAfterSync);
-    return NextResponse.json(result);
+    return result;
 
   } catch (error) {
-    console.error('Attendance sync error:', error);
+    console.error('❌ Attendance sync error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to sync attendance' },
+      { 
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to sync attendance',
+        details: error instanceof Error ? error.stack : undefined
+      },
       { status: 500 }
     );
   }
@@ -282,6 +296,8 @@ async function syncSingleDevice(deviceId: string, clearAfterSync: boolean = fals
     } catch (syncError) {
       const duration = Math.round((Date.now() - startTime) / 1000);
       const errorMessage = syncError instanceof Error ? syncError.message : 'Sync failed';
+      
+      console.error(`❌ Sync failed for device ${device.device_name}:`, errorMessage);
 
       // Update sync log with error
       if (syncLog?.id) {
@@ -295,14 +311,29 @@ async function syncSingleDevice(deviceId: string, clearAfterSync: boolean = fals
           .eq('id', syncLog.id);
       }
 
-      throw syncError;
+      // Return error details instead of throwing
+      return NextResponse.json({
+        success: false,
+        error: errorMessage,
+        deviceInfo: {
+          id: device.id,
+          name: device.device_name,
+          ip: device.ip_address,
+          port: device.port || 4370
+        },
+        stats: {
+          duration: `${duration}s`
+        }
+      }, { status: 500 });
     }
   } catch (error) {
-    console.error('Attendance sync error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('❌ Device sync error:', errorMessage);
+    
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Sync failed',
+        error: errorMessage,
       },
       { status: 500 }
     );

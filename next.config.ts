@@ -73,7 +73,7 @@ const nextConfig: NextConfig = {
   // Compression
   compress: true,
   
-  // Headers for caching
+  // Headers for security and cache control
   async headers() {
     return [
       {
@@ -89,12 +89,23 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      // Minimal caching for API routes (30 seconds instead of 5 minutes)
       {
         source: '/api/(.*)',
         headers: [
           {
             key: 'Cache-Control',
-            value: 'public, max-age=300, s-maxage=300',
+            value: 'public, max-age=30, s-maxage=30, stale-while-revalidate=10',
+          },
+        ],
+      },
+      // No caching for mutation endpoints
+      {
+        source: '/api/:path*/route',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-store, max-age=0, must-revalidate',
           },
         ],
       },

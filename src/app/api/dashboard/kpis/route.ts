@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabasePool';
 
+// Disable Next.js caching for real-time dashboard data
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const startDate = searchParams.get('startDate');

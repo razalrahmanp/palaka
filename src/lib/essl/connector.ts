@@ -47,7 +47,7 @@ export class ESSLConnector {
 
   constructor(config: DeviceConfig) {
     this.config = {
-      timeout: 15000, // Increased to 15 seconds for large datasets
+      timeout: 10000, // 10 seconds timeout
       attendanceParser: 'v6.60',
       connectionType: 'tcp',
       ...config,
@@ -55,29 +55,74 @@ export class ESSLConnector {
   }
 
   /**
-   * Connect to the ESSL device
+   * Connect to the ESSL device with retry logic
    */
-  async connect(): Promise<boolean> {
-    try {
-      console.log(`Connecting to ESSL device at ${this.config.ip}:${this.config.port}...`);
-      
-      this.device = new ZKLib(
-        this.config.ip,
-        this.config.port,
-        this.config.timeout,
-        this.config.attendanceParser
-      );
+  async connect(retries: number = 2): Promise<boolean> {
+    let lastError: Error | null = null;
 
-      await this.device.createSocket();
-      this.isConnected = true;
-      
-      console.log('Successfully connected to ESSL device');
-      return true;
-    } catch (error) {
-      console.error('Failed to connect to ESSL device:', error);
-      this.isConnected = false;
-      throw new Error(`Connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        console.log(`[Attempt ${attempt}/${retries}] Connecting to ESSL device at ${this.config.ip}:${this.config.port}...`);
+        
+        this.device = new ZKLib(
+          this.config.ip,
+          this.config.port,
+          this.config.timeout,
+          this.config.attendanceParser
+        );
+
+        await this.device.createSocket();
+        this.isConnected = true;
+        
+        console.log(`✅ Successfully connected to ESSL device at ${this.config.ip}:${this.config.port}`);
+        return true;
+      } catch (error) {
+        lastError = error as Error;
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`❌ [Attempt ${attempt}/${retries}] Failed to connect:`, errorMsg);
+        
+        // Clean up device instance on failure
+        if (this.device) {
+          try {
+            await this.device.disconnect();
+          } catch {
+            // Ignore disconnect errors
+          }
+          this.device = null;
+        }
+        this.isConnected = false;
+
+        // If not the last attempt, wait before retrying
+        if (attempt < retries) {
+          const waitTime = attempt * 2000; // Progressive backoff: 2s, 4s
+          console.log(`⏳ Waiting ${waitTime}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+      }
     }
+
+    // All retries failed
+    const errorDetails = lastError?.message || 'Unknown error';
+    const isTimeout = errorDetails.includes('ETIMEDOUT');
+    const isRefused = errorDetails.includes('ECONNREFUSED');
+
+    let userFriendlyMessage = `Connection failed after ${retries} attempts: `;
+    if (isTimeout) {
+      userFriendlyMessage += `Device at ${this.config.ip}:${this.config.port} is not responding. Please check:\n` +
+                            `1. Device is powered on\n` +
+                            `2. Network connectivity\n` +
+                            `3. IP address and port are correct\n` +
+                            `4. Firewall is not blocking the connection`;
+    } else if (isRefused) {
+      userFriendlyMessage += `Device at ${this.config.ip}:${this.config.port} refused connection. Please check:\n` +
+                            `1. Device port is correct (usually 4370)\n` +
+                            `2. Device network settings\n` +
+                            `3. No other software is connected`;
+    } else {
+      userFriendlyMessage += errorDetails;
+    }
+
+    throw new Error(userFriendlyMessage);
   }
 
   /**

@@ -1,0 +1,1007 @@
+'use client';
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Customer, Interaction, User } from '@/types';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { 
+  Users, PlusCircle, Edit, Trash2, MessageSquare,
+  DollarSign, Package, FileText,
+  ChevronRight, ChevronDown, ArrowUp, ArrowDown, ArrowUpDown,
+  TrendingUp, BarChart3, PhoneCall, Target, Activity
+} from 'lucide-react';
+import { CustomerForm } from '@/components/crm/CustomerForm';
+import { InteractionLogForm } from '@/components/crm/InteractionLogForm';
+import { CustomerFilters } from '@/components/crm/CustomerFilter';
+import { format } from 'date-fns';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+interface SalesOrder {
+  id: string;
+  customer_id: string;
+  quote_id?: string;
+  final_price?: number;
+  grand_total?: number;
+  original_price?: number;
+  discount_amount?: number;
+  tax_amount?: number;
+  created_at: string;
+  expected_delivery_date?: string;
+  address?: string;
+  notes?: string;
+  status?: string;
+  po_created?: boolean;
+  emi_enabled?: boolean;
+  emi_plan?: '10/2' | '6/0';
+  emi_monthly?: number;
+  delivery_floor?: string;
+  ad_id?: string;
+  ad_name?: string;
+  bajaj_finance_amount?: number;
+}
+
+export default function SalesCRMPage() {
+  const qc = useQueryClient();
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [customerModalOpen, setCustomerModalOpen] = useState(false);
+  const [interactionModalOpen, setInteractionModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterStatus, setFilterStatus] = useState<'all' | Customer['status']>('all');
+  const [filterSource, setFilterSource] = useState<'all' | Customer['source']>('all');
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [sortField, setSortField] = useState<string>('created_at');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        const user: User = JSON.parse(storedUser);
+        setCurrentUser(user);
+      }
+    }
+  }, []);
+
+  const { data: customers = [] } = useQuery<Customer[]>({
+    queryKey: ['customers'],
+    queryFn: async () => {
+      const res = await fetch('/api/crm/customers');
+      if (!res.ok) throw new Error('Failed to fetch customers');
+      return res.json();
+    },
+  });
+
+  const { data: interactions = [] } = useQuery<Interaction[]>({
+    queryKey: ['interactions'],
+    queryFn: () => fetch('/api/crm/interactions').then(res => {
+      if (!res.ok) throw new Error('Failed to fetch interactions');
+      return res.json();
+    }),
+  });
+
+  const { data: salesOrders = [] } = useQuery<SalesOrder[]>({
+    queryKey: ['crm-sales-orders'],
+    queryFn: async () => {
+      const res = await fetch('/api/crm/sales-orders');
+      if (!res.ok) throw new Error('Failed to fetch sales orders');
+      return res.json();
+    },
+  });
+
+  const deleteCustomer = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/crm/customers/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete customer');
+      return res.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['customers'] }),
+  });
+
+  // Calculate customer sales data
+  const customerSalesData = useMemo(() => {
+    if (!Array.isArray(salesOrders) || !Array.isArray(customers)) return {};
+
+    const salesData: Record<string, {
+      salesCount: number;
+      totalValue: number;
+      lastPurchaseDate: string | null;
+      lastDeliveryDate: string | null;
+      avgOrderValue: number;
+      hasActivePurchases: boolean;
+      completedOrders: number;
+      pendingOrders: number;
+      orders: SalesOrder[];
+    }> = {};
+
+    customers.forEach(customer => {
+      const customerOrders = salesOrders.filter(order => order.customer_id === customer.id);
+      const completedOrders = customerOrders.filter(order => order.status === 'completed' || order.po_created === true);
+      const pendingOrders = customerOrders.filter(order => order.status !== 'completed' && order.po_created !== true);
+      
+      const totalValue = customerOrders.reduce((sum, order) => {
+        return sum + (order.grand_total || order.final_price || 0);
+      }, 0);
+      
+      const sortedOrders = customerOrders.sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      
+      const ordersWithDelivery = customerOrders.filter(order => order.expected_delivery_date);
+      const latestDeliveryOrder = ordersWithDelivery.sort((a, b) => 
+        new Date(b.expected_delivery_date!).getTime() - new Date(a.expected_delivery_date!).getTime())[0];
+      
+      salesData[customer.id] = {
+        salesCount: customerOrders.length,
+        totalValue: totalValue,
+        avgOrderValue: customerOrders.length > 0 ? totalValue / customerOrders.length : 0,
+        lastPurchaseDate: sortedOrders.length > 0 ? sortedOrders[0].created_at : null,
+        lastDeliveryDate: latestDeliveryOrder?.expected_delivery_date || null,
+        hasActivePurchases: customerOrders.length > 0,
+        completedOrders: completedOrders.length,
+        pendingOrders: pendingOrders.length,
+        orders: sortedOrders
+      };
+    });
+
+    return salesData;
+  }, [salesOrders, customers]);
+
+  const filteredCustomers = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return customers.filter(c => {
+      const matchesStatus = filterStatus === 'all' || c.status === filterStatus;
+      const matchesSource = filterSource === 'all' || c.source === filterSource;
+      const matchesSearch =
+        c.name.toLowerCase().includes(q) ||
+        c.email?.toLowerCase().includes(q) ||
+        c.phone?.toLowerCase().includes(q);
+      
+      return matchesStatus && matchesSource && matchesSearch;
+    });
+  }, [customers, filterStatus, filterSource, searchQuery]);
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const sortedCustomers = useMemo(() => {
+    return [...filteredCustomers].sort((a, b) => {
+      let aValue: string | number | Date;
+      let bValue: string | number | Date;
+
+      switch (sortField) {
+        case 'name':
+          aValue = a.name.toLowerCase();
+          bValue = b.name.toLowerCase();
+          break;
+        case 'created_at':
+          aValue = new Date(a.created_at || '');
+          bValue = new Date(b.created_at || '');
+          break;
+        case 'salesCount':
+          aValue = customerSalesData[a.id]?.salesCount || 0;
+          bValue = customerSalesData[b.id]?.salesCount || 0;
+          break;
+        case 'orderValue':
+          aValue = customerSalesData[a.id]?.totalValue || 0;
+          bValue = customerSalesData[b.id]?.totalValue || 0;
+          break;
+        default:
+          return 0;
+      }
+
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filteredCustomers, sortField, sortDirection, customerSalesData]);
+
+  const totalPages = Math.ceil(sortedCustomers.length / itemsPerPage);
+  const paginatedCustomers = sortedCustomers.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  const toggleRowExpansion = (customerId: string) => {
+    const newExpandedRows = new Set(expandedRows);
+    if (newExpandedRows.has(customerId)) {
+      newExpandedRows.delete(customerId);
+    } else {
+      newExpandedRows.add(customerId);
+    }
+    setExpandedRows(newExpandedRows);
+  };
+
+  const SortableHeader = ({ field, children, className = "" }: { field: string, children: React.ReactNode, className?: string }) => (
+    <TableHead 
+      className={`font-semibold text-gray-700 py-4 cursor-pointer hover:bg-gray-50 transition-colors ${className}`}
+      onClick={() => handleSort(field)}
+    >
+      <div className="flex items-center gap-2 justify-between">
+        <span>{children}</span>
+        <div className="flex-shrink-0">
+          {sortField === field ? (
+            sortDirection === 'asc' ? 
+              <ArrowUp className="h-4 w-4 text-purple-600" /> : 
+              <ArrowDown className="h-4 w-4 text-purple-600" />
+          ) : (
+            <ArrowUpDown className="h-4 w-4 text-gray-400" />
+          )}
+        </div>
+      </div>
+    </TableHead>
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterStatus, filterSource, searchQuery]);
+
+  if (!currentUser) return null;
+
+  const handleAddInteraction = (formData: { type: string; notes: string }) => {
+    if (!selectedCustomer) return;
+    fetch('/api/crm/interactions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...formData,
+        interaction_date: new Date().toISOString(),
+        customer_id: selectedCustomer.id,
+        created_by: currentUser.id,
+      }),
+    }).then(() => {
+      qc.invalidateQueries({ queryKey: ['interactions'] });
+      setInteractionModalOpen(false);
+    });
+  };
+
+  const handleSaveCustomer = async (data: { name: string; email?: string; phone?: string; company?: string; status: Customer['status']; source: Customer['source']; tags: string[] }) => {
+    const isEdit = !!(selectedCustomer && selectedCustomer.id);
+    const url = isEdit ? `/api/crm/customers/${selectedCustomer!.id}` : '/api/crm/customers';
+    const method = isEdit ? 'PUT' : 'POST';
+  
+    await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...data,
+        ...(isEdit ? {} : { created_by: currentUser.id }),
+      }),
+    });
+    qc.invalidateQueries({ queryKey: ['customers'] });
+    setCustomerModalOpen(false);
+  };
+
+  // Calculate summary stats
+  const totalCustomers = customers.length;
+  const customersWithPurchases = Object.values(customerSalesData).filter(data => data.salesCount > 0).length;
+  const totalRevenue = Object.values(customerSalesData).reduce((sum, data) => sum + data.totalValue, 0);
+  const totalOrders = salesOrders.length;
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-6 space-y-6">
+      {/* Header */}
+      <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-xl p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+              Customer Relationship Management
+            </h1>
+            <p className="text-gray-600 mt-2">Manage customers, track interactions, and analyze sales performance</p>
+          </div>
+          <Button 
+            onClick={() => { setSelectedCustomer(null); setCustomerModalOpen(true); }}
+            className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all"
+          >
+            <PlusCircle className="mr-2 h-5 w-5" /> Add Customer
+          </Button>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-shadow">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Total Customers</p>
+                <p className="text-3xl font-bold text-gray-900">{totalCustomers}</p>
+                <p className="text-xs text-gray-500 mt-1">Active database</p>
+              </div>
+              <div className="h-14 w-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
+                <Users className="h-7 w-7 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-shadow">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">With Purchases</p>
+                <p className="text-3xl font-bold text-gray-900">{customersWithPurchases}</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {totalCustomers > 0 ? `${Math.round((customersWithPurchases / totalCustomers) * 100)}% conversion` : '0% conversion'}
+                </p>
+              </div>
+              <div className="h-14 w-14 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center shadow-lg">
+                <Package className="h-7 w-7 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-shadow">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Total Revenue</p>
+                <p className="text-3xl font-bold text-gray-900">
+                  ₹{(totalRevenue / 100000).toFixed(1)}L
+                </p>
+                <p className="text-xs text-gray-500 mt-1">Lifetime value</p>
+              </div>
+              <div className="h-14 w-14 bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
+                <DollarSign className="h-7 w-7 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-shadow">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Total Orders</p>
+                <p className="text-3xl font-bold text-gray-900">{totalOrders}</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Avg: ₹{totalOrders > 0 ? (totalRevenue / totalOrders).toFixed(0) : '0'}
+                </p>
+              </div>
+              <div className="h-14 w-14 bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl flex items-center justify-center shadow-lg">
+                <FileText className="h-7 w-7 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Tabbed Content */}
+      <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-xl">
+        <Tabs defaultValue="customers" className="w-full">
+          <CardHeader className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-t-xl border-b border-purple-100/50">
+            <TabsList className="grid w-full grid-cols-4 bg-white/50 backdrop-blur-sm">
+              <TabsTrigger value="customers" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-600 data-[state=active]:to-blue-600 data-[state=active]:text-white">
+                <Users className="h-4 w-4 mr-2" />
+                Customers
+              </TabsTrigger>
+              <TabsTrigger value="interactions" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-600 data-[state=active]:to-blue-600 data-[state=active]:text-white">
+                <MessageSquare className="h-4 w-4 mr-2" />
+                Interactions
+              </TabsTrigger>
+              <TabsTrigger value="sales" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-600 data-[state=active]:to-blue-600 data-[state=active]:text-white">
+                <Target className="h-4 w-4 mr-2" />
+                Sales Orders
+              </TabsTrigger>
+              <TabsTrigger value="analytics" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-600 data-[state=active]:to-blue-600 data-[state=active]:text-white">
+                <BarChart3 className="h-4 w-4 mr-2" />
+                Analytics
+              </TabsTrigger>
+            </TabsList>
+          </CardHeader>
+
+          <CardContent className="p-6">
+            {/* CUSTOMERS TAB */}
+            <TabsContent value="customers" className="mt-0 space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Customer Database</h3>
+                  <p className="text-sm text-gray-600">Complete list of all customers with purchase history</p>
+                </div>
+              </div>
+
+              {/* Search and Filters */}
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex-1">
+                  <Input
+                    placeholder="🔍 Search by name, email, or phone..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="border-gray-200 focus:border-purple-500 rounded-xl"
+                  />
+                </div>
+                <CustomerFilters
+                  filterStatus={filterStatus}
+                  onFilterStatusChange={setFilterStatus}
+                  filterSource={filterSource}
+                  onFilterSourceChange={setFilterSource}
+                />
+              </div>
+
+              {/* Customer Table */}
+              <div className="rounded-xl border border-gray-200 overflow-x-auto bg-white">
+                <Table>
+                  <TableHeader className="bg-gradient-to-r from-gray-50 to-gray-100">
+                    <TableRow className="border-gray-200">
+                      <SortableHeader field="name" className="w-[25%]">Customer Info</SortableHeader>
+                      <TableHead className="w-[10%]">Status</TableHead>
+                      <SortableHeader field="salesCount" className="w-[10%] text-center">Orders</SortableHeader>
+                      <SortableHeader field="orderValue" className="w-[15%] text-right">Total Value</SortableHeader>
+                      <TableHead className="w-[12%]">Last Purchase</TableHead>
+                      <TableHead className="w-[12%]">Next Delivery</TableHead>
+                      <SortableHeader field="created_at" className="w-[10%]">Created</SortableHeader>
+                      <TableHead className="text-right w-[6%]">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedCustomers.map(c => (
+                      <React.Fragment key={c.id}>
+                        <TableRow 
+                          className={`transition-colors border-gray-100 ${
+                            customerSalesData[c.id]?.salesCount > 0 
+                              ? 'cursor-pointer hover:bg-purple-50/70' 
+                              : 'hover:bg-gray-50/50'
+                          }`}
+                          onClick={() => {
+                            if (customerSalesData[c.id]?.salesCount > 0) {
+                              toggleRowExpansion(c.id);
+                            }
+                          }}
+                        >
+                          <TableCell className="py-3 px-2">
+                            <div className="flex items-center space-x-2">
+                              {customerSalesData[c.id]?.salesCount > 0 && (
+                                <div className="h-6 w-6 flex items-center justify-center">
+                                  {expandedRows.has(c.id) ? (
+                                    <ChevronDown className="h-4 w-4 text-purple-600" />
+                                  ) : (
+                                    <ChevronRight className="h-4 w-4 text-gray-500" />
+                                  )}
+                                </div>
+                              )}
+                              <div className="h-8 w-8 bg-gradient-to-br from-purple-500 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                                {c.name.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="font-semibold text-gray-900 text-sm">{c.name}</div>
+                                <div className="text-xs text-gray-500">{c.email}</div>
+                                {c.phone && <div className="text-xs text-gray-500">{c.phone}</div>}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-3 px-2">
+                            <Badge 
+                              variant={c.status === 'Active' ? 'default' : 'secondary'}
+                              className={`${
+                                c.status === 'Active' 
+                                  ? 'bg-green-100 text-green-800' 
+                                  : 'bg-gray-100 text-gray-800'
+                              } text-xs`}
+                            >
+                              {c.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="py-3 px-2 text-center">
+                            <div className={`inline-flex items-center justify-center w-8 h-8 text-xs font-bold text-white rounded-full ${
+                              customerSalesData[c.id]?.salesCount > 0 
+                                ? 'bg-gradient-to-r from-green-500 to-green-600' 
+                                : 'bg-gray-300'
+                            }`}>
+                              {customerSalesData[c.id]?.salesCount || 0}
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-3 px-2 text-right">
+                            <span className="font-semibold text-gray-900">
+                              ₹{(customerSalesData[c.id]?.totalValue || 0).toLocaleString('en-IN')}
+                            </span>
+                          </TableCell>
+                          <TableCell className="py-3 px-2 text-xs text-gray-600">
+                            {customerSalesData[c.id]?.lastPurchaseDate 
+                              ? format(new Date(customerSalesData[c.id].lastPurchaseDate!), 'MMM dd, yyyy')
+                              : '-'
+                            }
+                          </TableCell>
+                          <TableCell className="py-3 px-2 text-xs text-gray-600">
+                            {customerSalesData[c.id]?.lastDeliveryDate 
+                              ? format(new Date(customerSalesData[c.id].lastDeliveryDate!), 'MMM dd, yyyy')
+                              : '-'
+                            }
+                          </TableCell>
+                          <TableCell className="py-3 px-2 text-xs text-gray-600">
+                            {c.created_at ? format(new Date(c.created_at), 'MMM dd') : '-'}
+                          </TableCell>
+                          <TableCell className="py-4 text-right">
+                            <div className="flex items-center justify-end space-x-2">
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={(e) => { 
+                                  e.stopPropagation();
+                                  setSelectedCustomer(c); 
+                                  setInteractionModalOpen(true); 
+                                }}
+                                className="h-8 w-8 p-0"
+                                title="Add interaction"
+                              >
+                                <MessageSquare className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={(e) => { 
+                                  e.stopPropagation();
+                                  setSelectedCustomer(c); 
+                                  setCustomerModalOpen(true); 
+                                }}
+                                className="h-8 w-8 p-0"
+                                title="Edit customer"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (confirm(`Delete customer ${c.name}?`)) {
+                                    deleteCustomer.mutate(c.id);
+                                  }
+                                }}
+                                className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                                title="Delete customer"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                        
+                        {/* Expanded Sales Orders */}
+                        {expandedRows.has(c.id) && customerSalesData[c.id]?.orders.length > 0 && (
+                          <TableRow className="bg-purple-50/30">
+                            <TableCell colSpan={8} className="py-4 px-6">
+                              <div className="space-y-3">
+                                <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                                  <Package className="h-5 w-5 text-purple-600" />
+                                  Sales Orders ({customerSalesData[c.id].salesCount})
+                                </h4>
+                                <div className="grid gap-3">
+                                  {customerSalesData[c.id].orders.map((order) => (
+                                    <div key={order.id} className="bg-white rounded-lg border border-purple-100 p-4 hover:shadow-md transition-shadow">
+                                      <div className="grid grid-cols-5 gap-4">
+                                        <div>
+                                          <div className="text-xs text-gray-500 mb-1">Order ID</div>
+                                          <div className="text-sm font-medium">#{order.id.slice(-8)}</div>
+                                          <div className="text-xs text-gray-500 mt-1">{format(new Date(order.created_at), 'MMM dd, yyyy')}</div>
+                                        </div>
+                                        <div>
+                                          <div className="text-xs text-gray-500 mb-1">Status</div>
+                                          <Badge className="text-xs">
+                                            {order.po_created ? 'PO Created' : order.status || 'Draft'}
+                                          </Badge>
+                                        </div>
+                                        <div>
+                                          <div className="text-xs text-gray-500 mb-1">Amount</div>
+                                          <div className="text-sm font-semibold text-green-600">
+                                            ₹{(order.grand_total || order.final_price || 0).toLocaleString('en-IN')}
+                                          </div>
+                                          {order.emi_enabled && (
+                                            <div className="text-xs text-purple-600 mt-1">EMI: ₹{order.emi_monthly}/mo</div>
+                                          )}
+                                        </div>
+                                        <div>
+                                          <div className="text-xs text-gray-500 mb-1">Delivery</div>
+                                          <div className="text-sm">
+                                            {order.expected_delivery_date ? format(new Date(order.expected_delivery_date), 'MMM dd, yyyy') : 'Not set'}
+                                          </div>
+                                          <div className="text-xs text-gray-500 mt-1">Floor: {order.delivery_floor || 'Ground'}</div>
+                                        </div>
+                                        <div>
+                                          <div className="text-xs text-gray-500 mb-1">Details</div>
+                                          {order.ad_name && <div className="text-xs">Ad: {order.ad_name}</div>}
+                                          {order.bajaj_finance_amount && (
+                                            <div className="text-xs text-blue-600">Bajaj: ₹{order.bajaj_finance_amount.toLocaleString()}</div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-600">
+                    Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, sortedCustomers.length)} of {sortedCustomers.length}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      Previous
+                    </Button>
+                    <div className="flex items-center px-4 text-sm">
+                      Page {currentPage} of {totalPages}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+
+            {/* INTERACTIONS TAB */}
+            <TabsContent value="interactions" className="mt-0 space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Customer Interactions</h3>
+                  <p className="text-sm text-gray-600">Track all communication and engagement history</p>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-white p-6">
+                {interactions && interactions.length > 0 ? (
+                  <div className="space-y-4">
+                    {interactions.map((interaction) => {
+                      const customer = customers.find(c => c.id === interaction.customer_id);
+                      return (
+                        <div key={interaction.id} className="flex gap-4 p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+                          <div className="h-10 w-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0">
+                            {customer?.name.charAt(0).toUpperCase() || '?'}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="font-semibold text-gray-900">{customer?.name || 'Unknown Customer'}</div>
+                              <div className="text-xs text-gray-500">
+                                {format(new Date(interaction.interaction_date), 'MMM dd, yyyy HH:mm')}
+                              </div>
+                            </div>
+                            <Badge variant="outline" className="mb-2">
+                              {interaction.type}
+                            </Badge>
+                            <p className="text-sm text-gray-700">{interaction.notes}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-500">
+                    <MessageSquare className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                    <p className="text-lg">No interactions recorded yet</p>
+                    <p className="text-sm">Start tracking customer communications</p>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+
+            {/* SALES ORDERS TAB */}
+            <TabsContent value="sales" className="mt-0 space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">All Sales Orders</h3>
+                  <p className="text-sm text-gray-600">Complete order history across all customers</p>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 overflow-x-auto bg-white">
+                <Table>
+                  <TableHeader className="bg-gradient-to-r from-gray-50 to-gray-100">
+                    <TableRow>
+                      <TableHead>Order ID</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead>Delivery Date</TableHead>
+                      <TableHead>EMI</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {salesOrders && salesOrders.length > 0 ? (
+                      salesOrders.map((order) => {
+                        const customer = customers.find(c => c.id === order.customer_id);
+                        return (
+                          <TableRow key={order.id} className="hover:bg-gray-50">
+                            <TableCell className="font-medium">#{order.id.slice(-8)}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <div className="h-8 w-8 bg-gradient-to-br from-purple-500 to-blue-600 rounded-full flex items-center justify-center text-white text-xs font-semibold">
+                                  {customer?.name.charAt(0).toUpperCase() || '?'}
+                                </div>
+                                <span>{customer?.name || 'Unknown'}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {format(new Date(order.created_at), 'MMM dd, yyyy')}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={order.po_created ? 'default' : 'secondary'}>
+                                {order.po_created ? 'PO Created' : order.status || 'Draft'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right font-semibold text-green-600">
+                              ₹{(order.grand_total || order.final_price || 0).toLocaleString('en-IN')}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {order.expected_delivery_date 
+                                ? format(new Date(order.expected_delivery_date), 'MMM dd, yyyy')
+                                : '-'
+                              }
+                            </TableCell>
+                            <TableCell>
+                              {order.emi_enabled ? (
+                                <div className="text-xs">
+                                  <div className="font-semibold text-purple-600">₹{order.emi_monthly}/mo</div>
+                                  <div className="text-gray-500">{order.emi_plan}</div>
+                                </div>
+                              ) : (
+                                '-'
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-12 text-gray-500">
+                          <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                          <p className="text-lg">No sales orders yet</p>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </TabsContent>
+
+            {/* ANALYTICS TAB */}
+            <TabsContent value="analytics" className="mt-0 space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Sales Analytics</h3>
+                  <p className="text-sm text-gray-600">Performance metrics and insights</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {/* Top Customers by Revenue */}
+                <Card className="col-span-full lg:col-span-2">
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <TrendingUp className="h-5 w-5 text-purple-600" />
+                      Top Customers by Revenue
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {Object.entries(customerSalesData)
+                        .sort(([, a], [, b]) => b.totalValue - a.totalValue)
+                        .slice(0, 10)
+                        .map(([customerId, data]) => {
+                          const customer = customers.find(c => c.id === customerId);
+                          if (!customer) return null;
+                          const percentage = totalRevenue > 0 ? (data.totalValue / totalRevenue) * 100 : 0;
+                          return (
+                            <div key={customerId} className="flex items-center gap-3">
+                              <div className="h-10 w-10 bg-gradient-to-br from-purple-500 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0">
+                                {customer.name.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="font-medium text-sm truncate">{customer.name}</span>
+                                  <span className="font-semibold text-sm text-green-600 ml-2">
+                                    ₹{data.totalValue.toLocaleString('en-IN')}
+                                  </span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                  <div 
+                                    className="bg-gradient-to-r from-purple-600 to-blue-600 h-2 rounded-full transition-all"
+                                    style={{ width: `${Math.min(percentage, 100)}%` }}
+                                  />
+                                </div>
+                                <div className="flex items-center justify-between mt-1">
+                                  <span className="text-xs text-gray-500">{data.salesCount} orders</span>
+                                  <span className="text-xs text-gray-500">{percentage.toFixed(1)}% of total</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Customer Segmentation */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Activity className="h-5 w-5 text-blue-600" />
+                      Customer Segments
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium">Active Customers</span>
+                          <span className="text-sm font-semibold text-green-600">
+                            {customers.filter(c => c.status === 'Active').length}
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-green-500 h-2 rounded-full"
+                            style={{ width: `${(customers.filter(c => c.status === 'Active').length / totalCustomers) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium">With Purchases</span>
+                          <span className="text-sm font-semibold text-purple-600">
+                            {customersWithPurchases}
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-purple-500 h-2 rounded-full"
+                            style={{ width: `${(customersWithPurchases / totalCustomers) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium">With Pending Orders</span>
+                          <span className="text-sm font-semibold text-orange-600">
+                            {Object.values(customerSalesData).filter(d => d.pendingOrders > 0).length}
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-orange-500 h-2 rounded-full"
+                            style={{ 
+                              width: `${(Object.values(customerSalesData).filter(d => d.pendingOrders > 0).length / totalCustomers) * 100}%` 
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="pt-4 border-t">
+                        <div className="text-sm text-gray-600 mb-2">Average Order Value</div>
+                        <div className="text-2xl font-bold text-gray-900">
+                          ₹{totalOrders > 0 ? Math.round(totalRevenue / totalOrders).toLocaleString('en-IN') : '0'}
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Order Status Distribution */}
+                <Card className="col-span-full">
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <PhoneCall className="h-5 w-5 text-green-600" />
+                      Recent Activity Summary
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div className="p-4 rounded-lg bg-green-50 border border-green-200">
+                        <div className="text-sm text-green-700 mb-1">Completed Orders</div>
+                        <div className="text-2xl font-bold text-green-900">
+                          {salesOrders.filter(o => o.status === 'completed' || o.po_created).length}
+                        </div>
+                      </div>
+                      <div className="p-4 rounded-lg bg-orange-50 border border-orange-200">
+                        <div className="text-sm text-orange-700 mb-1">Pending Orders</div>
+                        <div className="text-2xl font-bold text-orange-900">
+                          {salesOrders.filter(o => o.status !== 'completed' && !o.po_created).length}
+                        </div>
+                      </div>
+                      <div className="p-4 rounded-lg bg-purple-50 border border-purple-200">
+                        <div className="text-sm text-purple-700 mb-1">EMI Orders</div>
+                        <div className="text-2xl font-bold text-purple-900">
+                          {salesOrders.filter(o => o.emi_enabled).length}
+                        </div>
+                      </div>
+                      <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
+                        <div className="text-sm text-blue-700 mb-1">This Month</div>
+                        <div className="text-2xl font-bold text-blue-900">
+                          {salesOrders.filter(o => {
+                            const orderDate = new Date(o.created_at);
+                            const now = new Date();
+                            return orderDate.getMonth() === now.getMonth() && 
+                                   orderDate.getFullYear() === now.getFullYear();
+                          }).length}
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+          </CardContent>
+        </Tabs>
+      </Card>
+
+      {/* Modals */}
+      <Dialog open={customerModalOpen} onOpenChange={setCustomerModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{selectedCustomer ? 'Edit Customer' : 'Add New Customer'}</DialogTitle>
+            <DialogDescription>
+              {selectedCustomer ? 'Update customer information' : 'Create a new customer record'}
+            </DialogDescription>
+          </DialogHeader>
+          <CustomerForm
+            initialData={selectedCustomer || undefined}
+            onSubmit={handleSaveCustomer}
+            onCancel={() => setCustomerModalOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={interactionModalOpen} onOpenChange={setInteractionModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Log Interaction</DialogTitle>
+            <DialogDescription>
+              Record a new interaction with {selectedCustomer?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <InteractionLogForm
+            onSubmit={handleAddInteraction}
+            onCancel={() => setInteractionModalOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

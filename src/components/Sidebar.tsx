@@ -40,9 +40,14 @@ const dashboardItems: NavItem[] = [
   { href: "/dashboard", icon: Home, label: "Dashboard", permission: 'dashboard:read' },
 ];
 
-// Sales & CRM
+// CRM
+const crmItems: NavItem[] = [
+  { href: "/crm/dashboard", icon: Home, label: "CRM Dashboard", permission: ['customer:read','customer:read_own'] },
+  { href: "/crm/customers", icon: Users, label: "Customers", permission: ['customer:read','customer:read_own'] },
+];
+
+// Sales
 const salesItems: NavItem[] = [
-  { href: "/sales-crm", icon: Users, label: "CRM", permission: ['customer:read','customer:read_own'] },
   { href: "/sales", icon: ShoppingCart, label: "Sales Orders", permission: ['sales_order:read','sales_order:read_own'] },
   { href: "/billing", icon: Receipt, label: "Billing", permission: 'product:read' },
   { href: "/invoices", icon: FileText, label: "Invoices", permission: ['invoice:create','invoice:read'] },
@@ -277,7 +282,14 @@ export const Sidebar = () => {
       <div className="space-y-2 flex-1 flex flex-col justify-evenly py-4">
         {/* Collapsible Sections */}
         <CollapsibleSection 
-          title="Sales & CRM" 
+          title="CRM" 
+          items={crmItems} 
+          sectionKey="crm"
+          icon={Users}
+        />
+
+        <CollapsibleSection 
+          title="Sales" 
           items={salesItems} 
           sectionKey="sales"
           icon={ShoppingCart}

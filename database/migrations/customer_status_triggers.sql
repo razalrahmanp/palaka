@@ -1,0 +1,222 @@
+[
+  {
+    "id": "fe694521-1be8-4cce-b0d9-82a3e302bbb6",
+    "name": "ABDUL BHAHIS",
+    "status": "Active",
+    "total_orders": 1,
+    "total_invoices": 1,
+    "paid_invoices": 0,
+    "unpaid_partial_invoices": 1,
+    "total_invoice_amount": "39000",
+    "total_paid_amount": "38500"
+  },
+  {
+    "id": "b8b55668-e2af-4230-8415-c38a26687923",
+    "name": "ABDUL KADHER",
+    "status": "Active",
+    "total_orders": 1,
+    "total_invoices": 1,
+    "paid_invoices": 0,
+    "unpaid_partial_invoices": 1,
+    "total_invoice_amount": "20500",
+    "total_paid_amount": "9900"
+  },
+  {
+    "id": "1d28cc42-71cd-4dd0-81d5-234759a26e27",
+    "name": "ABDUL ROUF",
+    "status": "Active",
+    "total_orders": 1,
+    "total_invoices": 1,
+    "paid_invoices": 0,
+    "unpaid_partial_invoices": 1,
+    "total_invoice_amount": "15800",
+    "total_paid_amount": "15300"
+  },
+  {
+    "id": "b0c16ffa-c86f-4349-b52e-c8574789221c",
+    "name": "ABID",
+    "status": "Active",
+    "total_orders": 1,
+    "total_invoices": 1,
+    "paid_invoices": 0,
+    "unpaid_partial_invoices": 1,
+    "total_invoice_amount": "52200.38",
+    "total_paid_amount": "52000"
+  },
+  {
+    "id": "e5430e13-6dda-4e49-8e27-e978c83e5e9a",
+    "name": "ABOOBACKER",
+    "status": "Active",
+    "total_orders": 3,
+    "total_invoices": 3,
+    "paid_invoices": 2,
+    "unpaid_partial_invoices": 1,
+    "total_invoice_amount": "370500.03",
+    "total_paid_amount": "296700"
+  },
+  {
+    "id": "6b4766f9-7f1b-4856-9966-e016ff9d76c3",
+    "name": "ABU",
+    "status": "Active",
+    "total_orders": 2,
+    "total_invoices": 2,
+    "paid_invoices": 1,
+    "unpaid_partial_invoices": 1,
+    "total_invoice_amount": "192520.04",
+    "total_paid_amount": "192520"
+  },
+  {
+    "id": "b12bc6a6-a847-42b2-a5af-a360ebe5fa63",
+    "name": "AM SHAFEEK ",
+    "status": "Active",
+    "total_orders": 1,
+    "total_invoices": 1,
+    "paid_invoices": 0,
+    "unpaid_partial_invoices": 1,
+    "total_invoice_amount": "21500",
+    "total_paid_amount": "15000"
+  },
+  {
+    "id": "89d99053-2e6b-4512-a370-d2e5a00e7d03",
+    "name": "ANSAR",
+    "status": "Active",
+    "total_orders": 1,
+    "total_invoices": 2,
+    "paid_invoices": 1,
+    "unpaid_partial_invoices": 1,
+    "total_invoice_amount": "78750",
+    "total_paid_amount": "35000"
+  },
+  {
+    "id": "dbf854bb-a0ae-4f63-81ab-2cb1a637cdf2",
+    "name": "ARJUN",
+    "status": "Active",
+    "total_orders": 2,
+    "total_invoices": 2,
+    "paid_invoices": 1,
+    "unpaid_partial_invoices": 1,
+    "total_invoice_amount": "51000",
+    "total_paid_amount": "30000"
+  },
+  {
+    "id": "7fee9c72-6912-4372-a274-e1b876a0aa0f",
+    "name": "Ashokan ",
+    "status": "Active",
+    "total_orders": 1,
+    "total_invoices": 1,
+    "paid_invoices": 0,
+    "unpaid_partial_invoices": 1,
+    "total_invoice_amount": "29600",
+    "total_paid_amount": "2000"
+  },
+  {
+    "id": "030b8683-6ced-44ee-bb62-adc0aaadd24e",
+    "name": "ASHRAF",
+    "status": "Active",
+    "total_orders": 1,
+    "total_invoices": 1,
+    "paid_invoices": 0,
+    "unpaid_partial_invoices": 1,
+    "total_invoice_amount": "21000",
+    "total_paid_amount": "5000"
+  },
+  {
+    "id": "1ff628d0-feb5-46e9-a198-376f8d574796",
+    "name": "BABU MI-KKM OLD",
+    "status": "Active",
+    "total_orders": 0,
+    "total_invoices": 1,
+    "paid_invoices": 0,
+    "unpaid_partial_invoices": 1,
+    "total_invoice_amount": "10000",
+    "total_paid_amount": "0"
+  },
+  {
+    "id": "8b9e397b-c088-4052-b0cb-3141677d0376",
+    "name": "BINU CC",
+    "status": "Active",
+    "total_orders": 1,
+    "total_invoices": 1,
+    "paid_invoices": 0,
+    "unpaid_partial_invoices": 1,
+    "total_invoice_amount": "32800",
+    "total_paid_amount": "10000"
+  },
+  {
+    "id": "40239aac-1525-4d5f-afbd-2604247f6083",
+    "name": "DEEPA",
+    "status": "Active",
+    "total_orders": 1,
+    "total_invoices": 1,
+    "paid_invoices": 0,
+    "unpaid_partial_invoices": 1,
+    "total_invoice_amount": "15000",
+    "total_paid_amount": "2000"
+  },
+  {
+    "id": "ecb36290-f99b-434f-8ca4-3d07ae977251",
+    "name": "DEEPA",
+    "status": "Active",
+    "total_orders": 1,
+    "total_invoices": 1,
+    "paid_invoices": 0,
+    "unpaid_partial_invoices": 1,
+    "total_invoice_amount": "20300",
+    "total_paid_amount": "10000"
+  },
+  {
+    "id": "6ff12037-6e7d-40ee-8687-83651553aeea",
+    "name": "DEVADASAN TA",
+    "status": "Active",
+    "total_orders": 1,
+    "total_invoices": 1,
+    "paid_invoices": 0,
+    "unpaid_partial_invoices": 1,
+    "total_invoice_amount": "41000.45",
+    "total_paid_amount": "38400"
+  },
+  {
+    "id": "e9cca49e-aaf5-470e-b06c-1c8885f6575b",
+    "name": "DR JITH",
+    "status": "Active",
+    "total_orders": 1,
+    "total_invoices": 1,
+    "paid_invoices": 0,
+    "unpaid_partial_invoices": 1,
+    "total_invoice_amount": "224800",
+    "total_paid_amount": "10000"
+  },
+  {
+    "id": "48de74b0-2cf5-49dd-82e6-e0e5e88741db",
+    "name": "FAISAL",
+    "status": "Active",
+    "total_orders": 1,
+    "total_invoices": 1,
+    "paid_invoices": 0,
+    "unpaid_partial_invoices": 1,
+    "total_invoice_amount": "70000",
+    "total_paid_amount": "60000"
+  },
+  {
+    "id": "d5606981-7efd-4254-bf36-875a4d72fdc6",
+    "name": "FAVAS",
+    "status": "Active",
+    "total_orders": 1,
+    "total_invoices": 1,
+    "paid_invoices": 0,
+    "unpaid_partial_invoices": 1,
+    "total_invoice_amount": "16800",
+    "total_paid_amount": "16000"
+  },
+  {
+    "id": "d5db5376-58c0-4a53-ae1c-4d8897cb0f7d",
+    "name": "FR. SAIMON",
+    "status": "Active",
+    "total_orders": 1,
+    "total_invoices": 1,
+    "paid_invoices": 0,
+    "unpaid_partial_invoices": 1,
+    "total_invoice_amount": "13800",
+    "total_paid_amount": "2800"
+  }
+]

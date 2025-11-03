@@ -55,21 +55,30 @@ export interface Customer {
   pincode?: string;
   floor?: string;
   notes?: string;
-  status: 'Lead' | 'Active' | 'Churned';
+  status: 'Lead' | 'Active' | 'Churned' | 'Closed';
   source: 'Website' | 'Referral' | 'Trade Show';
   tags: string[];
   created_by?: string;
   created_at: string;
+  customer_visit_date?: string;
+  assigned_sales_rep_id?: string;
 }
 
 export interface Interaction {
   id: string;
   customer_id: string;
-  type: 'Call' | 'Email' | 'Meeting';
+  type: 'Call' | 'Email' | 'Meeting' | 'visit' | 'review_request' | 'review_given' | 'Note';
   notes: string;
   interaction_date: string;
   created_by?: string;
   created_at: string;
+  customer?: {
+    id: string;
+    name: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+  };
 }
 
 // Added config_schema to Product type

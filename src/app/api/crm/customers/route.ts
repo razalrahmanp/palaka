@@ -2,14 +2,30 @@
 import { supabase } from '@/lib/supabasePool'
 import { NextResponse } from 'next/server'
 
-export async function GET() {
-  const { data, error } = await supabase
-    .from('customers')
-    .select('*')
-    .order('created_at', { ascending: false })
+// Disable caching for this route
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
-  if (error) return NextResponse.json({ error }, { status: 500 })
-  return NextResponse.json(data)
+export async function GET() {
+  try {
+    const { data, error, count } = await supabase
+      .from('customers')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .limit(10000) // Increase limit to fetch all customers
+
+    if (error) {
+      console.error('Supabase error fetching customers:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    console.log(`API: Fetched ${data?.length || 0} customers (total count: ${count})`);
+    
+    return NextResponse.json(data);
+  } catch (err) {
+    console.error('API error:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
 }
 
 export async function POST(req: Request) {

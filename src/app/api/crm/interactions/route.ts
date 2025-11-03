@@ -8,7 +8,10 @@ export async function GET(req: Request) {
 
   let query = supabase
     .from('customer_interactions')
-    .select('*')
+    .select(`
+      *,
+      customer:customers(id, name, email, phone, address)
+    `)
     .order('interaction_date', { ascending: false })
 
   if (customerId) {

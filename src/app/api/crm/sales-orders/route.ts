@@ -2,6 +2,25 @@
 import { supabase } from "@/lib/supabaseClient";
 import { NextResponse } from "next/server";
 
+interface SalesOrderItem {
+  id: string;
+  product_id: string;
+  quantity: number;
+  unit_price: number;
+  final_price: number;
+  custom_product_id?: string;
+  name?: string;
+  product?: {
+    id: string;
+    name: string;
+    sku?: string;
+  } | null;
+  custom_product?: {
+    id: string;
+    name: string;
+  } | null;
+}
+
 export async function GET() {
   try {
     // Fetch sales orders with customer information and items
@@ -50,6 +69,24 @@ export async function GET() {
           id,
           name,
           email
+        ),
+        sales_order_items(
+          id,
+          product_id,
+          quantity,
+          unit_price,
+          final_price,
+          custom_product_id,
+          name,
+          product:products(
+            id,
+            name,
+            sku
+          ),
+          custom_product:custom_products(
+            id,
+            name
+          )
         )
       `)
       .order('created_at', { ascending: false });
@@ -104,7 +141,17 @@ export async function GET() {
       
       // Customer info
       customer: order.customers,
-      sales_representative: order.sales_representative
+      sales_representative: order.sales_representative,
+      
+      // Order items
+      items: ((order.sales_order_items as unknown as SalesOrderItem[]) || []).map((item) => ({
+        id: item.id,
+        product_id: item.product_id,
+        quantity: item.quantity,
+        price: item.unit_price,
+        name: item.name || item.custom_product?.name || item.product?.name || 'Unknown Product',
+        sku: item.product?.sku
+      }))
     })) || [];
 
     console.log(`CRM Sales Orders API: Fetched ${transformedOrders.length} orders`);

@@ -1,13 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Calendar, Search, Download, ArrowLeft, Banknote, CreditCard, Building2, Wallet, Receipt } from 'lucide-react';
+import { ArrowLeft, Banknote, CreditCard, Building2, Wallet, Receipt, Download } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 interface PaymentTransaction {
@@ -98,7 +97,7 @@ export default function AllTransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMethod, setFilterMethod] = useState('all');
-  const [filterDateRange, setFilterDateRange] = useState('all');
+  const [isFilterExpanded, setIsFilterExpanded] = useState(true);
 
   useEffect(() => {
     fetchAllTransactions();
@@ -145,189 +144,225 @@ export default function AllTransactionsPage() {
 
   const totalAmount = transactions.reduce((sum, t) => sum + t.amount, 0);
 
-  return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => router.back()}
-            className="flex items-center gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold">All Payment Transactions</h1>
-            <p className="text-muted-foreground">
-              Complete view of all payments by method: Cash, UPI, Card, Cheque, Bank Transfer
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            Export
-          </Button>
-        </div>
-      </div>
+  const exportToCSV = () => {
+    const csvContent = [
+      ['Date', 'Payment #', 'Customer', 'Method', 'Reference', 'Description', 'Amount'].join(','),
+      ...filteredTransactions.map(p => [
+        p.date || p.payment_date || 'N/A',
+        `PAY-${p.id.slice(0, 8)}`,
+        `"${p.customer_name || 'N/A'}"`,
+        p.method,
+        `"${p.reference || 'N/A'}"`,
+        `"${p.description || 'Payment transaction'}"`,
+        p.amount
+      ].join(','))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `all-payments-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
 
-      {/* Summary Cards - Inline */}
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between gap-6 overflow-x-auto">
-            {/* Total Transactions */}
-            <div className="flex flex-col min-w-[180px]">
-              <span className="text-sm font-medium text-muted-foreground mb-1">Total Transactions</span>
-              <span className="text-2xl font-bold">{formatCurrency(totalAmount)}</span>
-              <span className="text-xs text-muted-foreground">{transactions.length} transactions</span>
-            </div>
-            
-            {/* Payment Method Stats */}
-            {paymentMethodSummary.map(({ method, count, total }) => (
-              <div key={method} className="flex flex-col min-w-[150px] border-l-2 border-blue-500 pl-4">
-                <div className="flex items-center gap-2 mb-1">
-                  {getPaymentMethodIcon(method)}
-                  <span className="text-sm font-medium">{method.replace('_', ' ').toUpperCase()}</span>
+  return (
+    <div className="h-screen w-full overflow-hidden flex flex-col">
+      <div className="flex-1 overflow-y-auto">
+        <div className="w-full max-w-full space-y-3 p-2">
+          {/* Header - Gradient Style */}
+          <Card className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => router.back()}
+                    className="h-8 bg-white/10 border-white/20 text-white hover:bg-white/20"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </Button>
+                  <div>
+                    <h1 className="text-lg font-bold flex items-center gap-2">
+                      <Receipt className="h-5 w-5" />
+                      All Payment Transactions
+                    </h1>
+                    <p className="text-xs text-white/80">Complete view of all payments by method</p>
+                  </div>
                 </div>
-                <span className="text-lg font-bold">{formatCurrency(total)}</span>
-                <span className="text-xs text-muted-foreground">{count} transactions</span>
+                <div className="text-right">
+                  <p className="text-xs text-white/80">Total Payments</p>
+                  <p className="text-2xl font-bold">{formatCurrency(totalAmount)}</p>
+                  <p className="text-xs text-white/80">{transactions.length} transactions</p>
+                </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Payment Method Summary Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+            {paymentMethodSummary.map(({ method, count, total }) => (
+              <Card key={method} className="hover:shadow-md transition-shadow">
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    {getPaymentMethodIcon(method)}
+                    <span className="text-xs font-bold text-gray-700">{method.replace('_', ' ').toUpperCase()}</span>
+                  </div>
+                  <p className="text-sm font-bold text-gray-900">{formatCurrency(total)}</p>
+                  <p className="text-[10px] text-gray-500">{count} transactions</p>
+                </CardContent>
+              </Card>
             ))}
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Filters</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="h-4 w-4 absolute left-3 top-3 text-muted-foreground" />
-                <Input
-                  placeholder="Search by customer, payment number, reference..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
+          {/* Filters */}
+          <Card>
+            <CardHeader className="cursor-pointer py-3 px-4" onClick={() => setIsFilterExpanded(!isFilterExpanded)}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 flex-1">
+                  <Input
+                    placeholder="Search by customer, payment number, reference..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="max-w-md h-8 text-sm"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  
+                  <Select value={filterMethod} onValueChange={setFilterMethod}>
+                    <SelectTrigger className="w-36 h-8 text-xs" onClick={(e) => e.stopPropagation()}>
+                      <SelectValue placeholder="Method" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Methods</SelectItem>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="upi">UPI</SelectItem>
+                      <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                      <SelectItem value="card">Card</SelectItem>
+                      <SelectItem value="cheque">Cheque</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                      <SelectItem value="bajaj">Bajaj</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      exportToCSV();
+                    }}
+                    className="h-8 px-3 text-xs"
+                  >
+                    <Download className="h-3 w-3 mr-1" />
+                    Export CSV
+                  </Button>
+                  
+                  <span className="text-xs text-gray-600 ml-auto">
+                    {filteredTransactions.length} of {transactions.length} entries
+                  </span>
+                </div>
               </div>
-            </div>
-            <div className="w-full sm:w-48">
-              <Select value={filterMethod} onValueChange={setFilterMethod}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Payment Method" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Methods</SelectItem>
-                  <SelectItem value="cash">Cash</SelectItem>
-                  <SelectItem value="upi">UPI</SelectItem>
-                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                  <SelectItem value="card">Card</SelectItem>
-                  <SelectItem value="cheque">Cheque</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="w-full sm:w-48">
-              <Select value={filterDateRange} onValueChange={setFilterDateRange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Date Range" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Time</SelectItem>
-                  <SelectItem value="today">Today</SelectItem>
-                  <SelectItem value="week">This Week</SelectItem>
-                  <SelectItem value="month">This Month</SelectItem>
-                  <SelectItem value="quarter">This Quarter</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+            </CardHeader>
+          </Card>
 
-      {/* Transactions Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Receipt className="h-5 w-5" />
-            Transactions ({filteredTransactions.length})
-          </CardTitle>
-          <CardDescription>
-            Showing {filteredTransactions.length} of {transactions.length} transactions
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="text-muted-foreground">Loading transactions...</div>
-            </div>
-          ) : filteredTransactions.length > 0 ? (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[120px]">Date</TableHead>
-                    <TableHead className="w-[140px]">Payment #</TableHead>
-                    <TableHead className="min-w-[150px]">Customer</TableHead>
-                    <TableHead className="w-[130px]">Method</TableHead>
-                    <TableHead className="w-[150px]">Reference</TableHead>
-                    <TableHead className="min-w-[200px]">Description</TableHead>
-                    <TableHead className="text-right w-[120px]">Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredTransactions.map((payment) => (
-                    <TableRow key={payment.id} className="hover:bg-muted/50">
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Calendar className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-mono text-sm">
-                            {payment.date ? formatDate(payment.date) : 
-                             payment.payment_date ? formatDate(payment.payment_date) : 
-                             'N/A'}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {payment.id ? `PAY-${payment.id.slice(0, 8)}` : 'N/A'}
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {payment.customer_name || 'N/A'}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {getPaymentMethodIcon(payment.method)}
-                          {getPaymentMethodBadge(payment.method)}
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {payment.reference || 'N/A'}
-                      </TableCell>
-                      <TableCell className="break-words">
-                        {payment.description || 'Payment transaction'}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold text-green-600">
-                        {formatCurrency(payment.amount)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              <Receipt className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No transactions found matching your criteria</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          {/* Transactions Table */}
+          <Card>
+            <CardContent className="p-0">
+              {loading ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+                  <p className="text-gray-500">Loading transactions...</p>
+                </div>
+              ) : filteredTransactions.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <Receipt className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                  <p className="text-lg">No transactions found</p>
+                  <p className="text-sm">Try adjusting your filters</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-indigo-200">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-[10px] font-bold text-indigo-900 uppercase tracking-wider">Date</th>
+                        <th className="px-3 py-2 text-left text-[10px] font-bold text-indigo-900 uppercase tracking-wider">Payment #</th>
+                        <th className="px-3 py-2 text-left text-[10px] font-bold text-indigo-900 uppercase tracking-wider">Customer</th>
+                        <th className="px-3 py-2 text-left text-[10px] font-bold text-indigo-900 uppercase tracking-wider">Method</th>
+                        <th className="px-3 py-2 text-left text-[10px] font-bold text-indigo-900 uppercase tracking-wider">Reference</th>
+                        <th className="px-3 py-2 text-left text-[10px] font-bold text-indigo-900 uppercase tracking-wider">Description</th>
+                        <th className="px-3 py-2 text-right text-[10px] font-bold text-indigo-900 uppercase tracking-wider">Amount (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {filteredTransactions.map((payment) => (
+                        <tr key={payment.id} className="hover:bg-blue-50/30 transition-colors">
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            <span className="text-[11px] text-gray-600">
+                              {payment.date ? formatDate(payment.date) : 
+                               payment.payment_date ? formatDate(payment.payment_date) : 'N/A'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            <span className="text-[11px] font-mono text-gray-700">
+                              {payment.id ? `PAY-${payment.id.slice(0, 8)}` : 'N/A'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className="text-[11px] font-medium text-gray-900">
+                              {payment.customer_name || 'N/A'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-1.5">
+                              {getPaymentMethodIcon(payment.method)}
+                              {getPaymentMethodBadge(payment.method)}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className="text-[11px] font-mono text-gray-600">
+                              {payment.reference || 'N/A'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className="text-[11px] text-gray-700 truncate max-w-xs block">
+                              {payment.description || 'Payment transaction'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <span className="text-[11px] font-bold text-green-600">
+                              {payment.amount.toLocaleString('en-IN', { 
+                                minimumFractionDigits: 2, 
+                                maximumFractionDigits: 2 
+                              })}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-gradient-to-r from-indigo-50 to-purple-50 border-t-2 border-indigo-300">
+                      <tr className="font-bold">
+                        <td colSpan={6} className="px-3 py-2 text-[11px] text-indigo-900">
+                          TOTAL ({filteredTransactions.length} entries)
+                        </td>
+                        <td className="px-3 py-2 text-right text-[11px] text-green-700">
+                          {filteredTransactions
+                            .reduce((sum, p) => sum + p.amount, 0)
+                            .toLocaleString('en-IN', { 
+                              minimumFractionDigits: 2, 
+                              maximumFractionDigits: 2 
+                            })}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }

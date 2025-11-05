@@ -325,6 +325,19 @@ CREATE TABLE public.bank_transactions (
   CONSTRAINT bank_transactions_pkey PRIMARY KEY (id),
   CONSTRAINT bank_transactions_bank_account_id_fkey FOREIGN KEY (bank_account_id) REFERENCES public.bank_accounts(id)
 );
+CREATE TABLE public.bank_transactions_backup (
+  id uuid NOT NULL,
+  bank_account_id uuid,
+  date date NOT NULL,
+  type text NOT NULL,
+  amount numeric NOT NULL,
+  description text,
+  reference text,
+  balance numeric DEFAULT 0,
+  archived_at timestamp without time zone DEFAULT now(),
+  archived_reason text DEFAULT 'Monthly cleanup - keeping only November 2025'::text,
+  CONSTRAINT bank_transactions_backup_pkey PRIMARY KEY (id)
+);
 CREATE TABLE public.boms (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   product_id uuid,
@@ -1972,6 +1985,14 @@ CREATE TABLE public.rma_requests (
   CONSTRAINT rma_requests_pkey PRIMARY KEY (id),
   CONSTRAINT rma_requests_return_id_fkey FOREIGN KEY (return_id) REFERENCES public.returns(id),
   CONSTRAINT rma_requests_processed_by_fkey FOREIGN KEY (processed_by) REFERENCES public.users(id)
+);
+CREATE TABLE public.role_access_config (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  role text NOT NULL UNIQUE,
+  accessible_routes ARRAY NOT NULL DEFAULT '{}'::text[],
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT role_access_config_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.role_permissions (
   role_id uuid NOT NULL,

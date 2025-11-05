@@ -108,18 +108,33 @@ export async function POST(request: NextRequest) {
     }
 
     // Create journal entry
+    const journalEntryData: {
+      journal_number: string;
+      entry_date: string;
+      description: string;
+      reference_number: string | null;
+      total_debit: number;
+      total_credit: number;
+      created_by?: string;
+      status: string;
+    } = {
+      journal_number,
+      entry_date,
+      description,
+      reference_number: reference_number || null,
+      total_debit: totalDebits,
+      total_credit: totalCredits,
+      status: 'DRAFT',
+    };
+
+    // Only add created_by if it's provided and valid
+    if (created_by && created_by !== '00000000-0000-0000-0000-000000000000') {
+      journalEntryData.created_by = created_by;
+    }
+
     const { data: journalEntry, error: journalError } = await supabase
       .from('journal_entries')
-      .insert([{
-        journal_number,
-        entry_date,
-        description,
-        reference_number: reference_number || null,
-        total_debit: totalDebits,
-        total_credit: totalCredits,
-        created_by: created_by || '00000000-0000-0000-0000-000000000000',
-        status: 'DRAFT',
-      }])
+      .insert([journalEntryData])
       .select()
       .single();
 

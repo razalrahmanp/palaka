@@ -12,8 +12,7 @@ import {
   Dialog, 
   DialogContent, 
   DialogHeader, 
-  DialogTitle, 
-  DialogTrigger,
+  DialogTitle,
   DialogFooter 
 } from '@/components/ui/dialog';
 
@@ -27,7 +26,8 @@ import {
   ArrowRightLeft,
   Banknote,
   IndianRupee,
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 
 interface BankAccount {
@@ -93,10 +93,9 @@ export function BankAccountManager() {
   const [upiAccounts, setUpiAccounts] = useState<UpiAccount[]>([]);
   const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([]);
 
-
   const [showAddAccount, setShowAddAccount] = useState(false);
-
   const [showFundTransfer, setShowFundTransfer] = useState(false);
+  const [fabExpanded, setFabExpanded] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [transferLoading, setTransferLoading] = useState(false);
@@ -184,9 +183,20 @@ export function BankAccountManager() {
     }
   };
 
-
-
-
+  const handleRefresh = async () => {
+    setLoading(true);
+    try {
+      await Promise.all([
+        fetchBankAccounts(),
+        fetchUpiAccounts(),
+        fetchCashAccounts()
+      ]);
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const addBankAccount = async () => {
     try {
@@ -480,18 +490,21 @@ export function BankAccountManager() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-3xl font-bold text-gray-900">Finance Management</h2>
-          <p className="text-gray-600 mt-1">Comprehensive financial management and reporting</p>
+        <div className="flex items-center gap-3">
+          <Button 
+            onClick={handleRefresh}
+            variant="outline"
+            size="icon"
+            className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 hover:bg-green-100"
+            disabled={loading}
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900">Finance Management</h2>
+            <p className="text-gray-600 mt-1">Comprehensive financial management and reporting</p>
+          </div>
         </div>
-        <Button 
-          onClick={handleViewAllTransactions}
-          variant="outline"
-          className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 hover:bg-green-100"
-        >
-          <Receipt className="h-4 w-4 mr-2" />
-          Refresh
-        </Button>
       </div>
 
       {/* Overview Section */}
@@ -550,55 +563,6 @@ export function BankAccountManager() {
           <div>
             <h3 className="text-lg font-semibold text-gray-800">Bank Accounts</h3>
             <p className="text-gray-600 text-sm">Manage bank accounts, UPI accounts and view all payment transactions</p>
-          </div>
-          <div className="flex gap-2">
-            {/* Action Buttons */}
-            <Dialog open={showFundTransfer} onOpenChange={setShowFundTransfer}>
-              <DialogTrigger asChild>
-                <Button className="bg-purple-600 hover:bg-purple-700">
-                  <ArrowRightLeft className="h-4 w-4 mr-2" />
-                  Fund Transfer
-                </Button>
-              </DialogTrigger>
-            </Dialog>
-            
-            <Button
-              className="bg-green-600 hover:bg-green-700"
-              onClick={() => {
-                const cashAccount = cashAccounts[0]?.id || '';
-                const bankAccount = bankAccounts[0]?.id || '';
-                
-                if (!cashAccount || !bankAccount) {
-                  alert('You need both a cash account and a bank account to make a cash deposit.');
-                  return;
-                }
-                
-                setFundTransfer({
-                  fromAccountId: cashAccount,
-                  toAccountId: bankAccount,
-                  amount: '',
-                  description: 'Cash deposit to bank',
-                  reference: '',
-                  date: new Date().toISOString().split('T')[0],
-                  isContraEntry: true
-                });
-                setShowFundTransfer(true);
-              }}
-            >
-              <Banknote className="h-4 w-4 mr-2" />
-              Cash Deposit
-            </Button>
-
-            <Dialog open={showAddAccount} onOpenChange={setShowAddAccount}>
-              <DialogTrigger asChild>
-                <Button className="bg-blue-600 hover:bg-blue-700">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Bank Account
-                </Button>
-              </DialogTrigger>
-            </Dialog>
-            
-
           </div>
         </div>
 
@@ -722,6 +686,38 @@ export function BankAccountManager() {
                 </CardContent>
               </Card>
             ))}
+
+            {/* Cash Flow / All Bank Transactions Card */}
+            <Card 
+              className="bg-gradient-to-r from-indigo-500 to-purple-600 border shadow-md hover:shadow-lg transition-all duration-300 cursor-pointer transform hover:scale-105"
+              onClick={() => router.push('/finance/transactions/all-bank')}
+            >
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="bg-white/20 rounded-lg p-2 flex items-center justify-center backdrop-blur-sm">
+                    <ArrowRightLeft className="h-5 w-5 text-white" />
+                  </div>
+                  <div className="text-white min-w-0 flex-1">
+                    <h3 className="font-semibold text-sm truncate">Cash Flow</h3>
+                    <p className="text-white/70 text-xs">All Bank Transactions</p>
+                  </div>
+                </div>
+                
+                <div className="text-white">
+                  <p className="text-lg font-bold mb-2">
+                    View All Accounts
+                  </p>
+                  <div className="mb-2">
+                    <Badge className="bg-blue-200 text-blue-800 text-xs px-2 py-0.5">
+                      {bankAccounts.length + cashAccounts.length} Accounts
+                    </Badge>
+                  </div>
+                  <div className="text-center text-white/80 text-xs">
+                    Click to view all transactions →
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
             
             {/* Empty State */}
             {bankAccounts.length === 0 && upiAccounts.length === 0 && cashAccounts.length === 0 && (
@@ -1025,6 +1021,141 @@ export function BankAccountManager() {
               {fundTransfer.isContraEntry ? 'Deposit Cash' : 'Transfer Funds'}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Floating Action Button */}
+      <div className="fixed bottom-6 right-6 z-50">
+        <div 
+          className="relative"
+          onMouseEnter={() => setFabExpanded(true)}
+          onMouseLeave={() => setFabExpanded(false)}
+        >
+          {/* Expanded Action Buttons */}
+          <div className={`absolute bottom-16 right-0 flex flex-col gap-3 transition-all duration-300 ${
+            fabExpanded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
+          }`}>
+            {/* All Transactions */}
+            <button
+              onClick={handleViewAllTransactions}
+              className="group flex items-center gap-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-4 py-3 rounded-full shadow-lg transition-all duration-200 hover:scale-105"
+            >
+              <span className="text-sm font-medium whitespace-nowrap">All Transactions</span>
+              <div className="bg-white/20 p-2 rounded-full">
+                <Receipt className="h-4 w-4" />
+              </div>
+            </button>
+
+            {/* Fund Transfer */}
+            <button
+              onClick={() => setShowFundTransfer(true)}
+              className="group flex items-center gap-3 bg-purple-600 hover:bg-purple-700 text-white px-4 py-3 rounded-full shadow-lg transition-all duration-200 hover:scale-105"
+            >
+              <span className="text-sm font-medium whitespace-nowrap">Fund Transfer</span>
+              <div className="bg-white/20 p-2 rounded-full">
+                <ArrowRightLeft className="h-4 w-4" />
+              </div>
+            </button>
+
+            {/* Cash Deposit */}
+            <button
+              onClick={() => {
+                const cashAccount = cashAccounts[0]?.id || '';
+                const bankAccount = bankAccounts[0]?.id || '';
+                
+                if (!cashAccount || !bankAccount) {
+                  alert('You need both a cash account and a bank account to make a cash deposit.');
+                  return;
+                }
+                
+                setFundTransfer({
+                  fromAccountId: cashAccount,
+                  toAccountId: bankAccount,
+                  amount: '',
+                  description: 'Cash deposit to bank',
+                  reference: '',
+                  date: new Date().toISOString().split('T')[0],
+                  isContraEntry: true
+                });
+                setShowFundTransfer(true);
+              }}
+              className="group flex items-center gap-3 bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-full shadow-lg transition-all duration-200 hover:scale-105"
+            >
+              <span className="text-sm font-medium whitespace-nowrap">Cash Deposit</span>
+              <div className="bg-white/20 p-2 rounded-full">
+                <Banknote className="h-4 w-4" />
+              </div>
+            </button>
+
+            {/* Add Bank Account */}
+            <button
+              onClick={() => setShowAddAccount(true)}
+              className="group flex items-center gap-3 bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-full shadow-lg transition-all duration-200 hover:scale-105"
+            >
+              <span className="text-sm font-medium whitespace-nowrap">Add Bank Account</span>
+              <div className="bg-white/20 p-2 rounded-full">
+                <Plus className="h-4 w-4" />
+              </div>
+            </button>
+          </div>
+
+          {/* Main FAB Button */}
+          <button
+            className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white p-4 rounded-full shadow-2xl transition-all duration-300 hover:scale-110 hover:rotate-90"
+          >
+            <Plus className="h-6 w-6" />
+          </button>
+        </div>
+      </div>
+
+      {/* Add Account Dialog */}
+      <Dialog open={showAddAccount} onOpenChange={setShowAddAccount}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add New Bank Account</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="account-name">Account Name</Label>
+              <Input
+                id="account-name"
+                placeholder="e.g., Main Business Account"
+                value={newAccount.name}
+                onChange={(e) => setNewAccount({ ...newAccount, name: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="account-number">Account Number</Label>
+              <Input
+                id="account-number"
+                placeholder="e.g., 1234567890"
+                value={newAccount.account_number}
+                onChange={(e) => setNewAccount({ ...newAccount, account_number: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="initial-balance">Initial Balance</Label>
+              <Input
+                id="initial-balance"
+                type="number"
+                placeholder="0.00"
+                value={newAccount.current_balance || ''}
+                onChange={(e) => setNewAccount({ ...newAccount, current_balance: parseFloat(e.target.value) || 0 })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddAccount(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={addBankAccount}
+              disabled={!newAccount.name || !newAccount.account_number}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              Add Account
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

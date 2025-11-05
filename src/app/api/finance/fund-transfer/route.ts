@@ -78,52 +78,11 @@ export async function POST(req: Request) {
 
     // Perform the transfer operations
     console.log(`Processing fund transfer: ₹${amount} from ${fromAccount.name} to ${toAccount.name}`);
+    console.log(`Initial balances - From: ₹${fromAccount.current_balance}, To: ₹${toAccount.current_balance}`);
+    console.log(`Note: Balances will be automatically updated by database trigger 'trg_update_bank_account_balance'`);
 
-    // 1. Update source account (debit)
-    const { error: debitError } = await supabaseAdmin
-      .from('bank_accounts')
-      .update({
-        current_balance: fromAccount.current_balance - amount,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', fromAccountId);
-
-    if (debitError) {
-      console.error('Error updating source account:', debitError);
-      return NextResponse.json({
-        success: false,
-        error: 'Failed to debit source account.'
-      }, { status: 500 });
-    }
-
-    // 2. Update destination account (credit)
-    const { error: creditError } = await supabaseAdmin
-      .from('bank_accounts')
-      .update({
-        current_balance: toAccount.current_balance + amount,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', toAccountId);
-
-    if (creditError) {
-      console.error('Error updating destination account:', creditError);
-      
-      // Rollback the source account update
-      await supabaseAdmin
-        .from('bank_accounts')
-        .update({
-          current_balance: fromAccount.current_balance,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', fromAccountId);
-
-      return NextResponse.json({
-        success: false,
-        error: 'Failed to credit destination account. Transaction rolled back.'
-      }, { status: 500 });
-    }
-
-    // 3. Record transaction history for source account (withdrawal)
+    // Record transaction history for source account (withdrawal)
+    // The database trigger will automatically deduct the amount from source account balance
     const { error: debitTransactionError } = await supabaseAdmin
       .from('bank_transactions')
       .insert({
@@ -131,18 +90,23 @@ export async function POST(req: Request) {
         date: date,
         type: 'withdrawal',
         amount: amount,
-        description: `${transferDescription} (Outgoing)`,
-        reference: transferReference,
-        transaction_type: 'fund_transfer',
-        related_account_id: toAccountId,
-        created_at: new Date().toISOString()
+        description: `${transferDescription} (To: ${toAccount.name})`,
+        reference: transferReference
       });
 
     if (debitTransactionError) {
       console.error('Error recording debit transaction:', debitTransactionError);
+      console.error('Debit transaction error details:', JSON.stringify(debitTransactionError));
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to record withdrawal transaction.'
+      }, { status: 500 });
+    } else {
+      console.log('✅ Debit transaction recorded successfully');
     }
 
-    // 4. Record transaction history for destination account (deposit)
+    // Record transaction history for destination account (deposit)
+    // The database trigger will automatically add the amount to destination account balance
     const { error: creditTransactionError } = await supabaseAdmin
       .from('bank_transactions')
       .insert({
@@ -150,15 +114,22 @@ export async function POST(req: Request) {
         date: date,
         type: 'deposit',
         amount: amount,
-        description: `${transferDescription} (Incoming)`,
-        reference: transferReference,
-        transaction_type: 'fund_transfer',
-        related_account_id: fromAccountId,
-        created_at: new Date().toISOString()
+        description: `${transferDescription} (From: ${fromAccount.name})`,
+        reference: transferReference
       });
 
     if (creditTransactionError) {
       console.error('Error recording credit transaction:', creditTransactionError);
+      console.error('Credit transaction error details:', JSON.stringify(creditTransactionError));
+      
+      // Note: The withdrawal was already recorded and balance updated by trigger
+      // In a production system, you might want to implement a rollback mechanism
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to record deposit transaction. Withdrawal was processed but deposit failed.'
+      }, { status: 500 });
+    } else {
+      console.log('✅ Credit transaction recorded successfully');
     }
 
     // 5. Get updated account balances
@@ -225,16 +196,14 @@ export async function GET(req: Request) {
       .from('bank_transactions')
       .select(`
         id, date, type, amount, description, reference, 
-        bank_account_id, related_account_id,
-        bank_accounts!bank_transactions_bank_account_id_fkey(name),
-        related_account:bank_accounts!bank_transactions_related_account_id_fkey(name)
+        bank_account_id,
+        bank_accounts!bank_transactions_bank_account_id_fkey(name, account_type)
       `)
-      .eq('transaction_type', 'fund_transfer')
       .order('date', { ascending: false })
-      .order('created_at', { ascending: false });
+      .order('id', { ascending: false });
 
     if (accountId) {
-      query = query.or(`bank_account_id.eq.${accountId},related_account_id.eq.${accountId}`);
+      query = query.eq('bank_account_id', accountId);
     }
 
     const offset = (page - 1) * limit;
@@ -251,8 +220,7 @@ export async function GET(req: Request) {
 
     // Format the transfer data for display
     const formattedTransfers = transfers?.map(transfer => {
-      const bankAccount = transfer.bank_accounts as { name?: string } | null;
-      const relatedAccount = transfer.related_account as { name?: string } | null;
+      const bankAccount = transfer.bank_accounts as { name?: string; account_type?: string } | null;
       
       return {
         id: transfer.id,
@@ -262,7 +230,7 @@ export async function GET(req: Request) {
         reference: transfer.reference,
         type: transfer.type,
         accountName: bankAccount?.name || 'Unknown Account',
-        relatedAccountName: relatedAccount?.name || 'Unknown Account',
+        accountType: bankAccount?.account_type || 'BANK',
         isIncoming: transfer.type === 'deposit',
         isOutgoing: transfer.type === 'withdrawal'
       };

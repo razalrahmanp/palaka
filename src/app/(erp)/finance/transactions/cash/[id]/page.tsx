@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Wallet, ArrowUpCircle, ArrowDownCircle, Download, Calendar, TrendingUp, TrendingDown, DollarSign, Receipt, CreditCard, RefreshCw, Filter, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, Wallet, ArrowUpCircle, ArrowDownCircle, Download, ChevronDown, ChevronUp } from 'lucide-react';
 import { useRouter, useParams } from 'next/navigation';
 
 interface CashTransaction {
@@ -268,7 +268,21 @@ export default function CashAccountTransactions() {
       new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime()
     );
 
-    setFilteredTransactions(filtered);
+    // Calculate running balance for filtered transactions
+    let runningBalance = 0;
+    const transactionsWithBalance = filtered.map(transaction => {
+      if (transaction.transaction_type === 'CREDIT') {
+        runningBalance += transaction.amount;
+      } else {
+        runningBalance -= transaction.amount;
+      }
+      return {
+        ...transaction,
+        running_balance: runningBalance
+      };
+    });
+
+    setFilteredTransactions(transactionsWithBalance);
   }, [transactions, searchTerm, filterType, dateFrom, dateTo, activeCategory]);
 
   useEffect(() => {
@@ -350,366 +364,186 @@ export default function CashAccountTransactions() {
   return (
     <div className="h-screen w-full overflow-hidden flex flex-col">
       <div className="flex-1 overflow-y-auto">
-        <div className="w-full max-w-full">
-          {/* Header */}
-          <div className="bg-white border-b border-gray-200 p-3 sticky top-0 z-10">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-3">
-              <div className="flex items-center gap-2 flex-wrap">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => router.back()}
-                  className="flex items-center gap-2 h-8"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  Back
-                </Button>
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 bg-emerald-100 rounded-lg">
-                    <Wallet className="h-4 w-4 text-emerald-600" />
-                  </div>
+        <div className="w-full max-w-full space-y-3 p-2">
+          {/* Header - Gradient Style */}
+          <Card className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => router.back()}
+                    className="h-8 bg-white/10 border-white/20 text-white hover:bg-white/20"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </Button>
                   <div>
-                    <h1 className="text-base sm:text-lg font-bold text-gray-900">
-                      {account.name} - Cash Ledger
+                    <h1 className="text-lg font-bold flex items-center gap-2">
+                      <Wallet className="h-5 w-5" />
+                      {account.name}
                     </h1>
-                    <p className="text-[10px] sm:text-xs text-gray-600">Debit & Credit Transaction History</p>
+                    <p className="text-xs text-white/80">Cash Ledger</p>
                   </div>
                 </div>
+                <div className="text-right">
+                  <p className="text-xs text-white/80">Current Balance</p>
+                  <p className="text-2xl font-bold">
+                    {formatCurrency(account.current_balance)}
+                  </p>
+                </div>
               </div>
-              <div className="text-right">
-                <p className="text-[10px] text-gray-500">Current Balance</p>
-                <p className={`text-base sm:text-lg font-bold ${account.current_balance >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {formatCurrency(account.current_balance)}
-                </p>
-              </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
           
-          {/* Collapsible Filter Toggle */}
-          <button
-            onClick={() => setIsFilterExpanded(!isFilterExpanded)}
-            className="w-full flex items-center justify-between px-3 py-2 border-t bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 transition-all"
-          >
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-blue-600" />
-              <span className="text-xs font-semibold text-gray-700">
-                Filters & Calendar {isFilterExpanded ? '(Expanded)' : '(Collapsed)'}
-              </span>
-            </div>
-            {isFilterExpanded ? (
-              <ChevronUp className="h-4 w-4 text-gray-500" />
-            ) : (
-              <ChevronDown className="h-4 w-4 text-gray-500" />
-            )}
-          </button>
-          
-          {isFilterExpanded && (
-            <div className="transition-all duration-300 ease-in-out">
-              {/* Calendar Section - 7 Months Horizontal View */}
-              <div className="mb-2 overflow-hidden">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-3.5 w-3.5 text-gray-600" />
-                <h3 className="text-xs font-semibold text-gray-700">Quick Date Selection</h3>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => scrollMonths('prev')}
-                  className="h-6 w-6 p-0"
-                  title="Previous months"
-                >
-                  <ArrowLeft className="h-3 w-3" />
-                </Button>
-                {selectedDate && (
+          {/* Filters & Calendar Section */}
+          <Card>
+            <CardHeader className="cursor-pointer py-3 px-4" onClick={() => setIsFilterExpanded(!isFilterExpanded)}>
+              <div className="flex items-center justify-between">
+                {/* Search and Date Filters in Header */}
+                <div className="flex items-center gap-2 flex-1">
+                  <Input
+                    placeholder="Search..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="max-w-xs h-8 text-sm"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  
+                  <Select value={filterType} onValueChange={setFilterType}>
+                    <SelectTrigger className="w-24 h-8 text-xs" onClick={(e) => e.stopPropagation()}>
+                      <SelectValue placeholder="All" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="credit">Credit</SelectItem>
+                      <SelectItem value="debit">Debit</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  
+                  <Input
+                    type="date"
+                    placeholder="dd-mm-yyyy"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="w-36 h-8 text-xs"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  
+                  <Input
+                    type="date"
+                    placeholder="dd-mm-yyyy"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="w-36 h-8 text-xs"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
-                    onClick={() => {
-                      setSelectedDate('');
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSearchTerm('');
+                      setFilterType('all');
                       setDateFrom('');
                       setDateTo('');
+                      setSelectedDate('');
+                      setActiveCategory('all');
                     }}
-                    className="text-xs text-gray-600 hover:text-gray-900 h-6 px-2"
+                    className="h-8 text-xs"
                   >
                     Clear
                   </Button>
-                )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => scrollMonths('next')}
-                  className="h-6 w-6 p-0"
-                  title="Next months"
-                >
-                  <ArrowLeft className="h-3 w-3 rotate-180" />
-                </Button>
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      exportToCSV();
+                    }}
+                    className="h-8 px-3 text-xs"
+                  >
+                    <Download className="h-3 w-3 mr-1" />
+                    Export CSV
+                  </Button>
+                </div>
+                {isFilterExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </div>
-            </div>
-            
-            {/* 7 Months Grid */}
-            <div className="w-full bg-white rounded border border-gray-200 p-1.5">
-              <div className="grid grid-cols-7 gap-0.5">
-                {monthsData.map((month, monthIndex) => (
-                  <div key={monthIndex} className="flex flex-col">
-                    {/* Month Header - Clickable */}
-                    <button
-                      onClick={() => handleMonthClick(month.yearNum, month.monthNum)}
-                      className="text-center mb-1 py-1 bg-gray-50 rounded hover:bg-emerald-50 transition-colors cursor-pointer"
-                      title={`Show all transactions for ${month.monthName} ${month.yearNum}`}
-                    >
-                      <div className="text-[9px] sm:text-[10px] font-bold text-gray-700">{month.monthName}</div>
-                      <div className="text-[8px] text-gray-500">{month.yearNum}</div>
-                    </button>
-                    
-                    {/* Days */}
-                    <div className="grid grid-cols-7 gap-[1px]">
-                      {month.days.map((day, dayIndex) => (
-                        <button
-                          key={dayIndex}
-                          onClick={() => handleDateClick(day.date)}
-                          className={`aspect-square rounded-sm flex items-center justify-center text-[8px] sm:text-[9px] font-medium transition-all ${
-                            selectedDate === day.date
-                              ? 'bg-emerald-600 text-white shadow-sm'
-                              : day.isToday
-                              ? 'bg-blue-500 text-white font-bold'
-                              : 'bg-gray-50 text-gray-700 hover:bg-emerald-100 hover:text-emerald-700'
-                          }`}
-                        >
-                          {day.day}
-                        </button>
-                      ))}
+            </CardHeader>
+
+            {isFilterExpanded && (
+              <CardContent className="space-y-3 px-4 pb-4">
+                {/* Stylish Calendar in Single Row */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-xs text-gray-700">Quick Date Selection</h3>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => scrollMonths('prev')}
+                        className="h-7 px-2 text-xs bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 border-blue-200"
+                      >
+                        ←
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentMonthOffset(0)}
+                        className="h-7 px-3 text-xs bg-gradient-to-r from-indigo-500 to-purple-500 text-white hover:from-indigo-600 hover:to-purple-600 border-0"
+                      >
+                        Today
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => scrollMonths('next')}
+                        className="h-7 px-2 text-xs bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 border-blue-200"
+                      >
+                        →
+                      </Button>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          
-          {/* Inline Filters */}
-          <div className="flex flex-wrap items-center gap-1.5 py-2 border-t w-full">
-            <div className="flex-1 min-w-[100px] max-w-xs">
-              <Input
-                placeholder="Search..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="h-7 text-xs w-full"
-              />
-            </div>
-            <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="w-20 h-7 text-xs">
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="credit">Credit</SelectItem>
-                <SelectItem value="debit">Debit</SelectItem>
-              </SelectContent>
-            </Select>
-            <Input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="w-28 h-7 text-xs"
-              placeholder="From"
-            />
-            <Input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="w-28 h-7 text-xs"
-              placeholder="To"
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setSearchTerm('');
-                setFilterType('all');
-                setDateFrom('');
-                setDateTo('');
-                setSelectedDate('');
-              }}
-              className="h-7 px-2 text-xs"
-            >
-              Clear
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={exportToCSV}
-              className="h-7 px-2 text-xs"
-            >
-              <Download className="h-3 w-3 mr-1" />
-              <span className="hidden sm:inline">Export</span>
-              <span className="sm:hidden">CSV</span>
-            </Button>
-            <div className="text-[10px] text-gray-600 ml-auto">
-              {filteredTransactions.length} of {transactions.length} entries
-            </div>
-          </div>
 
-          {/* Category Toggle Buttons - Horizontal Scrollable */}
-          <div className="py-3 border-t bg-gradient-to-r from-gray-50 to-white">
-            <div className="flex items-center gap-2 mb-2 px-3">
-              <Filter className="h-4 w-4 text-gray-500" />
-              <h3 className="text-xs font-semibold text-gray-700">Filter by Category</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <div className="flex gap-2 px-3 pb-1">
-                <button
-                  onClick={() => setActiveCategory('all')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all border ${
-                    activeCategory === 'all'
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
-                  }`}
-                >
-                  <DollarSign className="h-4 w-4" />
-                  <span>All Transactions</span>
-                  <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0">
-                    {transactions.length}
-                  </Badge>
-                </button>
-
-                <button
-                  onClick={() => setActiveCategory('payment')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all border ${
-                    activeCategory === 'payment'
-                      ? 'bg-green-600 text-white border-green-600 shadow-sm'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-green-50 hover:border-green-400'
-                  }`}
-                >
-                  <TrendingUp className="h-4 w-4" />
-                  <span>Payments Received</span>
-                  <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0">
-                    {transactions.filter(t => {
-                      const desc = t.description.toLowerCase();
-                      return (desc.includes('payment received') || (desc.includes('payment') && t.transaction_type === 'CREDIT'))
-                        && !desc.includes('sales') && !desc.includes('order-');
-                    }).length}
-                  </Badge>
-                </button>
-
-                <button
-                  onClick={() => setActiveCategory('sales')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all border ${
-                    activeCategory === 'sales'
-                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-emerald-50 hover:border-emerald-400'
-                  }`}
-                >
-                  <Receipt className="h-4 w-4" />
-                  <span>Sales Orders</span>
-                  <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0">
-                    {transactions.filter(t => {
-                      const desc = t.description.toLowerCase();
-                      return desc.includes('sales') || desc.includes('order-');
-                    }).length}
-                  </Badge>
-                </button>
-
-                <button
-                  onClick={() => setActiveCategory('expense')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all border ${
-                    activeCategory === 'expense'
-                      ? 'bg-red-600 text-white border-red-600 shadow-sm'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-red-50 hover:border-red-400'
-                  }`}
-                >
-                  <TrendingDown className="h-4 w-4" />
-                  <span>Expenses</span>
-                  <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0">
-                    {transactions.filter(t => {
-                      const desc = t.description.toLowerCase();
-                      return desc.includes('expense') && t.transaction_type === 'DEBIT';
-                    }).length}
-                  </Badge>
-                </button>
-
-                <button
-                  onClick={() => setActiveCategory('withdrawal')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all border ${
-                    activeCategory === 'withdrawal'
-                      ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-orange-50 hover:border-orange-400'
-                  }`}
-                >
-                  <ArrowDownCircle className="h-4 w-4" />
-                  <span>Withdrawals</span>
-                  <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0">
-                    {transactions.filter(t => {
-                      const desc = t.description.toLowerCase();
-                      return desc.includes('withdrawal') && t.transaction_type === 'DEBIT';
-                    }).length}
-                  </Badge>
-                </button>
-
-                <button
-                  onClick={() => setActiveCategory('investment')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all border ${
-                    activeCategory === 'investment'
-                      ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-purple-50 hover:border-purple-400'
-                  }`}
-                >
-                  <ArrowUpCircle className="h-4 w-4" />
-                  <span>Investments</span>
-                  <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0">
-                    {transactions.filter(t => {
-                      const desc = t.description.toLowerCase();
-                      return desc.includes('investment') && t.transaction_type === 'CREDIT';
-                    }).length}
-                  </Badge>
-                </button>
-
-                <button
-                  onClick={() => setActiveCategory('liability')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all border ${
-                    activeCategory === 'liability'
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-indigo-50 hover:border-indigo-400'
-                  }`}
-                >
-                  <CreditCard className="h-4 w-4" />
-                  <span>Liability Payments</span>
-                  <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0">
-                    {transactions.filter(t => {
-                      const desc = t.description.toLowerCase();
-                      return desc.includes('liability') && t.transaction_type === 'DEBIT';
-                    }).length}
-                  </Badge>
-                </button>
-
-                <button
-                  onClick={() => setActiveCategory('refund')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all border ${
-                    activeCategory === 'refund'
-                      ? 'bg-pink-600 text-white border-pink-600 shadow-sm'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-pink-50 hover:border-pink-400'
-                  }`}
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  <span>Refunds</span>
-                  <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0">
-                    {transactions.filter(t => {
-                      const desc = t.description.toLowerCase();
-                      return desc.includes('refund') && t.transaction_type === 'DEBIT';
-                    }).length}
-                  </Badge>
-                </button>
-              </div>
-            </div>
-          </div>
-            </div>
-          )}
-
-        </div>
+                  {/* Calendar Grid - Single Row */}
+                  <div className="flex gap-2 overflow-x-auto pb-2 bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50 p-3 rounded-lg border border-blue-100">
+                    {monthsData.map((month, idx) => (
+                      <div key={idx} className="flex-shrink-0 bg-white rounded-lg p-2 shadow-sm border border-gray-200">
+                        <button
+                          onClick={() => handleMonthClick(month.yearNum, month.monthNum)}
+                          className="w-full text-center font-bold text-[10px] mb-1 text-indigo-700 hover:text-indigo-900 transition-colors px-1 py-0.5 rounded hover:bg-indigo-50"
+                        >
+                          {month.monthName} {month.yearNum}
+                        </button>
+                        <div className="grid grid-cols-7 gap-0.5">
+                          {month.days.map((day) => (
+                            <button
+                              key={day.date}
+                              onClick={() => handleDateClick(day.date)}
+                              className={`
+                                w-6 h-6 flex items-center justify-center text-[10px] rounded font-medium
+                                ${day.isToday ? 'bg-gradient-to-br from-blue-400 to-indigo-500 text-white font-bold shadow-md' : ''}
+                                ${selectedDate === day.date ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold ring-2 ring-purple-300 shadow-lg scale-110' : !day.isToday ? 'hover:bg-gradient-to-br hover:from-blue-50 hover:to-indigo-50 text-gray-700' : ''}
+                                transition-all duration-200
+                              `}
+                            >
+                              {day.day}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            )}
+          </Card>
 
         {/* Transactions Table */}
-        <Card className="w-full border-t-0 rounded-t-none shadow-none">
-          <CardContent className="p-0 w-full">
+        <Card>
+          <CardContent className="p-0">
             {loading ? (
               <div className="text-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600 mx-auto mb-4"></div>
@@ -727,146 +561,139 @@ export default function CashAccountTransactions() {
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto w-full">
-                <table className="w-full table-auto">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
                   {/* Header */}
-                  <thead className="bg-gray-50 border-b-2 border-gray-200">
+                  <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-indigo-200">
                     <tr>
-                      <th className="px-2 sm:px-3 md:px-4 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Date</th>
-                      <th className="px-2 sm:px-3 md:px-4 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-gray-600 uppercase tracking-wider">Particulars</th>
-                      <th className="px-2 sm:px-3 md:px-4 py-2 sm:py-3 text-center text-[10px] sm:text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Debit (₹)</th>
-                      <th className="px-2 sm:px-3 md:px-4 py-2 sm:py-3 text-center text-[10px] sm:text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Credit (₹)</th>
-                      <th className="px-2 sm:px-3 md:px-4 py-2 sm:py-3 text-right text-[10px] sm:text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Balance (₹)</th>
+                      <th className="px-3 py-2 text-left text-[10px] font-bold text-indigo-900 uppercase tracking-wider">Date</th>
+                      <th className="px-3 py-2 text-left text-[10px] font-bold text-indigo-900 uppercase tracking-wider">Particulars</th>
+                      <th className="px-3 py-2 text-right text-[10px] font-bold text-indigo-900 uppercase tracking-wider">Debit (₹)</th>
+                      <th className="px-3 py-2 text-right text-[10px] font-bold text-indigo-900 uppercase tracking-wider">Credit (₹)</th>
+                      <th className="px-3 py-2 text-right text-[10px] font-bold text-indigo-900 uppercase tracking-wider">Balance (₹)</th>
                     </tr>
                   </thead>
                   
                   {/* Transactions */}
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredTransactions.map((transaction, index) => (
-                      <tr key={transaction.id} className={`hover:bg-gray-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-25'}`}>
-                        <td className="px-2 sm:px-3 md:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600 whitespace-nowrap">
-                          <div className="font-medium">
+                  <tbody className="bg-white divide-y divide-gray-100">
+                    {filteredTransactions.map((transaction) => (
+                      <tr key={transaction.id} className="hover:bg-blue-50/30 transition-colors">
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <span className="text-[11px] text-gray-600">
                             {new Date(transaction.transaction_date).toLocaleDateString('en-IN', {
                               day: '2-digit',
-                              month: 'short'
+                              month: 'short',
+                              year: 'numeric'
                             })}
-                          </div>
-                          <div className="text-[10px] sm:text-xs text-gray-500">
-                            {new Date(transaction.transaction_date).getFullYear()}
+                          </span>
+                        </td>
+                      
+                        <td className="px-3 py-2">
+                          <div className="flex items-start gap-1.5">
+                            {getTransactionIcon(transaction.transaction_type)}
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[11px] font-medium text-gray-900 truncate">
+                                {transaction.description}
+                              </p>
+                              <div className="flex items-center gap-1 mt-0.5">
+                                {transaction.reference_number && (
+                                  <span className="text-[10px] text-gray-500">
+                                    Ref: {transaction.reference_number}
+                                  </span>
+                                )}
+                                {transaction.source_description && (
+                                  <Badge className={`text-[10px] px-1 py-0 ${getSourceBadgeColor(transaction.source_description)}`}>
+                                    {transaction.source_description}
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </td>
                       
-                      <td className="px-2 sm:px-3 md:px-4 py-2 sm:py-3">
-                        <div className="flex items-start gap-1 sm:gap-2">
-                          {getTransactionIcon(transaction.transaction_type)}
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs sm:text-sm font-medium text-gray-900 leading-tight break-words">
-                              {transaction.description}
-                            </p>
-                            <div className="flex flex-wrap items-center gap-1 sm:gap-2 mt-1">
-                              {transaction.reference_number && (
-                                <span className="text-[10px] sm:text-xs text-gray-500">
-                                  Ref: {transaction.reference_number}
-                                </span>
-                              )}
-                              {transaction.source_description && (
-                                <Badge className={`text-[10px] sm:text-xs ${getSourceBadgeColor(transaction.source_description)}`}>
-                                  {transaction.source_description}
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
+                        <td className="px-3 py-2 text-right">
+                          {transaction.transaction_type === 'DEBIT' && (
+                            <span className="text-[11px] font-semibold text-red-600">
+                              {transaction.amount.toLocaleString('en-IN', { 
+                                minimumFractionDigits: 2, 
+                                maximumFractionDigits: 2 
+                              })}
+                            </span>
+                          )}
+                        </td>
                       
-                      <td className="px-2 sm:px-3 md:px-4 py-2 sm:py-3 text-center whitespace-nowrap">
-                        {transaction.transaction_type === 'DEBIT' ? (
-                          <span className="text-red-600 font-semibold text-xs sm:text-sm">
-                            {transaction.amount.toLocaleString('en-IN', { 
+                        <td className="px-3 py-2 text-right">
+                          {transaction.transaction_type === 'CREDIT' && (
+                            <span className="text-[11px] font-semibold text-blue-600">
+                              {transaction.amount.toLocaleString('en-IN', { 
+                                minimumFractionDigits: 2, 
+                                maximumFractionDigits: 2 
+                              })}
+                            </span>
+                          )}
+                        </td>
+                      
+                        <td className="px-3 py-2 text-right">
+                          <span className={`text-[11px] font-bold ${
+                            (transaction.running_balance || transaction.balance_after || 0) >= 0 
+                              ? 'text-blue-700' 
+                              : 'text-red-700'
+                          }`}>
+                            {(transaction.running_balance || transaction.balance_after || 0).toLocaleString('en-IN', { 
                               minimumFractionDigits: 2, 
                               maximumFractionDigits: 2 
                             })}
                           </span>
-                        ) : (
-                          <span className="text-gray-300">-</span>
-                        )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                
+                  {/* Footer Totals */}
+                  <tfoot className="bg-gradient-to-r from-indigo-50 to-purple-50 border-t-2 border-indigo-300">
+                    <tr className="font-bold">
+                      <td className="px-3 py-2 text-[11px] text-indigo-900" colSpan={2}>
+                        TOTALS
                       </td>
-                      
-                      <td className="px-2 sm:px-3 md:px-4 py-2 sm:py-3 text-center whitespace-nowrap">
-                        {transaction.transaction_type === 'CREDIT' ? (
-                          <span className="text-green-600 font-semibold text-xs sm:text-sm">
-                            {transaction.amount.toLocaleString('en-IN', { 
-                              minimumFractionDigits: 2, 
-                              maximumFractionDigits: 2 
-                            })}
-                          </span>
-                        ) : (
-                          <span className="text-gray-300">-</span>
-                        )}
-                      </td>
-                      
-                      <td className="px-2 sm:px-3 md:px-4 py-2 sm:py-3 text-right whitespace-nowrap">
-                        <span className={`font-semibold text-xs sm:text-sm ${
-                          (transaction.running_balance || transaction.balance_after || 0) >= 0 
-                            ? 'text-gray-900' 
-                            : 'text-red-600'
-                        }`}>
-                          {(transaction.running_balance || transaction.balance_after || 0).toLocaleString('en-IN', { 
+                      <td className="px-3 py-2 text-right text-[11px] text-red-700">
+                        {filteredTransactions
+                          .filter(t => t.transaction_type === 'DEBIT')
+                          .reduce((sum, t) => sum + t.amount, 0)
+                          .toLocaleString('en-IN', { 
                             minimumFractionDigits: 2, 
                             maximumFractionDigits: 2 
                           })}
-                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right text-[11px] text-blue-700">
+                        {filteredTransactions
+                          .filter(t => t.transaction_type === 'CREDIT')
+                          .reduce((sum, t) => sum + t.amount, 0)
+                          .toLocaleString('en-IN', { 
+                            minimumFractionDigits: 2, 
+                            maximumFractionDigits: 2 
+                          })}
+                      </td>
+                      <td className="px-3 py-2 text-right text-[11px] text-indigo-900">
+                        {(() => {
+                          if (filteredTransactions.length > 0) {
+                            const lastTransaction = filteredTransactions[filteredTransactions.length - 1];
+                            const closingBalance = lastTransaction.running_balance || lastTransaction.balance_after || 0;
+                            return closingBalance.toLocaleString('en-IN', { 
+                              minimumFractionDigits: 2, 
+                              maximumFractionDigits: 2 
+                            });
+                          }
+                          return '0.00';
+                        })()}
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-                
-                {/* Footer Totals */}
-                <tfoot className="bg-gray-100 border-t-2 border-gray-300">
-                  <tr>
-                    <td className="px-2 md:px-4 py-3 text-xs md:text-sm font-semibold text-gray-700 whitespace-nowrap" colSpan={2}>
-                      TOTALS ({filteredTransactions.length} entries)
-                    </td>
-                    <td className="px-2 md:px-4 py-3 text-center text-xs md:text-sm font-bold text-red-600 whitespace-nowrap">
-                      {(() => {
-                        const totalDebit = filteredTransactions
-                          .filter(t => t.transaction_type === 'DEBIT')
-                          .reduce((sum, t) => sum + t.amount, 0);
-                        return totalDebit.toLocaleString('en-IN', { 
-                          minimumFractionDigits: 2, 
-                          maximumFractionDigits: 2 
-                        });
-                      })()}
-                    </td>
-                    <td className="px-2 md:px-4 py-3 text-center text-xs md:text-sm font-bold text-green-600 whitespace-nowrap">
-                      {(() => {
-                        const totalCredit = filteredTransactions
-                          .filter(t => t.transaction_type === 'CREDIT')
-                          .reduce((sum, t) => sum + t.amount, 0);
-                        return totalCredit.toLocaleString('en-IN', { 
-                          minimumFractionDigits: 2, 
-                          maximumFractionDigits: 2 
-                        });
-                      })()}
-                    </td>
-                    <td className="px-2 md:px-4 py-3 text-right text-xs md:text-sm font-bold text-gray-900 whitespace-nowrap">
-                      {(() => {
-                        // Get the closing balance from the last transaction's running balance
-                        if (filteredTransactions.length > 0) {
-                          const lastTransaction = filteredTransactions[filteredTransactions.length - 1];
-                          const closingBalance = lastTransaction.running_balance || lastTransaction.balance_after || 0;
-                          return `Closing: ${formatCurrency(closingBalance)}`;
-                        }
-                        return `Closing: ${formatCurrency(0)}`;
-                      })()}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        </div>
       </div>
     </div>
   );

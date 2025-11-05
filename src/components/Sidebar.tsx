@@ -8,7 +8,7 @@ import {
   DollarSign, Star, Users2, Building2, Package, 
   FileText, TrendingUp, BookOpen, BarChart, ChevronDown, ChevronRight,
   Mail, LogOut, Fingerprint, Clock, Calendar, GraduationCap,
-  Wallet, FolderOpen, Settings, Calculator
+  Wallet, FolderOpen, Settings, Calculator, PieChart, CreditCard
 } from 'lucide-react';
 import { hasPermission, hasAnyPermission, getCurrentUser } from '@/lib/auth';
 import { useRoleAccess, clearRoleAccessCache } from '@/hooks/useRoleAccess';
@@ -68,7 +68,8 @@ const inventoryItems: NavItem[] = [
 
 // Banking & Finance
 const financeItems: NavItem[] = [
-  { href: "/finance", icon: DollarSign, label: "Finance", permission: ['invoice:create','payment:manage'] },
+  { href: "/finance/overview", icon: PieChart, label: "Overview", permission: ['invoice:create','payment:manage'] },
+  { href: "/finance/bank-accounts", icon: CreditCard, label: "Bank Accounts", permission: ['invoice:create','payment:manage'] },
   { href: "/ledgers", icon: BookOpen, label: "Ledgers", permission: ['invoice:create','payment:manage'] },
   { href: "/loans-investments", icon: TrendingUp, label: "Loans & Investments", permission: ['invoice:create','payment:manage'] },
 ];

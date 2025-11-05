@@ -174,31 +174,31 @@ export default function AllTransactionsPage() {
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4">
-        <Card className="lg:col-span-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Total Transactions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totalAmount)}</div>
-            <p className="text-xs text-muted-foreground">{transactions.length} transactions</p>
-          </CardContent>
-        </Card>
-        
-        {paymentMethodSummary.map(({ method, count, total }) => (
-          <Card key={method} className="border-l-4 border-l-blue-500">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-2">
-                {getPaymentMethodIcon(method)}
-                <span className="text-sm font-medium">{method.replace('_', ' ').toUpperCase()}</span>
+      {/* Summary Cards - Inline */}
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between gap-6 overflow-x-auto">
+            {/* Total Transactions */}
+            <div className="flex flex-col min-w-[180px]">
+              <span className="text-sm font-medium text-muted-foreground mb-1">Total Transactions</span>
+              <span className="text-2xl font-bold">{formatCurrency(totalAmount)}</span>
+              <span className="text-xs text-muted-foreground">{transactions.length} transactions</span>
+            </div>
+            
+            {/* Payment Method Stats */}
+            {paymentMethodSummary.map(({ method, count, total }) => (
+              <div key={method} className="flex flex-col min-w-[150px] border-l-2 border-blue-500 pl-4">
+                <div className="flex items-center gap-2 mb-1">
+                  {getPaymentMethodIcon(method)}
+                  <span className="text-sm font-medium">{method.replace('_', ' ').toUpperCase()}</span>
+                </div>
+                <span className="text-lg font-bold">{formatCurrency(total)}</span>
+                <span className="text-xs text-muted-foreground">{count} transactions</span>
               </div>
-              <p className="text-lg font-bold">{formatCurrency(total)}</p>
-              <p className="text-xs text-muted-foreground">{count} transactions</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Filters */}
       <Card>

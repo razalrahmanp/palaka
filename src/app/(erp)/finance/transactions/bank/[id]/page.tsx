@@ -3,10 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Building2, ArrowDownCircle, Download, CreditCard, Receipt, Calendar, ChevronDown, ChevronUp, Wallet } from 'lucide-react';
+import { ArrowLeft, Building2, ArrowDownCircle, Download, CreditCard, Receipt, ChevronDown, ChevronUp } from 'lucide-react';
 import { useRouter, useParams } from 'next/navigation';
 
 interface BankTransaction {
@@ -251,7 +250,24 @@ export default function BankAccountTransactions() {
       filtered = filtered.filter(t => new Date(t.date) <= new Date(dateTo));
     }
 
-    setFilteredTransactions(filtered);
+    // Sort oldest first (ascending by date)
+    filtered.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    // Calculate running balance for filtered transactions
+    let runningBalance = 0;
+    const transactionsWithBalance = filtered.map(transaction => {
+      if (transaction.type === 'deposit') {
+        runningBalance += transaction.amount;
+      } else {
+        runningBalance -= transaction.amount;
+      }
+      return {
+        ...transaction,
+        running_balance: runningBalance
+      };
+    });
+
+    setFilteredTransactions(transactionsWithBalance);
   }, [transactions, searchTerm, filterType, transactionType, dateFrom, dateTo, activeCategory, selectedDate]);
 
   useEffect(() => {
@@ -283,24 +299,6 @@ export default function BankAccountTransactions() {
       default:
         return <Building2 className="h-4 w-4 text-gray-600" />;
     }
-  };
-
-  const getTransactionTypeBadge = (transactionType: string) => {
-    const typeMap = {
-      'bank_transaction': { label: 'Bank Transfer', color: 'bg-blue-100 text-blue-800' },
-      'vendor_payment': { label: 'Vendor Payment', color: 'bg-green-100 text-green-800' },
-      'withdrawal': { label: 'Withdrawal', color: 'bg-red-100 text-red-800' },
-      'liability_payment': { label: 'Liability Payment', color: 'bg-purple-100 text-purple-800' }
-    };
-    
-    const typeInfo = typeMap[transactionType as keyof typeof typeMap] || 
-      { label: transactionType, color: 'bg-gray-100 text-gray-800' };
-    
-    return (
-      <Badge className={`text-xs ${typeInfo.color}`}>
-        {typeInfo.label}
-      </Badge>
-    );
   };
 
   const exportToCSV = () => {
@@ -338,105 +336,161 @@ export default function BankAccountTransactions() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-3 p-2">
       {/* Header */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => router.back()}
-              className="flex items-center gap-2"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </Button>
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <Building2 className="h-5 w-5 text-blue-600" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                {account.name} - Bank Statement
-              </h1>
-              <p className="text-sm text-gray-600">
-                Account: ****{account.account_number.slice(-4)} • Debit & Credit History
-              </p>
-            </div>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-gray-500">Current Balance</p>
-            <p className={`text-xl font-bold ${account.current_balance >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-              {formatCurrency(account.current_balance)}
+      <Card className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
+        <CardContent className="p-4">
+        <div className="flex items-center justify-between">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.back()}
+            className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white border-white/20 h-8"
+          >
+            <ArrowLeft className="h-3 w-3" />
+            Back
+          </Button>
+          <Button variant="outline" size="sm" className="bg-white/10 hover:bg-white/20 text-white border-white/20 h-8">
+            <Download className="h-3 w-3 mr-2" />
+            Export
+          </Button>
+        </div>
+        <div className="mt-3 flex items-end justify-between">
+          <div>
+            <h1 className="text-xl font-bold">
+              {account.name} - Bank Statement
+            </h1>
+            <p className="text-white/70 mt-0.5 text-xs">
+              Account: ****{account.account_number.slice(-4)} • Debit & Credit History
             </p>
           </div>
+          <div className="text-right">
+            <p className="text-xs text-white/70 mb-1">Current Balance</p>
+            <p className="text-2xl font-bold">{formatCurrency(account.current_balance)}</p>
+          </div>
         </div>
+        </CardContent>
+      </Card>
         
-        {/* Filters & Calendar Section */}
-        <div className="mt-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsFilterExpanded(!isFilterExpanded)}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-3"
-          >
+      {/* Filters & Calendar Section */}
+      <Card>
+        <CardHeader className="cursor-pointer py-3 px-4" onClick={() => setIsFilterExpanded(!isFilterExpanded)}>
+          <div className="flex items-center justify-between">
+            {/* Search and Date Filters in Header */}
+            <div className="flex items-center gap-2 flex-1">
+              <Input
+                placeholder="Search..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="max-w-xs h-8 text-sm"
+                onClick={(e) => e.stopPropagation()}
+              />
+              
+              <Select value={filterType} onValueChange={setFilterType}>
+                <SelectTrigger className="w-24 h-8 text-xs" onClick={(e) => e.stopPropagation()}>
+                  <SelectValue placeholder="All" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="deposit">Deposits</SelectItem>
+                  <SelectItem value="withdrawal">Withdrawals</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <Input
+                type="date"
+                placeholder="dd-mm-yyyy"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="w-36 h-8 text-xs"
+                onClick={(e) => e.stopPropagation()}
+              />
+              
+              <Input
+                type="date"
+                placeholder="dd-mm-yyyy"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="w-36 h-8 text-xs"
+                onClick={(e) => e.stopPropagation()}
+              />
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSearchTerm('');
+                  setFilterType('all');
+                  setTransactionType('all');
+                  setDateFrom('');
+                  setDateTo('');
+                  setSelectedDate('');
+                  setActiveCategory('all');
+                }}
+                className="h-8 text-xs"
+              >
+                Clear
+              </Button>
+            </div>
             {isFilterExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            <span className="font-medium">Filters & Calendar ({isFilterExpanded ? 'Expanded' : 'Collapsed'})</span>
-          </Button>
+          </div>
+        </CardHeader>
 
           {isFilterExpanded && (
-            <div className="space-y-4">
-              {/* Calendar Section */}
-              <div className="border-b pb-4">
+            <CardContent className="space-y-3 px-4 pb-4">
+              {/* Stylish Calendar in Single Row */}
+              <div>
                 <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-gray-600" />
-                    <h3 className="text-sm font-semibold text-gray-700">Quick Date Selection</h3>
-                  </div>
-                  <div className="flex gap-2">
+                  <h3 className="font-semibold text-xs text-gray-700">Quick Date Selection</h3>
+                  <div className="flex gap-1">
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => scrollMonths('prev')}
-                      className="h-7 px-2"
+                      className="h-7 px-2 text-xs bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 border-blue-200"
                     >
                       ←
                     </Button>
                     <Button
                       variant="outline"
                       size="sm"
+                      onClick={() => setCurrentMonthOffset(0)}
+                      className="h-7 px-3 text-xs bg-gradient-to-r from-indigo-500 to-purple-500 text-white hover:from-indigo-600 hover:to-purple-600 border-0"
+                    >
+                      Today
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => scrollMonths('next')}
-                      className="h-7 px-2"
+                      className="h-7 px-2 text-xs bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 border-blue-200"
                     >
                       →
                     </Button>
                   </div>
                 </div>
 
-                {/* Calendar Grid */}
-                <div className="grid grid-cols-7 gap-2 overflow-x-auto">
+                {/* Calendar Grid - Single Row */}
+                <div className="flex gap-2 overflow-x-auto pb-2 bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50 p-3 rounded-lg border border-blue-100">
                   {monthsData.map((month, idx) => (
-                    <div key={idx} className="min-w-[120px]">
+                    <div key={idx} className="flex-shrink-0 bg-white rounded-lg p-2 shadow-sm border border-gray-200">
                       <button
                         onClick={() => handleMonthClick(month.year, month.month)}
-                        className="w-full text-xs font-semibold text-gray-700 hover:text-blue-600 py-1 text-center transition-colors"
+                        className="w-full text-center font-bold text-[10px] mb-1 text-indigo-700 hover:text-indigo-900 transition-colors px-1 py-0.5 rounded hover:bg-indigo-50"
                       >
-                        {month.name}
+                        {month.name} {month.year}
                       </button>
-                      <div className="text-xs text-gray-500 text-center mb-1">{month.year}</div>
                       <div className="grid grid-cols-7 gap-0.5">
                         {month.days.map((day) => (
                           <button
                             key={day.date}
                             onClick={() => handleDateClick(day.date)}
                             className={`
-                              aspect-square text-[10px] rounded-sm transition-all duration-200
-                              ${day.isToday 
-                                ? 'bg-blue-600 text-white font-bold ring-2 ring-blue-300' 
-                                : day.isSelected
-                                ? 'bg-blue-500 text-white font-semibold'
-                                : 'bg-gray-50 text-gray-700 hover:bg-blue-100'
-                              }
+                              w-6 h-6 flex items-center justify-center text-[10px] rounded font-medium
+                              ${day.isToday ? 'bg-gradient-to-br from-blue-400 to-indigo-500 text-white font-bold shadow-md' : ''}
+                              ${day.isSelected ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold ring-2 ring-purple-300 shadow-lg scale-110' : !day.isToday ? 'hover:bg-gradient-to-br hover:from-blue-50 hover:to-indigo-50 text-gray-700' : ''}
+                              transition-all duration-200
                             `}
                           >
                             {day.day}
@@ -447,182 +501,25 @@ export default function BankAccountTransactions() {
                   ))}
                 </div>
               </div>
-
-              {/* Inline Filter Controls */}
-              <div className="flex items-center gap-3">
-                <div className="flex-1 max-w-xs">
-                  <Input
-                    placeholder="Search..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="h-8 text-sm"
-                  />
-                </div>
-                <Select value={filterType} onValueChange={setFilterType}>
-                  <SelectTrigger className="w-28 h-8">
-                    <SelectValue placeholder="All" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
-                    <SelectItem value="deposit">Deposit</SelectItem>
-                    <SelectItem value="withdrawal">Withdrawal</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Input
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                  className="w-36 h-8 text-sm"
-                  placeholder="dd-mm-yyyy"
-                />
-                <Input
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                  className="w-36 h-8 text-sm"
-                  placeholder="dd-mm-yyyy"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setSearchTerm('');
-                    setFilterType('all');
-                    setTransactionType('all');
-                    setDateFrom('');
-                    setDateTo('');
-                    setSelectedDate('');
-                    setActiveCategory('all');
-                  }}
-                  className="h-8"
-                >
-                  Clear
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={exportToCSV}
-                  className="h-8 px-3"
-                >
-                  <Download className="h-3 w-3 mr-1" />
-                  Export
-                </Button>
-                <div className="text-xs text-gray-600">
-                  {filteredTransactions.length} of {transactions.length} entries
-                </div>
-              </div>
-            </div>
+            </CardContent>
           )}
-        </div>
-      </div>
+      </Card>
 
-      {/* Filter by Category */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Filter by Category</h3>
-        <div className="flex gap-2 overflow-x-auto pb-2">
-          <Button
-            variant={activeCategory === 'all' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setActiveCategory('all')}
-            className="flex items-center gap-2 whitespace-nowrap"
-          >
-            <Wallet className="h-4 w-4" />
-            All Transactions
-            <Badge variant="secondary" className="ml-1">
-              {transactions.length}
-            </Badge>
-          </Button>
-
-          <Button
-            variant={activeCategory === 'transfer' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setActiveCategory('transfer')}
-            className="flex items-center gap-2 whitespace-nowrap"
-          >
-            <Building2 className="h-4 w-4" />
-            Bank Transfers
-            <Badge variant="secondary" className="ml-1">
-              {transactions.filter(t => t.transaction_type === 'bank_transaction').length}
-            </Badge>
-          </Button>
-
-          <Button
-            variant={activeCategory === 'payment' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setActiveCategory('payment')}
-            className="flex items-center gap-2 whitespace-nowrap"
-          >
-            <CreditCard className="h-4 w-4" />
-            Vendor Payments
-            <Badge variant="secondary" className="ml-1">
-              {transactions.filter(t => t.transaction_type === 'vendor_payment').length}
-            </Badge>
-          </Button>
-
-          <Button
-            variant={activeCategory === 'withdrawal' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setActiveCategory('withdrawal')}
-            className="flex items-center gap-2 whitespace-nowrap"
-          >
-            <ArrowDownCircle className="h-4 w-4" />
-            Withdrawals
-            <Badge variant="secondary" className="ml-1">
-              {transactions.filter(t => t.type === 'withdrawal' && t.transaction_type === 'withdrawal').length}
-            </Badge>
-          </Button>
-
-          <Button
-            variant={activeCategory === 'liability' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setActiveCategory('liability')}
-            className="flex items-center gap-2 whitespace-nowrap"
-          >
-            <Receipt className="h-4 w-4" />
-            Liability Payments
-            <Badge variant="secondary" className="ml-1">
-              {transactions.filter(t => t.transaction_type === 'liability_payment').length}
-            </Badge>
-          </Button>
-        </div>
-      </div>
-
-      {/* Transactions */}
+      {/* Transactions Table */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>Transaction History</span>
-            {filteredTransactions.length > 0 && (
-              <div className="grid grid-cols-3 gap-4 text-sm">
-                <div className="text-center">
-                  <p className="text-green-600 font-semibold">
-                    +{formatCurrency(filteredTransactions
-                      .filter(t => t.type === 'deposit')
-                      .reduce((sum, t) => sum + t.amount, 0)
-                    )}
-                  </p>
-                  <p className="text-xs text-gray-500">Money In</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-red-600 font-semibold">
-                    -{formatCurrency(filteredTransactions
-                      .filter(t => t.type === 'withdrawal')
-                      .reduce((sum, t) => sum + t.amount, 0)
-                    )}
-                  </p>
-                  <p className="text-xs text-gray-500">Money Out</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-blue-600 font-semibold">
-                    {formatCurrency(filteredTransactions
-                      .reduce((sum, t) => sum + (t.type === 'deposit' ? t.amount : -t.amount), 0)
-                    )}
-                  </p>
-                  <p className="text-xs text-gray-500">Net Movement</p>
-                </div>
-              </div>
-            )}
-          </CardTitle>
+        <CardHeader className="py-3 px-4">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">Transaction History</CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportToCSV}
+              className="h-8 px-3 text-xs"
+            >
+              <Download className="h-3 w-3 mr-1" />
+              Export CSV
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
@@ -643,23 +540,23 @@ export default function BankAccountTransactions() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
+              <table className="w-full text-xs">
+                <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-indigo-200">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th className="px-3 py-2 text-left text-[10px] font-bold text-indigo-900 uppercase tracking-wider">
                       Date
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th className="px-3 py-2 text-left text-[10px] font-bold text-indigo-900 uppercase tracking-wider">
                       Particulars
                     </th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Withdrawal
+                    <th className="px-3 py-2 text-right text-[10px] font-bold text-indigo-900 uppercase tracking-wider">
+                      Debit (₹)
                     </th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Deposit
+                    <th className="px-3 py-2 text-right text-[10px] font-bold text-indigo-900 uppercase tracking-wider">
+                      Credit (₹)
                     </th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Balance
+                    <th className="px-3 py-2 text-right text-[10px] font-bold text-indigo-900 uppercase tracking-wider">
+                      Balance (₹)
                     </th>
                   </tr>
                 </thead>
@@ -669,56 +566,55 @@ export default function BankAccountTransactions() {
                       key={transaction.id} 
                       className="hover:bg-blue-50/30 transition-colors"
                     >
-                      <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
-                        {new Date(transaction.date).toLocaleDateString('en-IN', {
-                          day: '2-digit',
-                          month: 'short',
-                          year: 'numeric'
-                        })}
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <span className="text-[11px] text-gray-600">
+                          {new Date(transaction.date).toLocaleDateString('en-IN', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric'
+                          })}
+                        </span>
                       </td>
                       
-                      <td className="px-4 py-3">
-                        <div className="flex items-start gap-2">
+                      <td className="px-3 py-2">
+                        <div className="flex items-start gap-1.5">
                           <div className="mt-0.5">
                             {getTransactionTypeIcon(transaction.transaction_type)}
                           </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[11px] font-medium text-gray-900 truncate">
                               {transaction.description}
                             </p>
                             {transaction.reference && (
-                              <p className="text-xs text-gray-500 mt-0.5">
+                              <p className="text-[10px] text-gray-500 mt-0.5 truncate">
                                 Ref: {transaction.reference}
                               </p>
                             )}
-                            <div className="mt-1">
-                              {getTransactionTypeBadge(transaction.transaction_type)}
-                            </div>
                           </div>
                         </div>
                       </td>
                       
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-3 py-2 text-right">
                         {transaction.type === 'withdrawal' && (
-                          <span className="text-sm font-semibold text-red-600">
+                          <span className="text-[11px] font-semibold text-red-600">
                             {formatCurrency(transaction.amount)}
                           </span>
                         )}
                       </td>
                       
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-3 py-2 text-right">
                         {transaction.type === 'deposit' && (
-                          <span className="text-sm font-semibold text-green-600">
+                          <span className="text-[11px] font-semibold text-blue-600">
                             {formatCurrency(transaction.amount)}
                           </span>
                         )}
                       </td>
                       
-                      <td className="px-4 py-3 text-right">
-                        <span className={`text-sm font-semibold ${
+                      <td className="px-3 py-2 text-right">
+                        <span className={`text-[11px] font-bold ${
                           (transaction.running_balance || transaction.balance_after || 0) >= 0
-                            ? 'text-gray-900'
-                            : 'text-red-600'
+                            ? 'text-blue-700'
+                            : 'text-red-700'
                         }`}>
                           {formatCurrency(transaction.running_balance || transaction.balance_after || 0)}
                         </span>
@@ -726,26 +622,26 @@ export default function BankAccountTransactions() {
                     </tr>
                   ))}
                 </tbody>
-                <tfoot className="bg-gray-50 border-t-2 border-gray-300">
-                  <tr className="font-semibold">
-                    <td colSpan={2} className="px-4 py-3 text-sm text-gray-700">
-                      Totals
+                <tfoot className="bg-gradient-to-r from-indigo-50 to-purple-50 border-t-2 border-indigo-300">
+                  <tr className="font-bold">
+                    <td colSpan={2} className="px-3 py-2 text-[11px] text-indigo-900">
+                      TOTALS
                     </td>
-                    <td className="px-4 py-3 text-right text-sm text-red-600">
+                    <td className="px-3 py-2 text-right text-[11px] text-red-700">
                       {formatCurrency(filteredTransactions
                         .filter(t => t.type === 'withdrawal')
                         .reduce((sum, t) => sum + t.amount, 0)
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right text-sm text-green-600">
+                    <td className="px-3 py-2 text-right text-[11px] text-blue-700">
                       {formatCurrency(filteredTransactions
                         .filter(t => t.type === 'deposit')
                         .reduce((sum, t) => sum + t.amount, 0)
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right text-sm text-blue-600">
+                    <td className="px-3 py-2 text-right text-[11px] text-indigo-900">
                       {formatCurrency(filteredTransactions.length > 0 
-                        ? filteredTransactions[filteredTransactions.length - 1].balance_after || 0
+                        ? filteredTransactions[filteredTransactions.length - 1].running_balance || filteredTransactions[filteredTransactions.length - 1].balance_after || 0
                         : account?.current_balance || 0
                       )}
                     </td>

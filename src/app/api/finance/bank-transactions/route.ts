@@ -51,8 +51,8 @@ export async function GET(request: NextRequest) {
       .from('bank_transactions')
       .select('id, date, type, amount, description, reference, balance')
       .eq('bank_account_id', bankAccountId)
-      .order('date', { ascending: false })
-      .order('id', { ascending: false });
+      .order('date', { ascending: true })
+      .order('id', { ascending: true });
 
     if (bankTransError) {
       console.error('Error fetching bank transactions:', bankTransError);
@@ -90,22 +90,17 @@ export async function GET(request: NextRequest) {
 
     console.log(`✅ Fetched ${allTransactions.length} transactions from bank_transactions table only`);
 
-    // Sort all transactions by date (most recent first)
-    allTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    // Sort all transactions by date (oldest first for proper balance calculation)
+    allTransactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     // Calculate running balance for ALL transactions (oldest to newest)
     console.log('📊 Calculating running balance for', allTransactions.length, 'transactions...');
     
-    // Create a copy sorted chronologically (oldest first) for balance calculation
-    const sortedForBalance = [...allTransactions].sort((a, b) => 
-      new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
-    
-    // Calculate running balance
+    // Calculate running balance (already sorted oldest first)
     const balanceMap = new Map<string, number>();
     let runningBalance = 0;
     
-    sortedForBalance.forEach((txn) => {
+    allTransactions.forEach((txn) => {
       if (txn.type === 'deposit') {
         runningBalance += Math.abs(txn.amount || 0);
       } else {

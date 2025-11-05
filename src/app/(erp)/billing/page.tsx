@@ -239,14 +239,6 @@ export default function BillingPage() {
     }
   };
 
-  // Reset the form to create a new quote/order
-  const handleNewInvoice = () => {
-    setInitialData(null);
-    setGeneratedQuote(null);
-    setQuoteStatus('');
-    toast.info("Creating new invoice");
-  };
-
   const handleSave = async (data: BillingData) => {
     setIsProcessing(true);
     try {
@@ -867,26 +859,15 @@ export default function BillingPage() {
     <div className="flex h-screen bg-background overflow-hidden">
       {/* Main Billing Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header with New Invoice Button */}
+        {/* Header */}
         <div className="px-4 py-2 border-b bg-card flex justify-between items-center flex-shrink-0">
           <h1 className="text-xl font-semibold">Billing & Invoice Management</h1>
-          <div className="flex gap-2">
-            {isLoadingData && (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-                <span className="text-sm">Loading data...</span>
-              </div>
-            )}
-            <button
-              onClick={handleNewInvoice}
-              className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors flex items-center gap-2 text-sm"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 5v14M5 12h14"/>
-              </svg>
-              {initialData ? 'New Invoice' : 'New Invoice'}
-            </button>
-          </div>
+          {isLoadingData && (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+              <span className="text-sm">Loading data...</span>
+            </div>
+          )}
         </div>
         
         {/* Billing Dashboard */}

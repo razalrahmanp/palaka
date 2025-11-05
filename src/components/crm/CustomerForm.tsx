@@ -5,8 +5,9 @@ import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, User, Mail, Phone, Tag, Users } from 'lucide-react';
+import { Loader2, User, Mail, Phone, Tag, Users, MapPin, Calendar, FileText } from 'lucide-react';
 
 interface CustomerFormProps {
     initialData?: {
@@ -17,6 +18,13 @@ interface CustomerFormProps {
         source?: string;
         tags?: string[];
         assigned_sales_rep_id?: string;
+        address?: string;
+        city?: string;
+        state?: string;
+        pincode?: string;
+        floor?: string;
+        customer_visit_date?: string;
+        notes?: string;
     };
    onSubmit: (data: {
     name: string;
@@ -27,6 +35,13 @@ interface CustomerFormProps {
     source: "Website" | "Referral" | "Trade Show";
     tags: string[];
     assigned_sales_rep_id?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    floor?: string;
+    customer_visit_date?: string;
+    notes?: string;
     }) => void | Promise<void>;
     onCancel: () => void;
 }
@@ -39,7 +54,14 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ initialData, onSubmi
         status: 'Lead', 
         source: 'Website', 
         tags: '',
-        assigned_sales_rep_id: 'unassigned'
+        assigned_sales_rep_id: 'unassigned',
+        address: '',
+        city: '',
+        state: '',
+        pincode: '',
+        floor: '',
+        customer_visit_date: '',
+        notes: ''
     });
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -67,6 +89,13 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ initialData, onSubmi
                 source: initialData.source || 'Website',
                 tags: (initialData.tags || []).join(', '),
                 assigned_sales_rep_id: initialData.assigned_sales_rep_id || 'unassigned',
+                address: initialData.address || '',
+                city: initialData.city || '',
+                state: initialData.state || '',
+                pincode: initialData.pincode || '',
+                floor: initialData.floor || '',
+                customer_visit_date: initialData.customer_visit_date || '',
+                notes: initialData.notes || ''
             });
         } else {
              setFormData({ 
@@ -76,7 +105,14 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ initialData, onSubmi
                 status: 'Lead', 
                 source: 'Website', 
                 tags: '',
-                assigned_sales_rep_id: 'unassigned'
+                assigned_sales_rep_id: 'unassigned',
+                address: '',
+                city: '',
+                state: '',
+                pincode: '',
+                floor: '',
+                customer_visit_date: '',
+                notes: ''
             });
         }
     }, [initialData]);
@@ -94,6 +130,13 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ initialData, onSubmi
                 source: formData.source as "Website" | "Referral" | "Trade Show",
                 tags: formData.tags.split(',').map(tag => tag.trim()).filter(Boolean),
                 assigned_sales_rep_id: formData.assigned_sales_rep_id && formData.assigned_sales_rep_id !== 'unassigned' ? formData.assigned_sales_rep_id : undefined,
+                address: formData.address || undefined,
+                city: formData.city || undefined,
+                state: formData.state || undefined,
+                pincode: formData.pincode || undefined,
+                floor: formData.floor || undefined,
+                customer_visit_date: formData.customer_visit_date || undefined,
+                notes: formData.notes || undefined,
             });
         } finally {
             setIsSubmitting(false);
@@ -162,6 +205,115 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ initialData, onSubmi
                             placeholder="customer@example.com"
                         />
                     </div>
+                </div>
+            </div>
+
+            {/* Address Information Section */}
+            <div className="space-y-4">
+                <div className="flex items-center gap-2 pb-2 border-b border-gray-200">
+                    <MapPin className="h-4 w-4 text-blue-600" />
+                    <h3 className="text-sm font-semibold text-gray-700">Address Information</h3>
+                </div>
+                
+                <div className="space-y-2">
+                    <Label htmlFor="address" className="text-sm font-medium text-gray-700">
+                        Street Address
+                    </Label>
+                    <div className="relative">
+                        <MapPin className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                        <Textarea 
+                            id="address" 
+                            name="address" 
+                            value={formData.address} 
+                            onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
+                            className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500 min-h-[80px]"
+                            placeholder="Enter street address"
+                        />
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="city" className="text-sm font-medium text-gray-700">
+                            City
+                        </Label>
+                        <Input 
+                            id="city" 
+                            name="city" 
+                            value={formData.city} 
+                            onChange={handleChange}
+                            className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                            placeholder="City"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="state" className="text-sm font-medium text-gray-700">
+                            State
+                        </Label>
+                        <Input 
+                            id="state" 
+                            name="state" 
+                            value={formData.state} 
+                            onChange={handleChange}
+                            className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                            placeholder="State"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="pincode" className="text-sm font-medium text-gray-700">
+                            Pincode
+                        </Label>
+                        <Input 
+                            id="pincode" 
+                            name="pincode" 
+                            value={formData.pincode} 
+                            onChange={handleChange}
+                            className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                            placeholder="Pincode"
+                        />
+                    </div>
+                </div>
+
+                <div className="space-y-2">
+                    <Label htmlFor="floor" className="text-sm font-medium text-gray-700">
+                        Floor / Unit
+                    </Label>
+                    <Input 
+                        id="floor" 
+                        name="floor" 
+                        value={formData.floor} 
+                        onChange={handleChange}
+                        className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                        placeholder="e.g., 2nd Floor, Unit 4B"
+                    />
+                </div>
+            </div>
+
+            {/* Visit Information Section */}
+            <div className="space-y-4">
+                <div className="flex items-center gap-2 pb-2 border-b border-gray-200">
+                    <Calendar className="h-4 w-4 text-blue-600" />
+                    <h3 className="text-sm font-semibold text-gray-700">Visit Information</h3>
+                </div>
+                
+                <div className="space-y-2">
+                    <Label htmlFor="customer_visit_date" className="text-sm font-medium text-gray-700">
+                        Customer Visit Date
+                    </Label>
+                    <div className="relative">
+                        <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input 
+                            id="customer_visit_date" 
+                            name="customer_visit_date" 
+                            type="date"
+                            value={formData.customer_visit_date} 
+                            onChange={handleChange}
+                            className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                        />
+                    </div>
+                    <p className="text-xs text-gray-500">Track when the customer visited or is scheduled to visit</p>
                 </div>
             </div>
 
@@ -287,6 +439,31 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ initialData, onSubmi
                     />
                 </div>
                 <p className="text-xs text-gray-500">Separate multiple tags with commas</p>
+            </div>
+
+            {/* Notes Section */}
+            <div className="space-y-4">
+                <div className="flex items-center gap-2 pb-2 border-b border-gray-200">
+                    <FileText className="h-4 w-4 text-blue-600" />
+                    <h3 className="text-sm font-semibold text-gray-700">Additional Notes</h3>
+                </div>
+                
+                <div className="space-y-2">
+                    <Label htmlFor="notes" className="text-sm font-medium text-gray-700">
+                        Notes
+                    </Label>
+                    <div className="relative">
+                        <FileText className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                        <Textarea 
+                            id="notes" 
+                            name="notes" 
+                            value={formData.notes} 
+                            onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                            className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500 min-h-[100px]"
+                            placeholder="Add any additional notes or comments about this customer..."
+                        />
+                    </div>
+                </div>
             </div>
 
             {/* Action Buttons */}

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { 
   Plus, 
   Trash2, 
@@ -22,11 +23,16 @@ import {
   ShoppingCart,
   Send,
   Save,
-
+  Edit,
+  FileText,
+  User,
+  Receipt,
+  Loader2,
 } from "lucide-react";
 import { ProductWithInventory, BillingCustomer, BillingItem, CustomProduct, PaymentMethod, BillingData, Invoice } from "@/types";
 import { BajajFinanceCalculator, BajajFinanceData } from './BajajFinanceCalculator';
 import { PaymentTrackingDialog } from '../finance/PaymentTrackingDialog';
+import { CustomerForm } from '../crm/CustomerForm';
 
 interface Supplier {
   id: string;
@@ -107,6 +113,22 @@ export function InvoiceBillingDashboard({
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const [customerSearchResults, setCustomerSearchResults] = useState<BillingCustomer[]>([]);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
+  const [editCustomerModalOpen, setEditCustomerModalOpen] = useState(false);
+  const [selectedCustomerForEdit, setSelectedCustomerForEdit] = useState<BillingCustomer | null>(null);
+  
+  // Invoice Creation States
+  const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
+  const [invoiceForm, setInvoiceForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    customer_name: '',
+    customer_phone: '',
+    customer_email: '',
+    amount: '',
+    description: '',
+    notes: '',
+  });
+  const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
+  const [showInvoiceCustomerDropdown, setShowInvoiceCustomerDropdown] = useState(false);
   
   // Custom Product States
   const [showCustomProductForm, setShowCustomProductForm] = useState(false);
@@ -360,6 +382,7 @@ export function InvoiceBillingDashboard({
       const data = await response.json();
       
       if (response.ok) {
+        console.log('🔍 Product search results:', data.products);
         setSearchResults(data.products || []);
       }
     } catch (error) {
@@ -395,6 +418,153 @@ export function InvoiceBillingDashboard({
     }, 300);
     return () => clearTimeout(timer);
   }, [customerSearchQuery, searchCustomers]);
+
+  // Handle Edit Customer
+  const handleEditCustomer = (customerData: BillingCustomer) => {
+    setSelectedCustomerForEdit(customerData);
+    setEditCustomerModalOpen(true);
+  };
+
+  // Handle Save Customer from Edit
+  const handleSaveEditedCustomer = async (data: {
+    name: string;
+    email?: string;
+    phone?: string;
+    status: string;
+    source: string;
+    tags: string[];
+    assigned_sales_rep_id?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    floor?: string;
+    customer_visit_date?: string;
+    notes?: string;
+  }) => {
+    if (!selectedCustomerForEdit) return;
+
+    try {
+      const response = await fetch(`/api/crm/customers/${selectedCustomerForEdit.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: selectedCustomerForEdit.id,
+          ...data,
+          email: data.email?.trim() || undefined,
+          phone: data.phone?.trim() || undefined,
+          address: data.address?.trim() || undefined,
+          city: data.city?.trim() || undefined,
+          state: data.state?.trim() || undefined,
+          pincode: data.pincode?.trim() || undefined,
+          floor: data.floor?.trim() || undefined,
+          notes: data.notes?.trim() || undefined,
+          customer_visit_date: data.customer_visit_date || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Error updating customer:', error);
+        alert('Failed to update customer: ' + (error.error || 'Unknown error'));
+        return;
+      }
+
+      // Update current customer if it's the one being edited
+      if (customer?.id === selectedCustomerForEdit.id) {
+        // Refresh customer data from API
+        const refreshResponse = await fetch(`/api/crm/customers/search?q=${encodeURIComponent(customer?.name || '')}&limit=1`);
+        if (refreshResponse.ok) {
+          const refreshData = await refreshResponse.json();
+          if (refreshData.customers && refreshData.customers.length > 0) {
+            setCustomer(refreshData.customers[0]);
+          }
+        }
+      }
+
+      // Refresh search results
+      if (customerSearchQuery) {
+        searchCustomers(customerSearchQuery);
+      }
+
+      setEditCustomerModalOpen(false);
+      setSelectedCustomerForEdit(null);
+    } catch (error) {
+      console.error('Failed to update customer:', error);
+      alert('Failed to update customer');
+    }
+  };
+
+  // Handle invoice customer selection
+  const handleInvoiceCustomerSelect = (customer: { name: string; phone?: string; email?: string }) => {
+    setInvoiceForm(prev => ({
+      ...prev,
+      customer_name: customer.name,
+      customer_phone: customer.phone || '',
+      customer_email: customer.email || ''
+    }));
+    setShowInvoiceCustomerDropdown(false);
+  };
+
+  // Handle create standalone invoice
+  const handleCreateInvoice = async () => {
+    // Validation
+    if (!invoiceForm.customer_name.trim()) {
+      alert('Please enter a customer name');
+      return;
+    }
+
+    if (!invoiceForm.amount || parseFloat(invoiceForm.amount) <= 0) {
+      alert('Please enter a valid amount greater than 0');
+      return;
+    }
+
+    if (!invoiceForm.description.trim()) {
+      alert('Please enter a description for the invoice');
+      return;
+    }
+
+    setIsCreatingInvoice(true);
+    try {
+      const response = await fetch('/api/finance/standalone-invoices', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          customer_name: invoiceForm.customer_name,
+          customer_phone: invoiceForm.customer_phone || null,
+          customer_email: invoiceForm.customer_email || null,
+          amount: parseFloat(invoiceForm.amount),
+          description: invoiceForm.description,
+          notes: invoiceForm.notes || null,
+          date: invoiceForm.date
+        }),
+      });
+
+      if (response.ok) {
+        setCreateInvoiceOpen(false);
+        setInvoiceForm({
+          date: new Date().toISOString().split('T')[0],
+          customer_name: '',
+          customer_phone: '',
+          customer_email: '',
+          amount: '',
+          description: '',
+          notes: '',
+        });
+        alert('Invoice created successfully with automatic journal entry!');
+      } else {
+        const error = await response.json();
+        alert(`Failed to create invoice: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error creating invoice:', error);
+      alert('Error creating invoice. Please try again.');
+    } finally {
+      setIsCreatingInvoice(false);
+    }
+  };
 
   // Detect when items have been modified to switch from database values to calculated values
   useEffect(() => {
@@ -1306,7 +1476,7 @@ export function InvoiceBillingDashboard({
           <div className="mb-4">
             <Label>Customer</Label>
             <div className="flex gap-2">
-              <div className="flex-1">
+              <div className="flex-1 relative">
                 <Input
                   placeholder="Search customer by name, phone, or email..."
                   value={customerSearchQuery}
@@ -1316,21 +1486,66 @@ export function InvoiceBillingDashboard({
                   }}
                 />
                 {customerSearchResults.length > 0 && (
-                  <div className="mt-2 border rounded-md bg-white shadow-lg max-h-40 overflow-y-auto">
-                    {customerSearchResults.map((cust) => (
-                      <div
-                        key={cust.id}
-                        className="p-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
-                        onClick={() => {
-                          setCustomer(cust);
-                          setCustomerSearchQuery('');
-                          setCustomerSearchResults([]);
-                        }}
-                      >
-                        <div className="font-medium">{String(cust.name || '')}</div>
-                        <div className="text-sm text-gray-600">{String(cust.phone || '')} • {String(cust.email || '')}</div>
-                      </div>
-                    ))}
+                  <div className="mt-2 border rounded-md bg-white shadow-lg max-h-60 overflow-y-auto z-50 absolute w-full">
+                    {customerSearchResults.map((cust) => {
+                      const custData = cust as BillingCustomer & {
+                        displayAddress?: string;
+                        previousOrdersCount?: number;
+                        recentItems?: Array<{ name: string; quantity: number }>;
+                      };
+                      
+                      return (
+                        <div
+                          key={cust.id}
+                          className="p-3 hover:bg-gray-100 border-b last:border-b-0 group"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div 
+                              className="flex-1 cursor-pointer"
+                              onClick={() => {
+                                setCustomer(cust);
+                                setCustomerSearchQuery('');
+                                setCustomerSearchResults([]);
+                              }}
+                            >
+                              <div className="font-medium text-gray-900">{String(cust.name || '')}</div>
+                              <div className="text-sm text-gray-600">
+                                {String(cust.phone || '')} {cust.email && `• ${String(cust.email)}`}
+                              </div>
+                              {custData.displayAddress && (
+                                <div className="text-xs text-gray-500 mt-1">
+                                  📍 {custData.displayAddress}
+                                </div>
+                              )}
+                              {custData.previousOrdersCount && custData.previousOrdersCount > 0 && (
+                                <div className="mt-1 flex items-center gap-2">
+                                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                                    {custData.previousOrdersCount} previous {custData.previousOrdersCount === 1 ? 'order' : 'orders'}
+                                  </span>
+                                  {custData.recentItems && custData.recentItems.length > 0 && (
+                                    <span className="text-xs text-gray-500">
+                                      Recent: {custData.recentItems.map(item => item.name).slice(0, 2).join(', ')}
+                                      {custData.recentItems.length > 2 && ` +${custData.recentItems.length - 2} more`}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 p-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditCustomer(cust);
+                              }}
+                            >
+                              <Edit className="h-4 w-4 text-gray-500" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1362,14 +1577,21 @@ export function InvoiceBillingDashboard({
                   <div className="mt-2 text-sm text-gray-500">Searching...</div>
                 )}
                 {searchResults.length > 0 && (
-                  <div className="mt-2 border rounded-md bg-white shadow-lg max-h-40 overflow-y-auto">
+                  <div className="mt-2 border rounded-md bg-white shadow-lg max-h-40 overflow-y-auto relative z-50">
                     {searchResults.map((product) => (
                       <div
                         key={product.product_id}
                         className="p-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
                         onClick={() => addProductToItems(product)}
                       >
-                        <div className="font-medium">{String(product.product_name || '')}</div>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-medium flex-1">{String(product.product_name || '')}</div>
+                          {product.supplier_name && (
+                            <div className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded whitespace-nowrap">
+                              {String(product.supplier_name)}
+                            </div>
+                          )}
+                        </div>
                         <div className="text-sm text-gray-600">₹{String(product.price || 0)} • Stock: {String(product.quantity || 0)}</div>
                       </div>
                     ))}
@@ -2033,6 +2255,15 @@ export function InvoiceBillingDashboard({
             <Send className="h-4 w-4 mr-2" />
             Generate Invoice
           </Button>
+
+          <Button 
+            onClick={() => setCreateInvoiceOpen(true)}
+            variant="outline"
+            className="bg-white border-blue-600 text-blue-600 hover:bg-blue-50"
+          >
+            <FileText className="h-4 w-4 mr-2" />
+            New Invoice
+          </Button>
         </div>
 
         {/* Validation Errors */}
@@ -2495,6 +2726,254 @@ export function InvoiceBillingDashboard({
           }}
         />
       )}
+
+      {/* Edit Customer Dialog */}
+      <Dialog open={editCustomerModalOpen} onOpenChange={setEditCustomerModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                <Edit className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <DialogTitle className="text-2xl font-bold text-gray-900">
+                  Edit Customer
+                </DialogTitle>
+                <DialogDescription className="text-sm text-gray-500">
+                  Update customer information
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+          <div className="pt-2">
+            <CustomerForm
+              initialData={selectedCustomerForEdit || undefined}
+              onSubmit={handleSaveEditedCustomer}
+              onCancel={() => {
+                setEditCustomerModalOpen(false);
+                setSelectedCustomerForEdit(null);
+              }}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Invoice Dialog */}
+      <Dialog open={createInvoiceOpen} onOpenChange={setCreateInvoiceOpen}>
+        <DialogContent className="max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader className="pb-6">
+            <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+              <FileText className="h-5 w-5 text-blue-600" />
+              Create New Invoice
+            </DialogTitle>
+            <p className="text-sm text-gray-600 mt-1">
+              Create a standalone invoice for tracking old sales orders and receivables
+            </p>
+          </DialogHeader>
+          
+          <div className="space-y-6 py-4">
+            {/* Customer Information */}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="font-medium text-gray-900 mb-4 flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Customer Information
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2 relative">
+                  <Label htmlFor="customer_name" className="text-sm font-medium">
+                    Customer Name *
+                  </Label>
+                  <Input
+                    id="customer_name"
+                    placeholder="Start typing customer name..."
+                    value={invoiceForm.customer_name}
+                    onChange={(e) => {
+                      setInvoiceForm({ ...invoiceForm, customer_name: e.target.value });
+                      if (!showInvoiceCustomerDropdown) {
+                        setShowInvoiceCustomerDropdown(true);
+                      }
+                    }}
+                    onFocus={() => setShowInvoiceCustomerDropdown(true)}
+                    onBlur={() => {
+                      setTimeout(() => setShowInvoiceCustomerDropdown(false), 300);
+                    }}
+                    className="w-full"
+                  />
+                  {/* Enhanced dropdown with customer suggestions */}
+                  {showInvoiceCustomerDropdown && (
+                    <div 
+                      className="absolute top-full left-0 right-0 bg-white border border-gray-300 rounded-md shadow-xl max-h-60 min-h-[60px] overflow-y-auto z-[9999] mt-1"
+                      onMouseDown={(e) => e.preventDefault()}
+                    >
+                      {(() => {
+                        const searchTerm = invoiceForm.customer_name.toLowerCase().trim();
+                        const filteredCustomers = customerSearchResults.filter(cust => {
+                          if (!searchTerm) return true;
+                          const nameMatch = cust.name.toLowerCase().includes(searchTerm);
+                          const phoneMatch = cust.phone && cust.phone.includes(searchTerm);
+                          const emailMatch = cust.email && cust.email.toLowerCase().includes(searchTerm);
+                          return nameMatch || phoneMatch || emailMatch;
+                        });
+
+                        if (filteredCustomers.length === 0) {
+                          return (
+                            <div className="px-3 py-2 text-sm text-gray-500">
+                              {searchTerm 
+                                ? `No customers match "${invoiceForm.customer_name}". You can create a new customer.`
+                                : "Start typing to search customers..."
+                              }
+                            </div>
+                          );
+                        }
+
+                        return filteredCustomers.slice(0, 10).map((cust, index) => (
+                          <div
+                            key={index}
+                            className="px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                            onClick={() => handleInvoiceCustomerSelect(cust)}
+                          >
+                            <div className="font-medium text-sm text-gray-900">{cust.name}</div>
+                            {(cust.phone || cust.email) && (
+                              <div className="text-xs text-gray-500 mt-1">
+                                {cust.phone && <span>📞 {cust.phone}</span>}
+                                {cust.phone && cust.email && <span> • </span>}
+                                {cust.email && <span>✉️ {cust.email}</span>}
+                              </div>
+                            )}
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500">
+                    Start typing to see existing customers or enter a new customer name
+                  </p>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="customer_phone" className="text-sm font-medium">
+                    Phone Number
+                  </Label>
+                  <Input
+                    id="customer_phone"
+                    placeholder="Enter phone number"
+                    value={invoiceForm.customer_phone}
+                    onChange={(e) => setInvoiceForm({ ...invoiceForm, customer_phone: e.target.value })}
+                    className="w-full"
+                  />
+                </div>
+                
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="customer_email" className="text-sm font-medium">
+                    Email Address
+                  </Label>
+                  <Input
+                    id="customer_email"
+                    type="email"
+                    placeholder="Enter email address"
+                    value={invoiceForm.customer_email}
+                    onChange={(e) => setInvoiceForm({ ...invoiceForm, customer_email: e.target.value })}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Invoice Details */}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="font-medium text-gray-900 mb-4 flex items-center gap-2">
+                <Receipt className="h-4 w-4" />
+                Invoice Details
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="invoice_date" className="text-sm font-medium">
+                    Invoice Date *
+                  </Label>
+                  <Input
+                    id="invoice_date"
+                    type="date"
+                    value={invoiceForm.date}
+                    onChange={(e) => setInvoiceForm({ ...invoiceForm, date: e.target.value })}
+                    className="w-full"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="invoice_amount" className="text-sm font-medium">
+                    Amount (₹) *
+                  </Label>
+                  <Input
+                    id="invoice_amount"
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={invoiceForm.amount}
+                    onChange={(e) => setInvoiceForm({ ...invoiceForm, amount: e.target.value })}
+                    className="w-full text-lg"
+                  />
+                </div>
+                
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="invoice_description" className="text-sm font-medium">
+                    Description *
+                  </Label>
+                  <Input
+                    id="invoice_description"
+                    placeholder="Enter invoice description"
+                    value={invoiceForm.description}
+                    onChange={(e) => setInvoiceForm({ ...invoiceForm, description: e.target.value })}
+                    className="w-full"
+                  />
+                </div>
+                
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="invoice_notes" className="text-sm font-medium">
+                    Notes
+                  </Label>
+                  <Textarea
+                    id="invoice_notes"
+                    placeholder="Additional notes (optional)"
+                    value={invoiceForm.notes}
+                    onChange={(e) => setInvoiceForm({ ...invoiceForm, notes: e.target.value })}
+                    className="w-full min-h-20"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex flex-col sm:flex-row gap-3 pt-6 border-t">
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => setCreateInvoiceOpen(false)}
+              className="w-full sm:w-auto order-2 sm:order-1"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="default"
+              type="button" 
+              onClick={handleCreateInvoice}
+              disabled={!invoiceForm.customer_name || !invoiceForm.amount || !invoiceForm.description || isCreatingInvoice}
+              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 w-full sm:w-auto order-1 sm:order-2"
+            >
+              {isCreatingInvoice ? (
+                <>
+                  <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Create Invoice
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );

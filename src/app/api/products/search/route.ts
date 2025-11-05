@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
         image_url,
         created_at,
         updated_at,
-        suppliers!inner (
+        suppliers (
           id,
           name
         )
@@ -63,9 +63,22 @@ export async function GET(request: NextRequest) {
       image_url: string | null;
       created_at: string;
       updated_at: string;
-      suppliers: Array<{ id: string; name: string }> | null;
+      suppliers: { id: string; name: string } | { id: string; name: string }[] | null;
     }) => {
       const inventory = inventoryData?.find(inv => inv.product_id === product.id);
+      
+      // Handle supplier name - can be object or array
+      let supplierName = null;
+      if (product.suppliers) {
+        if (Array.isArray(product.suppliers)) {
+          supplierName = product.suppliers[0]?.name || null;
+        } else {
+          supplierName = product.suppliers.name || null;
+        }
+      }
+      
+      console.log('Product:', product.name, 'Supplier:', supplierName, 'Raw suppliers:', product.suppliers);
+      
       return {
         // Match ProductWithInventory interface exactly
         inventory_id: `search-${product.id}`, // Generate a temporary ID for search results
@@ -78,7 +91,7 @@ export async function GET(request: NextRequest) {
         reorder_point: inventory?.reorder_point || 0,
         updated_at: product.updated_at,
         product_created_at: product.created_at,
-        supplier_name: product.suppliers?.[0]?.name || null,
+        supplier_name: supplierName,
         supplier_id: product.supplier_id,
         price: product.price,
         product_name: product.name,

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { 
   TrendingUp, 
   DollarSign, 
@@ -24,7 +25,9 @@ import {
   Award,
   Truck,
   AlertTriangle,
-  Clock
+  Clock,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 import {
@@ -204,9 +207,12 @@ interface CashFlowData {
   }>;
   accountsSummary?: Array<{
     code: string;
+    displayCode?: string;
     name: string;
     type: string;
     balance: number;
+    count?: number;
+    category?: string;
   }>;
 }
 
@@ -216,6 +222,16 @@ export function DetailedFinanceOverview() {
   const [cashFlowData, setCashFlowData] = useState<CashFlowData | null>(null);
   const [productAnalytics, setProductAnalytics] = useState<ProductAnalytics | null>(null);
   const [activeView, setActiveView] = useState<'overview' | 'cashflow' | 'profitability' | 'products'>('overview');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
+  const [accountTransactions, setAccountTransactions] = useState<Array<{
+    date?: string;
+    transaction_date?: string;
+    description?: string;
+    particulars?: string;
+    amount: number;
+  }>>([]);
+  const [loadingTransactions, setLoadingTransactions] = useState(false);
   
   // Date filter state
   const [dateFilter, setDateFilter] = useState<'all_time' | 'today' | 'this_week' | 'last_month' | 'this_month' | 'custom'>('all_time');
@@ -348,6 +364,46 @@ export function DetailedFinanceOverview() {
     }
   }, [dateFilter, getDateRange]);
 
+  // Fetch individual account expenses
+  const fetchAccountExpenses = useCallback(async (accountCode: string) => {
+    try {
+      setLoadingTransactions(true);
+      const dateRange = getDateRange();
+      
+      const url = new URL('/api/finance/account-expenses', window.location.origin);
+      url.searchParams.set('accountCode', accountCode);
+      
+      if (dateFilter !== 'all_time' && dateRange.startDate && dateRange.endDate) {
+        url.searchParams.set('startDate', dateRange.startDate);
+        url.searchParams.set('endDate', dateRange.endDate);
+      }
+      
+      const response = await fetch(url.toString());
+      const data = await response.json();
+      
+      if (data.success) {
+        setAccountTransactions(data.expenses || []);
+      } else {
+        setAccountTransactions([]);
+      }
+    } catch (error) {
+      console.error('Error fetching account expenses:', error);
+      setAccountTransactions([]);
+    } finally {
+      setLoadingTransactions(false);
+    }
+  }, [dateFilter, getDateRange]);
+
+  const handleAccountClick = (accountCode: string) => {
+    if (selectedAccount === accountCode) {
+      setSelectedAccount(null);
+      setAccountTransactions([]);
+    } else {
+      setSelectedAccount(accountCode);
+      fetchAccountExpenses(accountCode);
+    }
+  };
+
   useEffect(() => {
     fetchAllData();
   }, [fetchAllData]);
@@ -395,85 +451,105 @@ export function DetailedFinanceOverview() {
             )}
           </p>
         </div>
-        
-        {/* Date Filter Dropdown */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-gray-500" />
-            <Select value={dateFilter} onValueChange={(value) => setDateFilter(value as typeof dateFilter)}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Select period" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all_time">All Time</SelectItem>
-                <SelectItem value="today">Today</SelectItem>
-                <SelectItem value="this_week">This Week</SelectItem>
-                <SelectItem value="this_month">This Month</SelectItem>
-                <SelectItem value="last_month">Last Month</SelectItem>
-                <SelectItem value="custom">Custom Range</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          
-          {/* Custom Date Range Inputs */}
-          {dateFilter === 'custom' && (
-            <div className="flex items-center gap-2">
-              <Input
-                type="date"
-                value={customStartDate}
-                onChange={(e) => setCustomStartDate(e.target.value)}
-                className="w-36"
-                placeholder="Start date"
-              />
-              <span className="text-gray-400">to</span>
-              <Input
-                type="date"
-                value={customEndDate}
-                onChange={(e) => setCustomEndDate(e.target.value)}
-                className="w-36"
-                placeholder="End date"
-              />
+      </div>
+
+      {/* Floating Action Buttons - Right Side */}
+      <div className="fixed bottom-6 right-6 flex flex-col gap-2 z-50">
+        {/* Date Range Popover Button */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-12 w-12 rounded-full shadow-lg hover:scale-110 transition-transform bg-white"
+              title="Date Range"
+            >
+              <Calendar className="h-5 w-5" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-4" align="end" side="left">
+            <div className="space-y-3">
+              <div className="font-semibold text-sm">Select Date Range</div>
+              <Select value={dateFilter} onValueChange={(value) => setDateFilter(value as typeof dateFilter)}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Select period" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all_time">All Time</SelectItem>
+                  <SelectItem value="today">Today</SelectItem>
+                  <SelectItem value="this_week">This Week</SelectItem>
+                  <SelectItem value="this_month">This Month</SelectItem>
+                  <SelectItem value="last_month">Last Month</SelectItem>
+                  <SelectItem value="custom">Custom Range</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              {/* Custom Date Range Inputs */}
+              {dateFilter === 'custom' && (
+                <div className="space-y-2 pt-2 border-t">
+                  <div className="text-xs font-medium text-gray-600">Custom Range</div>
+                  <div className="space-y-2">
+                    <Input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      className="w-full"
+                      placeholder="Start date"
+                    />
+                    <Input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      className="w-full"
+                      placeholder="End date"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        
-        <div className="flex gap-2">
-          <Button
-            variant={activeView === 'overview' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setActiveView('overview')}
-          >
-            <PieChart className="h-4 w-4 mr-2" />
-            Overview
-          </Button>
-          <Button
-            variant={activeView === 'cashflow' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setActiveView('cashflow')}
-          >
-            <Wallet className="h-4 w-4 mr-2" />
-            Cash Flow
-          </Button>
-          <Button
-            variant={activeView === 'profitability' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setActiveView('profitability')}
-          >
-            <Target className="h-4 w-4 mr-2" />
-            Profitability
-          </Button>
-          <Button
-            variant={activeView === 'products' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setActiveView('products')}
-          >
-            <ShoppingCart className="h-4 w-4 mr-2" />
-            Products
-          </Button>
-          <Button variant="outline" size="sm" onClick={fetchAllData}>
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-        </div>
+          </PopoverContent>
+        </Popover>
+
+        {/* Divider */}
+        <div className="h-px bg-gray-300 my-1"></div>
+
+        {/* View Navigation Buttons */}
+        <Button
+          variant={activeView === 'overview' ? 'default' : 'outline'}
+          size="icon"
+          onClick={() => setActiveView('overview')}
+          className="h-12 w-12 rounded-full shadow-lg hover:scale-110 transition-transform"
+          title="Overview"
+        >
+          <PieChart className="h-5 w-5" />
+        </Button>
+        <Button
+          variant={activeView === 'cashflow' ? 'default' : 'outline'}
+          size="icon"
+          onClick={() => setActiveView('cashflow')}
+          className="h-12 w-12 rounded-full shadow-lg hover:scale-110 transition-transform"
+          title="Cash Flow"
+        >
+          <Wallet className="h-5 w-5" />
+        </Button>
+        <Button
+          variant={activeView === 'profitability' ? 'default' : 'outline'}
+          size="icon"
+          onClick={() => setActiveView('profitability')}
+          className="h-12 w-12 rounded-full shadow-lg hover:scale-110 transition-transform"
+          title="Profitability"
+        >
+          <Target className="h-5 w-5" />
+        </Button>
+        <Button
+          variant={activeView === 'products' ? 'default' : 'outline'}
+          size="icon"
+          onClick={() => setActiveView('products')}
+          className="h-12 w-12 rounded-full shadow-lg hover:scale-110 transition-transform"
+          title="Products"
+        >
+          <ShoppingCart className="h-5 w-5" />
+        </Button>
       </div>
 
       {/* Overview Tab */}
@@ -874,23 +950,36 @@ export function DetailedFinanceOverview() {
             </Card>
           </div>
 
-          {/* Enhanced Expense Analysis */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Category-wise Expense Breakdown */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5" />
-                  Expense Categories Analysis
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
+          {/* Enhanced Expense Analysis - Full Width with Side-by-Side Layout */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                Expense Categories Analysis
+              </CardTitle>
+              <p className="text-sm text-gray-600 mt-1">
+                Click on a category to view detailed breakdown
+              </p>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Left: Category List */}
+                <div className="space-y-3">
                   {cashFlowData?.expenseBreakdown.slice(0, 6).map((category, index) => {
                     const totalExpenses = cashFlowData?.expenseBreakdown.reduce((sum, cat) => sum + cat.amount, 0) || 1;
                     const percentage = (category.amount / totalExpenses * 100);
+                    const isSelected = selectedCategory === category.category;
+                    
                     return (
-                      <div key={category.category} className="p-4 bg-gray-50 rounded-lg">
+                      <div 
+                        key={category.category} 
+                        className={`p-4 rounded-lg cursor-pointer transition-all ${
+                          isSelected 
+                            ? 'bg-gradient-to-r from-blue-100 to-purple-100 border-2 border-blue-500 shadow-md' 
+                            : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent'
+                        }`}
+                        onClick={() => setSelectedCategory(category.category)}
+                      >
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-3">
                             <div 
@@ -903,13 +992,17 @@ export function DetailedFinanceOverview() {
                                 'bg-purple-500'
                               }`}
                             />
-                            <h4 className="font-semibold text-gray-800">{category.category}</h4>
+                            <h4 className={`font-semibold ${isSelected ? 'text-blue-900' : 'text-gray-800'}`}>
+                              {category.category}
+                            </h4>
                           </div>
                           <div className="text-right">
-                            <p className="text-lg font-bold text-gray-900">
+                            <p className={`text-lg font-bold ${isSelected ? 'text-blue-900' : 'text-gray-900'}`}>
                               {formatCurrency(category.amount)}
                             </p>
-                            <p className="text-sm text-gray-600">{percentage.toFixed(1)}% of total</p>
+                            <p className={`text-sm ${isSelected ? 'text-blue-700' : 'text-gray-600'}`}>
+                              {percentage.toFixed(1)}% of total
+                            </p>
                           </div>
                         </div>
                         
@@ -917,28 +1010,23 @@ export function DetailedFinanceOverview() {
                         <div className="flex items-center gap-2 mb-2">
                           <div className="flex-1 bg-gray-200 rounded-full h-2">
                             <div 
-                              className={`h-2 rounded-full ${
+                              className={`h-2 rounded-full transition-all duration-500 ${
                                 index % 6 === 0 ? 'bg-red-500' :
                                 index % 6 === 1 ? 'bg-orange-500' :
                                 index % 6 === 2 ? 'bg-yellow-500' :
                                 index % 6 === 3 ? 'bg-green-500' :
                                 index % 6 === 4 ? 'bg-blue-500' :
                                 'bg-purple-500'
-                              } ${
-                                percentage > 50 ? 'w-full' :
-                                percentage > 30 ? 'w-3/4' :
-                                percentage > 15 ? 'w-1/2' :
-                                percentage > 5 ? 'w-1/4' :
-                                'w-1/6'
                               }`}
+                              style={{ width: `${percentage}%` } as React.CSSProperties}
                             />
                           </div>
-                          <span className="text-xs text-gray-500 font-medium min-w-[40px]">
+                          <span className={`text-xs font-medium min-w-[40px] ${isSelected ? 'text-blue-700' : 'text-gray-500'}`}>
                             {percentage.toFixed(0)}%
                           </span>
                         </div>
                         
-                        <div className="text-xs text-gray-600">
+                        <div className={`text-xs ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600'}`}>
                           {percentage > 30 ? 'Major expense category' : 
                            percentage > 15 ? 'Significant category' : 
                            percentage > 5 ? 'Regular category' : 
@@ -948,56 +1036,229 @@ export function DetailedFinanceOverview() {
                     );
                   })}
                 </div>
-              </CardContent>
-            </Card>
 
-            {/* Detailed Account Information */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  Top Expense Accounts
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {cashFlowData?.accountsSummary?.slice(0, 8).map((account, index) => (
-                    <div key={account.code} className="p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs font-mono bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                            {account.code}
-                          </span>
-                          <h5 className="font-medium text-gray-800">{account.name}</h5>
-                        </div>
-                        <span className="text-lg font-bold text-gray-900">
-                          {formatCurrency(Math.abs(account.balance))}
-                        </span>
-                      </div>
+                {/* Right: Selected Category Details */}
+                <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-6 border-2 border-gray-200">
+                  {selectedCategory ? (
+                    <>
+                      <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                        <PieChart className="h-5 w-5 text-blue-600" />
+                        {selectedCategory} - Detailed Breakdown
+                      </h3>
                       
-                      <div className="flex items-center justify-between">
-                        <span className={`text-xs px-2 py-1 rounded font-medium ${
-                          account.type === 'SUBCATEGORY EXPENSE' ? 'bg-red-100 text-red-800' :
-                          account.type === 'CATEGORY EXPENSE' ? 'bg-orange-100 text-orange-800' :
-                          account.type === 'Operating Expense' ? 'bg-red-100 text-red-800' :
-                          account.type === 'Cost Of Goods Sold' ? 'bg-orange-100 text-orange-800' :
-                          account.type === 'Other Expense' ? 'bg-yellow-100 text-yellow-800' :
-                          account.type === 'Depreciation' ? 'bg-purple-100 text-purple-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          {account.type || 'Uncategorized'}
-                        </span>
+                      {(() => {
+                        const categoryAccounts = cashFlowData?.accountsSummary?.filter(
+                          account => account.name.toLowerCase().includes(selectedCategory.toLowerCase()) ||
+                                    account.type?.toLowerCase().includes(selectedCategory.toLowerCase())
+                        ) || [];
                         
-                        <div className="text-xs text-gray-500">
-                          Rank #{index + 1} by amount
-                        </div>
+                        const totalCategoryAmount = categoryAccounts.reduce((sum, acc) => sum + Math.abs(acc.balance), 0);
+                        
+                        if (categoryAccounts.length === 0) {
+                          return (
+                            <div className="text-center py-8 text-gray-500">
+                              <AlertTriangle className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                              <p>No detailed accounts found for this category</p>
+                              <p className="text-xs mt-2">Try selecting another category</p>
+                            </div>
+                          );
+                        }
+                        
+                        // Prepare data for vertical bar chart
+                        const chartData = categoryAccounts.map((account) => ({
+                          name: account.code,
+                          fullName: account.name,
+                          amount: Math.abs(account.balance),
+                          percentage: (Math.abs(account.balance) / totalCategoryAmount * 100).toFixed(1)
+                        }));
+                        
+                        return (
+                          <div className="space-y-4">
+                            {/* Vertical Bar Chart */}
+                            <div className="bg-white rounded-lg p-4 shadow-sm">
+                              <ResponsiveContainer width="100%" height={300}>
+                                <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                                  <XAxis 
+                                    dataKey="name" 
+                                    angle={-45}
+                                    textAnchor="end"
+                                    height={80}
+                                    interval={0}
+                                    tick={{ fontSize: 10 }}
+                                  />
+                                  <YAxis 
+                                    tickFormatter={(value) => `₹${(value / 1000).toFixed(0)}K`}
+                                  />
+                                  <Tooltip 
+                                    formatter={(value: number) => formatCurrency(value)}
+                                    labelFormatter={(label) => {
+                                      const item = chartData.find(d => d.name === label);
+                                      return item ? item.fullName : label;
+                                    }}
+                                  />
+                                  <Bar dataKey="amount" fill="#3b82f6" radius={[8, 8, 0, 0]}>
+                                    {chartData.map((entry, index) => (
+                                      <Cell 
+                                        key={`cell-${index}`} 
+                                        fill={[
+                                          '#ef4444', '#f97316', '#f59e0b', '#eab308',
+                                          '#84cc16', '#22c55e', '#14b8a6', '#06b6d4',
+                                          '#6366f1', '#8b5cf6', '#d946ef', '#ec4899'
+                                        ][index % 12]}
+                                      />
+                                    ))}
+                                  </Bar>
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+
+                            {/* Complete List with Details */}
+                            <div className="bg-white rounded-lg p-4 shadow-sm">
+                              <div className="flex items-center justify-between mb-3 pb-2 border-b">
+                                <h4 className="font-semibold text-gray-800">All Accounts ({categoryAccounts.length})</h4>
+                                <span className="text-sm font-bold text-gray-900">
+                                  Total: {formatCurrency(totalCategoryAmount)}
+                                </span>
+                              </div>
+                              <div className="space-y-2 max-h-96 overflow-y-auto">
+                                {categoryAccounts.map((account, index) => {
+                                  const amount = Math.abs(account.balance);
+                                  const percentage = (amount / totalCategoryAmount) * 100;
+                                  const isExpanded = selectedAccount === account.code;
+                                  
+                                  return (
+                                    <div key={account.code} className="border border-gray-200 rounded-lg overflow-hidden">
+                                      <div 
+                                        className="p-2 hover:bg-gray-50 transition-colors cursor-pointer"
+                                        onClick={() => handleAccountClick(account.code)}
+                                      >
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex items-center gap-2 flex-1">
+                                            <span className={`inline-flex items-center justify-center w-6 h-6 text-white text-xs font-bold rounded-full ${
+                                              index % 12 === 0 ? 'bg-red-500' :
+                                              index % 12 === 1 ? 'bg-orange-500' :
+                                              index % 12 === 2 ? 'bg-amber-500' :
+                                              index % 12 === 3 ? 'bg-yellow-500' :
+                                              index % 12 === 4 ? 'bg-lime-500' :
+                                              index % 12 === 5 ? 'bg-green-500' :
+                                              index % 12 === 6 ? 'bg-teal-500' :
+                                              index % 12 === 7 ? 'bg-cyan-500' :
+                                              index % 12 === 8 ? 'bg-indigo-500' :
+                                              index % 12 === 9 ? 'bg-violet-500' :
+                                              index % 12 === 10 ? 'bg-fuchsia-500' :
+                                              'bg-pink-500'
+                                            }`}>
+                                              {index + 1}
+                                            </span>
+                                            <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded">
+                                              {account.displayCode || account.code}
+                                            </span>
+                                            <span className="font-medium text-gray-700 text-sm truncate">
+                                              {account.name}
+                                            </span>
+                                            {isExpanded ? (
+                                              <ChevronUp className="h-4 w-4 text-gray-400 ml-auto" />
+                                            ) : (
+                                              <ChevronDown className="h-4 w-4 text-gray-400 ml-auto" />
+                                            )}
+                                          </div>
+                                          <div className="flex items-center gap-3 ml-2">
+                                            <span className="text-sm font-bold text-gray-900 min-w-[100px] text-right">
+                                              {formatCurrency(amount)}
+                                            </span>
+                                            <span className={`text-xs font-semibold px-2 py-1 rounded min-w-[55px] text-center ${
+                                              index % 12 === 0 ? 'bg-red-50 text-red-600' :
+                                              index % 12 === 1 ? 'bg-orange-50 text-orange-600' :
+                                              index % 12 === 2 ? 'bg-amber-50 text-amber-600' :
+                                              index % 12 === 3 ? 'bg-yellow-50 text-yellow-600' :
+                                              index % 12 === 4 ? 'bg-lime-50 text-lime-600' :
+                                              index % 12 === 5 ? 'bg-green-50 text-green-600' :
+                                              index % 12 === 6 ? 'bg-teal-50 text-teal-600' :
+                                              index % 12 === 7 ? 'bg-cyan-50 text-cyan-600' :
+                                              index % 12 === 8 ? 'bg-indigo-50 text-indigo-600' :
+                                              index % 12 === 9 ? 'bg-violet-50 text-violet-600' :
+                                              index % 12 === 10 ? 'bg-fuchsia-50 text-fuchsia-600' :
+                                              'bg-pink-50 text-pink-600'
+                                            }`}>
+                                              {percentage.toFixed(1)}%
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Expandable Expense Details */}
+                                      {isExpanded && (
+                                        <div className="bg-gray-50 border-t border-gray-200 p-3">
+                                          {loadingTransactions ? (
+                                            <div className="text-center py-4 text-gray-500 text-sm">
+                                              Loading expenses...
+                                            </div>
+                                          ) : accountTransactions.length > 0 ? (
+                                            <div className="space-y-1">
+                                              <div className="flex items-center justify-between text-xs font-semibold text-gray-700 pb-2 border-b border-gray-300">
+                                                <span>Date</span>
+                                                <span>Description</span>
+                                                <span>Amount</span>
+                                              </div>
+                                              <div className="max-h-60 overflow-y-auto space-y-1">
+                                                {accountTransactions.map((expense, idx) => {
+                                                  const dateValue = expense.date || expense.transaction_date;
+                                                  const formattedDate = dateValue ? new Date(dateValue).toLocaleDateString('en-GB') : 'N/A';
+                                                  
+                                                  return (
+                                                    <div 
+                                                      key={idx} 
+                                                      className="flex items-center justify-between text-xs py-1.5 px-2 bg-white rounded hover:bg-blue-50"
+                                                    >
+                                                      <span className="text-gray-600 font-mono min-w-[80px]">
+                                                        {formattedDate}
+                                                      </span>
+                                                      <span className="text-gray-700 flex-1 px-3 truncate">
+                                                        {expense.description || expense.particulars || 'Expense'}
+                                                      </span>
+                                                      <span className="text-gray-900 font-semibold min-w-[80px] text-right">
+                                                        {formatCurrency(Math.abs(expense.amount))}
+                                                      </span>
+                                                    </div>
+                                                  );
+                                                })}
+                                              </div>
+                                              <div className="flex items-center justify-between text-xs font-bold text-gray-900 pt-2 border-t border-gray-300">
+                                                <span>{accountTransactions.length} transactions</span>
+                                                <span>
+                                                  Total: {formatCurrency(accountTransactions.reduce((sum, exp) => sum + Math.abs(exp.amount), 0))}
+                                                </span>
+                                              </div>
+                                            </div>
+                                          ) : (
+                                            <div className="text-center py-4 text-gray-500 text-sm">
+                                              No individual expenses found for this account
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-gray-400">
+                      <div className="text-center">
+                        <PieChart className="h-16 w-16 mx-auto mb-4 opacity-30" />
+                        <p className="text-lg font-medium">Select a category</p>
+                        <p className="text-sm mt-2">Click on any expense category to view detailed breakdown</p>
                       </div>
                     </div>
-                  )) || []}
+                  )}
                 </div>
-              </CardContent>
-            </Card>
-          </div>
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Comprehensive Expense Table */}
           {cashFlowData?.accountsSummary && cashFlowData.accountsSummary.length > 0 && (
@@ -1038,7 +1299,7 @@ export function DetailedFinanceOverview() {
                               </td>
                               <td className="p-3">
                                 <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">
-                                  {account.code}
+                                  {account.displayCode || account.code}
                                 </span>
                               </td>
                               <td className="p-3 font-medium">{account.name}</td>

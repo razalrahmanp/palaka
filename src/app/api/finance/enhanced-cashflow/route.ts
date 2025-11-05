@@ -1,6 +1,36 @@
 import { supabase } from '@/lib/supabaseClient';
 import { NextResponse } from 'next/server';
 
+// Helper function to fetch all records with pagination
+async function fetchAllRecords<T>(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  query: any,
+  pageSize: number = 1000
+): Promise<T[]> {
+  let allData: T[] = [];
+  let from = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const { data, error } = await query.range(from, from + pageSize - 1);
+    
+    if (error) {
+      console.error('Error fetching records:', error);
+      break;
+    }
+
+    if (data && data.length > 0) {
+      allData = [...allData, ...data];
+      from += pageSize;
+      hasMore = data.length === pageSize; // If we got less than pageSize, we're done
+    } else {
+      hasMore = false;
+    }
+  }
+
+  return allData;
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -32,75 +62,47 @@ export async function GET(request: Request) {
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString()
     });
-    // Get chart of accounts for expense categorization
-    const { data: chartOfAccounts, error: chartError } = await supabase
-      .from('chart_of_accounts')
-      .select('id, account_code, account_name, account_type, account_subtype, current_balance')
-      .eq('account_type', 'EXPENSE')
-      .eq('is_active', true);
-
-    if (chartError) {
-      console.error('Error fetching chart of accounts:', chartError);
-    }
-
-    // Get journal entries for more accurate expense tracking
-    const { data: journalEntries, error: journalError } = await supabase
-      .from('journal_entries')
-      .select(`
-        *,
-        journal_entry_lines (
-          account_id,
-          debit_amount,
-          credit_amount,
-          chart_of_accounts (
-            account_name,
-            account_type,
-            account_subtype
-          )
-        )
-      `)
-      .order('created_at', { ascending: false })
-      .limit(1000);
-
-    if (journalError) {
-      console.error('Error fetching journal entries:', journalError);
-    }
 
     // Get payments (cash inflows) - filtered by date range
-    const { data: payments, error: paymentsError } = await supabase
+    // Using pagination to fetch ALL records (Supabase has a 1000 row limit per request)
+    const paymentsQuery = supabase
       .from('payments')
       .select('amount, date, payment_date, method, description')
       .gte('date', startDate.toISOString().split('T')[0])
       .lte('date', endDate.toISOString().split('T')[0])
       .order('date', { ascending: false });
 
-    if (paymentsError) {
-      console.error('Error fetching payments:', paymentsError);
-    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const payments = await fetchAllRecords<any>(paymentsQuery);
+    console.log('💰 Fetched payments count:', payments?.length || 0);
 
-    // Get expenses (cash outflows) - Primary source for expense analysis, filtered by date range
-    const { data: expenses, error: expensesError } = await supabase
+    // Get expenses (cash outflows) - Primary and ONLY source for expense analysis, filtered by date range
+    // Using pagination to fetch ALL records (Supabase has a 1000 row limit per request)
+    const expensesQuery = supabase
       .from('expenses')
       .select('amount, date, subcategory, description, payment_method, category, entity_type')
       .gte('date', startDate.toISOString().split('T')[0])
       .lte('date', endDate.toISOString().split('T')[0])
       .order('date', { ascending: false });
 
-    if (expensesError) {
-      console.error('Error fetching expenses:', expensesError);
-    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const expenses = await fetchAllRecords<any>(expensesQuery);
+    console.log('📊 Fetched expenses count:', expenses?.length || 0);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    console.log('📊 Total expense amount:', expenses?.reduce((sum: any, e: any) => sum + (e.amount || 0), 0) || 0);
 
     // Get bank account transactions for additional cash flow insights, filtered by date range
-    const { data: bankTransactions, error: bankError } = await supabase
+    // Using pagination to fetch ALL records
+    const bankQuery = supabase
       .from('bank_transactions')
       .select('amount, type, date, description')
       .gte('date', startDate.toISOString().split('T')[0])
       .lte('date', endDate.toISOString().split('T')[0])
       .order('date', { ascending: false });
 
-    if (bankError) {
-      console.error('Error fetching bank transactions:', bankError);
-    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const bankTransactions = await fetchAllRecords<any>(bankQuery);
+    console.log('🏦 Fetched bank transactions count:', bankTransactions?.length || 0);
 
     // Calculate daily cash flow for the last 30 days
     const thirtyDaysAgo = new Date();
@@ -182,57 +184,23 @@ export async function GET(request: Request) {
       });
     }
 
-    // Categorize expenses using expenses table as primary source
+    // Categorize expenses using expenses table as the ONLY source
     const expenseCategories: { [key: string]: number } = {};
     
-    // Primary: Process expenses table with category and subcategory fields
+    // Process expenses table with ONLY category field (ignore subcategory)
     expenses?.forEach(expense => {
-      const category = expense.category || expense.subcategory || 'Operating Expenses';
+      const category = expense.category || 'Operating Expenses';
       expenseCategories[category] = (expenseCategories[category] || 0) + (expense.amount || 0);
     });
 
-    // Fallback 1: Use journal entries if expenses table is empty or insufficient
-    if (Object.keys(expenseCategories).length === 0 || 
-        Object.values(expenseCategories).reduce((sum, val) => sum + val, 0) < 1000) {
-      
-      journalEntries?.forEach(entry => {
-        entry.journal_entry_lines?.forEach((line: {
-          account_id: string;
-          debit_amount: number;
-          credit_amount: number;
-          chart_of_accounts: {
-            account_name: string;
-            account_type: string;
-            account_subtype: string;
-          };
-        }) => {
-          if (line.chart_of_accounts?.account_type === 'EXPENSE' && line.debit_amount > 0) {
-            const category = line.chart_of_accounts?.account_subtype || 
-                            line.chart_of_accounts?.account_name || 
-                            'Other Expenses';
-            expenseCategories[category] = (expenseCategories[category] || 0) + (line.debit_amount || 0);
-          }
-        });
-      });
-    }
-
-    // Fallback 2: Use chart of accounts current balances as last resort
-    if (Object.keys(expenseCategories).length === 0 || 
-        Object.values(expenseCategories).reduce((sum, val) => sum + val, 0) < 1000) {
-      
-      chartOfAccounts?.forEach(account => {
-        if (account.current_balance && account.current_balance > 0) {
-          const category = account.account_subtype?.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || 
-                          account.account_name || 
-                          'Operating Expenses';
-          expenseCategories[category] = (expenseCategories[category] || 0) + Math.abs(account.current_balance);
-        }
-      });
-    }
+    // Debug: Log Manufacturing category details
+    const manufacturingExpenses = expenses?.filter(e => e.category === 'Manufacturing') || [];
+    console.log('🏭 Manufacturing expenses:', {
+      count: manufacturingExpenses.length,
+      total: manufacturingExpenses.reduce((sum, e) => sum + (e.amount || 0), 0),
+      categoryTotal: expenseCategories['Manufacturing']
+    });
     
-    // Note: We don't add bank withdrawals separately as they represent the payment method
-    // for the expenses already categorized above
-
     // Create expense breakdown with better categorization
     const expenseBreakdown = Object.entries(expenseCategories)
       .map(([category, amount]) => ({ 
@@ -242,13 +210,19 @@ export async function GET(request: Request) {
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 10);
 
-    // Create accounts summary from expenses table instead of chart of accounts
-    const expenseAccounts: { [key: string]: { amount: number; count: number; subcategory?: string } } = {};
+    // Create accounts summary from expenses table with category-based grouping
+    const expenseAccounts: { [key: string]: { amount: number; count: number; category: string; subcategory?: string } } = {};
     
     expenses?.forEach(expense => {
-      const accountKey = expense.subcategory || expense.category || 'Miscellaneous';
+      // Always use category as the primary key, ignore subcategory for grouping
+      const accountKey = expense.category || 'Miscellaneous';
       if (!expenseAccounts[accountKey]) {
-        expenseAccounts[accountKey] = { amount: 0, count: 0, subcategory: expense.subcategory };
+        expenseAccounts[accountKey] = { 
+          amount: 0, 
+          count: 0, 
+          category: expense.category || 'Other',
+          subcategory: undefined
+        };
       }
       expenseAccounts[accountKey].amount += expense.amount || 0;
       expenseAccounts[accountKey].count += 1;
@@ -256,14 +230,16 @@ export async function GET(request: Request) {
 
     const accountsSummary = Object.entries(expenseAccounts)
       .map(([accountName, data], index) => ({
-        code: `EXP-${String(index + 1).padStart(3, '0')}`, // Generate expense account codes
+        code: accountName, // Use the actual category/subcategory name as code for API queries
+        displayCode: `EXP-${String(index + 1).padStart(3, '0')}`, // Display-friendly code
         name: accountName.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
         type: data.subcategory ? 'SUBCATEGORY EXPENSE' : 'CATEGORY EXPENSE',
-        balance: data.amount,
-        count: data.count
+        balance: -data.amount, // Negative for expenses
+        count: data.count,
+        category: data.category
       }))
       .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance))
-      .slice(0, 15);
+      .slice(0, 20);
 
     // Payment method analysis
     const paymentMethods: { [key: string]: { amount: number; count: number } } = {};

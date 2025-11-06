@@ -6,6 +6,48 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+interface PunchLog {
+  id: string;
+  employee_id: string;
+  punch_time: string;
+  punch_type: string;
+  verification_method: string;
+  device_id: string;
+  employee: {
+    id: string;
+    name: string;
+    employee_id: string;
+    department: string;
+    position: string;
+  };
+  device: {
+    device_name: string;
+    ip_address: string;
+  };
+}
+
+interface AttendanceRecord {
+  id: string;
+  employee_id: string;
+  employee: {
+    id: string;
+    name: string;
+    employee_id: string;
+    department: string;
+    position: string;
+  };
+  date: string;
+  check_in_time: string | null;
+  check_out_time: string | null;
+  break_start_time: string | null;
+  break_end_time: string | null;
+  total_breaks: number;
+  total_hours: number | null;
+  status: string;
+  notes: string | null;
+  punch_logs: PunchLog[];
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -16,8 +58,9 @@ export async function GET(request: Request) {
 
     console.log('GET /api/hr/attendance - Params:', { date, employeeId, startDate, endDate });
 
+    // Fetch punch logs instead of attendance_records
     let query = supabaseAdmin
-      .from('attendance_records')
+      .from('attendance_punch_logs')
       .select(`
         *,
         employee:employees(
@@ -26,30 +69,137 @@ export async function GET(request: Request) {
           employee_id,
           department,
           position
+        ),
+        device:essl_devices(
+          device_name,
+          ip_address
         )
       `);
 
     // Apply filters
     if (date) {
-      query = query.eq('date', date);
+      // For punch logs, filter by date part of punch_time
+      query = query.gte('punch_time', `${date}T00:00:00`)
+                   .lte('punch_time', `${date}T23:59:59`);
     }
     if (employeeId) {
       query = query.eq('employee_id', employeeId);
     }
     if (startDate && endDate) {
-      query = query.gte('date', startDate).lte('date', endDate);
+      query = query.gte('punch_time', `${startDate}T00:00:00`)
+                   .lte('punch_time', `${endDate}T23:59:59`);
     }
 
-    query = query.order('date', { ascending: false });
+    query = query.order('punch_time', { ascending: false });
 
-    const { data: attendanceRecords, error } = await query;
+    const { data: punchLogs, error } = await query;
 
     if (error) {
-      console.error('Error fetching attendance records:', error);
+      console.error('Error fetching punch logs:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    console.log(`GET /api/hr/attendance - Found ${attendanceRecords?.length || 0} records`);
+    // Group punch logs by employee and date
+    const attendanceMap = new Map<string, AttendanceRecord>();
+
+    punchLogs?.forEach((log: PunchLog) => {
+      const logDate = log.punch_time.split('T')[0];
+      const key = `${log.employee_id}_${logDate}`;
+      
+      if (!attendanceMap.has(key)) {
+        attendanceMap.set(key, {
+          id: log.id,
+          employee_id: log.employee_id,
+          employee: log.employee,
+          date: logDate,
+          check_in_time: null,
+          check_out_time: null,
+          break_start_time: null,
+          break_end_time: null,
+          total_breaks: 0,
+          total_hours: null,
+          status: 'present',
+          notes: null,
+          punch_logs: []
+        });
+      }
+
+      const record = attendanceMap.get(key)!;
+      record.punch_logs.push(log);
+    });
+
+    // Process each record to determine check-in, check-out, and break times
+    const attendanceRecords = Array.from(attendanceMap.values()).map((record: AttendanceRecord) => {
+      // Sort punch logs by time to get chronological order
+      const sortedLogs = record.punch_logs.sort((a, b) => 
+        new Date(a.punch_time).getTime() - new Date(b.punch_time).getTime()
+      );
+
+      if (sortedLogs.length > 0) {
+        // First punch is always check-in
+        record.check_in_time = sortedLogs[0].punch_time;
+
+        // Only show break times if there are 4 or more punches
+        // This prevents showing the same checkout time in break columns
+        if (sortedLogs.length >= 4) {
+          // Second punch is break start
+          record.break_start_time = sortedLogs[1].punch_time;
+          
+          // Third punch is break end
+          record.break_end_time = sortedLogs[2].punch_time;
+        }
+
+        // Last punch is always check-out (if more than one punch)
+        if (sortedLogs.length > 1) {
+          record.check_out_time = sortedLogs[sortedLogs.length - 1].punch_time;
+        }
+      }
+
+      // Calculate total hours if both check-in and check-out exist
+      if (record.check_in_time && record.check_out_time) {
+        try {
+          const checkIn = new Date(record.check_in_time);
+          const checkOut = new Date(record.check_out_time);
+          const hours = (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60);
+          record.total_hours = Math.round(hours * 10) / 10; // Round to 1 decimal place
+        } catch (e) {
+          console.error('Error calculating hours:', e);
+          record.total_hours = null;
+        }
+      }
+
+      // Determine status based on check-in time
+      if (record.check_in_time) {
+        const checkInDate = new Date(record.check_in_time);
+        const checkInHour = checkInDate.getHours();
+        const checkInMinute = checkInDate.getMinutes();
+        const checkInTotalMinutes = checkInHour * 60 + checkInMinute;
+        const nineAMMinutes = 9 * 60 + 15; // 9:15 AM with grace period
+
+        if (checkInTotalMinutes <= nineAMMinutes) {
+          record.status = 'present';
+        } else {
+          record.status = 'late';
+        }
+      }
+
+      return record;
+    });
+
+    console.log(`GET /api/hr/attendance - Found ${attendanceRecords.length} records from punch logs`);
+    
+    // Debug: Log first record to verify data structure
+    if (attendanceRecords.length > 0) {
+      console.log('Sample attendance record:', JSON.stringify({
+        employee: attendanceRecords[0].employee?.name,
+        date: attendanceRecords[0].date,
+        check_in_time: attendanceRecords[0].check_in_time,
+        check_out_time: attendanceRecords[0].check_out_time,
+        total_hours: attendanceRecords[0].total_hours,
+        status: attendanceRecords[0].status,
+        punch_count: attendanceRecords[0].punch_logs?.length
+      }));
+    }
 
     return NextResponse.json(attendanceRecords);
   } catch (error) {

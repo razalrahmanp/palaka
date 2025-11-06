@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Calendar, Clock, Users, UserCheck, UserX, Search, Plus, Eye, Edit, ChevronLeft, ChevronRight, X, MessageSquare, Save } from 'lucide-react';
+import { Calendar, Clock, Users, UserCheck, UserX, Search, Plus, Eye, Edit, ChevronLeft, ChevronRight, X, MessageSquare, Save, AlertTriangle, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths } from 'date-fns';
 
@@ -153,6 +153,8 @@ interface AttendanceRecord {
   employee_id: string;
   date: string;
   check_in_time?: string;
+  break_start_time?: string;
+  break_end_time?: string;
   check_out_time?: string;
   total_hours?: number;
   status: 'present' | 'absent' | 'half_day' | 'late' | 'on_leave';
@@ -174,6 +176,19 @@ interface Employee {
   position: string;
 }
 
+interface PunchLog {
+  id: string;
+  punch_time: string;
+  punch_type: string;
+  verification_method: string;
+  verification_quality: number;
+  device: {
+    device_name: string;
+    ip_address: string;
+  };
+  processed: boolean;
+}
+
 export default function AttendancePage() {
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -189,6 +204,12 @@ export default function AttendancePage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [hasAutoProcessed, setHasAutoProcessed] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  
+  // Employee punch logs state
+  const [expandedEmployeeRows, setExpandedEmployeeRows] = useState<Set<string>>(new Set());
+  const [employeePunchLogs, setEmployeePunchLogs] = useState<Record<string, PunchLog[]>>({});
+  const [loadingPunchLogs, setLoadingPunchLogs] = useState<Set<string>>(new Set());
+  
   const [editFormData, setEditFormData] = useState({
     check_in_time: '',
     check_out_time: '',
@@ -222,6 +243,41 @@ export default function AttendancePage() {
       setIsLoading(false);
     }
   }, [selectedDate, selectedEmployee]);
+
+  const fetchEmployeePunchLogs = useCallback(async (employeeId: string, date: string) => {
+    const key = `${employeeId}_${date}`;
+    
+    // Don't fetch if already loading or already have data
+    if (loadingPunchLogs.has(key) || employeePunchLogs[key]) {
+      return;
+    }
+
+    try {
+      setLoadingPunchLogs(prev => new Set(prev).add(key));
+      
+      const response = await fetch(
+        `/api/hr/attendance/punch-logs?employee_id=${employeeId}&date=${date}`
+      );
+      
+      if (!response.ok) throw new Error('Failed to fetch punch logs');
+      
+      const data = await response.json();
+      
+      setEmployeePunchLogs(prev => ({
+        ...prev,
+        [key]: data
+      }));
+    } catch (error) {
+      console.error('Error fetching punch logs:', error);
+      toast.error('Failed to load punch logs');
+    } finally {
+      setLoadingPunchLogs(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(key);
+        return newSet;
+      });
+    }
+  }, [loadingPunchLogs, employeePunchLogs]);
 
   // Auto-sync and process on page load
   const autoSyncAndProcess = useCallback(async () => {
@@ -336,6 +392,29 @@ export default function AttendancePage() {
   };
 
   const stats = getTodayStats();
+
+  const toggleEmployeeRow = (employeeId: string, date: string) => {
+    const key = `${employeeId}_${date}`;
+    const newExpanded = new Set(expandedEmployeeRows);
+    
+    if (newExpanded.has(key)) {
+      newExpanded.delete(key);
+    } else {
+      newExpanded.add(key);
+      // Fetch punch logs when expanding
+      fetchEmployeePunchLogs(employeeId, date);
+    }
+    setExpandedEmployeeRows(newExpanded);
+  };
+
+  const getPunchTypeColor = (type: string) => {
+    switch (type) {
+      case 'IN': return 'bg-green-100 text-green-800';
+      case 'OUT': return 'bg-red-100 text-red-800';
+      case 'BREAK': return 'bg-orange-100 text-orange-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
 
   const handleViewRecord = (record: AttendanceRecord) => {
     setSelectedRecord(record);
@@ -632,18 +711,39 @@ export default function AttendancePage() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100 hover:from-gray-100 hover:to-gray-150">
+                    <TableHead className="w-10 font-semibold"></TableHead>
                     <TableHead className="font-semibold">Employee</TableHead>
                     <TableHead className="font-semibold">Date</TableHead>
                     <TableHead className="font-semibold">Check In</TableHead>
+                    <TableHead className="font-semibold">Break Start</TableHead>
+                    <TableHead className="font-semibold">Break End</TableHead>
                     <TableHead className="font-semibold">Check Out</TableHead>
+                    <TableHead className="font-semibold">Breaks</TableHead>
                     <TableHead className="font-semibold">Hours</TableHead>
                     <TableHead className="font-semibold">Status</TableHead>
                     <TableHead className="text-right font-semibold">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredRecords.map((record) => (
-                    <TableRow key={record.id} className="hover:bg-blue-50/50 transition-colors border-b border-gray-100">
+                  {filteredRecords.map((record) => {
+                    const rowKey = `${record.employee_id}_${record.date}`;
+                    const isExpanded = expandedEmployeeRows.has(rowKey);
+                    const punchLogs = employeePunchLogs[rowKey] || [];
+                    const isLoadingLogs = loadingPunchLogs.has(rowKey);
+
+                    return (
+                      <React.Fragment key={record.id}>
+                    <TableRow 
+                      className="hover:bg-blue-50/50 transition-colors border-b border-gray-100 cursor-pointer"
+                      onClick={() => toggleEmployeeRow(record.employee_id, record.date)}
+                    >
+                      <TableCell>
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4 text-gray-600" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-gray-600" />
+                        )}
+                      </TableCell>
                       <TableCell className="py-3">
                         <div className="flex items-center gap-3">
                           <div className={`h-10 w-10 rounded-full flex items-center justify-center text-white font-semibold text-sm ${
@@ -669,8 +769,33 @@ export default function AttendancePage() {
                       <TableCell className="text-sm font-medium text-gray-900">
                         {formatTime(record.check_in_time)}
                       </TableCell>
+                      <TableCell className="text-sm font-medium text-orange-600">
+                        {formatTime(record.break_start_time)}
+                      </TableCell>
+                      <TableCell className="text-sm font-medium text-green-600">
+                        {formatTime(record.break_end_time)}
+                      </TableCell>
                       <TableCell className="text-sm font-medium text-gray-900">
                         {formatTime(record.check_out_time)}
+                      </TableCell>
+                      <TableCell className="text-sm font-semibold text-amber-600">
+                        {(() => {
+                          if (record.break_start_time && record.break_end_time) {
+                            try {
+                              const breakStart = new Date(record.break_start_time);
+                              const breakEnd = new Date(record.break_end_time);
+                              const breakMinutes = Math.floor((breakEnd.getTime() - breakStart.getTime()) / (1000 * 60));
+                              if (breakMinutes > 0) {
+                                const hours = Math.floor(breakMinutes / 60);
+                                const mins = breakMinutes % 60;
+                                return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+                              }
+                            } catch {
+                              return '-';
+                            }
+                          }
+                          return '-';
+                        })()}
                       </TableCell>
                       <TableCell className="text-sm font-semibold text-gray-900">
                         {record.total_hours ? `${record.total_hours.toFixed(1)}h` : '-'}
@@ -688,7 +813,10 @@ export default function AttendancePage() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => handleViewRecord(record)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleViewRecord(record);
+                            }}
                             className="h-8 w-8 p-0 hover:bg-blue-100"
                             title="View Details"
                           >
@@ -697,7 +825,10 @@ export default function AttendancePage() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => handleEditRecord(record)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditRecord(record);
+                            }}
                             className="h-8 w-8 p-0 hover:bg-purple-100"
                             title="Edit Attendance"
                           >
@@ -706,7 +837,175 @@ export default function AttendancePage() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+
+                    {/* Expandable Punch Logs Section */}
+                    {isExpanded && (
+                      <TableRow>
+                        <TableCell colSpan={11} className="bg-gray-50 p-0 border-b-2 border-blue-200">
+                          <div className="p-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                                <Clock className="h-4 w-4 text-blue-600" />
+                                Punch Logs for {record.employee.name}
+                                {punchLogs.length > 0 && (
+                                  <Badge className="ml-2 bg-blue-100 text-blue-800">
+                                    {punchLogs.length} {punchLogs.length === 1 ? 'punch' : 'punches'}
+                                  </Badge>
+                                )}
+                              </h4>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  try {
+                                    const response = await fetch('/api/hr/attendance/process', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ 
+                                        date: record.date,
+                                        employeeId: record.employee_id 
+                                      })
+                                    });
+                                    
+                                    if (!response.ok) throw new Error('Failed to reprocess');
+                                    
+                                    toast.success('Attendance reprocessed successfully');
+                                    await fetchAttendanceRecords();
+                                    
+                                    // Clear cached punch logs to force refetch
+                                    const key = `${record.employee_id}_${record.date}`;
+                                    setEmployeePunchLogs(prev => {
+                                      const newLogs = { ...prev };
+                                      delete newLogs[key];
+                                      return newLogs;
+                                    });
+                                    
+                                    // Refetch punch logs
+                                    await fetchEmployeePunchLogs(record.employee_id, record.date);
+                                  } catch (error) {
+                                    console.error('Error reprocessing:', error);
+                                    toast.error('Failed to reprocess attendance');
+                                  }
+                                }}
+                                className="h-7 text-xs"
+                              >
+                                <Clock className="h-3 w-3 mr-1" />
+                                Reprocess
+                              </Button>
+                            </div>
+
+                            {isLoadingLogs ? (
+                              <div className="text-center py-8">
+                                <Clock className="h-6 w-6 text-gray-400 mx-auto mb-2 animate-spin" />
+                                <p className="text-sm text-gray-600">Loading punch logs...</p>
+                              </div>
+                            ) : punchLogs.length === 0 ? (
+                              <div className="text-center py-8">
+                                <AlertTriangle className="h-8 w-8 text-gray-300 mx-auto mb-2" />
+                                <p className="text-sm text-gray-600">No punch logs found for this date</p>
+                              </div>
+                            ) : (
+                              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                                <div className="bg-blue-50 px-4 py-2 border-b border-blue-200">
+                                  <p className="text-xs text-blue-800">
+                                    <strong>Note:</strong> First punch is used as Check-In, Last punch as Check-Out 
+                                    {punchLogs.filter(p => p.punch_type === 'OUT').length === 0 && punchLogs.length > 1 && 
+                                      ' (Auto-alternating: All punches recorded as IN due to device issue)'}
+                                  </p>
+                                </div>
+                                <Table>
+                                  <TableHeader>
+                                    <TableRow className="bg-gray-100">
+                                      <TableHead className="text-xs font-semibold">Date</TableHead>
+                                      <TableHead className="text-xs font-semibold">Time</TableHead>
+                                      <TableHead className="text-xs font-semibold">Type</TableHead>
+                                      <TableHead className="text-xs font-semibold">Used As</TableHead>
+                                      <TableHead className="text-xs font-semibold">Verification</TableHead>
+                                      <TableHead className="text-xs font-semibold">Quality</TableHead>
+                                      <TableHead className="text-xs font-semibold">Device</TableHead>
+                                      <TableHead className="text-xs font-semibold">Processed</TableHead>
+                                    </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {punchLogs.map((punch, index) => {
+                                      const isFirstPunch = index === 0;
+                                      const isLastPunch = index === punchLogs.length - 1;
+                                      const hasNoOutPunches = punchLogs.filter(p => p.punch_type === 'OUT').length === 0;
+                                      
+                                      let usedAs = '-';
+                                      if (isFirstPunch) {
+                                        usedAs = 'Check-In';
+                                      } else if (isLastPunch && hasNoOutPunches && punchLogs.length > 1) {
+                                        usedAs = 'Check-Out';
+                                      } else if (punch.punch_type === 'OUT' && isLastPunch) {
+                                        usedAs = 'Check-Out';
+                                      }
+                                      
+                                      return (
+                                      <TableRow 
+                                        key={punch.id} 
+                                        className={`hover:bg-gray-50 ${
+                                          usedAs !== '-' ? 'bg-yellow-50 border-l-4 border-l-yellow-500' : ''
+                                        }`}
+                                      >
+                                        <TableCell className="text-xs font-medium text-gray-700">
+                                          {format(new Date(punch.punch_time), 'MMM dd, yyyy')}
+                                        </TableCell>
+                                        <TableCell className="text-xs font-medium">
+                                          {formatTime(punch.punch_time)}
+                                        </TableCell>
+                                        <TableCell>
+                                          <Badge className={`text-xs ${getPunchTypeColor(punch.punch_type)}`}>
+                                            {punch.punch_type}
+                                          </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                          {usedAs !== '-' && (
+                                            <Badge className="text-xs bg-yellow-100 text-yellow-800 border border-yellow-300">
+                                              {usedAs}
+                                            </Badge>
+                                          )}
+                                        </TableCell>
+                                        <TableCell className="text-xs text-gray-700">
+                                          {punch.verification_method}
+                                        </TableCell>
+                                        <TableCell className="text-xs">
+                                          <span className={`font-semibold ${
+                                            punch.verification_quality >= 80 ? 'text-green-600' :
+                                            punch.verification_quality >= 60 ? 'text-orange-600' :
+                                            'text-red-600'
+                                          }`}>
+                                            {punch.verification_quality}%
+                                          </span>
+                                        </TableCell>
+                                        <TableCell className="text-xs text-gray-700">
+                                          {punch.device.device_name}
+                                          <div className="text-gray-500">{punch.device.ip_address}</div>
+                                        </TableCell>
+                                        <TableCell>
+                                          <Badge className={`text-xs ${
+                                            punch.processed 
+                                              ? 'bg-green-100 text-green-800' 
+                                              : 'bg-yellow-100 text-yellow-800'
+                                          }`}>
+                                            {punch.processed ? 'Yes' : 'Pending'}
+                                          </Badge>
+                                        </TableCell>
+                                      </TableRow>
+                                      );
+                                    })}
+                                  </TableBody>
+                                </Table>
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </React.Fragment>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>

@@ -8,11 +8,11 @@ const supabaseAdmin = createClient(
 
 export async function POST(request: Request) {
   try {
-    const { date } = await request.json();
+    const { date, employeeId } = await request.json();
 
     if (date) {
-      // Process specific date
-      return await processSingleDate(date);
+      // Process specific date, optionally for a specific employee
+      return await processSingleDate(date, employeeId);
     } else {
       // Process all unprocessed dates
       return await processAllDates();
@@ -23,12 +23,33 @@ export async function POST(request: Request) {
   }
 }
 
-async function processSingleDate(targetDate: string) {
+async function processSingleDate(targetDate: string, employeeId?: string) {
   try {
-    console.log(`Processing attendance for date: ${targetDate}`);
+    console.log(`Processing attendance for date: ${targetDate}${employeeId ? ` for employee: ${employeeId}` : ''}`);
+
+    // If employeeId is provided, delete existing attendance record first
+    if (employeeId) {
+      const { error: deleteError } = await supabaseAdmin
+        .from('attendance_records')
+        .delete()
+        .eq('employee_id', employeeId)
+        .eq('date', targetDate);
+
+      if (deleteError) {
+        console.error('Error deleting existing record:', deleteError);
+      }
+
+      // Mark punch logs as unprocessed for this employee and date
+      await supabaseAdmin
+        .from('attendance_punch_logs')
+        .update({ processed: false })
+        .eq('employee_id', employeeId)
+        .gte('punch_time', `${targetDate}T00:00:00`)
+        .lte('punch_time', `${targetDate}T23:59:59`);
+    }
 
     // Get all punch logs for the target date that haven't been processed
-    const { data: punchLogs, error: punchError } = await supabaseAdmin
+    let query = supabaseAdmin
       .from('attendance_punch_logs')
       .select(`
         *,
@@ -39,6 +60,13 @@ async function processSingleDate(targetDate: string) {
       .eq('processed', false)
       .order('punch_time', { ascending: true });
 
+    // Filter by employee if specified
+    if (employeeId) {
+      query = query.eq('employee_id', employeeId);
+    }
+
+    const { data: punchLogs, error: punchError } = await query;
+    
     if (punchError) throw punchError;
 
     if (!punchLogs || punchLogs.length === 0) {

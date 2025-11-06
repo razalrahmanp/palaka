@@ -7,7 +7,7 @@ import {
   Home, Users, Receipt, Warehouse, ShoppingCart, Wrench, Truck, 
   DollarSign, Star, Users2, Building2, Package, 
   FileText, TrendingUp, BookOpen, BarChart, ChevronDown, ChevronRight,
-  Mail, LogOut, Fingerprint, Clock, Calendar, GraduationCap,
+  Mail, LogOut, Fingerprint, Clock, Calendar, CalendarClock,
   Wallet, FolderOpen, Settings, Calculator, PieChart, CreditCard
 } from 'lucide-react';
 import { hasPermission, hasAnyPermission, getCurrentUser } from '@/lib/auth';
@@ -48,6 +48,7 @@ const crmItems: NavItem[] = [
 
 // Sales
 const salesItems: NavItem[] = [
+  { href: "/sales/representative", icon: BarChart, label: "Sales Dashboard", permission: ['sales_order:read','sales_order:read_own'] },
   { href: "/sales", icon: ShoppingCart, label: "Sales Orders", permission: ['sales_order:read','sales_order:read_own'] },
   { href: "/billing", icon: Receipt, label: "Billing", permission: 'product:read' },
   { href: "/invoices", icon: FileText, label: "Invoices", permission: ['invoice:create','invoice:read'] },
@@ -79,10 +80,10 @@ const hrNavItems: NavItem[] = [
   { href: "/hr", icon: Home, label: "HR Dashboard", permission: 'employee:manage' },
   { href: "/hr/employees", icon: Users2, label: "Employees", permission: 'employee:manage' },
   { href: "/hr/attendance", icon: Clock, label: "Attendance", permission: 'employee:manage' },
+  { href: "/hr/shifts", icon: CalendarClock, label: "Work Shifts", permission: 'employee:manage' },
   { href: "/hr/devices", icon: Fingerprint, label: "Biometric Devices", permission: 'employee:manage' },
   { href: "/hr/leaves", icon: Calendar, label: "Leave Management", permission: 'employee:manage' },
   { href: "/hr/performance", icon: Star, label: "Performance", permission: 'performance_review:read' },
-  { href: "/hr/training", icon: GraduationCap, label: "Training", permission: 'employee:manage' },
   { href: "/hr/payroll", icon: Wallet, label: "Payroll", permission: 'employee:manage' },
   { href: "/hr/documents", icon: FolderOpen, label: "Documents", permission: 'employee:manage' },
   { href: "/hr/settings", icon: Settings, label: "HR Settings", permission: 'employee:manage' },

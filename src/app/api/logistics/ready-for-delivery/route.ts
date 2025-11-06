@@ -14,11 +14,22 @@ export async function GET() {
         final_price,
         notes,
         created_at,
+        sales_representative_id,
         customers!inner(
           id,
           name,
           phone,
-          email
+          email,
+          address
+        ),
+        sales_representative:users!sales_orders_sales_representative_id_fkey(
+          id,
+          email,
+          employees!user_id(
+            id,
+            name,
+            phone
+          )
         )
       `)
       .in('status', ['ready_for_delivery'])

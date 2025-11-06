@@ -294,86 +294,86 @@ export default function SalesRepresentativePage() {
 
         {/* Statistics Cards */}
         {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-3">
+          <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-9 gap-2">
             {/* Orders & Performance Combined */}
             <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0 shadow-sm">
-              <CardContent className="p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[11px] font-semibold text-blue-100">Orders & Performance</p>
-                  <ShoppingCart className="h-3.5 w-3.5 text-blue-200" />
+              <CardContent className="p-2">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[10px] font-semibold text-blue-100 truncate">Orders</p>
+                  <ShoppingCart className="h-3 w-3 text-blue-200 flex-shrink-0" />
                 </div>
-                <div className="text-xl font-bold text-white mb-1">{stats.total_orders} orders</div>
-                <p className="text-[10px] text-blue-200 leading-tight">
-                  {formatPercentage(stats.conversion_rate)} conversion
+                <div className="text-lg font-bold text-white mb-0.5 truncate">{stats.total_orders}</div>
+                <p className="text-[9px] text-blue-200 leading-tight truncate">
+                  {formatPercentage(stats.conversion_rate)}
                 </p>
               </CardContent>
             </Card>
 
             {/* Delivered Orders with Collection Status */}
             <Card className="bg-gradient-to-br from-cyan-500 to-cyan-600 text-white border-0 shadow-sm">
-              <CardContent className="p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[11px] font-semibold text-cyan-100">Delivered Orders</p>
-                  <Truck className="h-3.5 w-3.5 text-cyan-200" />
+              <CardContent className="p-2">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[10px] font-semibold text-cyan-100 truncate">Delivered</p>
+                  <Truck className="h-3 w-3 text-cyan-200 flex-shrink-0" />
                 </div>
-                <div className="text-xl font-bold text-white mb-1">{stats.delivered_orders || 0}</div>
-                <p className="text-[10px] text-cyan-200 leading-tight truncate">
-                  ₹{new Intl.NumberFormat('en-IN', { notation: 'compact' }).format(stats.delivered_collected || 0)} paid • ₹{new Intl.NumberFormat('en-IN', { notation: 'compact' }).format(stats.delivered_pending || 0)} due
+                <div className="text-lg font-bold text-white mb-0.5 truncate">{stats.delivered_orders || 0}</div>
+                <p className="text-[9px] text-cyan-200 leading-tight truncate">
+                  ₹{new Intl.NumberFormat('en-IN', { notation: 'compact' }).format(stats.delivered_collected || 0)} • ₹{new Intl.NumberFormat('en-IN', { notation: 'compact' }).format(stats.delivered_pending || 0)}
                 </p>
               </CardContent>
             </Card>
 
             {/* Total Collected */}
             <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-0 shadow-sm">
-              <CardContent className="p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[11px] font-semibold text-emerald-100">Total Collected</p>
-                  <CheckCircle className="h-3.5 w-3.5 text-emerald-200" />
+              <CardContent className="p-2">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[10px] font-semibold text-emerald-100 truncate">Collected</p>
+                  <CheckCircle className="h-3 w-3 text-emerald-200 flex-shrink-0" />
                 </div>
-                <div className="text-xl font-bold text-white mb-1 truncate">{formatCurrency(stats.total_collected || 0)}</div>
-                <p className="text-[10px] text-emerald-200 leading-tight">
-                  From invoiced orders
+                <div className="text-lg font-bold text-white mb-0.5 truncate">{formatCurrency(stats.total_collected || 0)}</div>
+                <p className="text-[9px] text-emerald-200 leading-tight truncate">
+                  Invoiced
                 </p>
               </CardContent>
             </Card>
 
             {/* Total Pending */}
             <Card className="bg-gradient-to-br from-amber-500 to-amber-600 text-white border-0 shadow-sm">
-              <CardContent className="p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[11px] font-semibold text-amber-100">Total Pending</p>
-                  <AlertCircle className="h-3.5 w-3.5 text-amber-200" />
+              <CardContent className="p-2">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[10px] font-semibold text-amber-100 truncate">Pending</p>
+                  <AlertCircle className="h-3 w-3 text-amber-200 flex-shrink-0" />
                 </div>
-                <div className="text-xl font-bold text-white mb-1 truncate">{formatCurrency(stats.total_pending || 0)}</div>
-                <p className="text-[10px] text-amber-200 leading-tight">
-                  From invoiced orders
+                <div className="text-lg font-bold text-white mb-0.5 truncate">{formatCurrency(stats.total_pending || 0)}</div>
+                <p className="text-[9px] text-amber-200 leading-tight truncate">
+                  Due
                 </p>
               </CardContent>
             </Card>
 
             {/* Not Invoiced */}
             <Card className="bg-gradient-to-br from-rose-500 to-rose-600 text-white border-0 shadow-sm">
-              <CardContent className="p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[11px] font-semibold text-rose-100">Not Invoiced</p>
-                  <FileQuestion className="h-3.5 w-3.5 text-rose-200" />
+              <CardContent className="p-2">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[10px] font-semibold text-rose-100 truncate">Not Invoiced</p>
+                  <FileQuestion className="h-3 w-3 text-rose-200 flex-shrink-0" />
                 </div>
-                <div className="text-xl font-bold text-white mb-1 truncate">{formatCurrency(stats.total_not_invoiced || 0)}</div>
-                <p className="text-[10px] text-rose-200 leading-tight">
-                  Orders pending invoice
+                <div className="text-lg font-bold text-white mb-0.5 truncate">{formatCurrency(stats.total_not_invoiced || 0)}</div>
+                <p className="text-[9px] text-rose-200 leading-tight truncate">
+                  Pending
                 </p>
               </CardContent>
             </Card>
 
             {/* Total Revenue */}
             <Card className="bg-gradient-to-br from-teal-500 to-teal-600 text-white border-0 shadow-sm">
-              <CardContent className="p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[11px] font-semibold text-teal-100">Total Revenue</p>
-                  <DollarSign className="h-3.5 w-3.5 text-teal-200" />
+              <CardContent className="p-2">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[10px] font-semibold text-teal-100 truncate">Revenue</p>
+                  <DollarSign className="h-3 w-3 text-teal-200 flex-shrink-0" />
                 </div>
-                <div className="text-xl font-bold text-white mb-1 truncate">{formatCurrency(stats.total_revenue)}</div>
-                <p className="text-[10px] text-teal-200 leading-tight truncate">
+                <div className="text-lg font-bold text-white mb-0.5 truncate">{formatCurrency(stats.total_revenue)}</div>
+                <p className="text-[9px] text-teal-200 leading-tight truncate">
                   Avg: {formatCurrency(stats.average_order_value)}
                 </p>
               </CardContent>
@@ -381,42 +381,42 @@ export default function SalesRepresentativePage() {
 
             {/* Total Profit */}
             <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-0 shadow-sm">
-              <CardContent className="p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[11px] font-semibold text-green-100">Total Profit</p>
-                  <TrendingUp className="h-3.5 w-3.5 text-green-200" />
+              <CardContent className="p-2">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[10px] font-semibold text-green-100 truncate">Profit</p>
+                  <TrendingUp className="h-3 w-3 text-green-200 flex-shrink-0" />
                 </div>
-                <div className="text-xl font-bold text-white mb-1 truncate">{formatCurrency(stats.total_profit)}</div>
-                <p className="text-[10px] text-green-200 leading-tight">
-                  {formatPercentage(stats.profit_margin)} margin
+                <div className="text-lg font-bold text-white mb-0.5 truncate">{formatCurrency(stats.total_profit)}</div>
+                <p className="text-[9px] text-green-200 leading-tight truncate">
+                  {formatPercentage(stats.profit_margin)}
                 </p>
               </CardContent>
             </Card>
 
             {/* Total Discount Given */}
             <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-0 shadow-sm">
-              <CardContent className="p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[11px] font-semibold text-purple-100">Total Discount</p>
-                  <Percent className="h-3.5 w-3.5 text-purple-200" />
+              <CardContent className="p-2">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[10px] font-semibold text-purple-100 truncate">Discount</p>
+                  <Percent className="h-3 w-3 text-purple-200 flex-shrink-0" />
                 </div>
-                <div className="text-xl font-bold text-white mb-1 truncate">{formatCurrency(stats.total_discount_given)}</div>
-                <p className="text-[10px] text-purple-200 leading-tight">
-                  {formatPercentage(stats.total_revenue > 0 ? (stats.total_discount_given / stats.total_revenue) * 100 : 0)} of revenue
+                <div className="text-lg font-bold text-white mb-0.5 truncate">{formatCurrency(stats.total_discount_given)}</div>
+                <p className="text-[9px] text-purple-200 leading-tight truncate">
+                  {formatPercentage(stats.total_revenue > 0 ? (stats.total_discount_given / stats.total_revenue) * 100 : 0)}
                 </p>
               </CardContent>
             </Card>
 
             {/* Returns & Issues */}
             <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-0 shadow-sm">
-              <CardContent className="p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[11px] font-semibold text-orange-100">Returns & Issues</p>
-                  <RotateCcw className="h-3.5 w-3.5 text-orange-200" />
+              <CardContent className="p-2">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[10px] font-semibold text-orange-100 truncate">Returns</p>
+                  <RotateCcw className="h-3 w-3 text-orange-200 flex-shrink-0" />
                 </div>
-                <div className="text-xl font-bold text-white mb-1">{stats.pending_returns}</div>
-                <p className="text-[10px] text-orange-200 leading-tight">
-                  {stats.total_returns} returns • {stats.open_complaints} complaints
+                <div className="text-lg font-bold text-white mb-0.5 truncate">{stats.pending_returns}</div>
+                <p className="text-[9px] text-orange-200 leading-tight truncate">
+                  {stats.total_returns}R • {stats.open_complaints}C
                 </p>
               </CardContent>
             </Card>

@@ -170,8 +170,9 @@ interface Supplier {
   address: string;
 }
 
-interface SalesOrderWithInvoice extends Omit<SalesOrder, 'customer' | 'invoices'> {
+interface SalesOrderWithInvoice extends Omit<SalesOrder, 'customer' | 'invoices' | 'status'> {
   // New API structure fields from /api/finance/sales-orders
+  status?: 'draft' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled'; // Added status with cancelled
   customer?: { name?: string; phone?: string; email?: string; address?: string; formatted_address?: string };
   total_paid?: number;
   balance_due?: number;
@@ -4789,6 +4790,44 @@ export function SalesOrderInvoiceManager() {
                                     <Minus className="h-3 w-3" />
                                   </Button>
                                 )}
+
+                                {/* Cancel Order Button - Only show if order is not already cancelled */}
+                                {order.status !== 'cancelled' && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="bg-red-50 hover:bg-red-100 text-red-700 border-red-200 text-xs px-2 py-1"
+                                    onClick={async () => {
+                                      if (confirm(`⚠️ CANCEL ENTIRE ORDER?\n\nThis will:\n• Return ALL items to inventory\n• Mark the order as CANCELLED\n• Cancel all related invoices\n• Create a return record\n\nOrder: ${order.order_number || order.id}\nCustomer: ${order.customer?.name || 'Unknown'}\nTotal: ${formatCurrency(order.final_price || order.total || 0)}\n\nThis action cannot be undone. Continue?`)) {
+                                        try {
+                                          const response = await fetch(`/api/sales/orders/${order.id}/cancel`, {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({
+                                              reason: 'Customer cancelled order',
+                                              notes: 'Full order cancellation from sales orders tab'
+                                            })
+                                          });
+                                          
+                                          const result = await response.json();
+                                          
+                                          if (result.success) {
+                                            toast.success(result.message || `Order cancelled successfully! ${result.items_count} items returned to inventory.`);
+                                            fetchData(); // Refresh the data
+                                          } else {
+                                            toast.error(result.error || 'Failed to cancel order');
+                                          }
+                                        } catch (error) {
+                                          console.error('Error cancelling order:', error);
+                                          toast.error('Failed to cancel order');
+                                        }
+                                      }
+                                    }}
+                                    title="Cancel Order"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </Button>
+                                )}
                                 
                                 {/* Payment Tracker - Always show */}
                                 <SalesOrderPaymentTracker
@@ -5021,7 +5060,7 @@ export function SalesOrderInvoiceManager() {
                       <TableHead className="font-semibold min-w-[120px]">Refunded</TableHead>
                       <TableHead className="font-semibold min-w-[120px]">Balance</TableHead>
                       <TableHead className="font-semibold min-w-[120px]">Status</TableHead>
-                      <TableHead className="font-semibold text-center min-w-[180px]">Actions</TableHead>
+                      <TableHead className="font-semibold text-center w-[60px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -5127,13 +5166,13 @@ export function SalesOrderInvoiceManager() {
                             }
                           })()}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="text-center">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button 
                                 variant="outline" 
                                 size="sm" 
-                                className="h-8 w-8 p-0"
+                                className="h-8 w-8 p-0 mx-auto"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <MoreHorizontal className="h-4 w-4" />
@@ -5212,6 +5251,37 @@ export function SalesOrderInvoiceManager() {
                                   </DropdownMenuItem>
                                 </>
                               )}
+
+                              {/* Delete Invoice Button */}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem 
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (confirm(`Are you sure you want to delete this invoice?\n\nInvoice: ${invoice.id}\nCustomer: ${invoice.customer_name}\nTotal: ${formatCurrency(invoice.total)}\n\nThis action cannot be undone.`)) {
+                                    try {
+                                      const response = await fetch(`/api/finance/invoices/${invoice.id}`, {
+                                        method: 'DELETE',
+                                      });
+                                      
+                                      const result = await response.json();
+                                      
+                                      if (result.success) {
+                                        toast.success('Invoice deleted successfully');
+                                        fetchData(); // Refresh the invoice list
+                                      } else {
+                                        toast.error(result.error || 'Failed to delete invoice');
+                                      }
+                                    } catch (error) {
+                                      console.error('Error deleting invoice:', error);
+                                      toast.error('Failed to delete invoice');
+                                    }
+                                  }
+                                }}
+                                className="text-red-700 hover:bg-red-50"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete Invoice
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>

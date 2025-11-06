@@ -154,7 +154,7 @@ export interface Quote {
   created_at: string;
 }
 
-export type OrderStatus = 'draft' | 'confirmed' | 'shipped' | 'delivered';
+export type OrderStatus = 'draft' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
 
 export interface SalesOrder {
   id: string;
@@ -307,7 +307,7 @@ export interface PurchaseOrder {
   total?:         number | null; // Total cost, calculated if product_id exists
 }
 
-export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'partially_paid';
+export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'partially_paid' | 'cancelled';
 
 export interface Invoice {
   id: string;

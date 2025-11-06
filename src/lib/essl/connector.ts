@@ -71,6 +71,7 @@ export class ESSLConnector {
           this.config.attendanceParser
         );
 
+        // Try to create socket connection
         await this.device.createSocket();
         this.isConnected = true;
         
@@ -78,15 +79,40 @@ export class ESSLConnector {
         return true;
       } catch (error) {
         lastError = error as Error;
-        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`❌ [Attempt ${attempt}/${retries}] Failed to connect:`, errorMsg);
+        
+        // Extract more detailed error information
+        let errorMsg = 'Unknown error';
+        let errorCode = '';
+        
+        if (error instanceof Error) {
+          errorMsg = error.message;
+          // Check for common Node.js error codes
+          const nodeError = error as Error & { code?: string; errno?: number };
+          if (nodeError.code) {
+            errorCode = nodeError.code;
+          }
+          if (nodeError.errno) {
+            errorCode = `${errorCode || ''}(errno: ${nodeError.errno})`;
+          }
+        }
+        
+        // Build detailed error message
+        const fullError = errorCode ? `${errorMsg} [${errorCode}]` : errorMsg;
+        console.error(`❌ [Attempt ${attempt}/${retries}] Failed to connect: ${fullError}`);
+        console.error(`   Device: ${this.config.ip}:${this.config.port}`);
+        console.error(`   Timeout: ${this.config.timeout}ms`);
+        
+        if (error instanceof Error && error.stack) {
+          console.error(`   Stack trace:`, error.stack.split('\n').slice(0, 3).join('\n'));
+        }
         
         // Clean up device instance on failure
         if (this.device) {
           try {
             await this.device.disconnect();
-          } catch {
-            // Ignore disconnect errors
+          } catch (disconnectError) {
+            // Ignore disconnect errors but log them
+            console.error(`   (Failed to cleanup connection: ${disconnectError instanceof Error ? disconnectError.message : 'unknown'})`);
           }
           this.device = null;
         }
@@ -101,25 +127,51 @@ export class ESSLConnector {
       }
     }
 
-    // All retries failed
+    // All retries failed - provide comprehensive diagnostics
     const errorDetails = lastError?.message || 'Unknown error';
-    const isTimeout = errorDetails.includes('ETIMEDOUT');
-    const isRefused = errorDetails.includes('ECONNREFUSED');
+    const nodeError = lastError as Error & { code?: string };
+    const errorCode = nodeError?.code || '';
+    
+    const isTimeout = errorDetails.includes('ETIMEDOUT') || errorCode === 'ETIMEDOUT';
+    const isRefused = errorDetails.includes('ECONNREFUSED') || errorCode === 'ECONNREFUSED';
+    const isHostUnreach = errorDetails.includes('EHOSTUNREACH') || errorCode === 'EHOSTUNREACH';
+    const isNetUnreach = errorDetails.includes('ENETUNREACH') || errorCode === 'ENETUNREACH';
 
-    let userFriendlyMessage = `Connection failed after ${retries} attempts: `;
+    let userFriendlyMessage = `Connection failed after ${retries} attempts to ${this.config.ip}:${this.config.port}\n\n`;
+    
     if (isTimeout) {
-      userFriendlyMessage += `Device at ${this.config.ip}:${this.config.port} is not responding. Please check:\n` +
-                            `1. Device is powered on\n` +
-                            `2. Network connectivity\n` +
-                            `3. IP address and port are correct\n` +
-                            `4. Firewall is not blocking the connection`;
+      userFriendlyMessage += `⏱️ CONNECTION TIMEOUT\n` +
+                            `The device is not responding. Please verify:\n` +
+                            `  1. Device is powered ON and showing ready status\n` +
+                            `  2. Device is connected to the network\n` +
+                            `  3. IP address ${this.config.ip} is correct\n` +
+                            `  4. Can you ping the device? Try: ping ${this.config.ip}\n` +
+                            `  5. Firewall/antivirus is not blocking port ${this.config.port}`;
     } else if (isRefused) {
-      userFriendlyMessage += `Device at ${this.config.ip}:${this.config.port} refused connection. Please check:\n` +
-                            `1. Device port is correct (usually 4370)\n` +
-                            `2. Device network settings\n` +
-                            `3. No other software is connected`;
+      userFriendlyMessage += `🚫 CONNECTION REFUSED\n` +
+                            `The device actively refused the connection. Please check:\n` +
+                            `  1. Port ${this.config.port} is correct (default is 4370)\n` +
+                            `  2. Device communication settings in device menu\n` +
+                            `  3. No other application is connected to the device\n` +
+                            `  4. Device TCP/IP settings are properly configured`;
+    } else if (isHostUnreach || isNetUnreach) {
+      userFriendlyMessage += `🌐 NETWORK UNREACHABLE\n` +
+                            `Cannot reach the device on the network. Please check:\n` +
+                            `  1. Device and server are on the same network\n` +
+                            `  2. Network cables are properly connected\n` +
+                            `  3. Network switch/router is functioning\n` +
+                            `  4. IP address ${this.config.ip} is in the correct subnet\n` +
+                            `  5. Gateway/routing configuration`;
     } else {
-      userFriendlyMessage += errorDetails;
+      userFriendlyMessage += `❌ ERROR: ${errorDetails}\n` +
+                            (errorCode ? `   Error Code: ${errorCode}\n` : '') +
+                            `\nTroubleshooting steps:\n` +
+                            `  1. Verify device IP: ${this.config.ip}\n` +
+                            `  2. Verify device port: ${this.config.port}\n` +
+                            `  3. Check device is powered on and connected\n` +
+                            `  4. Try pinging the device\n` +
+                            `  5. Check device TCP/IP communication settings\n` +
+                            `  6. Restart the device if necessary`;
     }
 
     throw new Error(userFriendlyMessage);

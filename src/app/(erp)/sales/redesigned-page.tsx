@@ -1,6 +1,5 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -17,7 +16,6 @@ import {
   Eye,
   Edit,
   Trash2,
-  Download,
   CreditCard,
   Percent,
   Truck,
@@ -41,7 +39,6 @@ import { AssignSalesRepModal } from '@/components/sales/AssignSalesRepModal';
 import { hasPermission } from '@/lib/auth';
 
 export default function RedesignedSalesPage() {
-  const router = useRouter();
   const {
     quotes,
     orders,
@@ -495,31 +492,11 @@ export default function RedesignedSalesPage() {
       {/* Compact Header */}
       <div className="mb-4">
         <div className="bg-white/90 backdrop-blur-xl rounded-2xl border border-white/20 shadow-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-blue-800 bg-clip-text text-transparent mb-1">
-                Sales Management Hub
-              </h1>
-              <p className="text-gray-600 text-sm">Comprehensive sales operations & analytics</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button 
-                size="sm"
-                variant="outline"
-                className="border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300 shadow-sm hover:shadow-md transition-all duration-300"
-                onClick={() => router.push('/sales/representative')}
-              >
-                <BarChart3 className="mr-2 h-4 w-4" />
-                Sales Dashboard
-              </Button>
-              <Button 
-                size="sm"
-                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transition-all duration-300"
-              >
-                <Download className="mr-2 h-4 w-4" />
-                Export
-              </Button>
-            </div>
+          <div>
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-blue-800 bg-clip-text text-transparent mb-1">
+              Sales Management Hub
+            </h1>
+            <p className="text-gray-600 text-sm">Comprehensive sales operations & analytics</p>
           </div>
         </div>
       </div>

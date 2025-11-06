@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -9,11 +8,12 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Users, UserPlus, Search, Eye, Edit, Trash2, Mail, Phone, MapPin, Calendar } from 'lucide-react';
+import { Users, UserPlus, Search, Eye, Edit, Trash2, Mail, Phone, MapPin, Calendar, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { Employee } from '@/types';
 import EmployeeForm from '@/components/hr/EmployeeForm';
+import EmployeeWorkSchedule from '@/components/hr/EmployeeWorkSchedule';
 
 interface Department {
   name: string;
@@ -31,6 +31,7 @@ export default function EmployeesPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [isWorkScheduleModalOpen, setIsWorkScheduleModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [employeeToDelete, setEmployeeToDelete] = useState<Employee | null>(null);
@@ -188,107 +189,82 @@ export default function EmployeesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-6 space-y-8">
-      {/* Header Section */}
-      <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-xl p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-              Employee Management
-            </h1>
-            <p className="text-gray-600 mt-2">Manage employee information and records</p>
-          </div>
-          <div className="flex items-center space-x-3">
-            <div className="h-8 w-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-              <Users className="h-5 w-5 text-white" />
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-4">
+      {/* Compact Header with Filters */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4">
+        <div className="p-4">
+          {/* Top Row: Title and Action */}
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Employee Management</h1>
+              <p className="text-sm text-gray-600">Manage employee information and records</p>
             </div>
-            <Button onClick={() => setIsAddModalOpen(true)} className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white shadow-lg">
+            <Button 
+              onClick={() => setIsAddModalOpen(true)} 
+              className="bg-blue-600 hover:bg-blue-700"
+              size="sm"
+            >
               <UserPlus className="h-4 w-4 mr-2" />
               Add Employee
             </Button>
           </div>
-        </div>
-      </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="bg-white/80 backdrop-blur-sm border border-white/20 shadow-lg hover:shadow-xl transition-all duration-300">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-700">Total Employees</CardTitle>
-            <Users className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
-            <p className="text-xs text-muted-foreground">Active & inactive</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{stats.active}</div>
-            <p className="text-xs text-muted-foreground">Currently employed</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Inactive</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-yellow-600">{stats.inactive}</div>
-            <p className="text-xs text-muted-foreground">On leave/inactive</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">New This Month</CardTitle>
-            <UserPlus className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{stats.newThisMonth}</div>
-            <p className="text-xs text-muted-foreground">Recent hires</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Department Overview */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Department Overview</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-            {departments.map((dept) => (
-              <div key={dept.name} className="text-center p-3 bg-gray-50 rounded-lg">
-                <div className="text-lg font-semibold text-gray-900">{dept.count}</div>
-                <div className="text-sm text-gray-600">{dept.name}</div>
+          {/* Stats Row - Compact */}
+          <div className="grid grid-cols-4 gap-3 mb-4">
+            <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-blue-600 font-medium">Total</p>
+                  <p className="text-2xl font-bold text-blue-900">{stats.total}</p>
+                </div>
+                <Users className="h-8 w-8 text-blue-400" />
               </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+            </div>
+            
+            <div className="bg-green-50 rounded-lg p-3 border border-green-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-green-600 font-medium">Active</p>
+                  <p className="text-2xl font-bold text-green-900">{stats.active}</p>
+                </div>
+                <Users className="h-8 w-8 text-green-400" />
+              </div>
+            </div>
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col md:flex-row gap-4">
+            <div className="bg-yellow-50 rounded-lg p-3 border border-yellow-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-yellow-600 font-medium">Inactive</p>
+                  <p className="text-2xl font-bold text-yellow-900">{stats.inactive}</p>
+                </div>
+                <Users className="h-8 w-8 text-yellow-400" />
+              </div>
+            </div>
+
+            <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-purple-600 font-medium">New This Month</p>
+                  <p className="text-2xl font-bold text-purple-900">{stats.newThisMonth}</p>
+                </div>
+                <UserPlus className="h-8 w-8 text-purple-400" />
+              </div>
+            </div>
+          </div>
+
+          {/* Filters Row - Inline */}
+          <div className="flex items-center gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
                 placeholder="Search by name, ID, email, or position..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                className="pl-10 h-9"
               />
             </div>
             <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-              <SelectTrigger className="w-64">
+              <SelectTrigger className="w-52 h-9">
                 <SelectValue placeholder="All departments" />
               </SelectTrigger>
               <SelectContent>
@@ -301,8 +277,8 @@ export default function EmployeesPage() {
               </SelectContent>
             </Select>
             <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="All statuses" />
+              <SelectTrigger className="w-40 h-9">
+                <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
@@ -313,47 +289,53 @@ export default function EmployeesPage() {
             </Select>
             <Button
               variant="outline"
+              size="sm"
               onClick={() => {
                 setSearchTerm('');
                 setSelectedDepartment('all');
                 setSelectedStatus('active');
               }}
             >
-              Clear Filters
+              Clear
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      {/* Employee Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Employee Directory</CardTitle>
-        </CardHeader>
-        <CardContent>
+      {/* Compact Employee Table */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+        <div className="px-4 py-3 border-b border-gray-200">
+          <h2 className="text-lg font-semibold text-gray-900">
+            Employee Directory <span className="text-sm font-normal text-gray-500">({filteredEmployees.length} employees)</span>
+          </h2>
+        </div>
+        <div className="overflow-x-auto">
           {isLoading ? (
-            <div className="text-center py-8">Loading employees...</div>
+            <div className="text-center py-12">
+              <Users className="h-12 w-12 text-gray-400 mx-auto mb-4 animate-pulse" />
+              <p className="text-gray-600">Loading employees...</p>
+            </div>
           ) : (
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Position</TableHead>
-                  <TableHead>Hire Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Manager</TableHead>
-                  <TableHead>Actions</TableHead>
+                <TableRow className="bg-gray-50">
+                  <TableHead className="font-semibold">Employee</TableHead>
+                  <TableHead className="font-semibold">Department</TableHead>
+                  <TableHead className="font-semibold">Position</TableHead>
+                  <TableHead className="font-semibold">Hire Date</TableHead>
+                  <TableHead className="font-semibold">Status</TableHead>
+                  <TableHead className="font-semibold">Manager</TableHead>
+                  <TableHead className="font-semibold text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredEmployees.map((employee) => (
-                  <TableRow key={employee.id}>
+                  <TableRow key={employee.id} className="hover:bg-gray-50">
                     <TableCell>
                       <div>
-                        <div className="font-medium">{employee.name}</div>
-                        <div className="text-sm text-gray-500 flex items-center gap-4">
-                          <span>{employee.employee_id}</span>
+                        <div className="font-medium text-gray-900">{employee.name}</div>
+                        <div className="text-xs text-gray-500 flex items-center gap-2 mt-1">
+                          <span className="font-mono">{employee.employee_id}</span>
                           {employee.email && (
                             <span className="flex items-center gap-1">
                               <Mail className="h-3 w-3" />
@@ -363,48 +345,65 @@ export default function EmployeesPage() {
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>{employee.department}</TableCell>
-                    <TableCell>{employee.position}</TableCell>
-                    <TableCell>
+                    <TableCell className="text-sm">{employee.department}</TableCell>
+                    <TableCell className="text-sm">{employee.position}</TableCell>
+                    <TableCell className="text-sm">
                       {format(new Date(employee.hire_date), 'MMM dd, yyyy')}
                     </TableCell>
                     <TableCell>
-                      <Badge className={getStatusColor(employee.employment_status)}>
+                      <Badge className={getStatusColor(employee.employment_status)} variant="secondary">
                         {employee.employment_status}
                       </Badge>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="text-sm">
                       {employee.manager ? (
-                        <div className="text-sm">
-                          <div>{employee.manager.name}</div>
-                          <div className="text-gray-500">{employee.manager.employee_id}</div>
+                        <div>
+                          <div className="font-medium">{employee.manager.name}</div>
+                          <div className="text-xs text-gray-500">{employee.manager.employee_id}</div>
                         </div>
                       ) : (
                         <span className="text-gray-400">-</span>
                       )}
                     </TableCell>
                     <TableCell>
-                      <div className="flex gap-2">
+                      <div className="flex gap-1 justify-end">
                         <Button
                           size="sm"
-                          variant="outline"
+                          variant="ghost"
                           onClick={() => handleViewEmployee(employee)}
+                          title="View Details"
+                          className="h-8 w-8 p-0"
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
                         <Button
                           size="sm"
-                          variant="outline"
+                          variant="ghost"
+                          onClick={() => {
+                            setSelectedEmployee(employee);
+                            setIsWorkScheduleModalOpen(true);
+                          }}
+                          title="Work Schedule"
+                          className="h-8 w-8 p-0"
+                        >
+                          <Clock className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
                           onClick={() => handleEditEmployee(employee)}
+                          title="Edit Employee"
+                          className="h-8 w-8 p-0"
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
                         {employee.employment_status === 'active' && (
                           <Button
                             size="sm"
-                            variant="outline"
+                            variant="ghost"
                             onClick={() => handleDeleteEmployee(employee)}
-                            className="text-red-600 hover:text-red-700"
+                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            title="Delete Employee"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -418,7 +417,7 @@ export default function EmployeesPage() {
           )}
 
           {!isLoading && filteredEmployees.length === 0 && (
-            <div className="text-center py-8">
+            <div className="text-center py-12">
               <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No employees found</h3>
               <p className="text-gray-600">
@@ -428,8 +427,8 @@ export default function EmployeesPage() {
               </p>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* View Employee Modal */}
       <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
@@ -574,17 +573,33 @@ export default function EmployeesPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setEmployeeToDelete(null)}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDeleteEmployee}
-              disabled={isSubmitting}
               className="bg-red-600 hover:bg-red-700"
             >
-              {isSubmitting ? 'Deleting...' : 'Delete Employee'}
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Work Schedule Modal */}
+      <Dialog open={isWorkScheduleModalOpen} onOpenChange={setIsWorkScheduleModalOpen}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Employee Work Schedule</DialogTitle>
+          </DialogHeader>
+          {selectedEmployee && (
+            <EmployeeWorkSchedule
+              employeeId={selectedEmployee.id}
+              employeeName={selectedEmployee.name}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

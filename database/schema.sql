@@ -262,9 +262,17 @@ CREATE TABLE public.attendance_records (
   raw_log_data jsonb,
   sync_status character varying DEFAULT 'synced'::character varying CHECK (sync_status::text = ANY (ARRAY['pending'::character varying, 'synced'::character varying, 'failed'::character varying]::text[])),
   location_coordinates point,
+  break_start_time timestamp without time zone,
+  break_finish_time timestamp without time zone,
+  break_duration_minutes integer,
+  shift_id uuid,
+  scheduled_hours numeric,
+  overtime_hours numeric DEFAULT 0,
+  is_overtime_approved boolean DEFAULT false,
   CONSTRAINT attendance_records_pkey PRIMARY KEY (id),
   CONSTRAINT attendance_records_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id),
-  CONSTRAINT attendance_records_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.essl_devices(id)
+  CONSTRAINT attendance_records_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.essl_devices(id),
+  CONSTRAINT attendance_records_shift_id_fkey FOREIGN KEY (shift_id) REFERENCES public.work_shifts(id)
 );
 CREATE TABLE public.audit_trail (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -1044,6 +1052,15 @@ CREATE TABLE public.employees (
   enrollment_status character varying DEFAULT 'pending'::character varying CHECK (enrollment_status::text = ANY (ARRAY['pending'::character varying, 'enrolled'::character varying, 'failed'::character varying, 'disabled'::character varying]::text[])),
   enrollment_date timestamp without time zone,
   last_sync_date timestamp without time zone,
+  work_start_time time without time zone DEFAULT '09:00:00'::time without time zone,
+  work_end_time time without time zone DEFAULT '18:00:00'::time without time zone,
+  work_hours_per_day numeric DEFAULT 8,
+  working_days_per_week integer DEFAULT 6,
+  weekly_off_days ARRAY DEFAULT ARRAY[0],
+  break_duration_minutes integer DEFAULT 60,
+  grace_period_minutes integer DEFAULT 15,
+  overtime_eligible boolean DEFAULT true,
+  overtime_rate_multiplier numeric DEFAULT 1.5,
   CONSTRAINT employees_pkey PRIMARY KEY (id),
   CONSTRAINT employees_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT employees_manager_id_fkey FOREIGN KEY (manager_id) REFERENCES public.employees(id),
@@ -1472,6 +1489,56 @@ CREATE TABLE public.order_modifications (
   CONSTRAINT order_modifications_pkey PRIMARY KEY (id),
   CONSTRAINT order_modifications_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.sales_orders(id),
   CONSTRAINT order_modifications_approved_by_fkey FOREIGN KEY (approved_by) REFERENCES public.users(id)
+);
+CREATE TABLE public.overtime_approvals (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  overtime_record_id uuid NOT NULL,
+  approver_id uuid NOT NULL,
+  action character varying NOT NULL CHECK (action::text = ANY (ARRAY['submitted'::character varying, 'approved'::character varying, 'rejected'::character varying, 'paid'::character varying]::text[])),
+  comments text,
+  previous_status character varying,
+  new_status character varying,
+  created_at timestamp without time zone DEFAULT now(),
+  CONSTRAINT overtime_approvals_pkey PRIMARY KEY (id),
+  CONSTRAINT overtime_approvals_overtime_record_id_fkey FOREIGN KEY (overtime_record_id) REFERENCES public.overtime_records(id),
+  CONSTRAINT overtime_approvals_approver_id_fkey FOREIGN KEY (approver_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.overtime_records (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  employee_id uuid NOT NULL,
+  attendance_record_id uuid,
+  date date NOT NULL,
+  shift_id uuid,
+  scheduled_start_time time without time zone NOT NULL,
+  scheduled_end_time time without time zone NOT NULL,
+  actual_check_in time without time zone NOT NULL,
+  actual_check_out time without time zone NOT NULL,
+  scheduled_break_minutes integer DEFAULT 0,
+  actual_break_minutes integer DEFAULT 0,
+  scheduled_hours numeric NOT NULL,
+  actual_hours numeric NOT NULL,
+  regular_hours numeric NOT NULL,
+  overtime_hours numeric NOT NULL,
+  overtime_type character varying CHECK (overtime_type::text = ANY (ARRAY['pre_shift'::character varying, 'post_shift'::character varying, 'holiday'::character varying, 'weekend'::character varying, 'rest_day'::character varying]::text[])),
+  hourly_rate numeric NOT NULL,
+  overtime_rate numeric NOT NULL,
+  regular_amount numeric NOT NULL,
+  overtime_amount numeric NOT NULL,
+  total_amount numeric NOT NULL,
+  status character varying DEFAULT 'pending'::character varying CHECK (status::text = ANY (ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying, 'paid'::character varying]::text[])),
+  approved_by uuid,
+  approved_at timestamp without time zone,
+  rejected_reason text,
+  remarks text,
+  created_at timestamp without time zone DEFAULT now(),
+  updated_at timestamp without time zone DEFAULT now(),
+  created_by uuid,
+  CONSTRAINT overtime_records_pkey PRIMARY KEY (id),
+  CONSTRAINT overtime_records_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id),
+  CONSTRAINT overtime_records_attendance_record_id_fkey FOREIGN KEY (attendance_record_id) REFERENCES public.attendance_records(id),
+  CONSTRAINT overtime_records_shift_id_fkey FOREIGN KEY (shift_id) REFERENCES public.work_shifts(id),
+  CONSTRAINT overtime_records_approved_by_fkey FOREIGN KEY (approved_by) REFERENCES public.users(id),
+  CONSTRAINT overtime_records_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
 );
 CREATE TABLE public.partial_delivery_tracking (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -2053,6 +2120,9 @@ CREATE TABLE public.salary_structures (
   is_active boolean DEFAULT true,
   created_by uuid,
   created_at timestamp without time zone DEFAULT now(),
+  hourly_rate numeric,
+  overtime_rate_multiplier numeric DEFAULT 1.5,
+  overtime_hourly_rate numeric,
   CONSTRAINT salary_structures_pkey PRIMARY KEY (id),
   CONSTRAINT salary_structures_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id),
   CONSTRAINT salary_structures_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
@@ -2168,6 +2238,20 @@ CREATE TABLE public.settings (
   description text,
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT settings_pkey PRIMARY KEY (key)
+);
+CREATE TABLE public.shift_exceptions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  shift_id uuid,
+  exception_date date NOT NULL,
+  exception_type character varying CHECK (exception_type::text = ANY (ARRAY['holiday'::character varying, 'half_day'::character varying, 'closed'::character varying, 'special_hours'::character varying]::text[])),
+  modified_start_time time without time zone,
+  modified_end_time time without time zone,
+  is_working_day boolean DEFAULT false,
+  overtime_multiplier numeric DEFAULT 2.0,
+  remarks text,
+  created_at timestamp without time zone DEFAULT now(),
+  CONSTRAINT shift_exceptions_pkey PRIMARY KEY (id),
+  CONSTRAINT shift_exceptions_shift_id_fkey FOREIGN KEY (shift_id) REFERENCES public.work_shifts(id)
 );
 CREATE TABLE public.stock_adjustments (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

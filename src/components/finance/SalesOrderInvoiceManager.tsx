@@ -62,7 +62,8 @@ import {
   ChevronDown,
   ChevronUp,
   CheckCircle,
-  Edit
+  Edit,
+  Eye
 } from 'lucide-react';
 import { SalesOrder, Invoice, subcategoryMap } from '@/types';
 import { PaymentTrackingDialog } from './PaymentTrackingDialog';
@@ -5219,125 +5220,114 @@ export function SalesOrderInvoiceManager() {
                       {/* Expanded row content */}
                       {expandedInvoices.has(invoice.id) && (
                         <TableRow>
-                          <TableCell colSpan={11} className="bg-gray-50 p-6">
-                            <h4 className="font-semibold text-lg mb-4">Invoice Details</h4>
-                            
-                            {/* Horizontal Grid Layout */}
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                              {/* Sales Order Items */}
-                              <div className="bg-white rounded-lg p-4 shadow-sm lg:col-span-3">
-                                <h5 className="font-medium text-gray-900 mb-3">Sales Order Items</h5>
-                                {invoice.sales_order && invoice.sales_order.sales_order_items && invoice.sales_order.sales_order_items.length > 0 ? (
-                                  <div className="overflow-x-auto">
-                                    <table className="w-full text-sm">
-                                      <thead>
-                                        <tr className="border-b">
-                                          <th className="text-left py-2 pr-4">Product</th>
-                                          <th className="text-left py-2 pr-4">SKU</th>
-                                          <th className="text-right py-2 pr-4">Quantity</th>
-                                          <th className="text-right py-2 pr-4">Unit Price</th>
-                                          <th className="text-right py-2 pr-4">Final Price</th>
-                                          <th className="text-right py-2 pr-4">Total</th>
-                                          <th className="text-center py-2">Actions</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {invoice.sales_order.sales_order_items.map((item: SalesOrderItem, index: number) => (
-                                          <tr key={index} className="border-b">
-                                            <td className="py-2 pr-4">
-                                              <div className="flex flex-col">
-                                                <span>{item.name}</span>
-                                                {item.return_status && item.return_status !== 'none' && (
-                                                  <div className="flex items-center gap-1 mt-1">
+                          <TableCell colSpan={11} className="bg-gradient-to-br from-slate-50 via-blue-50/30 to-purple-50/20 p-0 border-t-2 border-blue-100">
+                            {/* Glassmorphism Container */}
+                            <div className="p-4">
+                              <h4 className="text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-3 flex items-center gap-2">
+                                <FileText className="h-5 w-5 text-blue-600" />
+                                Invoice Details
+                              </h4>
+                              
+                              {/* Compact Grid Layout - No gaps */}
+                              <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+                                {/* Sales Order Items - Full Width - Glassmorphism */}
+                                <div className="lg:col-span-3 backdrop-blur-sm bg-white/70 rounded-xl border border-white/50 shadow-lg p-3">
+                                  <h5 className="text-sm font-bold mb-2 flex items-center gap-2 bg-gradient-to-r from-blue-500 to-cyan-500 bg-clip-text text-transparent">
+                                    <Package className="h-4 w-4 text-blue-500" />
+                                    Sales Order Items
+                                  </h5>
+                                  {invoice.sales_order && invoice.sales_order.sales_order_items && invoice.sales_order.sales_order_items.length > 0 ? (
+                                    <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
+                                      <table className="w-full text-xs">
+                                        <thead className="sticky top-0 bg-gradient-to-r from-blue-50 to-cyan-50 border-b border-blue-200">
+                                          <tr>
+                                            <th className="text-left py-1.5 px-2 font-semibold text-blue-900">Product</th>
+                                            <th className="text-left py-1.5 px-2 font-semibold text-blue-900">SKU</th>
+                                            <th className="text-right py-1.5 px-2 font-semibold text-blue-900">Qty</th>
+                                            <th className="text-right py-1.5 px-2 font-semibold text-blue-900">Unit Price</th>
+                                            <th className="text-right py-1.5 px-2 font-semibold text-blue-900">Final Price</th>
+                                            <th className="text-right py-1.5 px-2 font-semibold text-blue-900">Total</th>
+                                            <th className="text-center py-1.5 px-2 font-semibold text-blue-900">Actions</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {invoice.sales_order.sales_order_items.map((item: SalesOrderItem, index: number) => (
+                                            <tr key={index} className="border-b border-blue-100/50 hover:bg-blue-50/30 transition-colors">
+                                              <td className="py-1.5 px-2">
+                                                <div className="flex flex-col">
+                                                  <span className="font-medium text-gray-800">{item.name}</span>
+                                                  {item.return_status && item.return_status !== 'none' && (
                                                     <Badge 
                                                       variant={item.return_status === 'full' ? 'destructive' : 'secondary'}
-                                                      className="text-xs"
+                                                      className="text-[10px] mt-0.5 w-fit"
                                                     >
                                                       {item.return_status === 'full' ? 'Fully Returned' : 
                                                        `${item.returned_quantity || 0}/${item.quantity} Returned`}
                                                     </Badge>
-                                                  </div>
-                                                )}
-                                              </div>
-                                            </td>
-                                            <td className="py-2 pr-4 font-mono text-xs text-gray-600">
-                                              {Array.isArray(item.products) ? item.products[0]?.sku : item.products?.sku || 'N/A'}
-                                            </td>
-                                            <td className="py-2 pr-4 text-right">{item.quantity}</td>
-                                            <td className="py-2 pr-4 text-right">{formatCurrency(item.unit_price)}</td>
-                                            <td className="py-2 pr-4 text-right font-medium">{formatCurrency(item.final_price)}</td>
-                                            <td className="py-2 pr-4 text-right text-gray-600">{formatCurrency(item.quantity * item.final_price)}</td>
-                                            <td className="py-2 text-center">
-                                              <div className="flex items-center justify-center gap-1">
-                                                {/* Return/Exchange buttons for items available for return */}
-                                                {(item.available_for_return || 0) > 0 ? (
-                                                  <>
-                                                    <Button
-                                                      size="sm"
-                                                      variant="outline"
-                                                      onClick={() => handleReturnExchange(item, invoice)}
-                                                      className="h-6 w-6 p-0 border-blue-200 hover:border-blue-300 hover:bg-blue-50"
-                                                      title="Return Item"
-                                                    >
-                                                      <RotateCcw className="h-3 w-3 text-blue-500" />
-                                                    </Button>
-                                                    <Button
-                                                      size="sm"
-                                                      variant="outline"
-                                                      onClick={() => handleReturnExchange(item, invoice)}
-                                                      className="h-6 w-6 p-0 border-green-200 hover:border-green-300 hover:bg-green-50"
-                                                      title="Exchange Item"
-                                                    >
-                                                      <ArrowRightLeft className="h-3 w-3 text-green-500" />
-                                                    </Button>
-                                                  </>
-                                                ) : null}
-                                                
-                                                {/* Refund dialog button for items with returns */}
-                                                {item.return_status && item.return_status !== 'none' && (
-                                                  refundedItems.has(item.id) ? (
-                                                    <Badge 
-                                                      variant="secondary" 
-                                                      className="h-6 px-2 text-xs bg-green-100 text-green-700 border-green-200"
-                                                    >
-                                                      <CheckCircle className="h-3 w-3 mr-1" />
-                                                      Refunded
-                                                    </Badge>
-                                                  ) : (
-                                                    <Button
-                                                      size="sm"
-                                                      variant="outline"
-                                                      onClick={async () => {
-                                                        console.log('🎯 [Item] Refund button clicked for invoice:', invoice.id);
-                                                        setSelectedInvoiceForRefund(invoice);
-                                                        const refundAmount = await calculateRefundAmount(invoice.id);
-                                                        setPrefilledRefundAmount(refundAmount);
-                                                        
-                                                        // Fetch return details to get return_id for linking refund
-                                                        console.log('🔍 [Item] Fetching return details for invoice:', invoice.id);
-                                                        const returnDetails = await fetchReturnDetails(invoice.id);
-                                                        console.log('📦 [Item] Return details fetched:', {
-                                                          count: returnDetails.length,
-                                                          details: returnDetails,
-                                                          firstReturnId: returnDetails.length > 0 ? returnDetails[0].id : 'NO_RETURNS'
-                                                        });
-                                                        
-                                                        const returnId = returnDetails.length > 0 ? returnDetails[0].id : undefined;
-                                                        setSelectedReturnId(returnId);
-                                                        console.log('🔗 [Item] Return ID set for refund dialog:', {
-                                                          returnId,
-                                                          type: typeof returnId,
-                                                          isUndefined: returnId === undefined,
-                                                          willBeSent: returnId !== undefined
-                                                        });
-                                                        
-                                                        setRefundDialogOpen(true);
-                                                      }}
-                                                      className="h-6 px-2 text-xs border-orange-200 hover:border-orange-300 hover:bg-orange-50 text-orange-700"
-                                                      title="Process Refund"
-                                                    >
-                                                      <DollarSign className="h-3 w-3 mr-1" />
-                                                      Refund
+                                                  )}
+                                                </div>
+                                              </td>
+                                              <td className="py-1.5 px-2 font-mono text-[10px] text-gray-600">
+                                                {Array.isArray(item.products) ? item.products[0]?.sku : item.products?.sku || 'N/A'}
+                                              </td>
+                                              <td className="py-1.5 px-2 text-right font-semibold text-gray-700">{item.quantity}</td>
+                                              <td className="py-1.5 px-2 text-right text-gray-600">{formatCurrency(item.unit_price)}</td>
+                                              <td className="py-1.5 px-2 text-right font-semibold text-blue-700">{formatCurrency(item.final_price)}</td>
+                                              <td className="py-1.5 px-2 text-right font-bold text-green-700">{formatCurrency(item.quantity * item.final_price)}</td>
+                                              <td className="py-1.5 px-2 text-center">
+                                                <div className="flex items-center justify-center gap-0.5">
+                                                  {(item.available_for_return || 0) > 0 ? (
+                                                    <>
+                                                      <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => handleReturnExchange(item, invoice)}
+                                                        className="h-5 w-5 p-0 border-blue-300 hover:bg-blue-100"
+                                                        title="Return Item"
+                                                      >
+                                                        <RotateCcw className="h-3 w-3 text-blue-600" />
+                                                      </Button>
+                                                      <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => handleReturnExchange(item, invoice)}
+                                                        className="h-5 w-5 p-0 border-green-300 hover:bg-green-100"
+                                                        title="Exchange Item"
+                                                      >
+                                                        <ArrowRightLeft className="h-3 w-3 text-green-600" />
+                                                      </Button>
+                                                    </>
+                                                  ) : null}
+                                                  
+                                                  {item.return_status && item.return_status !== 'none' && (
+                                                    refundedItems.has(item.id) ? (
+                                                      <Badge 
+                                                        variant="secondary" 
+                                                        className="h-5 px-1.5 text-[10px] bg-emerald-100 text-emerald-700 border-emerald-300"
+                                                      >
+                                                        <CheckCircle className="h-2.5 w-2.5 mr-0.5" />
+                                                        Refunded
+                                                      </Badge>
+                                                    ) : (
+                                                      <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={async () => {
+                                                          console.log('🎯 [Item] Refund button clicked for invoice:', invoice.id);
+                                                          setSelectedInvoiceForRefund(invoice);
+                                                          const refundAmount = await calculateRefundAmount(invoice.id);
+                                                          setPrefilledRefundAmount(refundAmount);
+                                                          
+                                                          const returnDetails = await fetchReturnDetails(invoice.id);
+                                                          const returnId = returnDetails.length > 0 ? returnDetails[0].id : undefined;
+                                                          setSelectedReturnId(returnId);
+                                                          setRefundDialogOpen(true);
+                                                        }}
+                                                        className="h-5 px-1.5 text-[10px] border-orange-300 hover:bg-orange-100 text-orange-700"
+                                                        title="Process Refund"
+                                                      >
+                                                        <DollarSign className="h-2.5 w-2.5 mr-0.5" />
+                                                        Refund
                                                     </Button>
                                                   )
                                                 )}
@@ -5348,7 +5338,7 @@ export function SalesOrderInvoiceManager() {
                                                 )}
                                                 
                                                 {(item.available_for_return || 0) < item.quantity && (item.available_for_return || 0) > 0 && (
-                                                  <span className="text-xs text-amber-600 ml-1">
+                                                  <span className="text-[10px] text-amber-600 ml-0.5">
                                                     {item.available_for_return || 0} left
                                                   </span>
                                                 )}
@@ -5360,69 +5350,74 @@ export function SalesOrderInvoiceManager() {
                                     </table>
                                   </div>
                                 ) : (
-                                  <p className="text-gray-500">No items available</p>
+                                  <p className="text-xs text-gray-500">No items available</p>
                                 )}
                               </div>
                               
-                              {/* Payment Details - Now in horizontal grid */}
-                              <div className="bg-white rounded-lg p-4 shadow-sm">
-                                <h5 className="font-medium text-gray-900 mb-3">Payment Details</h5>
+                              {/* Payment Details - Glassmorphism Green Gradient */}
+                              <div className="backdrop-blur-sm bg-gradient-to-br from-emerald-50/70 to-green-100/50 rounded-xl border border-white/60 shadow-lg p-3">
+                                <h5 className="text-sm font-bold mb-2 flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-green-500 bg-clip-text text-transparent">
+                                  <CreditCard className="h-4 w-4 text-emerald-500" />
+                                  Payment Details
+                                </h5>
                                 {invoice.payments && invoice.payments.length > 0 ? (
-                                  <div className="overflow-x-auto">
-                                    <table className="w-full text-sm">
-                                      <thead>
-                                        <tr className="border-b">
-                                          <th className="text-left py-2 pr-4">Date</th>
-                                          <th className="text-left py-2 pr-4">Method</th>
-                                          <th className="text-right py-2 pr-6">Amount</th>
-                                          <th className="text-left py-2">Reference</th>
+                                  <div className="overflow-x-auto max-h-[250px] overflow-y-auto">
+                                    <table className="w-full text-xs">
+                                      <thead className="sticky top-0 bg-gradient-to-r from-emerald-50 to-green-50 border-b border-emerald-200">
+                                        <tr>
+                                          <th className="text-left py-1.5 px-2 font-semibold text-emerald-900">Date</th>
+                                          <th className="text-left py-1.5 px-2 font-semibold text-emerald-900">Method</th>
+                                          <th className="text-right py-1.5 px-2 font-semibold text-emerald-900">Amount</th>
+                                          <th className="text-left py-1.5 px-2 font-semibold text-emerald-900">Ref</th>
                                         </tr>
                                       </thead>
                                       <tbody>
                                         {invoice.payments.map((payment: PaymentDetail, index: number) => (
-                                          <tr key={index} className="border-b">
-                                            <td className="py-2 pr-4">{formatDate(payment.payment_date || payment.date)}</td>
-                                            <td className="py-2 pr-4 capitalize">{payment.method}</td>
-                                            <td className="py-2 pr-6 text-right font-medium text-green-600">{formatCurrency(payment.amount)}</td>
-                                            <td className="py-2">{payment.reference || 'N/A'}</td>
+                                          <tr key={index} className="border-b border-emerald-100/50 hover:bg-emerald-50/30 transition-colors">
+                                            <td className="py-1.5 px-2 text-gray-700">{formatDate(payment.payment_date || payment.date)}</td>
+                                            <td className="py-1.5 px-2 capitalize text-gray-700">{payment.method}</td>
+                                            <td className="py-1.5 px-2 text-right font-bold text-emerald-700">{formatCurrency(payment.amount)}</td>
+                                            <td className="py-1.5 px-2 text-gray-600 font-mono text-[10px]">{payment.reference || 'N/A'}</td>
                                           </tr>
                                         ))}
                                       </tbody>
                                     </table>
                                   </div>
                                 ) : (
-                                  <p className="text-gray-500">No payments recorded</p>
+                                  <p className="text-xs text-gray-500">No payments recorded</p>
                                 )}
                               </div>
                               
-                              {/* Return Details - Now in horizontal grid */}
+                              {/* Return Details - Glassmorphism Amber Gradient */}
                               {(() => {
                                 const returns = invoiceReturns.get(invoice.id) || [];
                                 return returns.length > 0;
                               })() && (
-                                <div className="bg-white rounded-lg p-4 shadow-sm">
-                                  <h5 className="font-medium text-gray-900 mb-3">Return Details</h5>
-                                  <div className="space-y-4">
+                                <div className="backdrop-blur-sm bg-gradient-to-br from-amber-50/70 to-orange-100/50 rounded-xl border border-white/60 shadow-lg p-3">
+                                  <h5 className="text-sm font-bold mb-2 flex items-center gap-2 bg-gradient-to-r from-amber-500 to-orange-500 bg-clip-text text-transparent">
+                                    <RotateCcw className="h-4 w-4 text-amber-500" />
+                                    Return Details
+                                  </h5>
+                                  <div className="space-y-2 max-h-[250px] overflow-y-auto">
                                     {(invoiceReturns.get(invoice.id) || []).map((returnDetail: ReturnDetail) => (
-                                      <div key={returnDetail.id} className="border border-gray-200 rounded-lg p-3">
-                                        <div className="flex items-center justify-between mb-3">
-                                          <div className="flex items-center gap-2">
+                                      <div key={returnDetail.id} className="border border-amber-200/60 rounded-lg p-2 bg-white/40">
+                                        <div className="flex items-center justify-between mb-2">
+                                          <div className="flex items-center gap-1.5">
                                             <Badge 
                                               variant={returnDetail.status === 'completed' ? 'default' : 
                                                       returnDetail.status === 'pending' ? 'secondary' : 'destructive'}
-                                              className="text-xs"
+                                              className="text-[10px]"
                                             >
                                               {returnDetail.return_type} - {returnDetail.status}
                                             </Badge>
-                                            <span className="text-sm text-gray-600">
+                                            <span className="text-[10px] text-gray-600">
                                               {formatDate(returnDetail.created_at)}
                                             </span>
                                           </div>
-                                          <div className="flex items-center gap-3">
-                                            <div className="text-sm font-medium text-red-600">
-                                              Total: {formatCurrency(returnDetail.return_value)}
+                                          <div className="flex items-center gap-2">
+                                            <div className="text-xs font-bold text-red-600">
+                                              {formatCurrency(returnDetail.return_value)}
                                             </div>
-                                            {/* Delete button - only show for pending returns */}
                                             {returnDetail.status === 'pending' && (
                                               <Button
                                                 size="sm"
@@ -5431,67 +5426,66 @@ export function SalesOrderInvoiceManager() {
                                                   setSelectedReturnForDelete(returnDetail);
                                                   setShowDeleteReturnConfirm(true);
                                                 }}
-                                                className="h-6 px-2 text-xs flex items-center gap-1"
+                                                className="h-5 w-5 p-0 text-[10px]"
                                                 title="Delete Return"
                                               >
-                                                <Trash2 className="h-3 w-3" />
-                                                Delete
+                                                <Trash2 className="h-2.5 w-2.5" />
                                               </Button>
                                             )}
                                           </div>
                                         </div>
                                         
                                         {returnDetail.reason && (
-                                          <div className="mb-3 text-sm text-gray-600">
-                                            <span className="font-medium">Reason:</span> {returnDetail.reason}
+                                          <div className="mb-2 text-[10px] text-gray-600">
+                                            <span className="font-semibold">Reason:</span> {returnDetail.reason}
                                           </div>
                                         )}
                                         
                                         <div className="overflow-x-auto">
-                                          <table className="w-full text-sm">
-                                            <thead>
-                                              <tr className="border-b border-gray-200">
-                                                <th className="text-left py-2 pr-4">Item</th>
-                                                <th className="text-right py-2 pr-4">Quantity</th>
-                                                <th className="text-right py-2 pr-4">Unit Price</th>
-                                                <th className="text-right py-2 pr-4">Refund Amount</th>
-                                                <th className="text-center py-2 pr-4">Status</th>
-                                                <th className="text-center py-2">Action</th>
+                                          <table className="w-full text-[10px]">
+                                            <thead className="bg-amber-50 border-b border-amber-200">
+                                              <tr>
+                                                <th className="text-left py-1 px-1.5 font-semibold text-amber-900">Item</th>
+                                                <th className="text-right py-1 px-1.5 font-semibold text-amber-900">Qty</th>
+                                                <th className="text-right py-1 px-1.5 font-semibold text-amber-900">Unit Price</th>
+                                                <th className="text-right py-1 px-1.5 font-semibold text-amber-900">Refund</th>
+                                                <th className="text-center py-1 px-1.5 font-semibold text-amber-900">Status</th>
+                                                <th className="text-center py-1 px-1.5 font-semibold text-amber-900">Action</th>
                                               </tr>
                                             </thead>
                                             <tbody>
                                               {returnDetail.return_items.map((returnItem: ReturnItem) => (
-                                                <tr key={returnItem.id} className="border-b border-gray-100">
-                                                  <td className="py-2 pr-4">
+                                                <tr key={returnItem.id} className="border-b border-amber-100/50 hover:bg-amber-50/30">
+                                                  <td className="py-1 px-1.5">
                                                     <div className="flex flex-col">
-                                                      <span className="font-medium">
-                                                        {returnItem.sales_order_items?.name || 'Unknown Item'}
+                                                      <span className="font-medium text-gray-800">
+                                                        {returnItem.sales_order_items?.name || 'Unknown'}
                                                       </span>
-                                                      <span className="text-xs text-gray-500">
-                                                        SKU: {returnItem.sales_order_items?.products?.sku || 'N/A'}
+                                                      <span className="text-[9px] text-gray-500 font-mono">
+                                                        {returnItem.sales_order_items?.products?.sku || 'N/A'}
                                                       </span>
                                                       {returnItem.condition_notes && (
-                                                        <span className="text-xs text-amber-600 mt-1">
-                                                          Note: {returnItem.condition_notes}
+                                                        <span className="text-[9px] text-amber-600 mt-0.5">
+                                                          {returnItem.condition_notes}
                                                         </span>
                                                       )}
                                                     </div>
                                                   </td>
-                                                  <td className="py-2 pr-4 text-right">{returnItem.quantity}</td>
-                                                  <td className="py-2 pr-4 text-right">{formatCurrency(returnItem.unit_price)}</td>
-                                                  <td className="py-2 pr-4 text-right font-medium text-red-600">
+                                                  <td className="py-1 px-1.5 text-right font-semibold">{returnItem.quantity}</td>
+                                                  <td className="py-1 px-1.5 text-right">{formatCurrency(returnItem.unit_price)}</td>
+                                                  <td className="py-1 px-1.5 text-right font-bold text-red-600">
                                                     {formatCurrency(returnItem.refund_amount)}
                                                   </td>
-                                                  <td className="py-2 pr-4 text-center">
+                                                  <td className="py-1 px-1.5 text-center">
                                                     <Badge 
                                                       variant={returnItem.status === 'completed' ? 'default' : 
                                                               returnItem.status === 'pending' ? 'secondary' : 'destructive'}
-                                                      className="text-xs"
+                                                      className="text-[9px]"
                                                     >
                                                       {returnItem.status}
                                                     </Badge>
                                                   </td>
-                                                  <td className="py-2 text-center">
+                                                  <td className="py-1 px-1.5 text-center">
                                                     {returnItem.status === 'pending' && (
                                                       <Button
                                                         size="sm"
@@ -5501,15 +5495,15 @@ export function SalesOrderInvoiceManager() {
                                                           invoice.id, 
                                                           returnItem.refund_amount
                                                         )}
-                                                        className="h-6 px-2 text-xs border-green-200 hover:border-green-300 hover:bg-green-50 text-green-700"
+                                                        className="h-5 px-1.5 text-[9px] border-green-300 hover:bg-green-100"
                                                         title="Process Refund"
                                                       >
-                                                        <DollarSign className="h-3 w-3 mr-1" />
+                                                        <DollarSign className="h-2.5 w-2.5 mr-0.5" />
                                                         Refund
                                                       </Button>
                                                     )}
                                                     {returnItem.status === 'completed' && (
-                                                      <span className="text-xs text-green-600 font-medium">Refunded</span>
+                                                      <span className="text-[9px] text-green-600 font-semibold">Refunded</span>
                                                     )}
                                                   </td>
                                                 </tr>
@@ -5523,30 +5517,33 @@ export function SalesOrderInvoiceManager() {
                                 </div>
                               )}
                               
-                              {/* Refund Details - In same row with Returns */}
+                              {/* Refund Details - Glassmorphism Purple Gradient */}
                               {invoice.refunds && invoice.refunds.length > 0 && (
-                                <div className="bg-white rounded-lg p-4 shadow-sm">
-                                  <h5 className="font-medium text-gray-900 mb-3">Refund Details</h5>
-                                  <div className="overflow-x-auto">
-                                    <table className="w-full text-sm">
-                                      <thead>
-                                        <tr className="border-b">
-                                          <th className="text-left py-2 pr-4">Date</th>
-                                          <th className="text-left py-2 pr-4">Type</th>
-                                          <th className="text-right py-2 pr-6">Amount</th>
-                                          <th className="text-left py-2 pr-4">Reason</th>
-                                          <th className="text-center py-2">Actions</th>
+                                <div className="backdrop-blur-sm bg-gradient-to-br from-purple-50/70 to-pink-100/50 rounded-xl border border-white/60 shadow-lg p-3">
+                                  <h5 className="text-sm font-bold mb-2 flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-text text-transparent">
+                                    <DollarSign className="h-4 w-4 text-purple-500" />
+                                    Refund Details
+                                  </h5>
+                                  <div className="overflow-x-auto max-h-[250px] overflow-y-auto">
+                                    <table className="w-full text-xs">
+                                      <thead className="sticky top-0 bg-gradient-to-r from-purple-50 to-pink-50 border-b border-purple-200">
+                                        <tr>
+                                          <th className="text-left py-1.5 px-2 font-semibold text-purple-900">Date</th>
+                                          <th className="text-left py-1.5 px-2 font-semibold text-purple-900">Type</th>
+                                          <th className="text-right py-1.5 px-2 font-semibold text-purple-900">Amount</th>
+                                          <th className="text-left py-1.5 px-2 font-semibold text-purple-900">Reason</th>
+                                          <th className="text-center py-1.5 px-2 font-semibold text-purple-900">Actions</th>
                                         </tr>
                                       </thead>
                                       <tbody>
                                         {invoice.refunds.map((refund: RefundDetail, index: number) => (
-                                          <tr key={index} className="border-b">
-                                            <td className="py-2 pr-4">{formatDate(refund.processed_at)}</td>
-                                            <td className="py-2 pr-4 capitalize">{refund.refund_type}</td>
-                                            <td className="py-2 pr-6 text-right font-medium text-blue-600">{formatCurrency(refund.refund_amount)}</td>
-                                            <td className="py-2 pr-4">{refund.reason}</td>
-                                            <td className="py-2 text-center">
-                                              <div className="flex items-center justify-center gap-1">
+                                          <tr key={index} className="border-b border-purple-100/50 hover:bg-purple-50/30 transition-colors">
+                                            <td className="py-1.5 px-2 text-gray-700">{formatDate(refund.processed_at)}</td>
+                                            <td className="py-1.5 px-2 capitalize text-gray-700">{refund.refund_type}</td>
+                                            <td className="py-1.5 px-2 text-right font-bold text-purple-700">{formatCurrency(refund.refund_amount)}</td>
+                                            <td className="py-1.5 px-2 text-gray-600 text-[10px]">{refund.reason}</td>
+                                            <td className="py-1.5 px-2 text-center">
+                                              <div className="flex items-center justify-center gap-0.5">
                                                 <Button
                                                   variant="ghost"
                                                   size="sm"
@@ -5554,9 +5551,9 @@ export function SalesOrderInvoiceManager() {
                                                     setSelectedInvoiceForRefund(invoice);
                                                     setRefundDialogOpen(true);
                                                   }}
-                                                  className="h-7 px-2"
+                                                  className="h-5 px-1.5 text-[10px]"
                                                 >
-                                                  <Edit className="h-3.5 w-3.5" />
+                                                  <Eye className="h-2.5 w-2.5" />
                                                 </Button>
                                                 <Button
                                                   variant="ghost"
@@ -5580,9 +5577,9 @@ export function SalesOrderInvoiceManager() {
                                                       }
                                                     }
                                                   }}
-                                                  className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                  className="h-5 px-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 text-[10px]"
                                                 >
-                                                  <Trash2 className="h-3.5 w-3.5" />
+                                                  <Trash2 className="h-2.5 w-2.5" />
                                                 </Button>
                                               </div>
                                             </td>
@@ -5593,7 +5590,8 @@ export function SalesOrderInvoiceManager() {
                                   </div>
                                 </div>
                               )}
-                            </div>{/* End of horizontal grid */}
+                            </div>{/* End grid */}
+                            </div>{/* End glassmorphism container p-4 */}
                           </TableCell>
                         </TableRow>
                       )}

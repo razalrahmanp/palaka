@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseAdmin";
 
-// Disable Next.js caching for real-time data
+// Disable Next.js caching for real-time data - Force recompile v2
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -86,16 +86,56 @@ export async function GET(request: Request) {
     }
 
     console.log(`📋 Found ${invoices?.length || 0} invoices`);
+    
+    // Debug: Check first invoice structure
+    if (invoices && invoices.length > 0) {
+      console.log('🔍 First Invoice Structure:', {
+        id: invoices[0].id,
+        customer_id: invoices[0].customer_id,
+        customer_name: invoices[0].customer_name,
+        sales_order_id: invoices[0].sales_order_id
+      });
+    }
 
     // Fetch customer and sales order data separately
     const customerIds = invoices ? [...new Set(invoices.map(inv => inv.customer_id).filter(Boolean))] : [];
     const salesOrderIds = invoices ? [...new Set(invoices.map(inv => inv.sales_order_id).filter(Boolean))] : [];
 
-    // Fetch customers
-    const { data: customers } = await supabase
-      .from("customers")
-      .select("id, name, phone, email, address")
-      .in("id", customerIds);
+    console.log(`🔍 Extracted ${customerIds.length} unique customer IDs from invoices`);
+    if (customerIds.length > 0) {
+      console.log('🔍 First 3 customer IDs:', customerIds.slice(0, 3));
+    }
+
+    // Fetch customers in batches to avoid query limits
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const customers: any[] = [];
+    if (customerIds.length > 0) {
+      const BATCH_SIZE = 100; // Supabase .in() works best with smaller batches
+      const batches = [];
+      
+      for (let i = 0; i < customerIds.length; i += BATCH_SIZE) {
+        batches.push(customerIds.slice(i, i + BATCH_SIZE));
+      }
+      
+      console.log(`👥 Fetching customers in ${batches.length} batches...`);
+      
+      for (const batch of batches) {
+        const { data, error: customersError } = await supabase
+          .from("customers")
+          .select("id, name, phone, email, address")
+          .in("id", batch);
+
+        if (customersError) {
+          console.error('❌ Error fetching customer batch:', customersError);
+        } else if (data) {
+          customers.push(...data);
+        }
+      }
+    } else {
+      console.log('⚠️ No customer IDs extracted from invoices - all customer_id fields are null');
+    }
+    
+    console.log(`👥 Fetched ${customers?.length || 0} customers from database`);
 
     // First, fetch return data for invoice items to calculate return status
     const { data: returnItems, error: returnItemsError } = await supabase
@@ -134,28 +174,47 @@ export async function GET(request: Request) {
     });
 
     // Fetch sales orders with items
-    const { data: salesOrders } = await supabase
+    const { data: salesOrders, error: salesOrdersError } = await supabase
       .from("sales_orders")
       .select(`
         id, 
         final_price, 
         status,
-        sales_order_items!order_id (
+        sales_order_items (
           id,
           name,
           quantity,
           unit_price,
           final_price,
           product_id,
-          products!product_id (
+          products (
             sku
           )
         )
       `)
       .in("id", salesOrderIds);
 
+    if (salesOrdersError) {
+      console.error('❌ Error fetching sales orders:', salesOrdersError);
+    }
+
+    console.log(`📦 Fetched ${salesOrders?.length || 0} sales orders with items`);
+
     // Create lookup maps
     const customersMap = new Map(customers?.map(c => [c.id, c]) || []);
+    
+    // Debug: Check customers map
+    console.log(`👥 Created customersMap with ${customersMap.size} customers`);
+    if (customersMap.size > 0) {
+      const firstCustomer = Array.from(customersMap.values())[0];
+      console.log('🔍 First Customer in Map:', {
+        id: firstCustomer.id,
+        name: firstCustomer.name,
+        phone: firstCustomer.phone,
+        address: firstCustomer.address
+      });
+    }
+    
     const salesOrdersMap = new Map(salesOrders?.map(so => ({
       ...so,
       sales_order_items: so.sales_order_items.map((item: SalesOrderItemFromDB) => ({
@@ -172,44 +231,93 @@ export async function GET(request: Request) {
       }))
     })).map(so => [so.id, so]) || []);
 
-    // Fetch all payments for these invoices
+    // Fetch all payments for these invoices (in batches to avoid query limits)
     const invoiceIds = invoices?.map(inv => inv.id) || [];
-    const { data: payments, error: paymentsError } = await supabase
-      .from("payments")
-      .select(`
-        id,
-        invoice_id,
-        amount,
-        payment_date,
-        date,
-        method,
-        reference,
-        description
-      `)
-      .in("invoice_id", invoiceIds);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const payments: any[] = [];
+    
+    if (invoiceIds.length > 0) {
+      const BATCH_SIZE = 100;
+      const batches = [];
+      
+      for (let i = 0; i < invoiceIds.length; i += BATCH_SIZE) {
+        batches.push(invoiceIds.slice(i, i + BATCH_SIZE));
+      }
+      
+      console.log(`💰 Fetching payments in ${batches.length} batches...`);
+      
+      for (const batch of batches) {
+        const { data, error: paymentsError } = await supabase
+          .from("payments")
+          .select(`
+            id,
+            invoice_id,
+            amount,
+            payment_date,
+            date,
+            method,
+            reference,
+            description
+          `)
+          .in("invoice_id", batch);
 
-    if (paymentsError) {
-      console.error('❌ Error fetching payments:', paymentsError);
+        if (paymentsError) {
+          console.error('❌ Error fetching payment batch:', paymentsError);
+        } else if (data) {
+          payments.push(...data);
+        }
+      }
     }
 
-    // Fetch all refunds for these invoices
-    const { data: refunds, error: refundsError } = await supabase
-      .from("invoice_refunds")
-      .select(`
-        id,
-        invoice_id,
-        refund_amount,
-        status,
-        processed_at,
-        reason,
-        refund_type
-      `)
-      .in("invoice_id", invoiceIds)
-      .eq("status", "processed"); // Only count processed refunds
-
-    if (refundsError) {
-      console.error('❌ Error fetching refunds:', refundsError);
+    console.log(`💰 Found ${payments?.length || 0} payments`);
+    
+    // Debug: Check first few payments
+    if (payments && payments.length > 0) {
+      console.log('🔍 First 3 Payments:', payments.slice(0, 3).map(p => ({
+        id: p.id,
+        invoice_id: p.invoice_id,
+        amount: p.amount
+      })));
     }
+
+    // Fetch all refunds for these invoices (in batches)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const refunds: any[] = [];
+    
+    if (invoiceIds.length > 0) {
+      const BATCH_SIZE = 100;
+      const batches = [];
+      
+      for (let i = 0; i < invoiceIds.length; i += BATCH_SIZE) {
+        batches.push(invoiceIds.slice(i, i + BATCH_SIZE));
+      }
+      
+      console.log(`💸 Fetching refunds in ${batches.length} batches...`);
+      
+      for (const batch of batches) {
+        const { data, error: refundsError } = await supabase
+          .from("invoice_refunds")
+          .select(`
+            id,
+            invoice_id,
+            refund_amount,
+            status,
+            processed_at,
+            reason,
+            refund_type
+          `)
+          .in("invoice_id", batch)
+          .eq("status", "processed"); // Only count processed refunds
+
+        if (refundsError) {
+          console.error('❌ Error fetching refund batch:', refundsError);
+        } else if (data) {
+          refunds.push(...data);
+        }
+      }
+    }
+
+    console.log(`💸 Found ${refunds?.length || 0} refunds`);
 
     // Group payments by invoice
     const paymentsByInvoice = new Map();
@@ -219,6 +327,17 @@ export async function GET(request: Request) {
       }
       paymentsByInvoice.get(payment.invoice_id).push(payment);
     });
+    
+    // Debug: Check paymentsByInvoice map
+    console.log(`💳 Created paymentsByInvoice map with ${paymentsByInvoice.size} invoice IDs`);
+    if (paymentsByInvoice.size > 0) {
+      const firstEntry = Array.from(paymentsByInvoice.entries())[0];
+      console.log('🔍 First Payment Entry:', {
+        invoice_id: firstEntry[0],
+        payments_count: firstEntry[1].length,
+        first_payment: firstEntry[1][0]
+      });
+    }
 
     // Group refunds by invoice and calculate total refunded amount
     const refundsByInvoice = new Map();
@@ -241,6 +360,21 @@ export async function GET(request: Request) {
       // Get customer and sales order from maps first
       const customer = customersMap.get(invoice.customer_id);
       const salesOrder = salesOrdersMap.get(invoice.sales_order_id);
+      
+      // Debug first invoice mapping
+      if (invoice.id === invoices[0].id) {
+        console.log('🔍 Debug First Invoice Mapping:', {
+          invoice_id: invoice.id,
+          customer_id: invoice.customer_id,
+          customer_found: !!customer,
+          customer_data: customer ? {
+            phone: customer.phone,
+            address: customer.address
+          } : 'NOT FOUND',
+          payments_in_map: invoicePayments.length,
+          payments_data: invoicePayments.map((p: Payment) => ({ amount: p.amount }))
+        });
+      }
       
       // Calculate total from sales order items' final_price instead of invoice.total
       const totalInvoice = salesOrder?.sales_order_items?.reduce((sum: number, item: SalesOrderItemFromDB) => {
@@ -278,6 +412,20 @@ export async function GET(request: Request) {
     }) || [];
 
     console.log(`✅ Enhanced ${enhancedInvoices.length} invoices with payment data`);
+    
+    // Debug: Log first invoice to see structure
+    if (enhancedInvoices.length > 0) {
+      console.log('🔍 First Enhanced Invoice:', {
+        id: enhancedInvoices[0].id,
+        customer_name: enhancedInvoices[0].customer_name,
+        customer_phone: enhancedInvoices[0].customer_phone,
+        customer_address: enhancedInvoices[0].customer_address,
+        total: enhancedInvoices[0].total,
+        paid_amount: enhancedInvoices[0].paid_amount,
+        payments_count: enhancedInvoices[0].payments?.length || 0,
+        sample_payment: enhancedInvoices[0].payments?.[0]
+      });
+    }
 
     const response = NextResponse.json(enhancedInvoices);
     

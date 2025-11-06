@@ -5220,11 +5220,12 @@ export function SalesOrderInvoiceManager() {
                       {expandedInvoices.has(invoice.id) && (
                         <TableRow>
                           <TableCell colSpan={11} className="bg-gray-50 p-6">
-                            <div className="space-y-4">
-                              <h4 className="font-semibold text-lg mb-4">Invoice Details</h4>
-                              
+                            <h4 className="font-semibold text-lg mb-4">Invoice Details</h4>
+                            
+                            {/* Horizontal Grid Layout */}
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                               {/* Sales Order Items */}
-                              <div className="bg-white rounded-lg p-4 shadow-sm">
+                              <div className="bg-white rounded-lg p-4 shadow-sm lg:col-span-3">
                                 <h5 className="font-medium text-gray-900 mb-3">Sales Order Items</h5>
                                 {invoice.sales_order && invoice.sales_order.sales_order_items && invoice.sales_order.sales_order_items.length > 0 ? (
                                   <div className="overflow-x-auto">
@@ -5363,7 +5364,7 @@ export function SalesOrderInvoiceManager() {
                                 )}
                               </div>
                               
-                              {/* Payment Details */}
+                              {/* Payment Details - Now in horizontal grid */}
                               <div className="bg-white rounded-lg p-4 shadow-sm">
                                 <h5 className="font-medium text-gray-900 mb-3">Payment Details</h5>
                                 {invoice.payments && invoice.payments.length > 0 ? (
@@ -5394,7 +5395,7 @@ export function SalesOrderInvoiceManager() {
                                 )}
                               </div>
                               
-                              {/* Return Details */}
+                              {/* Return Details - Now in horizontal grid */}
                               {(() => {
                                 const returns = invoiceReturns.get(invoice.id) || [];
                                 return returns.length > 0;
@@ -5522,7 +5523,7 @@ export function SalesOrderInvoiceManager() {
                                 </div>
                               )}
                               
-                              {/* Refund Details */}
+                              {/* Refund Details - In same row with Returns */}
                               {invoice.refunds && invoice.refunds.length > 0 && (
                                 <div className="bg-white rounded-lg p-4 shadow-sm">
                                   <h5 className="font-medium text-gray-900 mb-3">Refund Details</h5>
@@ -5592,7 +5593,7 @@ export function SalesOrderInvoiceManager() {
                                   </div>
                                 </div>
                               )}
-                            </div>
+                            </div>{/* End of horizontal grid */}
                           </TableCell>
                         </TableRow>
                       )}

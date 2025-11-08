@@ -54,6 +54,8 @@ interface LedgerDetail {
   status?: string;
   opening_balance?: number;
   last_transaction_date?: string;
+  customer_address?: string;
+  sales_representative_name?: string;
 }
 
 interface Transaction {
@@ -206,6 +208,10 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
         console.log('🔍 Fetching bank transactions for ledger:', { ledgerId, ledgerType });
         fetchedTransactions = await fetchBankTransactions(ledgerId);
         console.log('✅ Bank transactions fetched:', fetchedTransactions.length);
+      } else if (ledgerType === 'sales_returns') {
+        console.log('🔍 Fetching sales return transactions for ledger:', { ledgerId, ledgerType });
+        fetchedTransactions = await fetchSalesReturnTransactions(ledgerId);
+        console.log('✅ Sales return transactions fetched:', fetchedTransactions.length);
       } else {
         // For other types, use mock data for now
         fetchedTransactions = generateMockTransactions(ledger);
@@ -718,6 +724,108 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
 
     } catch (error) {
       console.error('Error fetching customer transactions:', error);
+      return [];
+    }
+  };
+
+  const fetchSalesReturnTransactions = async (returnId: string): Promise<Transaction[]> => {
+    try {
+      console.log('🔍 Fetching sales return details for:', returnId);
+      
+      // Fetch return details
+      const returnResponse = await fetch(`/api/sales/returns/${returnId}`);
+      
+      if (!returnResponse.ok) {
+        console.error('Failed to fetch return details:', returnResponse.statusText);
+        return [];
+      }
+      
+      const returnData = await returnResponse.json();
+      
+      if (!returnData.success) {
+        console.error('Return details API error:', returnData.error);
+        return [];
+      }
+
+      const returnInfo = returnData.data;
+      console.log('📦 Return info:', returnInfo);
+
+      // Fetch refunds from invoice_refunds table associated with this return
+      const refundsResponse = await fetch(`/api/finance/refunds?return_id=${returnId}`);
+      let refunds = [];
+      
+      if (refundsResponse.ok) {
+        const refundsData = await refundsResponse.json();
+        console.log('💰 Refunds API response:', refundsData);
+        
+        // The API returns an array directly, not wrapped in a data object
+        if (Array.isArray(refundsData)) {
+          refunds = refundsData.filter((r: { return_id: string }) => r.return_id === returnId);
+        } else if (refundsData.data && Array.isArray(refundsData.data)) {
+          refunds = refundsData.data.filter((r: { return_id: string }) => r.return_id === returnId);
+        }
+      }
+
+      console.log(`💰 Found ${refunds.length} refunds for return ${returnId}`);
+      console.log('💰 Refund details:', refunds);
+
+      const transactions: Transaction[] = [];
+
+      // Add the return itself as a debit transaction (creates obligation)
+      transactions.push({
+        id: `return-${returnInfo.id}`,
+        date: returnInfo.created_at,
+        description: 'Return Adjustment',
+        reference_number: `REF-${returnInfo.id.slice(0, 8).toUpperCase()}`,
+        transaction_type: 'Invoice',
+        debit_amount: returnInfo.return_value || 0,
+        credit_amount: 0,
+        running_balance: 0,
+        source_document: 'Invoice',
+        status: returnInfo.status || 'completed'
+      });
+
+      // Add refunds as credit transactions (settles obligation)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      refunds.forEach((refund: any) => {
+        const refundDate = refund.processed_at || refund.approved_at || refund.created_at;
+        const refundStatus = refund.status || 'pending';
+        
+        transactions.push({
+          id: `refund-${refund.id}`,
+          date: refundDate,
+          description: `Refund ${refundStatus === 'processed' ? 'Processed' : refundStatus === 'approved' ? 'Approved' : 'Pending'}`,
+          reference_number: `RFD-${refund.id.slice(0, 8).toUpperCase()}`,
+          transaction_type: 'Refund',
+          debit_amount: 0,
+          credit_amount: refund.refund_amount || 0,
+          running_balance: 0,
+          source_document: `Refund - ${refund.refund_method || 'N/A'}`,
+          status: refundStatus,
+          category: refund.bank_account?.name || refund.refund_method || 'Bank Account'
+        });
+      });
+
+      // Sort chronologically
+      transactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      // Calculate running balances
+      let runningBalance = 0;
+      const transactionsWithBalance = transactions.map(txn => {
+        runningBalance += txn.debit_amount - txn.credit_amount;
+        return {
+          ...txn,
+          running_balance: runningBalance
+        };
+      });
+
+      console.log(`✅ Generated ${transactionsWithBalance.length} sales return transactions`);
+      console.log('📊 Transactions:', transactionsWithBalance);
+      
+      return transactionsWithBalance;
+
+    } catch (error) {
+      console.error('Error fetching sales return transactions:', error);
       return [];
     }
   };
@@ -2028,6 +2136,18 @@ export function DetailedLedgerView({ ledgerId, ledgerType }: DetailedLedgerViewP
           ) : (
             /* Non-employee standard layout */
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {ledgerType === 'sales_returns' && ledgerDetail.customer_address && (
+                <div className="flex flex-col p-3 bg-gray-50 rounded-md">
+                  <span className="text-xs text-gray-500 mb-1">Customer Address</span>
+                  <span className="font-medium text-sm">{ledgerDetail.customer_address}</span>
+                </div>
+              )}
+              {ledgerType === 'sales_returns' && ledgerDetail.sales_representative_name && (
+                <div className="flex flex-col p-3 bg-gray-50 rounded-md">
+                  <span className="text-xs text-gray-500 mb-1">Sales Representative</span>
+                  <span className="font-medium text-sm">{ledgerDetail.sales_representative_name}</span>
+                </div>
+              )}
               {ledgerDetail.email && (
                 <div className="flex flex-col p-3 bg-gray-50 rounded-md">
                   <span className="text-xs text-gray-500 mb-1">Email</span>

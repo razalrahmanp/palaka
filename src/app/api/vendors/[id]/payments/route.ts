@@ -108,62 +108,6 @@ export async function POST(
     if (paymentError) {
       console.error('❌ Failed to insert into vendor_payment_history:', paymentError);
       console.log('🔄 Falling back to purchase_order_payments for compatibility');
-    } else {
-      // ✅ CRITICAL FIX: Also insert into expenses table for data consistency
-      console.log('📝 Creating corresponding expense record for vendor payment...');
-      
-      // Get supplier name for description
-      const { data: supplierData } = await supabase
-        .from('suppliers')
-        .select('name')
-        .eq('id', vendorId)
-        .single();
-      
-      const supplierName = supplierData?.name || 'Unknown Vendor';
-      
-      // Determine the correct bank_account_id based on payment method
-      let selectedBankAccountId = null;
-      if (payment_method === 'upi' && upi_account_id) {
-        selectedBankAccountId = upi_account_id;
-      } else if (payment_method === 'bank_transfer' && bank_account_id) {
-        selectedBankAccountId = bank_account_id;
-      } else if (payment_method === 'cash') {
-        // Get the cash account ID
-        const { data: cashAccount } = await supabase
-          .from('bank_accounts')
-          .select('id')
-          .eq('account_type', 'CASH')
-          .eq('is_active', true)
-          .single();
-        selectedBankAccountId = cashAccount?.id || null;
-      }
-      
-      const expenseData = {
-        amount: parseFloat(amount),
-        category: 'Manufacturing',
-        subcategory: 'Vendor Payment',
-        description: `Payment for vendor bill - ${supplierName} (Smart payment settlement: ${notes || ''})`,
-        date: payment_date,
-        payment_method: payment_method || 'cash',
-        bank_account_id: selectedBankAccountId,
-        entity_type: 'vendor',
-        entity_id: vendorId,
-        reference_number: reference_number,
-        vendor_payment_id: payment.id // Link to vendor payment history
-      };
-
-      const { data: expense, error: expenseError } = await supabase
-        .from('expenses')
-        .insert(expenseData)
-        .select()
-        .single();
-
-      if (expenseError) {
-        console.error('❌ Failed to create corresponding expense record:', expenseError);
-        // Don't fail the main payment - just log the error
-      } else {
-        console.log('✅ Created corresponding expense record:', expense.id);
-      }
     }
 
     if (paymentError) {
@@ -373,16 +317,40 @@ export async function POST(
 
     // Handle cash payments vs bank payments differently
     if (payment_method === 'cash') {
-      console.log('💰 Processing cash payment - creating cash transaction...');
+      console.log('💰 Processing cash payment - creating cash transaction and bank transaction...');
       
-      // 1. Create cash transaction record
+      // 1. Get cash account
       const { data: cashAccount } = await supabase
         .from('bank_accounts')
         .select('id')
         .eq('account_type', 'CASH')
+        .eq('is_active', true)
         .single();
 
       if (cashAccount) {
+        // 2. Create bank transaction entry for cash payment
+        console.log('📝 Creating bank transaction for cash payment...');
+        
+        const { data: bankTransaction, error: bankTxnError } = await supabase
+          .from('bank_transactions')
+          .insert({
+            bank_account_id: cashAccount.id,
+            date: payment_date,
+            amount: parseFloat(amount),
+            type: 'withdrawal',
+            description: `Vendor payment (Cash) - ${notes || 'Smart settlement'}`,
+            reference: reference_number || `VP-${payment.id.slice(0, 8)}`
+          })
+          .select()
+          .single();
+
+        if (bankTxnError) {
+          console.error('❌ Failed to create bank transaction for cash:', bankTxnError);
+        } else {
+          console.log('✅ Created bank transaction for cash payment:', bankTransaction.id);
+        }
+
+        // 3. Create cash transaction record
         const { data: cashTransaction, error: cashTransactionError } = await supabase
           .from('cash_transactions')
           .insert({
@@ -404,7 +372,7 @@ export async function POST(
         } else {
           console.log('✅ Created cash transaction:', cashTransaction.id);
 
-          // 2. Update cash balance
+          // 4. Update cash balance
           const { data: currentBalance } = await supabase
             .from('cash_balances')
             .select('current_balance')
@@ -432,7 +400,7 @@ export async function POST(
         }
       }
 
-      // 3. Create journal entry for cash payment
+      // 5. Create journal entry for cash payment
       const journalResult = await createVendorPaymentJournalEntry({
         paymentId: payment.id,
         amount: parseFloat(amount),
@@ -451,10 +419,57 @@ export async function POST(
       }
     } else {
       // Handle bank/UPI payments as before
-      console.log('💰 Processing bank/UPI payment - creating journal entry...');
+      console.log('💰 Processing bank/UPI payment - creating journal entry and bank transaction...');
       
       // Determine bank account ID based on payment method
       const selectedBankAccountId = payment_method === 'upi' ? upi_account_id : bank_account_id;
+      
+      // CRITICAL FIX: Create bank transaction entry for bank payments
+      if (selectedBankAccountId) {
+        console.log('📝 Creating bank transaction for vendor payment...');
+        
+        const { data: bankTransaction, error: bankTxnError } = await supabase
+          .from('bank_transactions')
+          .insert({
+            bank_account_id: selectedBankAccountId,
+            date: payment_date,
+            amount: parseFloat(amount),
+            type: 'withdrawal',
+            description: `Vendor payment - ${notes || 'Smart settlement'}`,
+            reference: reference_number || `VP-${payment.id.slice(0, 8)}`
+          })
+          .select()
+          .single();
+
+        if (bankTxnError) {
+          console.error('❌ Failed to create bank transaction:', bankTxnError);
+        } else {
+          console.log('✅ Created bank transaction:', bankTransaction.id);
+          
+          // Update bank account balance
+          const { data: currentAccount } = await supabase
+            .from('bank_accounts')
+            .select('current_balance')
+            .eq('id', selectedBankAccountId)
+            .single();
+
+          const newBalance = (currentAccount?.current_balance || 0) - parseFloat(amount);
+
+          const { error: balanceUpdateError } = await supabase
+            .from('bank_accounts')
+            .update({
+              current_balance: newBalance,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', selectedBankAccountId);
+
+          if (balanceUpdateError) {
+            console.error('❌ Failed to update bank balance:', balanceUpdateError);
+          } else {
+            console.log(`✅ Updated bank balance: ${currentAccount?.current_balance || 0} → ${newBalance}`);
+          }
+        }
+      }
       
       const journalResult = await createVendorPaymentJournalEntry({
         paymentId: payment.id,

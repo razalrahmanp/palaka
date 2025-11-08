@@ -61,6 +61,9 @@ interface LedgerSummary {
   approved_returns?: number;
   pending_returns?: number;
   last_transaction_date?: string;
+  customer_name?: string;
+  customer_address?: string;
+  sales_representative_name?: string;
   // Employee payment type breakdowns
   salary_amount?: number;
   incentive_amount?: number;
@@ -293,6 +296,7 @@ export function ProfessionalLedgerSystem() {
         case 'bank':
           return ['ID', 'Account Name', 'Account No.', 'Type', 'Current Balance', 'UPI ID', 'Status'];
         case 'sales_returns':
+          return ['ID', 'Customer Name', 'Contact', 'Address', 'Sales Rep', 'Debit', 'Credit', 'Balance', 'Status'];
         case 'purchase_returns':
           return ['ID', 'Return No.', 'Date', 'Type', 'Return Value', 'Count', 'Status'];
         default:
@@ -356,11 +360,22 @@ export function ProfessionalLedgerSystem() {
                         cellValue = ledger.id.toString().slice(0, 8);
                         break;
                       case 'Name':
+                      case 'Customer Name':
                         cellValue = ledger.name;
                         cellClass += ' font-medium';
                         break;
                       case 'Contact':
-                        cellValue = ledger.email || ledger.phone || '-';
+                        if (activeTab === 'sales_returns') {
+                          cellValue = ledger.phone || ledger.email || '-';
+                        } else {
+                          cellValue = ledger.email || ledger.phone || '-';
+                        }
+                        break;
+                      case 'Address':
+                        cellValue = ledger.customer_address || '-';
+                        break;
+                      case 'Sales Rep':
+                        cellValue = ledger.sales_representative_name || 'Not Assigned';
                         break;
                       case 'Debit':
                         cellValue = formatCurrency(ledger.debit || ledger.total_amount || 0);
@@ -639,8 +654,14 @@ export function ProfessionalLedgerSystem() {
                     <TableHeader>
                       <TableRow className="bg-gray-50">
                         <TableHead>Type</TableHead>
-                        <TableHead>Account Name</TableHead>
-                        {activeTab !== 'loans' && <TableHead>Contact</TableHead>}
+                        <TableHead>{activeTab === 'sales_returns' ? 'Customer Name' : 'Account Name'}</TableHead>
+                        {activeTab === 'sales_returns' ? (
+                          <>
+                            <TableHead>Contact</TableHead>
+                            <TableHead>Address</TableHead>
+                            <TableHead>Sales Representative</TableHead>
+                          </>
+                        ) : activeTab !== 'loans' && <TableHead>Contact</TableHead>}
                         {activeTab === 'employee' && (
                           <>
                             <TableHead className="text-right">Salary (₹)</TableHead>
@@ -685,7 +706,26 @@ export function ProfessionalLedgerSystem() {
                               <p className="text-xs text-gray-500">ID: {ledger.id.toString().slice(0, 8)}</p>
                             </div>
                           </TableCell>
-                          {activeTab !== 'loans' && (
+                          {activeTab === 'sales_returns' ? (
+                            <>
+                              <TableCell>
+                                <div className="text-sm">
+                                  {ledger.phone && <p className="text-gray-600">{ledger.phone}</p>}
+                                  {ledger.email && <p className="text-gray-500 text-xs">{ledger.email}</p>}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="text-sm text-gray-600">
+                                  {ledger.customer_address || 'N/A'}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="text-sm text-gray-600">
+                                  {ledger.sales_representative_name || 'Not Assigned'}
+                                </div>
+                              </TableCell>
+                            </>
+                          ) : activeTab !== 'loans' && (
                             <TableCell>
                               <div className="text-sm">
                                 {ledger.email && <p className="text-gray-600">{ledger.email}</p>}

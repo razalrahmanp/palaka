@@ -129,6 +129,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 6. Manual cash transactions from bank_accounts table with account_type = 'CASH'
+    // EXCLUDE vendor payment entries (reference starts with 'VP-') to avoid double counting
     const { data: cashAccounts, error: cashAccountsError } = await supabaseAdmin
       .from('bank_accounts')
       .select('id, name, current_balance')
@@ -146,6 +147,11 @@ export async function GET(request: NextRequest) {
 
         if (!bankTxError && bankTransactions) {
           bankTransactions.forEach(tx => {
+            // Skip vendor payment entries - they're already included from vendor_payments table
+            if (tx.reference && tx.reference.startsWith('VP-')) {
+              return;
+            }
+            
             cashAccountTransactions.push({
               id: `cash_tx_${tx.id}`,
               date: tx.date,

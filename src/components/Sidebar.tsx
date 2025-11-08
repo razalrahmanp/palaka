@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { NavLink } from './NavLink';
+import Image from 'next/image';
 import { 
   Home, Users, Receipt, Warehouse, ShoppingCart, Wrench, Truck, 
   DollarSign, Star, Users2, Building2, Package, 
@@ -215,7 +216,7 @@ export const Sidebar = () => {
       <div>
         <button
           onClick={() => toggleSection(sectionKey)}
-          className="w-full flex items-center gap-3 px-3 py-2 text-gray-700 hover:bg-purple-50 hover:text-purple-600 rounded-lg transition-all group"
+          className="w-full flex items-center gap-3 px-3 py-2 text-slate-700 hover:bg-sky-100 hover:text-sky-700 rounded-lg transition-all group"
           title={!isExpanded ? title : ''}
         >
           <SectionIcon className="h-5 w-5 flex-shrink-0" />
@@ -247,14 +248,20 @@ export const Sidebar = () => {
     <aside
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`fixed top-0 left-0 z-50 h-screen flex flex-col bg-gradient-to-b from-white to-gray-50 border-r border-gray-200 shadow-xl transition-all duration-300 ease-in-out ${
+      className={`fixed top-0 left-0 z-50 h-screen flex flex-col bg-gradient-to-b from-sky-50 to-blue-50 border-r border-sky-200 shadow-xl transition-all duration-300 ease-in-out ${
         isExpanded ? 'w-64' : 'w-16'
       }`}
     >
     {/* Header - Compact */}
-    <div className="flex-shrink-0 flex items-center justify-center h-14 bg-gradient-to-r from-purple-600 to-blue-600 text-white relative">
-      <Package className="h-6 w-6 text-white flex-shrink-0" />
-      {isExpanded && <span className="ml-2 text-lg font-bold whitespace-nowrap">Palaka ERP</span>}
+    <div className="flex-shrink-0 flex items-center justify-center h-14 bg-gradient-to-r from-sky-600 to-blue-600 text-white relative shadow-md">
+      <Image 
+        src="/assets/logo/initlogo.png" 
+        alt="Palaka ERP"
+        width={isExpanded ? 120 : 40}
+        height={40}
+        className="object-contain drop-shadow-lg"
+        priority
+      />
     </div>
     
     {/* Compact Navigation */}
@@ -323,7 +330,7 @@ export const Sidebar = () => {
         <div>
           <button
             onClick={() => toggleSection('hr')}
-            className="w-full flex items-center gap-3 px-3 py-2 text-gray-700 hover:bg-purple-50 hover:text-purple-600 rounded-lg transition-all group"
+            className="w-full flex items-center gap-3 px-3 py-2 text-slate-700 hover:bg-sky-100 hover:text-sky-700 rounded-lg transition-all group"
             title={!isExpanded ? 'Human Resources' : ''}
           >
             <Users2 className="h-5 w-5 flex-shrink-0" />

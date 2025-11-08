@@ -21,8 +21,8 @@ export const NavLink = ({ href, icon: Icon, children }: NavLinkProps) => {
       href={href}
       className={`group flex items-center ${iconOnly ? 'justify-center' : ''} px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
         active
-          ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg'
-          : 'text-gray-700 hover:bg-purple-50 hover:text-purple-600'
+          ? 'bg-gradient-to-r from-sky-600 to-blue-600 text-white shadow-lg'
+          : 'text-slate-700 hover:bg-sky-100 hover:text-sky-700'
       }`}
       title={iconOnly ? String(children) : ''}
     >
@@ -30,7 +30,7 @@ export const NavLink = ({ href, icon: Icon, children }: NavLinkProps) => {
         className={`${iconOnly ? '' : 'mr-3'} h-5 w-5 flex-shrink-0 transition-all duration-200 ${
           active 
             ? 'text-white' 
-            : 'text-gray-500 group-hover:text-purple-600'
+            : 'text-slate-500 group-hover:text-sky-700'
         }`}
       />
       {children && <span className="transition-all duration-200 truncate">{children}</span>}

@@ -54,6 +54,9 @@ interface LedgerSummary {
   return_count?: number;
   approved_returns?: number;
   pending_returns?: number;
+  customer_name?: string;
+  customer_address?: string;
+  sales_representative_name?: string;
   // Employee payment type breakdowns
   salary_amount?: number;
   incentive_amount?: number;
@@ -1680,10 +1683,30 @@ async function getSalesReturnsLedgersPaginated(
     const { count } = await countQuery;
     const total = count || 0;
 
-    // Get paginated data
+    // Get paginated data with customer and sales representative information
     let dataQuery = supabaseAdmin
       .from('returns')
-      .select('id, return_type, status, return_value, created_at')
+      .select(`
+        id, 
+        return_type, 
+        status, 
+        return_value, 
+        created_at,
+        order_id,
+        sales_orders!inner(
+          customer_id,
+          sales_representative_id,
+          customers:customer_id(
+            name,
+            phone,
+            email,
+            address
+          ),
+          sales_rep:sales_representative_id(
+            name
+          )
+        )
+      `)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -1727,19 +1750,33 @@ async function getSalesReturnsLedgersPaginated(
       const refundedAmount = refundMap.get(ret.id) || 0;
       const balanceDue = returnValue - refundedAmount;
 
+      // Extract customer and sales rep information from the first sales order
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const salesOrder = (ret.sales_orders as any)?.[0] || (ret.sales_orders as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const customer = (salesOrder?.customers as any)?.[0] || salesOrder?.customers;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const salesRep = (salesOrder?.sales_rep as any)?.[0] || salesOrder?.sales_rep;
+
       console.log(`  - Return ${ret.id.slice(0, 8)}: Value=₹${returnValue}, Refunded=₹${refundedAmount}, Balance=₹${balanceDue}, Status=${balanceDue <= 0 ? 'settled' : ret.status}`);
 
       return {
         id: ret.id,
-        name: `Sales Return ${ret.id.slice(0, 8)}`,
+        name: customer?.name || `Sales Return ${ret.id.slice(0, 8)}`,
         type: 'sales_returns' as const,
+        email: customer?.email || '',
+        phone: customer?.phone || '',
         total_transactions: 1,
         total_amount: returnValue,
         balance_due: balanceDue,
         paid_amount: refundedAmount,
         return_value: returnValue,
         return_type: ret.return_type,
-        status: balanceDue <= 0 ? 'settled' : ret.status
+        status: balanceDue <= 0 ? 'settled' : ret.status,
+        // Additional fields for display
+        customer_name: customer?.name || 'Unknown Customer',
+        customer_address: customer?.address || '',
+        sales_representative_name: salesRep?.name || 'Not Assigned'
       };
     });
 

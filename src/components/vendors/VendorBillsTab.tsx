@@ -118,7 +118,7 @@ interface BankAccount {
   id: string;
   name: string;
   account_number?: string;
-  account_type: 'BANK' | 'UPI';
+  account_type: 'BANK' | 'UPI' | 'CASH';
   upi_id?: string;
   current_balance?: number;
   currency?: string;
@@ -237,8 +237,8 @@ export function VendorBillsTab({
   });
 
   // Helper function to build expenses API URL with date filtering
-  const buildExpensesApiUrl = (vendorId: string, startDate?: string, endDate?: string) => {
-    const baseUrl = `/api/finance/expenses?entity_id=${vendorId}&entity_type=supplier`;
+  const buildPaymentsApiUrl = (vendorId: string, startDate?: string, endDate?: string) => {
+    const baseUrl = `/api/finance/vendor-payments?supplier_id=${vendorId}`;
     const params = new URLSearchParams();
     
     if (startDate) params.append('start_date', startDate);
@@ -247,35 +247,52 @@ export function VendorBillsTab({
     return params.toString() ? `${baseUrl}&${params.toString()}` : baseUrl;
   };
 
-  // Fetch bank accounts and expenses for vendor
+  // Fetch bank accounts and vendor payments
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [bankResponse, upiResponse, expensesResponse] = await Promise.all([
+        const [bankResponse, upiResponse, cashResponse, paymentsResponse] = await Promise.all([
           fetch('/api/finance/bank-accounts?type=BANK'),
           fetch('/api/finance/bank-accounts?type=UPI'),
-          fetch(buildExpensesApiUrl(vendorId, expenseStartDate, expenseEndDate))
+          fetch('/api/finance/bank-accounts?type=CASH'),
+          fetch(buildPaymentsApiUrl(vendorId, expenseStartDate, expenseEndDate))
         ]);
         
-        const [bankData, upiData, expensesData] = await Promise.all([
+        const [bankData, upiData, cashData, paymentsData] = await Promise.all([
           bankResponse.json(),
           upiResponse.json(),
-          expensesResponse.json()
+          cashResponse.json(),
+          paymentsResponse.json()
         ]);
         
         // Handle API response format - data might be wrapped in a 'data' property
         const bankAccounts = Array.isArray(bankData) ? bankData : (Array.isArray(bankData?.data) ? bankData.data : []);
         const upiAccounts = Array.isArray(upiData) ? upiData : (Array.isArray(upiData?.data) ? upiData.data : []);
-        const expenses = Array.isArray(expensesData) ? expensesData : (Array.isArray(expensesData?.data) ? expensesData.data : []);
+        const cashAccounts = Array.isArray(cashData) ? cashData : (Array.isArray(cashData?.data) ? cashData.data : []);
+        const payments = Array.isArray(paymentsData) ? paymentsData : (Array.isArray(paymentsData?.data) ? paymentsData.data : []);
         
         console.log('Bank accounts loaded:', bankAccounts.length, bankAccounts);
         console.log('UPI accounts loaded:', upiAccounts.length, upiAccounts);
+        console.log('Cash accounts loaded:', cashAccounts.length, cashAccounts);
         console.log('Vendor ID being used for filtering:', vendorId);
-        console.log('Expenses API URL:', buildExpensesApiUrl(vendorId, expenseStartDate, expenseEndDate));
-        console.log('Expenses returned from API:', expenses.length, expenses);
+        console.log('Payments API URL:', buildPaymentsApiUrl(vendorId, expenseStartDate, expenseEndDate));
+        console.log('Vendor payments returned from API:', payments.length, payments);
         
-        setBankAccounts([...bankAccounts, ...upiAccounts]);
-        setExpenses(expenses);
+        // Transform vendor_payment_history to match expense format for compatibility
+        const transformedPayments = payments.map((payment: VendorPaymentHistory) => ({
+          id: payment.id,
+          date: payment.payment_date,
+          amount: payment.amount,
+          description: payment.notes || `Payment to ${vendorName}`,
+          payment_method: payment.payment_method,
+          entity_id: payment.supplier_id,
+          entity_type: 'supplier',
+          entity_reference_id: payment.id, // Reference to vendor_payment_history
+          vendor_bill_id: payment.vendor_bill_id
+        }));
+        
+        setBankAccounts([...bankAccounts, ...upiAccounts, ...cashAccounts]);
+        setExpenses(transformedPayments);
       } catch (error) {
         console.error('Error fetching data:', error);
         // Set fallback empty arrays on error
@@ -285,7 +302,7 @@ export function VendorBillsTab({
     };
     
     fetchData();
-  }, [vendorId, expenseStartDate, expenseEndDate]);
+  }, [vendorId, expenseStartDate, expenseEndDate, vendorName]);
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
@@ -520,7 +537,7 @@ export function VendorBillsTab({
       });
       
       // Refresh expenses data
-      const expensesResponse = await fetch(buildExpensesApiUrl(vendorId, expenseStartDate, expenseEndDate));
+      const expensesResponse = await fetch(buildPaymentsApiUrl(vendorId, expenseStartDate, expenseEndDate));
       const expensesData = await expensesResponse.json();
       const expenses = Array.isArray(expensesData) ? expensesData : (Array.isArray(expensesData?.data) ? expensesData.data : []);
       setExpenses(expenses);
@@ -1455,7 +1472,7 @@ export function VendorBillsTab({
                     }
                     
                     // Then refresh expenses data
-                    const expensesResponse = await fetch(buildExpensesApiUrl(vendorId, expenseStartDate, expenseEndDate));
+                    const expensesResponse = await fetch(buildPaymentsApiUrl(vendorId, expenseStartDate, expenseEndDate));
                     const data = await expensesResponse.json();
                     console.log('Refresh expenses API response:', data);
                     
@@ -2637,7 +2654,32 @@ export function VendorBillsTab({
                   </Select>
                 </div>
 
-                {smartPaymentForm.payment_method !== 'cash' && (
+                {/* Show account selector for all payment methods */}
+                {smartPaymentForm.payment_method === 'cash' ? (
+                  <div>
+                    <Label htmlFor="smart_cash_account">Cash Account *</Label>
+                    <Select
+                      value={smartPaymentForm.bank_account_id}
+                      onValueChange={(value) => setSmartPaymentForm({...smartPaymentForm, bank_account_id: value})}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select cash account" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {bankAccounts.filter(account => account.account_type === 'CASH').map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            <div className="flex flex-col">
+                              <span>{account.name}</span>
+                              <span className="text-xs text-gray-500">
+                                Balance: {formatCurrency(account.current_balance || 0)}
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
                   <div>
                     <Label htmlFor="smart_bank_account">Bank Account *</Label>
                     <Select

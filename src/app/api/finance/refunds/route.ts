@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '100');
     const statusParam = searchParams.get('status') || '';
     const invoiceId = searchParams.get('invoice_id') || '';
+    const returnId = searchParams.get('return_id') || '';
     
     const offset = (page - 1) * limit;
 
@@ -63,6 +64,10 @@ export async function GET(request: NextRequest) {
     
     if (invoiceId) {
       query = query.eq('invoice_id', invoiceId);
+    }
+    
+    if (returnId) {
+      query = query.eq('return_id', returnId);
     }
 
     const { data: refunds, error } = await query;
@@ -130,6 +135,9 @@ export async function GET(request: NextRequest) {
     }
     if (invoiceId) {
       countQuery = countQuery.eq('invoice_id', invoiceId);
+    }
+    if (returnId) {
+      countQuery = countQuery.eq('return_id', returnId);
     }
 
     const { count } = await countQuery;

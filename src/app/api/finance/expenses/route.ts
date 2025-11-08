@@ -339,20 +339,339 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "Expense ID is required" }, { status: 400 });
     }
 
-    // First, get the expense details for validation and relationship handling
+    // First, try to get the expense details from expenses table
     const { data: expense, error: fetchError } = await supabase
       .from('expenses')
       .select('*')
       .eq('id', expense_id)
       .single();
 
+    // If not found in expenses table, try vendor_payment_history table directly
+    // This handles cases where frontend sends vendor_payment_history.id as expense_id
     if (fetchError || !expense) {
-      return NextResponse.json({ error: "Expense not found" }, { status: 404 });
+      console.log(`⚠️ Expense ${expense_id} not found in expenses table. Checking vendor_payment_history...`);
+      
+      const { data: vendorPayment, error: vendorPaymentError } = await supabase
+        .from('vendor_payment_history')
+        .select('*')
+        .eq('id', expense_id)
+        .single();
+      
+      if (vendorPaymentError || !vendorPayment) {
+        console.error('Not found in either table:', { fetchError, vendorPaymentError });
+        return NextResponse.json({ error: "Payment not found" }, { status: 404 });
+      }
+      
+      // Found in vendor_payment_history - delete it and related expense entries
+      console.log('✅ Found payment in vendor_payment_history table:', vendorPayment);
+      
+      // First, find and delete corresponding expense entries linked to this payment
+      // The expense might have entity_reference_id = vendor_payment_history.id
+      const { data: relatedExpenses, error: expenseSearchError } = await supabase
+        .from('expenses')
+        .select('*')
+        .eq('entity_reference_id', expense_id);
+      
+      if (!expenseSearchError && relatedExpenses && relatedExpenses.length > 0) {
+        console.log(`🔍 Found ${relatedExpenses.length} related expense(s) to delete:`, relatedExpenses);
+        
+        for (const relatedExpense of relatedExpenses) {
+          const { error: deleteExpenseError } = await supabase
+            .from('expenses')
+            .delete()
+            .eq('id', relatedExpense.id);
+          
+          if (deleteExpenseError) {
+            console.warn(`⚠️ Warning: Could not delete related expense ${relatedExpense.id}:`, deleteExpenseError);
+          } else {
+            console.log(`✅ Deleted related expense: ${relatedExpense.id}`);
+          }
+        }
+      } else {
+        console.log('ℹ️ No related expenses found in expenses table');
+      }
+      
+      // Delete from vendor_payment_history
+      const { error: deletePaymentError } = await supabase
+        .from('vendor_payment_history')
+        .delete()
+        .eq('id', expense_id);
+      
+      if (deletePaymentError) {
+        console.error('Error deleting vendor payment:', deletePaymentError);
+        return NextResponse.json({ error: "Failed to delete vendor payment" }, { status: 500 });
+      }
+      console.log('✅ Deleted vendor_payment_history entry');
+
+      
+      // Delete bank_transaction with VP-* reference AND any other bank_transactions created by the expense
+      let vendorPaymentBankTransactionDeleted = false;
+      let regularBankTransactionDeleted = false;
+      const vendorPaymentReference = `VP-${expense_id.slice(0, 8)}`;
+      
+      if (vendorPayment.payment_method === 'cash') {
+        // Get CASH bank account
+        const { data: cashAccount } = await supabase
+          .from('bank_accounts')
+          .select('id')
+          .eq('account_type', 'CASH')
+          .single();
+        
+        if (cashAccount) {
+          // Delete VP-* reference transaction
+          const { data: deletedVPTx } = await supabase
+            .from('bank_transactions')
+            .delete()
+            .match({
+              bank_account_id: cashAccount.id,
+              reference: vendorPaymentReference,
+              type: 'withdrawal',
+              amount: vendorPayment.amount
+            })
+            .select();
+          
+          if (deletedVPTx && deletedVPTx.length > 0) {
+            vendorPaymentBankTransactionDeleted = true;
+            console.log(`✅ Deleted bank_transaction with VP reference: ${vendorPaymentReference}`);
+          } else {
+            // Fallback: Try to delete by description pattern
+            console.log(`ℹ️ VP-* reference not found, trying description pattern...`);
+            const { data: deletedByDesc } = await supabase
+              .from('bank_transactions')
+              .delete()
+              .eq('bank_account_id', cashAccount.id)
+              .eq('type', 'withdrawal')
+              .eq('amount', vendorPayment.amount)
+              .like('description', '%Vendor payment%')
+              .gte('date', vendorPayment.payment_date)
+              .lte('date', vendorPayment.payment_date)
+              .select();
+            
+            if (deletedByDesc && deletedByDesc.length > 0) {
+              vendorPaymentBankTransactionDeleted = true;
+              console.log(`✅ Deleted bank_transaction by description pattern`);
+            }
+          }
+          
+          // Also delete any expense-created bank_transactions
+          if (relatedExpenses && relatedExpenses.length > 0) {
+            for (const exp of relatedExpenses) {
+              const { data: deletedExpTx } = await supabase
+                .from('bank_transactions')
+                .delete()
+                .match({
+                  bank_account_id: cashAccount.id,
+                  type: 'withdrawal',
+                  amount: exp.amount,
+                  description: `Expense: ${exp.description}`
+                })
+                .select();
+              
+              if (deletedExpTx && deletedExpTx.length > 0) {
+                regularBankTransactionDeleted = true;
+                console.log(`✅ Deleted expense bank_transaction for: ${exp.description}`);
+              }
+            }
+          }
+        }
+        
+        // Also delete cash_transaction
+        const { error: deleteCashTxError } = await supabase
+          .from('cash_transactions')
+          .delete()
+          .eq('source_type', 'vendor_payment')
+          .eq('source_id', expense_id);
+        
+        if (!deleteCashTxError) {
+          console.log(`✅ Deleted cash_transaction for vendor payment`);
+          
+          // Restore cash balance
+          const { data: cashAccount } = await supabase
+            .from('bank_accounts')
+            .select('id')
+            .eq('account_type', 'CASH')
+            .single();
+          
+          if (cashAccount) {
+            const { data: currentBalance } = await supabase
+              .from('cash_balances')
+              .select('current_balance')
+              .eq('cash_account_id', cashAccount.id)
+              .single();
+            
+            if (currentBalance) {
+              await supabase
+                .from('cash_balances')
+                .update({
+                  current_balance: (currentBalance.current_balance || 0) + vendorPayment.amount,
+                  last_updated: new Date().toISOString()
+                })
+                .eq('cash_account_id', cashAccount.id);
+              
+              console.log(`✅ Restored cash balance by ${vendorPayment.amount}`);
+            }
+          }
+        }
+      } else if (vendorPayment.bank_account_id) {
+        // Bank/UPI payment
+        // Delete VP-* reference transaction
+        console.log(`🔍 Attempting to delete bank_transaction for bank/UPI payment...`);
+        console.log(`   Bank Account ID: ${vendorPayment.bank_account_id}`);
+        console.log(`   VP Reference: ${vendorPaymentReference}`);
+        console.log(`   Amount: ${vendorPayment.amount}`);
+        
+        const { data: deletedVPTx, error: deleteVPError } = await supabase
+          .from('bank_transactions')
+          .delete()
+          .match({
+            bank_account_id: vendorPayment.bank_account_id,
+            reference: vendorPaymentReference,
+            type: 'withdrawal',
+            amount: vendorPayment.amount
+          })
+          .select();
+        
+        if (deleteVPError) {
+          console.error(`❌ Error deleting VP transaction:`, deleteVPError);
+        } else if (deletedVPTx && deletedVPTx.length > 0) {
+          vendorPaymentBankTransactionDeleted = true;
+          console.log(`✅ Deleted bank_transaction with reference: ${vendorPaymentReference}`, deletedVPTx[0]);
+        } else {
+          console.log(`⚠️ VP-* reference transaction not found, trying alternative approaches...`);
+          
+          // Fallback: Try to match by description pattern
+          const { data: allBankTxs } = await supabase
+            .from('bank_transactions')
+            .select('*')
+            .eq('bank_account_id', vendorPayment.bank_account_id)
+            .eq('type', 'withdrawal')
+            .eq('amount', vendorPayment.amount)
+            .gte('date', vendorPayment.payment_date)
+            .lte('date', vendorPayment.payment_date);
+          
+          console.log(`   Found ${allBankTxs?.length || 0} matching transactions by amount and date`);
+          
+          if (allBankTxs && allBankTxs.length > 0) {
+            // Find vendor payment transaction (contains "Vendor payment" in description)
+            const vendorTx = allBankTxs.find(tx => 
+              tx.description?.includes('Vendor payment') ||
+              tx.description?.includes('Payment to') ||
+              tx.reference?.includes('VP-') ||
+              tx.reference?.includes('Smart')
+            );
+            
+            if (vendorTx) {
+              console.log(`   Found vendor transaction by description: ${vendorTx.description}`);
+              const { error: deleteAltError } = await supabase
+                .from('bank_transactions')
+                .delete()
+                .eq('id', vendorTx.id);
+              
+              if (!deleteAltError) {
+                vendorPaymentBankTransactionDeleted = true;
+                console.log(`✅ Deleted bank_transaction by description pattern`);
+              }
+            } else {
+              console.log(`   No vendor transaction found in ${allBankTxs.length} candidates`);
+            }
+          }
+        }
+        
+        // Also delete any expense-created bank_transactions
+        if (relatedExpenses && relatedExpenses.length > 0) {
+          for (const exp of relatedExpenses) {
+            if (exp.bank_account_id) {
+              const { data: deletedExpTx } = await supabase
+                .from('bank_transactions')
+                .delete()
+                .match({
+                  bank_account_id: exp.bank_account_id,
+                  type: 'withdrawal',
+                  amount: exp.amount,
+                  description: `Expense: ${exp.description}`
+                })
+                .select();
+              
+              if (deletedExpTx && deletedExpTx.length > 0) {
+                regularBankTransactionDeleted = true;
+                console.log(`✅ Deleted expense bank_transaction for: ${exp.description}`);
+              }
+            }
+          }
+        }
+        
+        // Restore bank account balance
+        const { data: bankAccount } = await supabase
+          .from('bank_accounts')
+          .select('current_balance')
+          .eq('id', vendorPayment.bank_account_id)
+          .single();
+        
+        if (bankAccount) {
+          await supabase
+            .from('bank_accounts')
+            .update({
+              current_balance: (bankAccount.current_balance || 0) + vendorPayment.amount
+            })
+            .eq('id', vendorPayment.bank_account_id);
+          
+          console.log(`✅ Restored bank balance by ${vendorPayment.amount}`);
+        }
+      }
+      
+      // Update vendor bill if linked
+      if (vendorPayment.vendor_bill_id) {
+        const { data: vendorBill } = await supabase
+          .from('vendor_bills')
+          .select('*')
+          .eq('id', vendorPayment.vendor_bill_id)
+          .single();
+        
+        if (vendorBill) {
+          const newPaidAmount = Math.max(0, (vendorBill.paid_amount || 0) - vendorPayment.amount);
+          let newStatus = vendorBill.status;
+          
+          if (newPaidAmount === 0) {
+            newStatus = 'pending';
+          } else if (newPaidAmount < vendorBill.total_amount) {
+            newStatus = 'partial';
+          } else if (newPaidAmount >= vendorBill.total_amount) {
+            newStatus = 'paid';
+          }
+          
+          await supabase
+            .from('vendor_bills')
+            .update({
+              paid_amount: newPaidAmount,
+              status: newStatus,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', vendorPayment.vendor_bill_id);
+          
+          console.log(`✅ Updated vendor bill ${vendorPayment.vendor_bill_id}: paid_amount reduced by ${vendorPayment.amount}`);
+        }
+      }
+      
+      return NextResponse.json({
+        success: true,
+        message: "Vendor payment deleted successfully with complete cleanup",
+        deleted_payment: vendorPayment,
+        related_expenses_deleted: relatedExpenses?.length || 0,
+        vendor_payment_history_deleted: true,
+        vendor_payment_bank_transaction_deleted: vendorPaymentBankTransactionDeleted,
+        regular_bank_transaction_deleted: regularBankTransactionDeleted,
+        payment_method: vendorPayment.payment_method
+      });
     }
+
+    // Original expense deletion logic continues here...
 
     // Use the vendor_bill_id passed from frontend (found from vendor_payment_history) 
     // or fallback to the one in expense record
     const targetVendorBillId = vendor_bill_id || expense.vendor_bill_id;
+    
+    // Track if vendor_payment_history was deleted
+    let vendorPaymentHistoryDeleted = false;
 
     // If this expense is linked to a vendor bill, we need to handle the relationships
     if (targetVendorBillId) {
@@ -465,16 +784,59 @@ export async function DELETE(req: Request) {
                 }
               });
             } else {
+              vendorPaymentHistoryDeleted = true;
               console.log('✅ Successfully deleted vendor payment history using supplier matching:', matchedPayments3);
             }
           } else {
+            vendorPaymentHistoryDeleted = true;
             console.log('✅ Successfully deleted vendor payment history using bill and amount matching:', matchedPayments2);
           }
         } else {
+          vendorPaymentHistoryDeleted = true;
           console.log('✅ Successfully deleted vendor payment history using bill, amount, and date matching:', matchedPayments1);
         }
 
         console.log(`✅ Updated vendor bill ${targetVendorBillId}: paid_amount: ${vendorBill.paid_amount} → ${newPaidAmount}, status: ${vendorBill.status} → ${newStatus} (remaining_amount calculated automatically)`);
+      }
+    } else if (expense.entity_type === 'supplier' && expense.entity_reference_id) {
+      // Handle deletion of standalone vendor payments (not linked to a bill)
+      console.log('🔍 No vendor_bill_id found. Attempting to delete standalone vendor payment from vendor_payment_history...');
+      console.log('Using entity_reference_id:', expense.entity_reference_id);
+      
+      // Try to delete by the payment ID (entity_reference_id)
+      const { data: deletedPayment, error: deletePaymentError } = await supabase
+        .from('vendor_payment_history')
+        .delete()
+        .eq('id', expense.entity_reference_id)
+        .select();
+      
+      if (deletePaymentError || !deletedPayment || deletedPayment.length === 0) {
+        console.warn('❌ Warning: Could not delete vendor payment history by entity_reference_id:', {
+          error: deletePaymentError?.message,
+          entity_reference_id: expense.entity_reference_id
+        });
+        
+        // Fallback: Try matching by supplier, amount, and date
+        const { data: deletedPaymentFallback, error: deleteFallbackError } = await supabase
+          .from('vendor_payment_history')
+          .delete()
+          .match({
+            supplier_id: expense.entity_id,
+            amount: expense.amount,
+            payment_date: expense.date
+          })
+          .limit(1)
+          .select();
+        
+        if (!deleteFallbackError && deletedPaymentFallback && deletedPaymentFallback.length > 0) {
+          vendorPaymentHistoryDeleted = true;
+          console.log('✅ Successfully deleted standalone vendor payment using fallback matching:', deletedPaymentFallback);
+        } else {
+          console.warn('❌ Fallback deletion also failed:', deleteFallbackError?.message);
+        }
+      } else {
+        vendorPaymentHistoryDeleted = true;
+        console.log('✅ Successfully deleted standalone vendor payment from vendor_payment_history:', deletedPayment);
       }
     }
 
@@ -483,6 +845,7 @@ export async function DELETE(req: Request) {
     let bankTransactionDeleted = false;
     let cashTransactionDeleted = false;
     let cashBalanceUpdated = false;
+    let vendorPaymentBankTransactionDeleted = false;
     
     if (expense.payment_method === 'cash') {
       console.log(`💰 Expense ${expense_id} was paid with cash. Reversing cash transaction...`);
@@ -539,25 +902,89 @@ export async function DELETE(req: Request) {
       } else {
         console.warn('Warning: Could not find cash transaction to delete:', cashTransactionError?.message || 'No matching transaction found');
       }
+      
+      // ADDITIONAL: For vendor payments, also delete bank_transactions entry if it exists
+      // Vendor payments create entries in bank_transactions with reference pattern 'VP-*'
+      if (expense.entity_type === 'supplier' && expense.entity_reference_id) {
+        console.log(`🔍 Checking for vendor payment bank_transaction entry with reference VP-${expense.entity_reference_id.slice(0, 8)}...`);
+        
+        const vendorPaymentReference = `VP-${expense.entity_reference_id.slice(0, 8)}`;
+        
+        // Get the CASH bank account
+        const { data: cashAccount } = await supabase
+          .from('bank_accounts')
+          .select('id')
+          .eq('account_type', 'CASH')
+          .single();
+        
+        if (cashAccount) {
+          const { data: vendorBankTx, error: vendorBankTxError } = await supabase
+            .from('bank_transactions')
+            .delete()
+            .match({
+              bank_account_id: cashAccount.id,
+              reference: vendorPaymentReference,
+              type: 'withdrawal',
+              amount: expense.amount
+            })
+            .select();
+
+          if (!vendorBankTxError && vendorBankTx && vendorBankTx.length > 0) {
+            vendorPaymentBankTransactionDeleted = true;
+            console.log(`✅ Deleted vendor payment bank_transaction entry: ${vendorPaymentReference}`);
+          } else {
+            console.log(`ℹ️ No vendor payment bank_transaction found for reference: ${vendorPaymentReference}`);
+          }
+        }
+      }
     } else if (expense.bank_account_id) {
       console.log(`💰 Expense ${expense_id} was paid from bank account ${expense.bank_account_id}. Reversing bank transaction...`);
 
       // 1. Delete the bank transaction
-      const { error: bankTransactionError } = await supabase
-        .from('bank_transactions')
-        .delete()
-        .match({
-          bank_account_id: expense.bank_account_id,
-          type: 'withdrawal',
-          amount: expense.amount,
-          description: `Expense: ${expense.description}`
-        });
+      // For vendor payments, try to match by reference pattern first (VP-*)
+      let deleted = false;
+      
+      if (expense.entity_type === 'supplier' && expense.entity_reference_id) {
+        const vendorPaymentReference = `VP-${expense.entity_reference_id.slice(0, 8)}`;
+        console.log(`🔍 Attempting to delete vendor payment bank_transaction with reference: ${vendorPaymentReference}`);
+        
+        const { data: vendorBankTx, error: vendorBankTxError } = await supabase
+          .from('bank_transactions')
+          .delete()
+          .match({
+            bank_account_id: expense.bank_account_id,
+            reference: vendorPaymentReference,
+            type: 'withdrawal',
+            amount: expense.amount
+          })
+          .select();
 
-      if (bankTransactionError) {
-        console.warn('Warning: Could not delete bank transaction:', bankTransactionError);
-      } else {
-        bankTransactionDeleted = true;
-        console.log(`✅ Deleted bank transaction for expense ${expense_id}`);
+        if (!vendorBankTxError && vendorBankTx && vendorBankTx.length > 0) {
+          deleted = true;
+          bankTransactionDeleted = true;
+          vendorPaymentBankTransactionDeleted = true;
+          console.log(`✅ Deleted vendor payment bank_transaction entry: ${vendorPaymentReference}`);
+        }
+      }
+      
+      // Fallback to standard expense matching if vendor payment approach didn't work
+      if (!deleted) {
+        const { error: bankTransactionError } = await supabase
+          .from('bank_transactions')
+          .delete()
+          .match({
+            bank_account_id: expense.bank_account_id,
+            type: 'withdrawal',
+            amount: expense.amount,
+            description: `Expense: ${expense.description}`
+          });
+
+        if (bankTransactionError) {
+          console.warn('Warning: Could not delete bank transaction:', bankTransactionError);
+        } else {
+          bankTransactionDeleted = true;
+          console.log(`✅ Deleted bank transaction for expense ${expense_id}`);
+        }
       }
 
       // 2. Restore bank account balance
@@ -604,10 +1031,12 @@ export async function DELETE(req: Request) {
       message: "Expense deleted successfully with complete accounting reversal",
       deleted_expense: expense,
       vendor_bill_updated: !!targetVendorBillId,
+      vendor_payment_history_deleted: vendorPaymentHistoryDeleted,
       bank_account_updated: bankAccountUpdated,
       bank_transaction_deleted: bankTransactionDeleted,
       cash_transaction_deleted: cashTransactionDeleted,
       cash_balance_updated: cashBalanceUpdated,
+      vendor_payment_bank_transaction_deleted: vendorPaymentBankTransactionDeleted,
       payment_method: expense.payment_method
     });
   } catch (error) {

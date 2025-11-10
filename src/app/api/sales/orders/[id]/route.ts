@@ -718,6 +718,7 @@ export async function PATCH(
     if (body.notes !== undefined) updateData.notes = body.notes;
     if (body.status !== undefined) updateData.status = body.status;
     if (body.created_by !== undefined) updateData.created_by = body.created_by;
+    if (body.invoiceDate !== undefined) updateData.created_at = body.invoiceDate; // Map invoiceDate to created_at
     if (body.emi_enabled !== undefined) updateData.emi_enabled = body.emi_enabled;
     if (body.emi_plan !== undefined) updateData.emi_plan = body.emi_plan;
     if (body.emi_monthly !== undefined) updateData.emi_monthly = body.emi_monthly;

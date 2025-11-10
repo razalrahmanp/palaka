@@ -23,7 +23,8 @@ import {
   Link2,
   Trash2,
   AlertCircle,
-  Search
+  Search,
+  Edit
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -81,6 +82,8 @@ export default function ESSLDevicesPage() {
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isAddDeviceOpen, setIsAddDeviceOpen] = useState(false);
+  const [isEditDeviceOpen, setIsEditDeviceOpen] = useState(false);
+  const [editingDevice, setEditingDevice] = useState<ESSLDevice | null>(null);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState<string>('');
@@ -214,6 +217,60 @@ export default function ESSLDevicesPage() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Update existing device
+  const handleUpdateDevice = async () => {
+    if (!editingDevice) return;
+    if (!deviceForm.device_name || !deviceForm.ip_address || !deviceForm.port) {
+      toast.error('Please fill all required fields');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+
+      const response = await fetch('/api/essl/devices', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingDevice.id,
+          device_name: deviceForm.device_name,
+          ip_address: deviceForm.ip_address,
+          port: deviceForm.port,
+          location: deviceForm.location,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success('Device updated successfully');
+        setIsEditDeviceOpen(false);
+        setEditingDevice(null);
+        setDeviceForm({ device_name: '', ip_address: '', port: 4370, location: '' });
+        fetchDevices();
+      } else {
+        toast.error(data.error || 'Failed to update device');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('Failed to update device');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Open edit dialog
+  const handleEditDevice = (device: ESSLDevice) => {
+    setEditingDevice(device);
+    setDeviceForm({
+      device_name: device.device_name,
+      ip_address: device.ip_address,
+      port: device.port,
+      location: device.location || '',
+    });
+    setIsEditDeviceOpen(true);
   };
 
   // Fetch device users (enrolled users from device)
@@ -540,8 +597,17 @@ export default function ESSLDevicesPage() {
                             <Button
                               size="sm"
                               variant="outline"
+                              onClick={() => handleEditDevice(device)}
+                              title="Edit Device"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
                               onClick={() => handleFetchDeviceUsers(device.id)}
                               disabled={isLoading}
+                              title="Fetch Users"
                             >
                               <Users className="h-4 w-4" />
                             </Button>
@@ -550,6 +616,7 @@ export default function ESSLDevicesPage() {
                               variant="outline"
                               onClick={() => handleSyncAttendance(device.id)}
                               disabled={isSyncing}
+                              title="Sync Attendance"
                             >
                               <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
                             </Button>
@@ -558,6 +625,7 @@ export default function ESSLDevicesPage() {
                               variant="outline"
                               onClick={() => handleDeleteDevice(device.id)}
                               className="text-red-600 hover:text-red-700"
+                              title="Delete Device"
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -921,6 +989,91 @@ export default function ESSLDevicesPage() {
             </Button>
             <Button onClick={handleRegisterDevice} disabled={isLoading}>
               {isLoading ? 'Registering...' : 'Register Device'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Device Dialog */}
+      <Dialog open={isEditDeviceOpen} onOpenChange={setIsEditDeviceOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit ESSL Device</DialogTitle>
+            <DialogDescription>
+              Update device configuration and connection details
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="edit_device_name">Device Name *</Label>
+              <Input
+                id="edit_device_name"
+                placeholder="e.g., Main Office Biometric Scanner"
+                value={deviceForm.device_name}
+                onChange={(e) => setDeviceForm({ ...deviceForm, device_name: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit_ip_address">IP Address *</Label>
+                <Input
+                  id="edit_ip_address"
+                  placeholder="192.168.1.71"
+                  value={deviceForm.ip_address}
+                  onChange={(e) => setDeviceForm({ ...deviceForm, ip_address: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit_port">Port *</Label>
+                <Input
+                  id="edit_port"
+                  type="number"
+                  placeholder="4370"
+                  value={deviceForm.port}
+                  onChange={(e) => setDeviceForm({ ...deviceForm, port: parseInt(e.target.value) })}
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="edit_location">Location</Label>
+              <Input
+                id="edit_location"
+                placeholder="e.g., Front Entrance"
+                value={deviceForm.location}
+                onChange={(e) => setDeviceForm({ ...deviceForm, location: e.target.value })}
+              />
+            </div>
+            {editingDevice && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-800">
+                  <strong>Current Serial:</strong> {editingDevice.device_serial || 'Unknown'}
+                </p>
+                <p className="text-xs text-blue-600 mt-1">
+                  Updating the IP/Port will allow you to reconnect to the device
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={handleTestConnection}
+              disabled={isTestingConnection}
+            >
+              {isTestingConnection ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Testing...
+                </>
+              ) : (
+                <>
+                  <Activity className="h-4 w-4 mr-2" />
+                  Test Connection
+                </>
+              )}
+            </Button>
+            <Button onClick={handleUpdateDevice} disabled={isLoading}>
+              {isLoading ? 'Updating...' : 'Update Device'}
             </Button>
           </DialogFooter>
         </DialogContent>

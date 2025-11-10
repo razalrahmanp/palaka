@@ -269,7 +269,19 @@ export default function CashAccountTransactions() {
     );
 
     // Calculate running balance for filtered transactions
-    let runningBalance = 0;
+    // Start from the current balance and work backwards to find the opening balance
+    // The last transaction should have a running balance equal to the account's current balance
+    
+    const currentBalance = account?.current_balance || 0;
+    
+    // Calculate the net effect of all filtered transactions
+    const netEffect = filtered.reduce((sum, t) => {
+      return sum + (t.transaction_type === 'CREDIT' ? t.amount : -t.amount);
+    }, 0);
+    
+    // Opening balance = Current balance - Net effect of filtered transactions
+    let runningBalance = currentBalance - netEffect;
+    
     const transactionsWithBalance = filtered.map(transaction => {
       if (transaction.transaction_type === 'CREDIT') {
         runningBalance += transaction.amount;
@@ -283,7 +295,7 @@ export default function CashAccountTransactions() {
     });
 
     setFilteredTransactions(transactionsWithBalance);
-  }, [transactions, searchTerm, filterType, dateFrom, dateTo, activeCategory]);
+  }, [transactions, searchTerm, filterType, dateFrom, dateTo, activeCategory, account?.current_balance]);
 
   useEffect(() => {
     if (accountId) {

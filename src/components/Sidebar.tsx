@@ -9,7 +9,8 @@ import {
   DollarSign, Star, Users2, Building2, Package, 
   FileText, TrendingUp, BookOpen, BarChart, ChevronDown, ChevronRight,
   Mail, LogOut, Fingerprint, Clock, Calendar, CalendarClock,
-  Wallet, FolderOpen, Settings, Calculator, PieChart, CreditCard
+  Wallet, FolderOpen, Settings, Calculator, PieChart, CreditCard,
+  Megaphone, UserPlus, LineChart
 } from 'lucide-react';
 import { hasPermission, hasAnyPermission, getCurrentUser } from '@/lib/auth';
 import { useRoleAccess, clearRoleAccessCache } from '@/hooks/useRoleAccess';
@@ -45,6 +46,9 @@ const dashboardItems: NavItem[] = [
 const crmItems: NavItem[] = [
   { href: "/crm/dashboard", icon: Home, label: "CRM Dashboard", permission: ['customer:read','customer:read_own'] },
   { href: "/crm/customers", icon: Users, label: "Customers", permission: ['customer:read','customer:read_own'] },
+  { href: "/crm/meta-campaigns", icon: Megaphone, label: "Meta Campaigns", permission: ['customer:read','customer:read_own'] },
+  { href: "/crm/meta-leads", icon: UserPlus, label: "Meta Leads", permission: ['customer:read','customer:read_own'] },
+  { href: "/crm/campaign-performance", icon: LineChart, label: "Campaign Performance", permission: ['customer:read','customer:read_own'] },
 ];
 
 // Sales
@@ -438,6 +442,29 @@ export const Sidebar = () => {
           <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
             <Mail className="h-3 w-3 flex-shrink-0" />
             <span className="truncate">{getCurrentUser()?.email || 'email@example.com'}</span>
+          </div>
+
+          {/* Footer Links */}
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <div className="flex items-center justify-center gap-3 text-xs text-gray-500">
+              <a 
+                href="/privacy-policy" 
+                className="hover:text-purple-600 transition-colors"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Privacy Policy
+              </a>
+              <span className="text-gray-300">•</span>
+              <a 
+                href="/terms-of-use" 
+                className="hover:text-purple-600 transition-colors"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Terms of Use
+              </a>
+            </div>
           </div>
         </div>
       ) : (

@@ -100,5 +100,5 @@ SELECT
      FROM bank_transactions bt 
      WHERE bt.bank_account_id = ba.id) as transaction_count
 FROM bank_accounts ba
-WHERE ba.account_type IN ('BANK', 'UPI')
+WHERE ba.account_type IN ('BANK', 'UPI','CASH')
 ORDER BY ba.name;

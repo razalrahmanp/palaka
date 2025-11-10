@@ -453,7 +453,7 @@ export interface Delivery {
 export interface DeliveryProof {
   id:          string;
   delivery_id: string;
-  type:        'photo' | 'signature';
+  type:        'photo' | 'signature' | 'delivered_item';
   url:         string;
   timestamp:   string;
 }

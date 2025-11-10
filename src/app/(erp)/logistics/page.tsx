@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent
 } from '@/components/ui/card';
@@ -12,21 +13,31 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Eye, Plus, Truck, MapPin, CheckCircle, Clock, Package, Calendar, CreditCard, Search, Filter } from 'lucide-react';
-import { Delivery as DeliveryBase } from '@/types';
+import { Eye, Plus, Truck, MapPin, CheckCircle, Clock, Package, Calendar, CreditCard, Search, Filter, ChevronDown, ChevronUp, Image as ImageIcon } from 'lucide-react';
+import { Delivery as DeliveryBase, DeliveryProof } from '@/types';
 import { getCurrentUser } from '@/lib/auth';
 import { DeliveryDetails } from '@/components/logistics/DeliveryDetails';
 import { DeliveryForm } from '@/components/logistics/DeliveryForm';
 
 type Delivery = DeliveryBase & {
-  driver?: { id: string; name: string };
+  driver?: { id: string; name: string; email?: string };
   sales_order?: {
     id: string;
     status: string;
-    customer: string;
+    customer?: { id: string; name: string };
     address: string;
     time_slot: string;
   };
+  sales_order_id?: string;
+  customer_name?: string;
+  delivery_address?: string;
+  driver_name?: string;
+  actual_delivery_time?: string;
+  collected_amount?: number;
+  collected_by?: string;
+  collection_date?: string;
+  collection_notes?: string;
+  delivered_to?: string;
 };
 
 type ReadyOrder = {
@@ -62,6 +73,8 @@ type OrderItem = {
   sku?: string;
   quantity: number;
   unit_price: number;
+  final_price?: number;
+  discount_percentage?: number;
   supplier_name?: string;
   is_custom_product?: boolean;
   needs_manufacturing?: boolean;
@@ -114,7 +127,9 @@ export default function LogisticsPage() {
   const [selected, setSelected] = useState<Delivery|null>(null);
   const [open, setOpen] = useState(false);
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [expandedDeliveryId, setExpandedDeliveryId] = useState<string | null>(null);
   const [orderDetails, setOrderDetails] = useState<Record<string, SelectedOrder>>({});
+  const [deliveryDetails, setDeliveryDetails] = useState<Record<string, { items: OrderItem[], proofs: DeliveryProof[] }>>({});
   
   // Filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -177,6 +192,38 @@ export default function LogisticsPage() {
         setOrderDetails(prev => ({ ...prev, [orderId]: orderData }));
       } catch (error) {
         console.error('Error fetching order details:', error);
+      }
+    }
+  };
+
+  const toggleDeliveryRow = async (deliveryId: string, salesOrderId?: string) => {
+    if (expandedDeliveryId === deliveryId) {
+      setExpandedDeliveryId(null);
+      return;
+    }
+
+    setExpandedDeliveryId(deliveryId);
+
+    // Fetch delivery details if not already loaded
+    if (!deliveryDetails[deliveryId] && salesOrderId) {
+      try {
+        const [itemsResponse, proofsResponse] = await Promise.all([
+          fetch(`/api/sales/orders/${salesOrderId}`),
+          fetch(`/api/logistics/proofs?delivery_id=${deliveryId}`)
+        ]);
+        
+        const orderData = await itemsResponse.json();
+        const proofsData = await proofsResponse.json();
+        
+        setDeliveryDetails(prev => ({ 
+          ...prev, 
+          [deliveryId]: { 
+            items: orderData.items || [], 
+            proofs: proofsData || [] 
+          } 
+        }));
+      } catch (error) {
+        console.error('Error fetching delivery details:', error);
       }
     }
   };
@@ -361,7 +408,7 @@ export default function LogisticsPage() {
         </CardHeader>
         <CardContent className="p-3">
           <Tabs defaultValue="ready" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-3 h-9">
+            <TabsList className="grid w-full grid-cols-3 mb-3 h-9">
               <TabsTrigger value="ready" className="flex items-center gap-2 text-xs">
                 <Package className="h-3 w-3" />
                 Ready for Delivery ({filteredReadyOrders.length})
@@ -369,6 +416,10 @@ export default function LogisticsPage() {
               <TabsTrigger value="deliveries" className="flex items-center gap-2 text-xs">
                 <Truck className="h-3 w-3" />
                 Active Deliveries ({deliveries.length})
+              </TabsTrigger>
+              <TabsTrigger value="delivered" className="flex items-center gap-2 text-xs">
+                <CheckCircle className="h-3 w-3" />
+                Delivered ({deliveries.filter(d => d.status === 'delivered').length})
               </TabsTrigger>
             </TabsList>
 
@@ -763,6 +814,265 @@ export default function LogisticsPage() {
                       <Plus className="mr-2 h-4 w-4" /> Create Delivery
                     </Button>
                   )}
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Delivered Orders Tab */}
+            <TabsContent value="delivered" className="space-y-4">
+              <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
+                <Table>
+                  <TableHeader className="bg-gradient-to-r from-green-50 to-emerald-50">
+                    <TableRow className="border-gray-200">
+                      <TableHead className="font-semibold text-gray-700 py-4 w-12"></TableHead>
+                      <TableHead className="font-semibold text-gray-700">Customer</TableHead>
+                      <TableHead className="font-semibold text-gray-700">Delivered Date</TableHead>
+                      <TableHead className="font-semibold text-gray-700">Driver</TableHead>
+                      <TableHead className="font-semibold text-gray-700">Amount Collected</TableHead>
+                      <TableHead className="font-semibold text-gray-700">Items</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {deliveries.filter(d => d.status === 'delivered').map(d => {
+                      const isExpanded = expandedDeliveryId === d.id;
+                      const details = deliveryDetails[d.id];
+                      
+                      return (
+                        <React.Fragment key={d.id}>
+                          <TableRow 
+                            className="hover:bg-green-50/50 transition-colors border-gray-100 cursor-pointer"
+                            onClick={() => toggleDeliveryRow(d.id, d.sales_order_id)}
+                          >
+                            <TableCell className="py-4">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleDeliveryRow(d.id, d.sales_order_id);
+                                }}
+                              >
+                                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                              </Button>
+                            </TableCell>
+                            <TableCell className="py-4">
+                              <div className="flex items-center space-x-3">
+                                <div className="h-8 w-8 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center text-white text-sm font-semibold">
+                                  {(d.sales_order?.customer?.name || 'U').charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <div className="font-medium text-gray-900">
+                                    {d.sales_order?.customer?.name ?? d.customer_name ?? '—'}
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    {d.sales_order?.address ?? d.delivery_address ?? '—'}
+                                  </div>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="py-4">
+                              <div className="flex items-center gap-2">
+                                <Calendar className="h-4 w-4 text-gray-400" />
+                                <span className="text-sm text-gray-600">
+                                  {d.actual_delivery_time 
+                                    ? new Date(d.actual_delivery_time).toLocaleString('en-IN', {
+                                        dateStyle: 'medium',
+                                        timeStyle: 'short'
+                                      })
+                                    : new Date(d.updated_at).toLocaleDateString('en-IN', {
+                                        dateStyle: 'medium'
+                                      })
+                                  }
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="py-4">
+                              <div className="text-sm text-gray-900">
+                                {d.driver?.email ?? d.driver_name ?? '—'}
+                              </div>
+                            </TableCell>
+                            <TableCell className="py-4">
+                              {d.collected_amount != null ? (
+                                <div className="flex items-center gap-2">
+                                  <CreditCard className="h-4 w-4 text-green-600" />
+                                  <span className="font-semibold text-green-700">
+                                    ₹{Number(d.collected_amount).toLocaleString('en-IN')}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-sm text-gray-400">Not collected</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="py-4">
+                              <Badge 
+                                variant="outline"
+                                className="bg-blue-50 text-blue-700 border-blue-200"
+                              >
+                                {details?.items?.length ?? '—'} items
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                          
+                          {/* Expanded Row with Items and Images */}
+                          {isExpanded && (
+                            <TableRow className="bg-green-50/30">
+                              <TableCell colSpan={6} className="py-6">
+                                <div className="space-y-6">
+                                  {/* Delivery Summary */}
+                                  <div className="bg-white rounded-lg p-4 border border-gray-200">
+                                    <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                      <Truck className="h-4 w-4" />
+                                      Delivery Details
+                                    </h4>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                      <div>
+                                        <div className="text-xs text-gray-500 mb-1">Delivery ID</div>
+                                        <div className="text-sm font-mono bg-gray-50 px-2 py-1 rounded">
+                                          {d.id.substring(0, 8)}...
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <div className="text-xs text-gray-500 mb-1">Delivered To</div>
+                                        <div className="text-sm font-medium text-gray-900">
+                                          {d.delivered_to ?? d.sales_order?.customer?.name ?? '—'}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <div className="text-xs text-gray-500 mb-1">Collected By</div>
+                                        <div className="text-sm font-medium text-gray-900">
+                                          {d.collection_notes ?? 'N/A'}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <div className="text-xs text-gray-500 mb-1">Payment Status</div>
+                                        <Badge variant="outline" className={
+                                          d.collected_amount 
+                                            ? 'bg-green-50 text-green-700 border-green-200'
+                                            : 'bg-gray-50 text-gray-700 border-gray-200'
+                                        }>
+                                          {d.collected_amount ? 'Collected' : 'Not Collected'}
+                                        </Badge>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                  {/* Order Items */}
+                                  <div>
+                                    <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                      <Package className="h-4 w-4" />
+                                      Delivered Items
+                                    </h4>
+                                    {details?.items && details.items.length > 0 ? (
+                                      <div className="space-y-2">
+                                        {details.items.map((item, idx) => {
+                                          // Get item name: prefer products.name, then fall back to item.name
+                                          const itemName = item.products?.name ?? item.name ?? 'Product';
+                                          // Get SKU: prefer products.sku, then fall back to item.sku
+                                          const itemSku = item.products?.sku ?? item.sku;
+                                          
+                                          // Calculate price per unit and line total
+                                          // API returns final_price as LINE TOTAL (already multiplied by quantity)
+                                          let pricePerUnit = 0;
+                                          let itemTotal = 0;
+                                          
+                                          if (item.final_price) {
+                                            // final_price from API is the line total, divide by quantity to get unit price
+                                            itemTotal = item.final_price;
+                                            pricePerUnit = item.quantity > 0 ? item.final_price / item.quantity : 0;
+                                          } else if (item.unit_price) {
+                                            // Fallback: calculate from unit_price and discount
+                                            const discount = item.discount_percentage ?? 0;
+                                            pricePerUnit = item.unit_price * (1 - discount / 100);
+                                            itemTotal = item.quantity * pricePerUnit;
+                                          }
+                                          
+                                          return (
+                                            <div key={idx} className="bg-white rounded-lg p-3 border border-gray-200">
+                                              <div className="flex justify-between items-start">
+                                                <div>
+                                                  <div className="font-medium text-gray-900">
+                                                    {itemName}
+                                                  </div>
+                                                  {itemSku && (
+                                                    <div className="text-xs text-gray-500">SKU: {itemSku}</div>
+                                                  )}
+                                                  <div className="text-sm text-gray-600 mt-1">
+                                                    Qty: {item.quantity} × ₹{Number(pricePerUnit).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                  </div>
+                                                </div>
+                                                <div className="text-right">
+                                                  <div className="font-semibold text-gray-900">
+                                                    ₹{Number(itemTotal).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    ) : (
+                                      <div className="text-sm text-gray-500 bg-white rounded-lg p-4 border border-gray-200">
+                                        {details ? 'No items found' : 'Loading items...'}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Delivery Proof Images */}
+                                  <div>
+                                    <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                      <ImageIcon className="h-4 w-4" />
+                                      Delivery Proofs
+                                    </h4>
+                                    {details?.proofs && details.proofs.length > 0 ? (
+                                      <div className="grid grid-cols-2 gap-3">
+                                        {details.proofs.map((proof) => (
+                                          <div key={proof.id} className="relative group">
+                                            <Image
+                                              src={proof.url}
+                                              alt={proof.type}
+                                              width={200}
+                                              height={128}
+                                              className="w-full h-32 object-cover rounded-lg border-2 border-gray-200 hover:border-green-500 transition-all"
+                                            />
+                                            <div className="absolute bottom-2 left-2 right-2">
+                                              <Badge 
+                                                variant="secondary"
+                                                className="text-xs bg-black/70 text-white border-0"
+                                              >
+                                                {proof.type === 'delivered_item' ? 'Item Photo' : 
+                                                 proof.type === 'signature' ? 'Signature' : 'Delivery Photo'}
+                                              </Badge>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <div className="text-sm text-gray-500 bg-white rounded-lg p-4 border border-gray-200">
+                                        {details ? 'No delivery proofs uploaded' : 'Loading proofs...'}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {deliveries.filter(d => d.status === 'delivered').length === 0 && (
+                <div className="text-center py-12">
+                  <div className="h-16 w-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle className="h-8 w-8 text-green-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">No delivered orders yet</h3>
+                  <p className="text-gray-500">Completed deliveries will appear here</p>
                 </div>
               )}
             </TabsContent>

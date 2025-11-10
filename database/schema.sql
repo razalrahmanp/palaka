@@ -669,10 +669,15 @@ CREATE TABLE public.deliveries (
   total_items integer DEFAULT 0,
   estimated_value numeric DEFAULT 0,
   driver_name text,
+  collected_amount numeric,
+  collected_by uuid,
+  collection_notes text,
+  collection_date timestamp without time zone,
   CONSTRAINT deliveries_pkey PRIMARY KEY (id),
   CONSTRAINT deliveries_driver_id_fkey FOREIGN KEY (driver_id) REFERENCES public.users(id),
   CONSTRAINT deliveries_sales_order_id_fkey FOREIGN KEY (sales_order_id) REFERENCES public.sales_orders(id),
-  CONSTRAINT deliveries_route_id_fkey FOREIGN KEY (route_id) REFERENCES public.delivery_routes(id)
+  CONSTRAINT deliveries_route_id_fkey FOREIGN KEY (route_id) REFERENCES public.delivery_routes(id),
+  CONSTRAINT deliveries_collected_by_fkey FOREIGN KEY (collected_by) REFERENCES public.users(id)
 );
 CREATE TABLE public.delivery_cluster_assignments (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

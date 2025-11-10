@@ -9,7 +9,11 @@ export async function GET(req: NextRequest) {
     .from('deliveries')
     .select(`
       *,
-      driver: users (
+      driver: users!deliveries_driver_id_fkey (
+        id,
+        email
+      ),
+      collected_by_user: users!deliveries_collected_by_fkey (
         id,
         email
       ),

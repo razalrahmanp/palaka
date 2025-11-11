@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
         reference_number, 
         upi_reference, 
         created_at,
+        bank_account_id,
         withdrawal_categories(
           id,
           category_name
@@ -48,6 +49,24 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    // Fetch bank account names for withdrawals that have bank_account_id
+    const bankAccountIds = [...new Set(withdrawals?.map(w => w.bank_account_id).filter(Boolean))] as string[];
+    let bankAccountsMap: Record<string, string> = {};
+    
+    if (bankAccountIds.length > 0) {
+      const { data: bankAccounts } = await supabaseAdmin
+        .from('bank_accounts')
+        .select('id, name')
+        .in('id', bankAccountIds);
+      
+      if (bankAccounts) {
+        bankAccountsMap = bankAccounts.reduce((acc, ba) => {
+          acc[ba.id] = ba.name;
+          return acc;
+        }, {} as Record<string, string>);
+      }
+    }
+
     // Transform the data to match the expected format
     const transformedWithdrawals = withdrawals?.map(withdrawal => ({
       id: withdrawal.id,
@@ -58,6 +77,8 @@ export async function GET(request: NextRequest) {
       reference_number: withdrawal.reference_number,
       upi_reference: withdrawal.upi_reference,
       created_at: withdrawal.created_at,
+      bank_account_id: withdrawal.bank_account_id,
+      bank_account_name: withdrawal.bank_account_id ? bankAccountsMap[withdrawal.bank_account_id] : undefined,
       category: (withdrawal.withdrawal_categories as { category_name?: string } | null)?.category_name,
       subcategory: (withdrawal.withdrawal_subcategories as { subcategory_name?: string } | null)?.subcategory_name,
       category_id: (withdrawal.withdrawal_categories as { id?: number } | null)?.id,

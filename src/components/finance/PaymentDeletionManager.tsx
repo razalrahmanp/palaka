@@ -1202,6 +1202,7 @@ export function PaymentDeletionManager() {
               <TableHead>Date</TableHead>
               <TableHead>Investment Type</TableHead>
               <TableHead>Amount</TableHead>
+              <TableHead>Bank Account</TableHead>
               <TableHead>Description</TableHead>
               <TableHead>Reference</TableHead>
               <TableHead>Payment Method</TableHead>
@@ -1211,7 +1212,7 @@ export function PaymentDeletionManager() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8">
+                <TableCell colSpan={8} className="text-center py-8">
                   <div className="flex justify-center items-center">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                     <p className="ml-4 text-gray-600">Loading investments...</p>
@@ -1220,7 +1221,7 @@ export function PaymentDeletionManager() {
               </TableRow>
             ) : filteredInvestments.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                <TableCell colSpan={8} className="text-center py-8 text-gray-500">
                   No investments found
                 </TableCell>
               </TableRow>
@@ -1240,6 +1241,9 @@ export function PaymentDeletionManager() {
                   </TableCell>
                   <TableCell className="font-semibold text-blue-600">
                     {formatCurrency(investment.amount)}
+                  </TableCell>
+                  <TableCell>
+                    {investment.bank_account_name || 'N/A'}
                   </TableCell>
                   <TableCell>
                     <div className="max-w-xs truncate" title={investment.description || 'N/A'}>

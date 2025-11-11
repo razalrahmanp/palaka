@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
         reference_number, 
         upi_reference, 
         created_at,
+        bank_account_id,
         investment_categories(
           id,
           category_name
@@ -44,6 +45,24 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    // Fetch bank account names for investments that have bank_account_id
+    const bankAccountIds = [...new Set(investments?.map(i => i.bank_account_id).filter(Boolean))] as string[];
+    let bankAccountsMap: Record<string, string> = {};
+    
+    if (bankAccountIds.length > 0) {
+      const { data: bankAccounts } = await supabaseAdmin
+        .from('bank_accounts')
+        .select('id, name')
+        .in('id', bankAccountIds);
+      
+      if (bankAccounts) {
+        bankAccountsMap = bankAccounts.reduce((acc, ba) => {
+          acc[ba.id] = ba.name;
+          return acc;
+        }, {} as Record<string, string>);
+      }
+    }
+
     // Transform the data to match the expected format
     const transformedInvestments = investments?.map(investment => ({
       id: investment.id,
@@ -54,6 +73,8 @@ export async function GET(request: NextRequest) {
       reference_number: investment.reference_number,
       upi_reference: investment.upi_reference,
       created_at: investment.created_at,
+      bank_account_id: investment.bank_account_id,
+      bank_account_name: investment.bank_account_id ? bankAccountsMap[investment.bank_account_id] : undefined,
       category: (investment.investment_categories as { category_name?: string } | null)?.category_name,
       category_id: (investment.investment_categories as { id?: number } | null)?.id
     })) || []

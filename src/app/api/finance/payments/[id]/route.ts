@@ -301,16 +301,19 @@ export async function PUT(
     console.log('💰 Payment amount change:', { oldAmount, newAmount, difference: amountDifference });
 
     // 2. Update the payment record
+    // Convert empty string bank_account_id to null to avoid UUID errors
+    const cleanBankAccountId = bank_account_id && bank_account_id.trim() !== '' ? bank_account_id : null;
+    
     const { data: updatedPayment, error: updateError } = await supabase
       .from('payments')
       .update({
         amount: newAmount,
+        date: payment_date,           // Update both date and payment_date
         payment_date,
         description,
         method,
         reference,
-        bank_account_id,
-        updated_at: new Date().toISOString()
+        bank_account_id: cleanBankAccountId
       })
       .eq('id', paymentId)
       .select()

@@ -366,10 +366,25 @@ export function PaymentDeletionManager() {
       ...payment,
       transaction_type: 'payment'
     };
+    
+    // Convert date to YYYY-MM-DD format if needed
+    let formattedDate = payment.payment_date || payment.date || '';
+    if (formattedDate) {
+      // Check if date is in DD/MM/YYYY or DD-MM-YYYY format
+      if (formattedDate.match(/^\d{1,2}[/-]\d{1,2}[/-]\d{4}$/)) {
+        const parts = formattedDate.split(/[/-]/);
+        // Convert DD/MM/YYYY or DD-MM-YYYY to YYYY-MM-DD
+        formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+      } else if (formattedDate.includes('T')) {
+        // If it's ISO format, extract just the date part
+        formattedDate = formattedDate.split('T')[0];
+      }
+    }
+    
     // Populate edit form
     setEditForm({
       amount: payment.amount.toString(),
-      date: payment.payment_date || payment.date || '',
+      date: formattedDate,
       description: payment.description || '',
       reference_number: payment.reference || '',
       payment_method: '',

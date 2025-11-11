@@ -828,41 +828,55 @@ export function ProfessionalLedgerSystem() {
       </Card>
       )}
 
-      {/* Floating Tab Buttons - Right Middle */}
-      <div className="fixed right-4 top-1/2 transform -translate-y-1/2 z-50 flex flex-col gap-2">
-        {tabOptions.map((tab) => {
-          const IconComponent = tab.icon;
-          return (
-            <Button
-              key={tab.value}
-              onClick={() => handleTabChange(tab.value)}
-              className={`h-12 w-12 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 ${
-                activeTab === tab.value 
-                  ? tab.color + ' text-white hover:opacity-90' 
-                  : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
-              }`}
-              size="sm"
-              title={tab.label}
-            >
-              <IconComponent className="h-5 w-5" />
-            </Button>
-          );
-        })}
-      </div>
+      {/* Fixed Right Sidebar with Tabs and View Toggle - Expandable on Hover */}
+      <div className="fixed right-0 top-1/2 transform -translate-y-1/2 z-50 group">
+        {/* Collapsed state - only show icons */}
+        <div className="bg-white shadow-2xl rounded-l-2xl border-l-4 border-blue-500 transition-all duration-300 group-hover:w-48 w-16 overflow-hidden">
+          <div className="p-3 flex flex-col gap-3">
+            {/* Tab Navigation Buttons */}
+            <div className="flex flex-col gap-2 pb-3 border-b border-gray-200">
+              {tabOptions.map((tab) => {
+                const IconComponent = tab.icon;
+                return (
+                  <Button
+                    key={tab.value}
+                    onClick={() => handleTabChange(tab.value)}
+                    className={`h-12 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-start gap-3 ${
+                      activeTab === tab.value 
+                        ? tab.color + ' text-white hover:opacity-90' 
+                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
+                    }`}
+                    size="sm"
+                    title={tab.label}
+                  >
+                    <IconComponent className="h-5 w-5 flex-shrink-0" />
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap text-sm font-medium">
+                      {tab.label}
+                    </span>
+                  </Button>
+                );
+              })}
+            </div>
 
-      {/* View Toggle FAB - Bottom Right */}
-      <Button
-        onClick={() => setIsExcelView(!isExcelView)}
-        className="fixed bottom-6 right-6 h-12 w-12 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 bg-gray-600 hover:bg-gray-700 z-50"
-        size="sm"
-        title={isExcelView ? 'Switch to List View' : 'Switch to Excel View'}
-      >
-        {isExcelView ? (
-          <List className="h-5 w-5" />
-        ) : (
-          <Grid3X3 className="h-5 w-5" />
-        )}
-      </Button>
+            {/* View Toggle Button */}
+            <Button
+              onClick={() => setIsExcelView(!isExcelView)}
+              className="h-12 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 bg-gray-600 hover:bg-gray-700 text-white flex items-center justify-start gap-3"
+              size="sm"
+              title={isExcelView ? 'Switch to List View' : 'Switch to Excel View'}
+            >
+              {isExcelView ? (
+                <List className="h-5 w-5 flex-shrink-0" />
+              ) : (
+                <Grid3X3 className="h-5 w-5 flex-shrink-0" />
+              )}
+              <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap text-sm font-medium">
+                {isExcelView ? 'List View' : 'Excel View'}
+              </span>
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

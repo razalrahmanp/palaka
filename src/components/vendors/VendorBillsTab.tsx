@@ -207,10 +207,11 @@ export function VendorBillsTab({
   const [isSyncingExpenses, setIsSyncingExpenses] = useState(false);
   const [isCreatingExpense, setIsCreatingExpense] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = useState(999999); // Show all by default
   const [expenseStartDate, setExpenseStartDate] = useState('');
   const [expenseEndDate, setExpenseEndDate] = useState('');
   const [expandedBills, setExpandedBills] = useState<Set<string>>(new Set());
+  const [expandedPaymentGroups, setExpandedPaymentGroups] = useState<Set<string>>(new Set()); // For grouping same-day payments
   const [billPaymentHistory, setBillPaymentHistory] = useState<Record<string, VendorPaymentHistory[]>>({});
   const [loadingPaymentHistory, setLoadingPaymentHistory] = useState<Set<string>>(new Set());
   const [purchaseReturnModalOpen, setPurchaseReturnModalOpen] = useState(false);
@@ -1822,9 +1823,76 @@ export function VendorBillsTab({
                     console.log('✅ Ledger balance matches expected outstanding:', finalCalculatedBalance);
                   }
                   
-                  // Apply pagination to entries with calculated balances
+                  // Group same-day payments for cleaner display
+                  const groupedEntries: Array<{
+                    id: string;
+                    date: string;
+                    description: string;
+                    type: string;
+                    amount: number;
+                    isDebit: boolean;
+                    isCredit: boolean;
+                    bill_id?: string;
+                    expense_id?: string;
+                    outstandingBalance: number;
+                    isGroup?: boolean;
+                    groupedPayments?: typeof entriesWithBalance;
+                    groupCount?: number;
+                  }> = [];
+                  
+                  let i = 0;
+                  while (i < entriesWithBalance.length) {
+                    const currentEntry = entriesWithBalance[i];
+                    
+                    // Only group payment (credit) entries, not bills
+                    if (currentEntry.isCredit && currentEntry.type === 'Payment') {
+                      // Look ahead for more payments on the same date
+                      const sameDataPayments = [currentEntry];
+                      let j = i + 1;
+                      
+                      while (j < entriesWithBalance.length && 
+                             entriesWithBalance[j].date === currentEntry.date &&
+                             entriesWithBalance[j].isCredit &&
+                             entriesWithBalance[j].type === 'Payment') {
+                        sameDataPayments.push(entriesWithBalance[j]);
+                        j++;
+                      }
+                      
+                      // If we found multiple payments on the same day, create a grouped entry
+                      if (sameDataPayments.length > 1) {
+                        const totalAmount = sameDataPayments.reduce((sum, p) => sum + p.amount, 0);
+                        const groupId = `payment-group-${currentEntry.date}`;
+                        
+                        groupedEntries.push({
+                          id: groupId,
+                          date: currentEntry.date,
+                          description: `Multiple Payments (${sameDataPayments.length})`,
+                          type: 'Payment',
+                          amount: totalAmount,
+                          isDebit: false,
+                          isCredit: true,
+                          outstandingBalance: sameDataPayments[sameDataPayments.length - 1].outstandingBalance,
+                          isGroup: true,
+                          groupedPayments: sameDataPayments,
+                          groupCount: sameDataPayments.length
+                        });
+                        
+                        i = j; // Skip all grouped payments
+                      } else {
+                        // Single payment, add as-is
+                        groupedEntries.push(currentEntry);
+                        i++;
+                      }
+                    } else {
+                      // Not a payment (it's a bill), add as-is
+                      groupedEntries.push(currentEntry);
+                      i++;
+                    }
+                  }
+                  
+                  // Apply pagination to grouped entries
                   const startIndex = (currentPage - 1) * itemsPerPage;
-                  const paginatedLedgerEntries = entriesWithBalance.slice(startIndex, startIndex + itemsPerPage);
+                  const paginatedLedgerEntries = groupedEntries.slice(startIndex, startIndex + itemsPerPage);
                   
                   if (paginatedLedgerEntries.length === 0) {
                     return (
@@ -1844,11 +1912,26 @@ export function VendorBillsTab({
                     );
                   }
                   
-                  return paginatedLedgerEntries.map((entry) => {
+                  return paginatedLedgerEntries.flatMap((entry) => {
                     const outstandingAmount = entry.outstandingBalance;
+                    const isExpanded = entry.isGroup && expandedPaymentGroups.has(entry.id);
+                    const rows: React.ReactElement[] = [];
                     
-                    return (
-                      <TableRow key={entry.id} className="hover:bg-gray-50 transition-colors">
+                    // Main row (grouped or individual)
+                    rows.push(
+                      <TableRow 
+                        key={entry.id} 
+                        className={`hover:bg-gray-50 transition-colors ${entry.isGroup ? 'bg-blue-50/30 cursor-pointer' : ''}`}
+                        onClick={entry.isGroup ? () => {
+                          const newExpanded = new Set(expandedPaymentGroups);
+                          if (isExpanded) {
+                            newExpanded.delete(entry.id);
+                          } else {
+                            newExpanded.add(entry.id);
+                          }
+                          setExpandedPaymentGroups(newExpanded);
+                        } : undefined}
+                      >
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <Calendar className="h-4 w-4 text-gray-500" />
@@ -1900,13 +1983,14 @@ export function VendorBillsTab({
                         </TableCell>
                         <TableCell className="text-center">
                           <div className="flex items-center justify-center gap-1">
-                            {entry.expense_id && (
+                            {!entry.isGroup && entry.expense_id && (
                               <Button
                                 size="sm"
                                 variant="outline"
                                 className="h-7 w-7 p-0 hover:bg-red-50 hover:border-red-300 hover:text-red-600"
                                 title="Delete payment"
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   const expense = expenses.find(exp => exp.id === entry.expense_id);
                                   if (expense) handleDeleteExpense(expense);
                                 }}
@@ -1914,13 +1998,14 @@ export function VendorBillsTab({
                                 <Trash2 className="h-3 w-3" />
                               </Button>
                             )}
-                            {entry.bill_id && (
+                            {!entry.isGroup && entry.bill_id && (
                               <Button
                                 size="sm"
                                 variant="outline"
                                 className="h-7 w-7 p-0 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600"
                                 title="View bill details"
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   const bill = bills.find(b => b.id === entry.bill_id);
                                   if (bill) handleEnhancedEditBill(bill);
                                 }}
@@ -1932,6 +2017,69 @@ export function VendorBillsTab({
                         </TableCell>
                       </TableRow>
                     );
+                    
+                    // Expanded grouped payment rows
+                    if (isExpanded && entry.groupedPayments) {
+                      entry.groupedPayments.forEach((payment, idx) => {
+                        rows.push(
+                          <TableRow 
+                            key={`${entry.id}-detail-${idx}`}
+                            className="bg-blue-50/50 border-l-4 border-l-blue-300"
+                          >
+                            <TableCell className="pl-8">
+                              <div className="text-sm text-gray-500">
+                                {formatDate(payment.date)}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              <div className="truncate pl-8" title={payment.description}>
+                                {payment.description}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge 
+                                variant="outline" 
+                                className="text-xs font-medium border-green-300 text-green-600 bg-green-50"
+                              >
+                                Payment
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <span className="text-gray-400 text-sm">-</span>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <span className="text-green-600 text-sm">
+                                {formatCurrency(payment.amount)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <span className="text-gray-400 text-sm">-</span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                {payment.expense_id && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-6 w-6 p-0 hover:bg-red-50 hover:border-red-300 hover:text-red-600"
+                                    title="Delete payment"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const expense = expenses.find(exp => exp.id === payment.expense_id);
+                                      if (expense) handleDeleteExpense(expense);
+                                    }}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      });
+                    }
+                    
+                    return rows;
                   });
                 })()}
               </TableBody>
@@ -1940,7 +2088,7 @@ export function VendorBillsTab({
 
           {/* Pagination Controls */}
           {(() => {
-            // Create combined ledger entries for pagination
+            // Create combined ledger entries for pagination calculation
             const ledgerEntries: Array<{
               id: string;
               date: string;
@@ -1986,17 +2134,42 @@ export function VendorBillsTab({
                      entry.amount.toString().includes(searchTerm);
             });
             
-            const totalPages = Math.ceil(filteredLedgerEntries.length / itemsPerPage);
-            const startIndex = (currentPage - 1) * itemsPerPage + 1;
-            const endIndex = Math.min(currentPage * itemsPerPage, filteredLedgerEntries.length);
+            // Sort entries
+            filteredLedgerEntries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
             
-            if (filteredLedgerEntries.length === 0) return null;
+            // Apply grouping logic (same as above) to get accurate count
+            let groupedCount = 0;
+            let i = 0;
+            while (i < filteredLedgerEntries.length) {
+              const currentEntry = filteredLedgerEntries[i];
+              
+              if (currentEntry.isCredit && currentEntry.type === 'Payment') {
+                let j = i + 1;
+                while (j < filteredLedgerEntries.length && 
+                       filteredLedgerEntries[j].date === currentEntry.date &&
+                       filteredLedgerEntries[j].isCredit &&
+                       filteredLedgerEntries[j].type === 'Payment') {
+                  j++;
+                }
+                groupedCount++; // Count the group as one entry
+                i = j;
+              } else {
+                groupedCount++;
+                i++;
+              }
+            }
+            
+            const totalPages = Math.ceil(groupedCount / itemsPerPage);
+            const startIndex = (currentPage - 1) * itemsPerPage + 1;
+            const endIndex = Math.min(currentPage * itemsPerPage, groupedCount);
+            
+            if (groupedCount === 0) return null;
             
             return (
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-gray-50 border-t border-gray-200">
                 {/* Results Info */}
                 <div className="text-sm text-gray-600">
-                  Showing {startIndex}-{endIndex} of {filteredLedgerEntries.length} transactions
+                  Showing {startIndex}-{endIndex} of {groupedCount} transactions
                 </div>
 
                 {/* Items per page selector */}
@@ -2004,7 +2177,7 @@ export function VendorBillsTab({
                   <span className="text-sm text-gray-600">Show:</span>
                   <select 
                     title="Items per page"
-                    value={itemsPerPage} 
+                    value={itemsPerPage >= groupedCount ? groupedCount : itemsPerPage}
                     onChange={(e) => {
                       const newItemsPerPage = parseInt(e.target.value);
                       setItemsPerPage(newItemsPerPage);
@@ -2015,7 +2188,7 @@ export function VendorBillsTab({
                     <option value="10">10</option>
                     <option value="25">25</option>
                     <option value="50">50</option>
-                    <option value={filteredLedgerEntries.length}>All ({filteredLedgerEntries.length})</option>
+                    <option value={groupedCount}>All ({groupedCount})</option>
                   </select>
                   <span className="text-sm text-gray-600">per page</span>
                 </div>

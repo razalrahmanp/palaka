@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Plus,
-  RotateCcw,
   TrendingUp,
   TrendingDown,
   CreditCard,
@@ -25,10 +24,9 @@ interface ActionItem {
 
 interface FloatingActionMenuProps {
   actions: ActionItem[];
-  refreshAction?: () => void;
 }
 
-export function FloatingActionMenu({ actions, refreshAction }: FloatingActionMenuProps) {
+export function FloatingActionMenu({ actions }: FloatingActionMenuProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const toggleMenu = () => {
@@ -36,7 +34,7 @@ export function FloatingActionMenu({ actions, refreshAction }: FloatingActionMen
   };
 
   return (
-    <div className="fixed top-20 right-4 z-50">
+    <div className="fixed bottom-6 right-6 z-50">
       {/* Backdrop overlay when menu is open */}
       {isExpanded && (
         <div
@@ -47,19 +45,6 @@ export function FloatingActionMenu({ actions, refreshAction }: FloatingActionMen
 
       {/* Action Items Container */}
       <div className="flex flex-col items-end gap-3">
-        {/* Refresh Button - Always Visible */}
-        {refreshAction && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={refreshAction}
-            className="w-12 h-12 p-0 rounded-full shadow-lg hover:shadow-xl transition-all bg-white border-2 hover:rotate-180 duration-300"
-            title="Refresh"
-          >
-            <RotateCcw className="h-5 w-5" />
-          </Button>
-        )}
-
         {/* Expanded Action Items */}
         {isExpanded && (
           <div className="flex flex-col gap-2 animate-in slide-in-from-top-2 duration-200">

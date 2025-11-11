@@ -1094,6 +1094,7 @@ export function SalesOrderInvoiceManager() {
   const fetchDataFreshFromDB = useCallback(async () => {
     console.log('🚀 FORCING FRESH DATABASE REFRESH - BYPASSING ALL CACHE');
     return await fetchData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchData = useCallback(async () => {
@@ -6955,7 +6956,6 @@ export function SalesOrderInvoiceManager() {
               setInvoiceSelectionOpen(true);
             },
           })}
-          refreshAction={() => fetchData()}
         />
       </div>
 

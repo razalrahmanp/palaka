@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -190,6 +191,7 @@ interface PunchLog {
 }
 
 export default function AttendancePage() {
+  const searchParams = useSearchParams();
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -204,11 +206,19 @@ export default function AttendancePage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [hasAutoProcessed, setHasAutoProcessed] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [isFabExpanded, setIsFabExpanded] = useState(false);
   
   // Employee punch logs state
   const [expandedEmployeeRows, setExpandedEmployeeRows] = useState<Set<string>>(new Set());
   const [employeePunchLogs, setEmployeePunchLogs] = useState<Record<string, PunchLog[]>>({});
   const [loadingPunchLogs, setLoadingPunchLogs] = useState<Set<string>>(new Set());
+  
+  // Punch log edit state
+  const [isEditPunchLogModalOpen, setIsEditPunchLogModalOpen] = useState(false);
+  const [selectedPunchLog, setSelectedPunchLog] = useState<PunchLog | null>(null);
+  const [punchLogEditType, setPunchLogEditType] = useState<'IN' | 'OUT' | 'BREAK'>('IN');
+  const [isUpdatingPunchLog, setIsUpdatingPunchLog] = useState(false);
+  const [isUpdatingAttendance, setIsUpdatingAttendance] = useState(false);
   
   const [editFormData, setEditFormData] = useState({
     check_in_time: '',
@@ -216,6 +226,35 @@ export default function AttendancePage() {
     status: 'present' as AttendanceRecord['status'],
     notes: ''
   });
+
+  const [addFormData, setAddFormData] = useState({
+    employee_id: '',
+    date: format(new Date(), 'yyyy-MM-dd'),
+    check_in_time: '',
+    check_out_time: '',
+    status: 'present' as AttendanceRecord['status'],
+    notes: ''
+  });
+
+  const [isSubmittingAttendance, setIsSubmittingAttendance] = useState(false);
+
+  // Handle query parameters from payroll page
+  useEffect(() => {
+    const employeeId = searchParams.get('employee_id');
+    const date = searchParams.get('date');
+    const employeeName = searchParams.get('employee_name');
+    
+    if (employeeId) {
+      setSelectedEmployee(employeeId);
+      if (employeeName) {
+        toast.info(`Viewing attendance for ${employeeName}`);
+      }
+    }
+    
+    if (date) {
+      setSelectedDate(date);
+    }
+  }, [searchParams]);
 
   const fetchAttendanceRecords = useCallback(async () => {
     try {
@@ -352,12 +391,22 @@ export default function AttendancePage() {
     autoSyncAndProcess();
   }, [autoSyncAndProcess]);
 
-  const filteredRecords = attendanceRecords.filter(record => {
-    const matchesSearch = record.employee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         record.employee.employee_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         record.employee.department.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesSearch;
-  });
+  const filteredRecords = attendanceRecords
+    .filter(record => {
+      const matchesSearch = record.employee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           record.employee.employee_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           record.employee.department.toLowerCase().includes(searchTerm.toLowerCase());
+      return matchesSearch;
+    })
+    .sort((a, b) => {
+      // Sort by date in ascending order (oldest first)
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      if (dateA !== dateB) return dateA - dateB;
+      
+      // If same date, sort by employee name
+      return a.employee.name.localeCompare(b.employee.name);
+    });
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -436,6 +485,8 @@ export default function AttendancePage() {
     if (!selectedRecord) return;
     
     try {
+      setIsUpdatingAttendance(true);
+      
       const response = await fetch(`/api/hr/attendance/${selectedRecord.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -447,14 +498,101 @@ export default function AttendancePage() {
         })
       });
 
-      if (!response.ok) throw new Error('Failed to update attendance');
+      if (!response.ok) {
+        const errorData = await response.json();
+        if (response.status === 404) {
+          toast.error('Attendance record not found. It may have been deleted.');
+          setIsEditModalOpen(false);
+          fetchAttendanceRecords(); // Refresh to get current data
+          return;
+        }
+        throw new Error(errorData.error || 'Failed to update attendance');
+      }
 
       toast.success('Attendance updated successfully');
       setIsEditModalOpen(false);
       fetchAttendanceRecords();
     } catch (error) {
       console.error('Error updating attendance:', error);
-      toast.error('Failed to update attendance');
+      toast.error(error instanceof Error ? error.message : 'Failed to update attendance');
+    } finally {
+      setIsUpdatingAttendance(false);
+    }
+  };
+
+  const handleMarkAttendance = async () => {
+    // Validate required fields
+    if (!addFormData.employee_id || !addFormData.date) {
+      toast.error('Please select an employee and date');
+      return;
+    }
+
+    try {
+      setIsSubmittingAttendance(true);
+      
+      // Build the request body
+      const requestBody: {
+        employee_id: string;
+        date: string;
+        status: string;
+        notes: string | null;
+        check_in_time?: string;
+        check_out_time?: string;
+      } = {
+        employee_id: addFormData.employee_id,
+        date: addFormData.date,
+        status: addFormData.status,
+        notes: addFormData.notes || null
+      };
+
+      // Add check-in time if provided
+      if (addFormData.check_in_time) {
+        requestBody.check_in_time = `${addFormData.date}T${addFormData.check_in_time}:00`;
+      }
+
+      // Add check-out time if provided
+      if (addFormData.check_out_time) {
+        requestBody.check_out_time = `${addFormData.date}T${addFormData.check_out_time}:00`;
+      }
+
+      const response = await fetch('/api/hr/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 409) {
+          toast.error('Attendance already marked for this employee on this date');
+        } else {
+          throw new Error(data.error || 'Failed to mark attendance');
+        }
+        return;
+      }
+
+      toast.success('Attendance marked successfully');
+      
+      // Reset form
+      setAddFormData({
+        employee_id: '',
+        date: format(new Date(), 'yyyy-MM-dd'),
+        check_in_time: '',
+        check_out_time: '',
+        status: 'present',
+        notes: ''
+      });
+      
+      setIsAddModalOpen(false);
+      
+      // Refresh attendance records
+      await fetchAttendanceRecords();
+    } catch (error) {
+      console.error('Error marking attendance:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to mark attendance');
+    } finally {
+      setIsSubmittingAttendance(false);
     }
   };
 
@@ -513,12 +651,58 @@ export default function AttendancePage() {
       
       // Refresh attendance records
       await fetchAttendanceRecords();
+      
+      // Close any open modals to prevent stale data issues
+      setIsEditModalOpen(false);
+      setIsViewModalOpen(false);
+      setSelectedRecord(null);
     } catch (error) {
       console.error('Error processing attendance:', error);
       toast.error('Failed to process attendance');
     } finally {
       setIsSyncing(false);
       setIsProcessing(false);
+    }
+  };
+
+  const handleEditPunchLog = (punchLog: PunchLog) => {
+    setSelectedPunchLog(punchLog);
+    setPunchLogEditType(punchLog.punch_type as 'IN' | 'OUT' | 'BREAK');
+    setIsEditPunchLogModalOpen(true);
+  };
+
+  const handleUpdatePunchLog = async () => {
+    if (!selectedPunchLog) return;
+
+    try {
+      setIsUpdatingPunchLog(true);
+      
+      const response = await fetch(`/api/hr/attendance/punch-logs/${selectedPunchLog.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          punch_type: punchLogEditType,
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to update punch log');
+
+      await response.json();
+      
+      toast.success('Punch log updated successfully. Reprocess attendance to see changes.');
+      setIsEditPunchLogModalOpen(false);
+      setSelectedPunchLog(null);
+      
+      // Clear the cached punch logs to force refetch
+      setEmployeePunchLogs({});
+      
+      // Refresh attendance records
+      await fetchAttendanceRecords();
+    } catch (error) {
+      console.error('Error updating punch log:', error);
+      toast.error('Failed to update punch log');
+    } finally {
+      setIsUpdatingPunchLog(false);
     }
   };
 
@@ -535,31 +719,53 @@ export default function AttendancePage() {
       </div>
 
       {/* Floating Action Buttons - Bottom Right Corner */}
-      <div className="fixed bottom-6 right-6 flex flex-col gap-2 z-50">
+      <div className="fixed bottom-6 right-6 flex flex-col gap-2 z-40">
+        {/* Expanded Menu */}
+        {isFabExpanded && (
+          <div className="flex flex-col gap-2 mb-2 animate-in slide-in-from-bottom-2">
+            <Button 
+              onClick={() => {
+                setIsCalendarOpen(!isCalendarOpen);
+                setIsFabExpanded(false);
+              }} 
+              className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white shadow-lg hover:shadow-xl transition-all rounded-full h-12 w-12 p-0"
+              title="Calendar"
+            >
+              <Calendar className="h-5 w-5" />
+            </Button>
+            <Button 
+              onClick={() => {
+                handleProcessAttendance();
+                setIsFabExpanded(false);
+              }} 
+              disabled={isProcessing || isSyncing}
+              className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white shadow-lg hover:shadow-xl transition-all rounded-full h-12 w-12 p-0"
+              title="Process Attendance"
+            >
+              <Clock className="h-5 w-5" />
+            </Button>
+            <Button 
+              onClick={() => {
+                setIsAddModalOpen(true);
+                setIsFabExpanded(false);
+              }} 
+              className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg hover:shadow-xl transition-all rounded-full h-12 w-12 p-0"
+              title="Mark Attendance"
+            >
+              <Plus className="h-5 w-5" />
+            </Button>
+          </div>
+        )}
+        
+        {/* Main FAB Button */}
         <Button 
-          onClick={() => setIsCalendarOpen(!isCalendarOpen)} 
-          className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white shadow-lg hover:shadow-xl transition-all"
-          size="sm"
+          onClick={() => setIsFabExpanded(!isFabExpanded)}
+          className={`bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white shadow-xl hover:shadow-2xl transition-all rounded-full h-14 w-14 p-0 ${
+            isFabExpanded ? 'rotate-45' : ''
+          }`}
+          title="Actions"
         >
-          <Calendar className="h-4 w-4 mr-2" />
-          Calendar
-        </Button>
-        <Button 
-          onClick={handleProcessAttendance} 
-          disabled={isProcessing || isSyncing}
-          className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white shadow-lg hover:shadow-xl transition-all"
-          size="sm"
-        >
-          <Clock className="h-4 w-4 mr-2" />
-          {isProcessing ? 'Processing...' : isSyncing ? 'Syncing...' : 'Process'}
-        </Button>
-        <Button 
-          onClick={() => setIsAddModalOpen(true)} 
-          className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg hover:shadow-xl transition-all"
-          size="sm"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Mark
+          <Plus className="h-6 w-6" />
         </Button>
       </div>
       {/* Main Content */}
@@ -909,9 +1115,7 @@ export default function AttendancePage() {
                               <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                                 <div className="bg-blue-50 px-4 py-2 border-b border-blue-200">
                                   <p className="text-xs text-blue-800">
-                                    <strong>Note:</strong> First punch is used as Check-In, Last punch as Check-Out 
-                                    {punchLogs.filter(p => p.punch_type === 'OUT').length === 0 && punchLogs.length > 1 && 
-                                      ' (Auto-alternating: All punches recorded as IN due to device issue)'}
+                                    <strong>Note:</strong> First IN punch is used as Check-In, Last OUT punch as Check-Out
                                   </p>
                                 </div>
                                 <Table>
@@ -925,20 +1129,21 @@ export default function AttendancePage() {
                                       <TableHead className="text-xs font-semibold">Quality</TableHead>
                                       <TableHead className="text-xs font-semibold">Device</TableHead>
                                       <TableHead className="text-xs font-semibold">Processed</TableHead>
+                                      <TableHead className="text-xs font-semibold">Actions</TableHead>
                                     </TableRow>
                                   </TableHeader>
                                   <TableBody>
-                                    {punchLogs.map((punch, index) => {
-                                      const isFirstPunch = index === 0;
-                                      const isLastPunch = index === punchLogs.length - 1;
-                                      const hasNoOutPunches = punchLogs.filter(p => p.punch_type === 'OUT').length === 0;
+                                    {punchLogs.map((punch) => {
+                                      // Find first IN and last OUT
+                                      const inPunches = punchLogs.filter(p => p.punch_type === 'IN');
+                                      const outPunches = punchLogs.filter(p => p.punch_type === 'OUT');
+                                      const firstInPunch = inPunches.length > 0 ? inPunches[0] : null;
+                                      const lastOutPunch = outPunches.length > 0 ? outPunches[outPunches.length - 1] : null;
                                       
                                       let usedAs = '-';
-                                      if (isFirstPunch) {
+                                      if (punch.punch_type === 'IN' && firstInPunch && punch.id === firstInPunch.id) {
                                         usedAs = 'Check-In';
-                                      } else if (isLastPunch && hasNoOutPunches && punchLogs.length > 1) {
-                                        usedAs = 'Check-Out';
-                                      } else if (punch.punch_type === 'OUT' && isLastPunch) {
+                                      } else if (punch.punch_type === 'OUT' && lastOutPunch && punch.id === lastOutPunch.id) {
                                         usedAs = 'Check-Out';
                                       }
                                       
@@ -991,6 +1196,20 @@ export default function AttendancePage() {
                                           }`}>
                                             {punch.processed ? 'Yes' : 'Pending'}
                                           </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleEditPunchLog(punch);
+                                            }}
+                                            className="h-7 w-7 p-0"
+                                            title="Edit punch type"
+                                          >
+                                            <Edit className="h-3 w-3" />
+                                          </Button>
                                         </TableCell>
                                       </TableRow>
                                       );
@@ -1206,15 +1425,29 @@ export default function AttendancePage() {
               </div>
 
               <div className="flex justify-end gap-2 pt-4 border-t">
-                <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setIsEditModalOpen(false)}
+                  disabled={isUpdatingAttendance}
+                >
                   Cancel
                 </Button>
                 <Button 
                   onClick={handleUpdateAttendance}
+                  disabled={isUpdatingAttendance}
                   className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
                 >
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Changes
+                  {isUpdatingAttendance ? (
+                    <>
+                      <Clock className="h-4 w-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      Save Changes
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
@@ -1224,7 +1457,7 @@ export default function AttendancePage() {
 
       {/* Add Attendance Modal - Professional Design */}
       <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader className="bg-gradient-to-r from-green-600 to-blue-600 -m-6 mb-6 p-6 rounded-t-lg">
             <DialogTitle className="text-white text-xl flex items-center gap-2">
               <Plus className="h-5 w-5" />
@@ -1232,21 +1465,307 @@ export default function AttendancePage() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-6">
-            <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-              <Users className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Manual Attendance Form</h3>
-              <p className="text-sm text-gray-600 mb-4">This feature allows you to manually mark attendance for employees</p>
-              <p className="text-xs text-gray-500">Form implementation coming soon...</p>
+            {/* Employee Selection */}
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Employee *
+              </label>
+              <Select
+                value={addFormData.employee_id}
+                onValueChange={(value) => setAddFormData({ ...addFormData, employee_id: value })}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select employee" />
+                </SelectTrigger>
+                <SelectContent>
+                  {employees.map((employee) => (
+                    <SelectItem key={employee.id} value={employee.id}>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{employee.name}</span>
+                        <span className="text-xs text-gray-500">
+                          {employee.employee_id} • {employee.department} • {employee.position}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="flex justify-end">
+
+            {/* Date Selection */}
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                <Calendar className="h-4 w-4" />
+                Date *
+              </label>
+              <Input
+                type="date"
+                value={addFormData.date}
+                onChange={(e) => setAddFormData({ ...addFormData, date: e.target.value })}
+                className="w-full"
+              />
+            </div>
+
+            {/* Time Inputs */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  Check In Time
+                </label>
+                <Input
+                  type="time"
+                  value={addFormData.check_in_time}
+                  onChange={(e) => setAddFormData({ ...addFormData, check_in_time: e.target.value })}
+                  className="w-full"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  Check Out Time
+                </label>
+                <Input
+                  type="time"
+                  value={addFormData.check_out_time}
+                  onChange={(e) => setAddFormData({ ...addFormData, check_out_time: e.target.value })}
+                  className="w-full"
+                />
+              </div>
+            </div>
+
+            {/* Status Selection */}
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                <UserCheck className="h-4 w-4" />
+                Status *
+              </label>
+              <Select
+                value={addFormData.status}
+                onValueChange={(value) => setAddFormData({ ...addFormData, status: value as AttendanceRecord['status'] })}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="present">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                      Present
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="late">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-orange-500"></div>
+                      Late
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="absent">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                      Absent
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="half_day">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
+                      Half Day
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="on_leave">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                      On Leave
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Notes */}
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                <MessageSquare className="h-4 w-4" />
+                Notes
+              </label>
+              <Input
+                value={addFormData.notes}
+                onChange={(e) => setAddFormData({ ...addFormData, notes: e.target.value })}
+                placeholder="Optional notes about this attendance record..."
+                className="w-full"
+              />
+            </div>
+
+            {/* Info Box */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex gap-3">
+                <AlertTriangle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-blue-900">Manual Attendance Entry</p>
+                  <p className="text-xs text-blue-700">
+                    This will create a manual attendance record. Check-in and check-out times are optional. 
+                    If not provided, the system will only track the attendance status for the day.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-3 pt-4 border-t">
               <Button 
                 variant="outline"
-                onClick={() => setIsAddModalOpen(false)}
+                onClick={() => {
+                  setIsAddModalOpen(false);
+                  setAddFormData({
+                    employee_id: '',
+                    date: format(new Date(), 'yyyy-MM-dd'),
+                    check_in_time: '',
+                    check_out_time: '',
+                    status: 'present',
+                    notes: ''
+                  });
+                }}
+                disabled={isSubmittingAttendance}
               >
-                Close
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleMarkAttendance}
+                disabled={isSubmittingAttendance || !addFormData.employee_id || !addFormData.date}
+                className="bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700"
+              >
+                {isSubmittingAttendance ? (
+                  <>
+                    <Clock className="h-4 w-4 mr-2 animate-spin" />
+                    Marking...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    Mark Attendance
+                  </>
+                )}
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Punch Log Modal */}
+      <Dialog open={isEditPunchLogModalOpen} onOpenChange={setIsEditPunchLogModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader className="bg-gradient-to-r from-orange-600 to-red-600 -m-6 mb-6 p-6 rounded-t-lg">
+            <DialogTitle className="text-white text-xl flex items-center gap-2">
+              <Edit className="h-5 w-5" />
+              Edit Punch Type
+            </DialogTitle>
+          </DialogHeader>
+          
+          {selectedPunchLog && (
+            <div className="space-y-6">
+              {/* Punch Log Details */}
+              <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Time:</span>
+                    <span className="text-sm font-semibold">
+                      {format(new Date(selectedPunchLog.punch_time), 'MMM dd, yyyy hh:mm a')}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Device:</span>
+                    <span className="text-sm font-semibold">{selectedPunchLog.device.device_name}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Current Type:</span>
+                    <Badge className={`text-xs ${getPunchTypeColor(selectedPunchLog.punch_type)}`}>
+                      {selectedPunchLog.punch_type}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              {/* Punch Type Selection */}
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  New Punch Type *
+                </label>
+                <Select
+                  value={punchLogEditType}
+                  onValueChange={(value: 'IN' | 'OUT' | 'BREAK') => setPunchLogEditType(value)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="IN">
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-green-100 text-green-800">IN</Badge>
+                        <span>Check In</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="OUT">
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-red-100 text-red-800">OUT</Badge>
+                        <span>Check Out</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="BREAK">
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-orange-100 text-orange-800">BREAK</Badge>
+                        <span>Break</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Warning */}
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <div className="flex gap-3">
+                  <AlertTriangle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-yellow-900">Important</p>
+                    <p className="text-xs text-yellow-700">
+                      Changing the punch type will affect attendance calculations. 
+                      Make sure to reprocess attendance after making changes.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <Button 
+                  variant="outline"
+                  onClick={() => setIsEditPunchLogModalOpen(false)}
+                  disabled={isUpdatingPunchLog}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={handleUpdatePunchLog}
+                  disabled={isUpdatingPunchLog}
+                  className="bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700"
+                >
+                  {isUpdatingPunchLog ? (
+                    <>
+                      <Clock className="h-4 w-4 mr-2 animate-spin" />
+                      Updating...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      Update Punch Type
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

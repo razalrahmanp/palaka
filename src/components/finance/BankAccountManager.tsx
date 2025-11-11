@@ -99,6 +99,11 @@ export function BankAccountManager() {
 
   const [loading, setLoading] = useState(true);
   const [transferLoading, setTransferLoading] = useState(false);
+  const [errorDialog, setErrorDialog] = useState({
+    open: false,
+    title: '',
+    message: ''
+  });
 
   
   const [newAccount, setNewAccount] = useState({
@@ -367,11 +372,20 @@ export function BankAccountManager() {
         fetchUpiAccounts();
         fetchCashAccounts();
       } else {
-        alert(`Transfer failed: ${result.error}`);
+        // Show error in dialog instead of alert
+        setErrorDialog({
+          open: true,
+          title: 'Transfer Failed',
+          message: result.error || 'An error occurred while processing the transfer.'
+        });
       }
     } catch (error) {
       console.error('Error processing fund transfer:', error);
-      alert('An error occurred while processing the transfer.');
+      setErrorDialog({
+        open: true,
+        title: 'Transfer Error',
+        message: 'An unexpected error occurred while processing the transfer. Please try again.'
+      });
     } finally {
       setTransferLoading(false);
     }
@@ -1154,6 +1168,31 @@ export function BankAccountManager() {
               className="bg-blue-600 hover:bg-blue-700"
             >
               Add Account
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Error Dialog */}
+      <Dialog open={errorDialog.open} onOpenChange={(open) => setErrorDialog({ ...errorDialog, open })}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              {errorDialog.title}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-gray-600">{errorDialog.message}</p>
+          </div>
+          <DialogFooter>
+            <Button 
+              onClick={() => setErrorDialog({ open: false, title: '', message: '' })}
+              className="w-full"
+            >
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

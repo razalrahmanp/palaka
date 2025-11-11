@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Bell, User, Settings, LogOut, Menu } from 'lucide-react';
+import { Bell, User, Settings, LogOut, Menu, RefreshCw } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { getCurrentUser, logout } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
@@ -10,6 +10,7 @@ import { NotificationDropdown } from './NotificationDropdown';
 export const Header = ({ onSidebarToggle }: { onSidebarToggle?: () => void }) => {
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [notificationDropdownOpen, setNotificationDropdownOpen] = useState(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
   const user = getCurrentUser();
   const router = useRouter();
   const notificationRef = useRef<HTMLDivElement>(null);
@@ -18,6 +19,32 @@ export const Header = ({ onSidebarToggle }: { onSidebarToggle?: () => void }) =>
   const handleLogout = () => {
     logout();
     router.push('/login');
+  };
+
+  const handleRecalculateBalances = async () => {
+    if (isRecalculating) return;
+    
+    setIsRecalculating(true);
+    try {
+      const response = await fetch('/api/admin/recalculate-balances', {
+        method: 'POST',
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        alert(`✅ Success! Updated ${data.data.accounts_updated} accounts with ${data.data.total_transactions} transactions.`);
+        // Reload the page to show updated balances
+        window.location.reload();
+      } else {
+        alert(`❌ Error: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Error recalculating balances:', error);
+      alert('❌ Failed to recalculate balances. Check console for details.');
+    } finally {
+      setIsRecalculating(false);
+    }
   };
 
   // Close dropdowns when clicking outside
@@ -45,6 +72,16 @@ export const Header = ({ onSidebarToggle }: { onSidebarToggle?: () => void }) =>
           <Menu className="h-5 w-5 text-gray-600 group-hover:text-purple-600 transition-colors" />
         </button>
       )}
+
+      {/* Recalculate Balances Button */}
+      <button
+        onClick={handleRecalculateBalances}
+        disabled={isRecalculating}
+        className="p-3 rounded-full bg-white/90 backdrop-blur-sm border border-white/20 shadow-lg hover:shadow-xl hover:bg-white transition-all duration-300 hover:scale-105 group disabled:opacity-50 disabled:cursor-not-allowed"
+        title="Recalculate Bank Balances"
+      >
+        <RefreshCw className={`h-5 w-5 text-gray-600 group-hover:text-green-600 transition-colors ${isRecalculating ? 'animate-spin' : ''}`} />
+      </button>
 
       {/* Bell Icon with Dropdown */}
       <div className="relative" ref={notificationRef}>

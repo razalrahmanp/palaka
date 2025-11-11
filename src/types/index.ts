@@ -432,6 +432,8 @@ export interface Delivery {
   tracking_number?: string;
   updated_at: string;
   time_slot: string;
+  delivery_address?: string;
+  customer_name?: string;
 
   driver?: {
     id: string;

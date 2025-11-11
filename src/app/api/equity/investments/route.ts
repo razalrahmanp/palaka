@@ -168,8 +168,8 @@ export async function POST(request: NextRequest) {
       if (!bankError && bankAccount) {
         const accountLabel = bankAccount.name || payment_method?.toUpperCase() || 'bank';
         
-        // Create bank transaction (investment increases balance) - works for ALL account types
-        await supabase
+        // Create bank transaction (deposit) - balance updated separately based on transactions
+        const { error: transactionError } = await supabase
           .from("bank_transactions")
           .insert([{
             bank_account_id,
@@ -179,20 +179,11 @@ export async function POST(request: NextRequest) {
             description: `Investment from ${partner.name}: ${description} [${accountLabel}]`,
           }]);
 
-        // Update bank account balance (increase for investment)
-        const newBalance = (bankAccount.current_balance || 0) + investmentAmount;
-        await supabase
-          .from("bank_accounts")
-          .update({ current_balance: newBalance })
-          .eq("id", bank_account_id);
-        
-        console.log(`✅ ${bankAccount.account_type || 'BANK'} account balance updated:`, {
-          accountName: bankAccount.name,
-          accountType: bankAccount.account_type,
-          oldBalance: bankAccount.current_balance,
-          newBalance,
-          depositAmount: investmentAmount
-        });
+        if (transactionError) {
+          console.error('❌ Error creating bank transaction:', transactionError);
+        } else {
+          console.log(`✅ Bank transaction created successfully for ${bankAccount.account_type || 'BANK'} account: ${bankAccount.name}`);
+        }
       }
     }
 

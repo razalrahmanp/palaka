@@ -65,13 +65,11 @@ export async function POST(req: Request) {
       }, { status: 404 });
     }
 
-    // Check if source account has sufficient funds
-    if (fromAccount.current_balance < amount) {
-      return NextResponse.json({
-        success: false,
-        error: `Insufficient funds in ${fromAccount.name}. Available: ₹${fromAccount.current_balance.toLocaleString()}, Required: ₹${amount.toLocaleString()}`
-      }, { status: 400 });
-    }
+    // Allow negative balances - removed balance check
+    // Cash accounts can go negative temporarily
+    console.log(`Account ${fromAccount.name} current balance: ₹${fromAccount.current_balance.toLocaleString()}`);
+    console.log(`Transfer amount: ₹${amount.toLocaleString()}`);
+    console.log(`Balance will be: ₹${(fromAccount.current_balance - amount).toLocaleString()}`);
 
     const transferDescription = description || `Fund transfer from ${fromAccount.name} to ${toAccount.name}`;
     const transferReference = reference || `TXN-${Date.now()}`;

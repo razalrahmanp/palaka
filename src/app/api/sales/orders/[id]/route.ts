@@ -214,13 +214,18 @@ export async function GET(
       const isCustomProduct = !!item.custom_product_id;
       const needsManufacturing = item.products?.boms && item.products.boms.length > 0;
       
-      // Calculate final price considering discount
+      // Use final_price from database if available, otherwise calculate it
       const unitPrice = item.unit_price || 0;
       const quantity = item.quantity || 1;
       const discountPercentage = item.discount_percentage || 0;
       const lineTotal = unitPrice * quantity;
       const discountAmount = lineTotal * (discountPercentage / 100);
-      const finalPrice = lineTotal - discountAmount;
+      
+      // CRITICAL: Use the final_price from the database if it exists
+      // Don't recalculate it as it may have been manually adjusted
+      const finalPrice = item.final_price !== null && item.final_price !== undefined 
+        ? item.final_price 
+        : lineTotal - discountAmount;
       
       // Get specifications based on product type
       let specifications = null;

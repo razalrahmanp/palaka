@@ -21,6 +21,7 @@ export async function GET(req: NextRequest) {
         id,
         status,
         address,
+        expected_delivery_date,
         customer: customers (
           id,
           name

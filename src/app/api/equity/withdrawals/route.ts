@@ -230,6 +230,42 @@ export async function POST(request: NextRequest) {
 
       console.log('💰 Cash account lookup result:', { cashAccount, found: !!cashAccount });
 
+      // 2.5. Create bank transaction for ALL account types (balance updated separately based on transactions)
+      if (bank_account_id && bank_account_id.trim() !== '') {
+        // Get bank account details
+        const { data: bankAccount, error: bankError } = await supabase
+          .from("bank_accounts")
+          .select("account_type, name")
+          .eq("id", bank_account_id)
+          .single();
+        
+        if (!bankError && bankAccount) {
+          // Determine account label for description
+          const accountLabel = bankAccount.account_type === 'CASH' ? 'Cash Account' :
+                             bankAccount.account_type === 'UPI' ? 'UPI Account' :
+                             'Bank Account';
+          
+          // Create bank transaction (withdrawal)
+          const { error: bankTransactionError } = await supabase
+            .from("bank_transactions")
+            .insert([{
+              bank_account_id,
+              date: withdrawal_date,
+              type: "withdrawal",
+              amount: withdrawalAmount,
+              description: `Withdrawal to ${partner.name}: ${description} [${accountLabel}]`,
+            }]);
+
+          if (bankTransactionError) {
+            console.error('❌ Error creating bank transaction:', bankTransactionError);
+          } else {
+            console.log(`✅ Bank transaction created successfully for ${bankAccount.account_type} account: ${bankAccount.name}`);
+          }
+        } else if (bankError) {
+          console.error('❌ Error fetching bank account:', bankError);
+        }
+      }
+
       // 3. Create journal entry for withdrawal (opposite of investment)
       if (partnerAccountId && cashAccount?.id) {
         console.log('📝 Creating journal entry with:', { partnerAccountId, cashAccountId: cashAccount.id });

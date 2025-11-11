@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DollarSign, Wallet, Users, Calendar, ChevronDown, ChevronRight } from 'lucide-react';
+import { DollarSign, Wallet, Users, Calendar, ChevronDown, ChevronRight, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
@@ -21,14 +22,21 @@ interface Employee {
   employment_status?: string;
 }
 
-interface AttendanceRecord {
+interface DailyAttendanceRecord {
   id: string;
   employee_id: string;
-  month: string;
-  present_days: number;
-  absent_days: number;
-  working_days: number;
-  total_hours_worked: number;
+  date: string;
+  check_in_time?: string;
+  check_out_time?: string;
+  status: 'present' | 'absent' | 'half_day' | 'late' | 'on_leave';
+  total_hours?: number;
+  employee: {
+    id: string;
+    name: string;
+    employee_id: string;
+    department: string;
+    position: string;
+  };
 }
 
 interface MonthlySalaryPayment {
@@ -89,6 +97,7 @@ interface PayrollRecord {
 }
 
 export default function PayrollManagementPage() {
+  const router = useRouter();
   const [salaryStructures, setSalaryStructures] = useState<SalaryStructure[]>([]);
   const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>([]);
   const [monthlySalaries, setMonthlySalaries] = useState<MonthlySalaryPayment[]>([]);
@@ -106,6 +115,14 @@ export default function PayrollManagementPage() {
       }
       return newSet;
     });
+  };
+
+  const navigateToEmployeeAttendance = (employeeId: string) => {
+    // Navigate to employee-specific attendance page
+    // Note: (erp) is a route group and doesn't appear in the URL
+    const url = `/hr/attendance/${employeeId}?month=${filterMonth}`;
+    console.log('Navigating to:', url);
+    router.push(url);
   };
 
   useEffect(() => {
@@ -230,31 +247,65 @@ export default function PayrollManagementPage() {
       }
       const employees: Employee[] = await employeesResponse.json();
       
-      // Fetch attendance records for the selected month
-      const attendanceResponse = await fetch(`/api/hr/attendance?month=${filterMonth}`);
-      const attendanceData: AttendanceRecord[] = attendanceResponse.ok 
-        ? await attendanceResponse.json() 
-        : [];
+      // Calculate date range for the selected month
+      const [year, month] = filterMonth.split('-');
+      const startDate = `${year}-${month}-01`;
+      const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
+      const endDate = `${year}-${month}-${lastDay.toString().padStart(2, '0')}`;
       
-      // Create a map of attendance by employee_id
-      const attendanceMap = new Map<string, AttendanceRecord>();
-      attendanceData.forEach(att => {
-        attendanceMap.set(att.employee_id, att);
+      console.log(`📅 Fetching attendance for date range: ${startDate} to ${endDate}`);
+      
+      // Fetch attendance records for the selected month (processed punch logs)
+      const attendanceResponse = await fetch(
+        `/api/hr/attendance?start_date=${startDate}&end_date=${endDate}`
+      );
+      
+      let attendanceRecords: DailyAttendanceRecord[] = [];
+      if (attendanceResponse.ok) {
+        attendanceRecords = await attendanceResponse.json();
+        console.log(`✅ Fetched ${attendanceRecords.length} attendance records for ${filterMonth}`);
+      } else {
+        console.warn('⚠️ Failed to fetch attendance records, using defaults');
+      }
+      
+      // Group attendance by employee_id
+      const attendanceByEmployee = new Map<string, DailyAttendanceRecord[]>();
+      attendanceRecords.forEach(record => {
+        if (!attendanceByEmployee.has(record.employee_id)) {
+          attendanceByEmployee.set(record.employee_id, []);
+        }
+        attendanceByEmployee.get(record.employee_id)!.push(record);
       });
+      
+      // Calculate total working days in the month
+      const totalDaysInMonth = lastDay;
       
       // Calculate monthly salaries
       const calculated: MonthlySalaryPayment[] = employees
         .filter(emp => emp.salary && emp.salary > 0)
         .map(emp => {
-          const attendance = attendanceMap.get(emp.id);
-          const workingDays = attendance?.working_days || 26; // Default 26 working days
-          const presentDays = attendance?.present_days || workingDays;
-          const absentDays = attendance?.absent_days || 0;
+          const employeeAttendance = attendanceByEmployee.get(emp.id) || [];
+          
+          // Count present days (any day with attendance record that's not absent)
+          const presentDays = employeeAttendance.filter(
+            record => record.status !== 'absent'
+          ).length;
+          
+          // Count absent days (days marked as absent)
+          const absentDays = employeeAttendance.filter(
+            record => record.status === 'absent'
+          ).length;
+          
+          // Working days = total days in month (or you can set a fixed value like 26)
+          const workingDays = totalDaysInMonth;
+          
           const monthlySalary = emp.salary || 0;
           
-          // Calculate payable amount based on attendance
+          // Calculate payable amount based on present days
           const payableAmount = (monthlySalary / workingDays) * presentDays;
-          const attendancePercentage = (presentDays / workingDays) * 100;
+          const attendancePercentage = workingDays > 0 ? (presentDays / workingDays) * 100 : 0;
+          
+          console.log(`👤 ${emp.name}: Working=${workingDays}, Present=${presentDays}, Absent=${absentDays}, Payable=₹${payableAmount.toFixed(2)}`);
           
           return {
             employee_id: emp.id,
@@ -271,7 +322,7 @@ export default function PayrollManagementPage() {
           };
         });
       
-      console.log('💰 Calculated monthly salaries:', calculated.length);
+      console.log('💰 Calculated monthly salaries for', calculated.length, 'employees');
       setMonthlySalaries(calculated);
       
       if (calculated.length === 0) {
@@ -784,95 +835,140 @@ export default function PayrollManagementPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Employee</TableHead>
-                    <TableHead>Department</TableHead>
-                    <TableHead>Monthly Salary</TableHead>
-                    <TableHead>Working Days</TableHead>
-                    <TableHead>Present Days</TableHead>
-                    <TableHead>Absent Days</TableHead>
-                    <TableHead>Attendance %</TableHead>
-                    <TableHead>Payable Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {monthlySalaries
-                    .filter(salary =>
-                      salary.employee_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                      salary.employee_code?.toLowerCase().includes(searchTerm.toLowerCase())
-                    )
-                    .map((salary) => (
-                    <TableRow key={salary.employee_id}>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{salary.employee_name}</div>
-                          <div className="text-xs text-gray-500">{salary.employee_code}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{salary.department}</div>
-                          <div className="text-xs text-gray-500">{salary.position}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-medium font-mono">₹{salary.monthly_salary.toLocaleString('en-IN')}</TableCell>
-                      <TableCell className="text-center">{salary.working_days}</TableCell>
-                      <TableCell className="text-center">
-                        <span className="font-medium text-green-600">{salary.present_days}</span>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <span className="font-medium text-red-600">{salary.absent_days}</span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge 
-                          className={
-                            salary.attendance_percentage >= 95 ? 'bg-green-100 text-green-800' :
-                            salary.attendance_percentage >= 80 ? 'bg-blue-100 text-blue-800' :
-                            salary.attendance_percentage >= 60 ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-red-100 text-red-800'
-                          }
-                        >
-                          {salary.attendance_percentage.toFixed(1)}%
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-bold font-mono text-green-600">
-                        ₹{salary.payable_amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              
-              {monthlySalaries.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  <p>No salary data available for {filterMonth}</p>
+              {monthlySalaries.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <Users className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+                  <p className="text-lg font-medium">No salary data available for {filterMonth}</p>
                   <p className="text-sm mt-2">Make sure employees have salary information and attendance records</p>
                 </div>
-              )}
+              ) : (
+                <>
+                  {/* Employee Cards Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {monthlySalaries
+                      .filter(salary =>
+                        salary.employee_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        salary.employee_code?.toLowerCase().includes(searchTerm.toLowerCase())
+                      )
+                      .sort((a, b) => a.employee_name.localeCompare(b.employee_name))
+                      .map((salary) => {
+                        return (
+                        <Card 
+                          key={salary.employee_id}
+                          className="hover:shadow-lg transition-all duration-200 border-2 hover:border-blue-300 cursor-pointer"
+                          onClick={() => navigateToEmployeeAttendance(salary.employee_id)}
+                        >
+                          <CardHeader className="pb-3">
+                            {/* Employee Header */}
+                            <div className="flex items-start gap-3">
+                              <div className={`h-12 w-12 rounded-full flex items-center justify-center text-white font-bold text-lg ${
+                                salary.attendance_percentage >= 95 ? 'bg-gradient-to-br from-green-500 to-green-600' :
+                                salary.attendance_percentage >= 80 ? 'bg-gradient-to-br from-blue-500 to-blue-600' :
+                                salary.attendance_percentage >= 60 ? 'bg-gradient-to-br from-yellow-500 to-yellow-600' :
+                                'bg-gradient-to-br from-red-500 to-red-600'
+                              }`}>
+                                {salary.employee_name.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <h3 className="font-semibold text-gray-900 truncate">{salary.employee_name}</h3>
+                                <p className="text-xs text-gray-500">{salary.employee_code}</p>
+                                <div className="flex items-center gap-1 mt-1">
+                                  <Badge variant="outline" className="text-xs">
+                                    {salary.department}
+                                  </Badge>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Badge variant="secondary" className="text-xs">
+                                  View Details
+                                </Badge>
+                                <Eye className="h-4 w-4 text-gray-400" />
+                              </div>
+                            </div>
+                          </CardHeader>
+                          
+                          <CardContent className="space-y-3">
+                            {/* Position */}
+                            <div className="text-xs text-gray-600 pb-2 border-b">
+                              {salary.position}
+                            </div>
 
-              {monthlySalaries.length > 0 && (
-                <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border border-blue-200">
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <p className="text-sm text-gray-600">Total Employees</p>
-                      <p className="text-2xl font-bold text-blue-600">{monthlySalaries.length}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Total Monthly Salary</p>
-                      <p className="text-2xl font-bold text-purple-600">
-                        ₹{monthlySalaries.reduce((sum, s) => sum + s.monthly_salary, 0).toLocaleString('en-IN')}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Total Payable Amount</p>
-                      <p className="text-2xl font-bold text-green-600">
-                        ₹{monthlySalaries.reduce((sum, s) => sum + s.payable_amount, 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </p>
+                            {/* Monthly Salary */}
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-gray-600">Monthly Salary</span>
+                              <span className="font-semibold text-gray-900 font-mono">
+                                ₹{salary.monthly_salary.toLocaleString('en-IN')}
+                              </span>
+                            </div>
+
+                            {/* Attendance Stats */}
+                            <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-3 space-y-2">
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-gray-600">Working Days</span>
+                                <span className="font-semibold text-gray-900">{salary.working_days}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-gray-600">Present</span>
+                                <span className="font-semibold text-green-600">{salary.present_days} days</span>
+                              </div>
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-gray-600">Absent</span>
+                                <span className="font-semibold text-red-600">{salary.absent_days} days</span>
+                              </div>
+                              <div className="pt-2 border-t border-gray-200">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm text-gray-600">Attendance</span>
+                                  <Badge 
+                                    className={
+                                      salary.attendance_percentage >= 95 ? 'bg-green-100 text-green-800' :
+                                      salary.attendance_percentage >= 80 ? 'bg-blue-100 text-blue-800' :
+                                      salary.attendance_percentage >= 60 ? 'bg-yellow-100 text-yellow-800' :
+                                      'bg-red-100 text-red-800'
+                                    }
+                                  >
+                                    {salary.attendance_percentage.toFixed(1)}%
+                                  </Badge>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Payable Amount */}
+                            <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-3 border border-green-200">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium text-green-800">Payable Amount</span>
+                                <span className="text-lg font-bold text-green-700 font-mono">
+                                  ₹{salary.payable_amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                      })}
+                  </div>
+
+                  {/* Summary Footer */}
+                  <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border border-blue-200">
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <p className="text-sm text-gray-600">Total Employees</p>
+                        <p className="text-2xl font-bold text-blue-600">{monthlySalaries.length}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Total Monthly Salary</p>
+                        <p className="text-2xl font-bold text-purple-600">
+                          ₹{monthlySalaries.reduce((sum, s) => sum + s.monthly_salary, 0).toLocaleString('en-IN')}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Total Payable Amount</p>
+                        <p className="text-2xl font-bold text-green-600">
+                          ₹{monthlySalaries.reduce((sum, s) => sum + s.payable_amount, 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
+                </>
               )}
             </CardContent>
           </Card>

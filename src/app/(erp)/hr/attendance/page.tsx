@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -190,7 +190,7 @@ interface PunchLog {
   processed: boolean;
 }
 
-export default function AttendancePage() {
+function AttendancePageContent() {
   const searchParams = useSearchParams();
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -1769,5 +1769,21 @@ export default function AttendancePage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// Wrapper component with Suspense boundary
+export default function AttendancePage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading attendance...</p>
+        </div>
+      </div>
+    }>
+      <AttendancePageContent />
+    </Suspense>
   );
 }

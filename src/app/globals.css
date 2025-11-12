@@ -344,7 +344,10 @@
     transition: all 0.3s ease;
 }
 
+
 /* Professional Calendar Styling */
+
+
 /* ========================================
    ATTENDANCE-STYLE CALENDAR DESIGN
    Grid-based with hover effects
@@ -357,7 +360,9 @@
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 }
 
+
 /* Calendar container */
+
 .rdp-months {
     display: flex;
     gap: 1.5rem;
@@ -373,7 +378,9 @@
     min-width: 340px;
 }
 
+
 /* Calendar header */
+
 .rdp-caption {
     display: flex;
     justify-content: space-between;
@@ -390,7 +397,9 @@
     text-align: center;
 }
 
+
 /* Navigation buttons */
+
 .rdp-nav {
     display: flex;
     gap: 0.25rem;
@@ -426,7 +435,9 @@
     height: 16px;
 }
 
+
 /* Week header - Days of week */
+
 .rdp-head {
     margin-bottom: 0.25rem;
 }
@@ -445,7 +456,9 @@
     padding: 0.5rem 0;
 }
 
+
 /* Week rows */
+
 .rdp-tbody {
     border: 0;
 }
@@ -456,7 +469,9 @@
     margin-bottom: 0.25rem;
 }
 
+
 /* Day cells */
+
 .rdp-cell {
     padding: 0;
 }
@@ -477,7 +492,9 @@
     border: 1px solid #e5e7eb;
 }
 
+
 /* Hover effect for selectable days */
+
 .rdp-day:hover:not(.rdp-day_selected):not(.rdp-day_disabled):not(.rdp-day_outside) {
     transform: scale(1.05);
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
@@ -486,7 +503,9 @@
     z-index: 10;
 }
 
+
 /* Selected day */
+
 .rdp-day_selected {
     background: #3b82f6 !important;
     color: white !important;
@@ -501,7 +520,9 @@
     border-color: #2563eb;
 }
 
+
 /* Today's date */
+
 .rdp-day_today:not(.rdp-day_selected) {
     background: #ffffff;
     color: #3b82f6;
@@ -515,7 +536,9 @@
     box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.2);
 }
 
+
 /* Range selection */
+
 .rdp-day_range_start,
 .rdp-day_range_end {
     background: #3b82f6 !important;
@@ -537,7 +560,9 @@
     transform: scale(1.02);
 }
 
+
 /* Disabled days */
+
 .rdp-day_disabled {
     color: #d1d5db;
     cursor: not-allowed;
@@ -551,7 +576,9 @@
     box-shadow: none;
 }
 
+
 /* Outside days (previous/next month) */
+
 .rdp-day_outside {
     color: #d1d5db;
     opacity: 0.4;
@@ -565,19 +592,25 @@
     transform: none;
 }
 
+
 /* Hidden days */
+
 .rdp-day_hidden {
     visibility: hidden;
 }
 
+
 /* Focus styles for accessibility */
+
 .rdp-day:focus-visible {
     outline: 2px solid #3b82f6;
     outline-offset: 2px;
     z-index: 10;
 }
 
+
 /* Dark mode support */
+
 .dark .rdp-month {
     background: #1f2937;
     border-color: #374151;
@@ -651,7 +684,9 @@
     color: #6b7280;
 }
 
+
 /* Animation for calendar popup */
+
 @keyframes calendar-slide-up {
     from {
         opacity: 0;
@@ -667,19 +702,25 @@
     animation: calendar-slide-up 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+
 /* Add subtle hover effect to entire table */
+
 .rdp-table {
     border-spacing: 0;
     border-collapse: separate;
 }
 
+
 /* Month transition effect */
+
 .rdp-month {
     transition: all 0.3s ease;
 }
 
+
 /* Selected month display text */
-.rdp + p {
+
+.rdp+p {
     margin-top: 1rem;
     padding: 0.75rem 1rem;
     background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%);

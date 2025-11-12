@@ -1,5 +1,5 @@
-import ModularDashboard from './modular-page';
+import NextGenDashboard from './new-dashboard';
 
 export default function DashboardPage() {
-  return <ModularDashboard />;
+  return <NextGenDashboard />;
 }

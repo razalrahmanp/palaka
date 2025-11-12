@@ -304,8 +304,17 @@ export async function GET(
           console.error('Account not found:', accountError);
           // Don't fail the payment, just log the error
         } else {
+          // Fetch customer name for better transaction description
+          const { data: customerData } = await supabase
+            .from('customers')
+            .select('name')
+            .eq('id', orderData.customer_id)
+            .single();
+          
+          const customerName = customerData?.name || 'Customer';
+          
           // Create bank transaction (deposit - money coming in)
-          const transactionDescription = `Payment received for Sales Order #${orderId} via ${method}`;
+          const transactionDescription = `Payment received for Sales Order #${orderId} via ${method} - ${customerName}`;
           const transactionReference = reference || `Order-${orderId}`;
 
           const { error: transactionError } = await supabase
@@ -349,7 +358,7 @@ export async function GET(
                       bank_account_id: account.linked_bank_account_id,
                       type: 'deposit',
                       amount: parseFloat(amount),
-                      description: `UPI Transfer from ${account.name} for Order #${orderId}`,
+                      description: `UPI Transfer from ${account.name} for Order #${orderId} - ${customerName}`,
                       date: payment_date || new Date().toISOString().split('T')[0],
                       reference: `UPI-${transactionReference}`
                     });

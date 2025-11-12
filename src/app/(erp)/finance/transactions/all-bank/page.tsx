@@ -175,9 +175,15 @@ export default function AllBankTransactions() {
     });
   };
 
-  const getTransactionTypeBadge = (transactionType: string) => {
+  const getTransactionTypeBadge = (transactionType: string, transaction: BankTransaction) => {
+    // Check if this is a cash transaction based on account type
+    const isCashTransaction = transaction.bank_accounts?.account_type === 'CASH';
+    
     const typeMap: Record<string, { label: string; color: string }> = {
-      'bank_transaction': { label: 'Bank Transfer', color: 'bg-purple-100 text-purple-800' },
+      'bank_transaction': { 
+        label: isCashTransaction ? 'Cash' : 'Bank Transfer', 
+        color: isCashTransaction ? 'bg-emerald-100 text-emerald-800' : 'bg-purple-100 text-purple-800' 
+      },
       'vendor_payment': { label: 'Payment', color: 'bg-blue-100 text-blue-800' },
       'withdrawal': { label: 'Withdrawal', color: 'bg-orange-100 text-orange-800' },
       'liability_payment': { label: 'Liability', color: 'bg-red-100 text-red-800' },
@@ -437,7 +443,7 @@ export default function AllBankTransactions() {
                             <p className="text-[10px] text-gray-600">Ref: {transaction.reference}</p>
                           )}
                           <div className="mt-0.5">
-                            {getTransactionTypeBadge(transaction.transaction_type)}
+                            {getTransactionTypeBadge(transaction.transaction_type, transaction)}
                           </div>
                         </div>
                         <div className="col-span-2 text-right">

@@ -168,6 +168,59 @@ export async function GET(request: NextRequest) {
 
     allTransactions.push(...cashAccountTransactions);
 
+    // Fetch customer names for sales order payments
+    console.log('👥 Fetching customer names for sales order payments...');
+    const orderReferences = allTransactions
+      .filter(t => t.reference && t.reference.startsWith('Order-'))
+      .map(t => t.reference.replace('Order-', ''));
+    
+    if (orderReferences.length > 0) {
+      console.log(`🔍 Found ${orderReferences.length} sales order references`);
+      
+      const { data: ordersData, error: ordersError } = await supabaseAdmin
+        .from('sales_orders')
+        .select(`
+          id,
+          customer_id,
+          customers (
+            id,
+            name
+          )
+        `)
+        .in('id', orderReferences);
+
+      if (ordersError) {
+        console.error('❌ Error fetching order customer data:', ordersError);
+      } else if (ordersData && ordersData.length > 0) {
+        console.log(`✅ Fetched customer data for ${ordersData.length} orders`);
+        
+        // Create a map of order ID to customer name
+        const orderCustomerMap = new Map<string, string>();
+        ordersData.forEach((order) => {
+          // Supabase returns customers as an object when using joins
+          const customers = order.customers as unknown as { id: string; name: string } | null;
+          if (customers && customers.name) {
+            orderCustomerMap.set(order.id, customers.name);
+          }
+        });
+
+        // Update descriptions with customer names
+        allTransactions.forEach(transaction => {
+          if (transaction.reference && transaction.reference.startsWith('Order-')) {
+            const orderId = transaction.reference.replace('Order-', '');
+            const customerName = orderCustomerMap.get(orderId);
+            
+            if (customerName && !transaction.description.includes(customerName)) {
+              // Append customer name to description if not already present
+              transaction.description = `${transaction.description} - ${customerName}`;
+            }
+          }
+        });
+        
+        console.log('✅ Updated transaction descriptions with customer names');
+      }
+    }
+
     // Sort all transactions by date (most recent first)
     allTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 

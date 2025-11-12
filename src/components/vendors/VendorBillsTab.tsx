@@ -813,6 +813,14 @@ export function VendorBillsTab({
       const payments = paymentPreview.filter(p => p.paymentAmount > 0);
       
       for (const payment of payments) {
+        // Format amount for display
+        const formattedAmount = new Intl.NumberFormat('en-IN', {
+          style: 'currency',
+          currency: 'INR',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0
+        }).format(payment.paymentAmount);
+        
         const response = await fetch(`/api/vendors/${vendorId}/payments`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -822,7 +830,7 @@ export function VendorBillsTab({
             payment_method: smartPaymentForm.payment_method,
             bank_account_id: smartPaymentForm.bank_account_id || '',
             reference_number: `${smartPaymentForm.reference_number} - Smart Settlement`,
-            notes: `Smart payment settlement: ${smartPaymentForm.notes}`,
+            notes: `Smart payment settlement: ${formattedAmount} for Bill ${payment.billNumber}${smartPaymentForm.notes ? ' - ' + smartPaymentForm.notes : ''}`,
             vendor_bill_id: payment.billId
           })
         });
@@ -2520,7 +2528,24 @@ export function VendorBillsTab({
                       step="0.01"
                       placeholder="0.00"
                       value={expenseForm.amount}
-                      onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
+                      onChange={(e) => {
+                        const newAmount = e.target.value;
+                        let updatedDescription = expenseForm.description;
+                        
+                        // Auto-update description with amount and bill number if this is a bill payment
+                        if (selectedBillForPayment && newAmount) {
+                          const formattedAmount = new Intl.NumberFormat('en-IN', {
+                            style: 'currency',
+                            currency: 'INR',
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0
+                          }).format(parseFloat(newAmount));
+                          
+                          updatedDescription = `Payment ${formattedAmount} for Bill ${selectedBillForPayment.bill_number}`;
+                        }
+                        
+                        setExpenseForm({ ...expenseForm, amount: newAmount, description: updatedDescription });
+                      }}
                       className="w-full text-lg"
                     />
                   </div>

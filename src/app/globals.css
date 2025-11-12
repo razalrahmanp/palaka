@@ -133,7 +133,7 @@
     /* Invoice Print Styles */
     body {
         -webkit-print-color-adjust: exact;
-        color-adjust: exact;
+        print-color-adjust: exact;
     }
     .print\:hidden {
         display: none !important;
@@ -342,4 +342,351 @@
 
 .smooth-transition {
     transition: all 0.3s ease;
+}
+
+/* Professional Calendar Styling */
+/* ========================================
+   ATTENDANCE-STYLE CALENDAR DESIGN
+   Grid-based with hover effects
+   ======================================== */
+
+.rdp {
+    --rdp-cell-size: 45px;
+    --rdp-accent-color: #3b82f6;
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+
+/* Calendar container */
+.rdp-months {
+    display: flex;
+    gap: 1.5rem;
+    justify-content: center;
+}
+
+.rdp-month {
+    background: #ffffff;
+    padding: 1rem;
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+    border: 1px solid #e5e7eb;
+    min-width: 340px;
+}
+
+/* Calendar header */
+.rdp-caption {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 0 1rem 0;
+    margin-bottom: 0.5rem;
+}
+
+.rdp-caption_label {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #111827;
+    flex: 1;
+    text-align: center;
+}
+
+/* Navigation buttons */
+.rdp-nav {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.rdp-nav_button {
+    width: 32px;
+    height: 32px;
+    border-radius: 0.375rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    background: transparent;
+    border: 1px solid #e5e7eb;
+    color: #6b7280;
+    cursor: pointer;
+}
+
+.rdp-nav_button:hover:not(:disabled) {
+    background: #f3f4f6;
+    color: #111827;
+    border-color: #d1d5db;
+}
+
+.rdp-nav_button:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.rdp-nav_button svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Week header - Days of week */
+.rdp-head {
+    margin-bottom: 0.25rem;
+}
+
+.rdp-head_row {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.rdp-head_cell {
+    width: var(--rdp-cell-size);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6b7280;
+    text-align: center;
+    padding: 0.5rem 0;
+}
+
+/* Week rows */
+.rdp-tbody {
+    border: 0;
+}
+
+.rdp-row {
+    display: flex;
+    gap: 0.25rem;
+    margin-bottom: 0.25rem;
+}
+
+/* Day cells */
+.rdp-cell {
+    padding: 0;
+}
+
+.rdp-day {
+    width: var(--rdp-cell-size);
+    height: var(--rdp-cell-size);
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fafafa;
+    color: #374151;
+    cursor: pointer;
+    border: 1px solid #e5e7eb;
+}
+
+/* Hover effect for selectable days */
+.rdp-day:hover:not(.rdp-day_selected):not(.rdp-day_disabled):not(.rdp-day_outside) {
+    transform: scale(1.05);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    background: #ffffff;
+    border-color: #3b82f6;
+    z-index: 10;
+}
+
+/* Selected day */
+.rdp-day_selected {
+    background: #3b82f6 !important;
+    color: white !important;
+    font-weight: 600;
+    border-color: #3b82f6;
+    transform: scale(1.05);
+    box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3), 0 2px 4px -1px rgba(59, 130, 246, 0.2);
+}
+
+.rdp-day_selected:hover {
+    background: #2563eb !important;
+    border-color: #2563eb;
+}
+
+/* Today's date */
+.rdp-day_today:not(.rdp-day_selected) {
+    background: #ffffff;
+    color: #3b82f6;
+    font-weight: 600;
+    border: 2px solid #3b82f6;
+}
+
+.rdp-day_today:not(.rdp-day_selected):hover {
+    background: #eff6ff;
+    transform: scale(1.05);
+    box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.2);
+}
+
+/* Range selection */
+.rdp-day_range_start,
+.rdp-day_range_end {
+    background: #3b82f6 !important;
+    color: white !important;
+    font-weight: 600;
+    border-color: #3b82f6;
+}
+
+.rdp-day_range_middle {
+    background: #dbeafe !important;
+    color: #1e40af !important;
+    font-weight: 500;
+    border-radius: 0.5rem;
+    border-color: #bfdbfe;
+}
+
+.rdp-day_range_middle:hover {
+    background: #bfdbfe !important;
+    transform: scale(1.02);
+}
+
+/* Disabled days */
+.rdp-day_disabled {
+    color: #d1d5db;
+    cursor: not-allowed;
+    opacity: 0.4;
+    background: #fafafa;
+}
+
+.rdp-day_disabled:hover {
+    background: #fafafa;
+    transform: none;
+    box-shadow: none;
+}
+
+/* Outside days (previous/next month) */
+.rdp-day_outside {
+    color: #d1d5db;
+    opacity: 0.4;
+    background: transparent;
+    border-color: transparent;
+}
+
+.rdp-day_outside:hover:not(.rdp-day_disabled) {
+    background: #f9fafb;
+    opacity: 0.5;
+    transform: none;
+}
+
+/* Hidden days */
+.rdp-day_hidden {
+    visibility: hidden;
+}
+
+/* Focus styles for accessibility */
+.rdp-day:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+    z-index: 10;
+}
+
+/* Dark mode support */
+.dark .rdp-month {
+    background: #1f2937;
+    border-color: #374151;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.dark .rdp-caption_label {
+    color: #f3f4f6;
+}
+
+.dark .rdp-head_cell {
+    color: #9ca3af;
+}
+
+.dark .rdp-day {
+    color: #d1d5db;
+    background: #111827;
+    border-color: #374151;
+}
+
+.dark .rdp-nav_button {
+    color: #9ca3af;
+    border-color: #374151;
+}
+
+.dark .rdp-nav_button:hover:not(:disabled) {
+    background: #374151;
+    color: #f3f4f6;
+    border-color: #4b5563;
+}
+
+.dark .rdp-day:hover:not(.rdp-day_selected):not(.rdp-day_disabled):not(.rdp-day_outside) {
+    background: #1f2937;
+    border-color: #60a5fa;
+    box-shadow: 0 4px 6px -1px rgba(96, 165, 250, 0.2);
+}
+
+.dark .rdp-day_today:not(.rdp-day_selected) {
+    color: #60a5fa;
+    border-color: #60a5fa;
+    background: #1f2937;
+}
+
+.dark .rdp-day_today:not(.rdp-day_selected):hover {
+    background: #1e3a5f;
+}
+
+.dark .rdp-day_selected {
+    background: #3b82f6 !important;
+    border-color: #3b82f6;
+}
+
+.dark .rdp-day_selected:hover {
+    background: #2563eb !important;
+}
+
+.dark .rdp-day_range_middle {
+    background: #1e3a5f !important;
+    color: #93c5fd !important;
+    border-color: #1e40af;
+}
+
+.dark .rdp-day_disabled {
+    background: #111827;
+    color: #4b5563;
+}
+
+.dark .rdp-day_outside {
+    background: transparent;
+    border-color: transparent;
+    color: #6b7280;
+}
+
+/* Animation for calendar popup */
+@keyframes calendar-slide-up {
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.rdp {
+    animation: calendar-slide-up 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Add subtle hover effect to entire table */
+.rdp-table {
+    border-spacing: 0;
+    border-collapse: separate;
+}
+
+/* Month transition effect */
+.rdp-month {
+    transition: all 0.3s ease;
+}
+
+/* Selected month display text */
+.rdp + p {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%);
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #5b21b6;
+    text-align: center;
+    border: 1px solid rgba(139, 92, 246, 0.2);
 }

@@ -4,9 +4,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { hasPermission } from '@/lib/auth';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Button } from '@/components/ui/button';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { 
   BarChart3,
   ShoppingCart,
@@ -15,12 +12,8 @@ import {
   Wallet,
   Users,
   Truck,
-  Brain,
-  CalendarIcon,
-  CalendarRange
+  Brain
 } from 'lucide-react';
-import { format } from 'date-fns';
-import type { DateRange } from 'react-day-picker';
 
 // Import department dashboards
 import OverviewDashboard from '@/components/dashboard/OverviewDashboard';
@@ -36,9 +29,6 @@ export default function NextGenDashboard() {
   const router = useRouter();
   const [hasAccess, setHasAccess] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
-  const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
-  const [dateMode, setDateMode] = useState<'month' | 'range'>('month');
 
   useEffect(() => {
     const stored = localStorage.getItem('user');
@@ -53,28 +43,6 @@ export default function NextGenDashboard() {
       setHasAccess(true);
     }
   }, [router]);
-
-  const handleMonthSelect = (date: Date | undefined) => {
-    if (date) {
-      setSelectedMonth(date);
-      setDateMode('month');
-      // Trigger refresh with selected month
-      window.dispatchEvent(new CustomEvent('dashboard-date-change', { 
-        detail: { mode: 'month', date } 
-      }));
-    }
-  };
-
-  const handleDateRangeSelect = (range?: DateRange) => {
-    setDateRange(range);
-    if (range?.from && range?.to) {
-      setDateMode('range');
-      // Trigger refresh with date range
-      window.dispatchEvent(new CustomEvent('dashboard-date-change', { 
-        detail: { mode: 'range', from: range.from, to: range.to } 
-      }));
-    }
-  };
 
   if (!hasAccess) {
     return (
@@ -203,79 +171,6 @@ export default function NextGenDashboard() {
             </TabsContent>
           </div>
         </Tabs>
-      </div>
-
-      {/* Floating Action Button - Date Selector */}
-      <div className="fixed bottom-8 right-8 z-50">
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              size="lg"
-              className="h-14 w-14 rounded-full shadow-2xl bg-gradient-to-br from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transition-all duration-300 hover:scale-110"
-            >
-              <CalendarIcon className="h-6 w-6 text-white" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="end">
-            <div className="p-4 space-y-4">
-              {/* Mode Selector */}
-              <div className="flex gap-2 border-b pb-3">
-                <Button
-                  variant={dateMode === 'month' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setDateMode('month')}
-                  className="flex-1"
-                >
-                  <CalendarIcon className="h-4 w-4 mr-2" />
-                  Month
-                </Button>
-                <Button
-                  variant={dateMode === 'range' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setDateMode('range')}
-                  className="flex-1"
-                >
-                  <CalendarRange className="h-4 w-4 mr-2" />
-                  Date Range
-                </Button>
-              </div>
-
-              {/* Calendar Display */}
-              {dateMode === 'month' ? (
-                <div>
-                  <p className="text-sm font-medium mb-2">Select Month</p>
-                  <Calendar
-                    mode="single"
-                    selected={selectedMonth}
-                    onSelect={handleMonthSelect}
-                    className="rounded-md border"
-                  />
-                  {selectedMonth && (
-                    <p className="text-xs text-gray-600 mt-2 text-center">
-                      Selected: {format(selectedMonth, 'MMMM yyyy')}
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div>
-                  <p className="text-sm font-medium mb-2">Select Date Range</p>
-                  <Calendar
-                    mode="range"
-                    selected={dateRange}
-                    onSelect={handleDateRangeSelect}
-                    className="rounded-md border"
-                    numberOfMonths={2}
-                  />
-                  {dateRange?.from && dateRange?.to && (
-                    <p className="text-xs text-gray-600 mt-2 text-center">
-                      {format(dateRange.from, 'MMM dd, yyyy')} - {format(dateRange.to, 'MMM dd, yyyy')}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          </PopoverContent>
-        </Popover>
       </div>
     </div>
   );

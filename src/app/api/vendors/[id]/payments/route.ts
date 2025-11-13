@@ -324,6 +324,16 @@ export async function POST(
       return NextResponse.json(poPayment, { status: 201 });
     }
 
+    // Get vendor details early for use in descriptions
+    const { data: vendor } = await supabase
+      .from('suppliers')
+      .select('name')
+      .eq('id', vendorId)
+      .single();
+
+    const vendorName = vendor?.name || 'Unknown Vendor';
+    console.log('📋 Processing payment for vendor:', vendorName);
+
     // Handle cash payments vs bank payments differently
     if (payment_method === 'cash') {
       console.log('💰 Processing cash payment - creating cash transaction and bank transaction...');
@@ -340,6 +350,15 @@ export async function POST(
         // 2. Create bank transaction entry for cash payment
         console.log('📝 Creating bank transaction for cash payment...');
         
+        // Build description with vendor name and bill info
+        let bankTxnDescription = `Vendor payment (Cash) - ${vendorName}`;
+        if (is_smart_payment && bill_allocations) {
+          const billNumbers = bill_allocations.map((b: { bill_number: string }) => b.bill_number).join(', ');
+          bankTxnDescription = `Smart payment (Cash) - ${vendorName} - Bills: ${billNumbers}`;
+        } else if (notes) {
+          bankTxnDescription += ` - ${notes}`;
+        }
+        
         const { data: bankTransaction, error: bankTxnError } = await supabase
           .from('bank_transactions')
           .insert({
@@ -347,7 +366,7 @@ export async function POST(
             date: payment_date,
             amount: parseFloat(amount),
             type: 'withdrawal',
-            description: `Vendor payment (Cash) - ${notes || 'Smart settlement'}`,
+            description: bankTxnDescription,
             reference: reference_number || `VP-${payment.id.slice(0, 8)}`,
             transaction_type: 'vendor_payment',
             source_record_id: payment.id
@@ -439,6 +458,15 @@ export async function POST(
       if (selectedBankAccountId) {
         console.log('📝 Creating bank transaction for vendor payment...');
         
+        // Build description with vendor name and bill info
+        let bankTxnDescription = `Vendor payment (${payment_method.toUpperCase()}) - ${vendorName}`;
+        if (is_smart_payment && bill_allocations) {
+          const billNumbers = bill_allocations.map((b: { bill_number: string }) => b.bill_number).join(', ');
+          bankTxnDescription = `Smart payment (${payment_method.toUpperCase()}) - ${vendorName} - Bills: ${billNumbers}`;
+        } else if (notes) {
+          bankTxnDescription += ` - ${notes}`;
+        }
+        
         const { data: bankTransaction, error: bankTxnError } = await supabase
           .from('bank_transactions')
           .insert({
@@ -446,7 +474,7 @@ export async function POST(
             date: payment_date,
             amount: parseFloat(amount),
             type: 'withdrawal',
-            description: `Vendor payment - ${notes || 'Smart settlement'}`,
+            description: bankTxnDescription,
             reference: reference_number || `VP-${payment.id.slice(0, 8)}`,
             transaction_type: 'vendor_payment',
             source_record_id: payment.id
@@ -614,15 +642,7 @@ export async function POST(
     // Create corresponding expense record for the vendor payment
     console.log('📝 Creating expense record for vendor payment...');
     
-    // Get vendor details for expense description
-    const { data: vendor } = await supabase
-      .from('suppliers')
-      .select('name')
-      .eq('id', vendorId)
-      .single();
-
-    const vendorName = vendor?.name || 'Unknown Vendor';
-    
+    // Vendor name already fetched earlier
     // Create expense record with appropriate description
     let expenseDescription = '';
     if (is_smart_payment && bill_allocations) {

@@ -330,6 +330,8 @@ CREATE TABLE public.bank_transactions (
   description text,
   reference text,
   balance numeric DEFAULT 0,
+  transaction_type text CHECK (transaction_type = ANY (ARRAY['payment'::text, 'expense'::text, 'investment'::text, 'withdrawal'::text, 'liability_payment'::text, 'vendor_payment'::text, 'refund'::text, 'fund_transfer'::text, 'loan_disbursement'::text, 'salary_payment'::text, 'other'::text])),
+  source_record_id uuid,
   CONSTRAINT bank_transactions_pkey PRIMARY KEY (id),
   CONSTRAINT bank_transactions_bank_account_id_fkey FOREIGN KEY (bank_account_id) REFERENCES public.bank_accounts(id)
 );
@@ -344,6 +346,8 @@ CREATE TABLE public.bank_transactions_backup (
   balance numeric DEFAULT 0,
   archived_at timestamp without time zone DEFAULT now(),
   archived_reason text DEFAULT 'Monthly cleanup - keeping only November 2025'::text,
+  transaction_type text CHECK (transaction_type = ANY (ARRAY['payment'::text, 'expense'::text, 'investment'::text, 'withdrawal'::text, 'liability_payment'::text, 'vendor_payment'::text, 'refund'::text, 'fund_transfer'::text, 'loan_disbursement'::text, 'salary_payment'::text, 'other'::text])),
+  source_record_id uuid,
   CONSTRAINT bank_transactions_backup_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.boms (
@@ -802,7 +806,7 @@ CREATE TABLE public.delivery_items_backup (
 CREATE TABLE public.delivery_proofs (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   delivery_id uuid NOT NULL,
-  type text NOT NULL CHECK (type = ANY (ARRAY['photo'::text, 'signature'::text])),
+  type text NOT NULL CHECK (type = ANY (ARRAY['photo'::text, 'signature'::text, 'delivered_item'::text])),
   url text NOT NULL,
   timestamp timestamp without time zone NOT NULL DEFAULT now(),
   CONSTRAINT delivery_proofs_pkey PRIMARY KEY (id),
@@ -1107,6 +1111,23 @@ CREATE TABLE public.expenses (
   CONSTRAINT expenses_pkey PRIMARY KEY (id),
   CONSTRAINT expenses_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
   CONSTRAINT expenses_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.assets(id)
+);
+CREATE TABLE public.fund_transfers (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  from_account_id uuid NOT NULL,
+  to_account_id uuid NOT NULL,
+  amount numeric NOT NULL CHECK (amount > 0::numeric),
+  transfer_date date NOT NULL DEFAULT CURRENT_DATE,
+  description text,
+  reference text,
+  status text DEFAULT 'completed'::text CHECK (status = ANY (ARRAY['pending'::text, 'completed'::text, 'failed'::text, 'cancelled'::text])),
+  created_by uuid,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT fund_transfers_pkey PRIMARY KEY (id),
+  CONSTRAINT fund_transfers_from_account_fkey FOREIGN KEY (from_account_id) REFERENCES public.bank_accounts(id),
+  CONSTRAINT fund_transfers_to_account_fkey FOREIGN KEY (to_account_id) REFERENCES public.bank_accounts(id),
+  CONSTRAINT fund_transfers_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
 );
 CREATE TABLE public.general_ledger (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

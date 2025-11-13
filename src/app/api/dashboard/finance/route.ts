@@ -4,15 +4,24 @@ import { supabase } from '@/lib/supabaseClient';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    // Get date range from query params or default to current month
+    const { searchParams } = new URL(request.url);
+    const startDate = searchParams.get('startDate');
+    const endDate = searchParams.get('endDate');
+
+    // If no dates provided, default to current month
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth();
-    const startDate = new Date(year, month, 1).toISOString().split('T')[0];
-    const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
+    const defaultStartDate = new Date(year, month, 1).toISOString().split('T')[0];
+    const defaultEndDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
 
-    console.log('💰 Fetching Finance Dashboard Data:', { startDate, endDate });
+    const finalStartDate = startDate || defaultStartDate;
+    const finalEndDate = endDate || defaultEndDate;
+
+    console.log('💰 Fetching Finance Dashboard Data:', { startDate: finalStartDate, endDate: finalEndDate });
 
     // Fetch all required data in parallel
     const [
@@ -27,15 +36,15 @@ export async function GET() {
       supabase
         .from('expenses')
         .select('id, amount, category, created_at, description')
-        .gte('created_at', startDate)
-        .lte('created_at', endDate + 'T23:59:59.999Z'),
+        .gte('created_at', finalStartDate)
+        .lte('created_at', finalEndDate + 'T23:59:59.999Z'),
 
       // Sales orders for revenue calculation
       supabase
         .from('sales_orders')
         .select('id, final_price, created_at')
-        .gte('created_at', startDate)
-        .lte('created_at', endDate + 'T23:59:59.999Z'),
+        .gte('created_at', finalStartDate)
+        .lte('created_at', finalEndDate + 'T23:59:59.999Z'),
 
       // Liabilities
       supabase
@@ -46,8 +55,8 @@ export async function GET() {
       supabase
         .from('withdrawals')
         .select('id, amount, created_at')
-        .gte('created_at', startDate)
-        .lte('created_at', endDate + 'T23:59:59.999Z'),
+        .gte('created_at', finalStartDate)
+        .lte('created_at', finalEndDate + 'T23:59:59.999Z'),
 
       // Bank accounts for cash position
       supabase

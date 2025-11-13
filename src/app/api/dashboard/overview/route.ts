@@ -4,16 +4,24 @@ import { supabase } from '@/lib/supabasePool';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    // Get current month date range
+    // Get date range from query params or default to current month
+    const { searchParams } = new URL(request.url);
+    const startDate = searchParams.get('startDate');
+    const endDate = searchParams.get('endDate');
+
+    // If no dates provided, default to current month
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth();
-    const startDate = new Date(year, month, 1).toISOString().split('T')[0];
-    const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
+    const defaultStartDate = new Date(year, month, 1).toISOString().split('T')[0];
+    const defaultEndDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
 
-    console.log('📊 Fetching Overview Dashboard Data:', { startDate, endDate });
+    const finalStartDate = startDate || defaultStartDate;
+    const finalEndDate = endDate || defaultEndDate;
+
+    console.log('📊 Fetching Overview Dashboard Data:', { startDate: finalStartDate, endDate: finalEndDate });
 
     // Parallel fetch all required data
     const [
@@ -25,26 +33,26 @@ export async function GET() {
       salesOrderItemsResult,
       purchaseOrdersResult
     ] = await Promise.all([
-      // Sales Orders (MTD)
+      // Sales Orders (date range)
       supabase
         .from('sales_orders')
         .select('id, final_price, status, created_at')
-        .gte('created_at', startDate)
-        .lte('created_at', endDate + 'T23:59:59.999Z'),
+        .gte('created_at', finalStartDate)
+        .lte('created_at', finalEndDate + 'T23:59:59.999Z'),
 
-      // Payments (MTD)
+      // Payments (date range)
       supabase
         .from('payments')
         .select('amount, date')
-        .gte('date', startDate)
-        .lte('date', endDate),
+        .gte('date', finalStartDate)
+        .lte('date', finalEndDate),
 
-      // Expenses (MTD)
+      // Expenses (date range)
       supabase
         .from('expenses')
         .select('amount, date')
-        .gte('date', startDate)
-        .lte('date', endDate),
+        .gte('date', finalStartDate)
+        .lte('date', finalEndDate),
 
       // Bank Accounts (current balance)
       supabase
@@ -56,7 +64,7 @@ export async function GET() {
         .from('inventory')
         .select('quantity, unit_cost'),
 
-      // Sales Order Items for top products (MTD) - with order details
+      // Sales Order Items for top products (date range) - with order details
       supabase
         .from('sales_order_items')
         .select(`
@@ -68,12 +76,12 @@ export async function GET() {
           discount_percentage
         `),
 
-      // Purchase Orders (MTD) - for top suppliers
+      // Purchase Orders (date range) - for top suppliers
       supabase
         .from('purchase_orders')
         .select('supplier_id, suppliers(name), total, created_at')
-        .gte('created_at', startDate)
-        .lte('created_at', endDate + 'T23:59:59.999Z')
+        .gte('created_at', finalStartDate)
+        .lte('created_at', finalEndDate + 'T23:59:59.999Z')
     ]);
 
     if (salesOrdersResult.error) throw salesOrdersResult.error;

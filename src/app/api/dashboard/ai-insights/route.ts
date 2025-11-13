@@ -4,15 +4,24 @@ import { supabase } from '@/lib/supabasePool';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    // Extract date range from query params
+    const { searchParams } = new URL(request.url);
+    const startDate = searchParams.get('startDate');
+    const endDate = searchParams.get('endDate');
+
+    // Default to current month if no dates provided
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth();
 
     // MTD date range
-    const startDate = new Date(year, month, 1).toISOString().split('T')[0];
-    const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
+    const defaultStartDate = new Date(year, month, 1).toISOString().split('T')[0];
+    const defaultEndDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
+
+    const finalStartDate = startDate || defaultStartDate;
+    const finalEndDate = endDate || defaultEndDate;
 
     // Fetch data from multiple sources for AI analysis
     const [
@@ -26,13 +35,13 @@ export async function GET() {
         .from('sales_orders')
         .select('total_amount, created_at, status')
         .gte('created_at', new Date(year, month - 6, 1).toISOString().split('T')[0])
-        .lte('created_at', endDate),
+        .lte('created_at', finalEndDate + 'T23:59:59.999Z'),
 
       supabase
         .from('expenses')
         .select('amount, created_at, category')
-        .gte('created_at', startDate)
-        .lte('created_at', endDate),
+        .gte('created_at', finalStartDate)
+        .lte('created_at', finalEndDate + 'T23:59:59.999Z'),
 
       supabase
         .from('inventory')
@@ -46,8 +55,8 @@ export async function GET() {
       supabase
         .from('deliveries')
         .select('status, actual_delivery_time, estimated_delivery_time, created_at')
-        .gte('created_at', startDate)
-        .lte('created_at', endDate),
+        .gte('created_at', finalStartDate)
+        .lte('created_at', finalEndDate + 'T23:59:59.999Z'),
     ]);
 
     if (salesOrdersResult.error) throw salesOrdersResult.error;
@@ -62,7 +71,7 @@ export async function GET() {
 
     // Calculate current month metrics
     const currentRevenue = salesOrders
-      .filter(s => s.created_at >= startDate)
+      .filter(s => s.created_at >= finalStartDate)
       .reduce((sum, s) => sum + (s.total_amount || 0), 0);
 
     const currentExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
@@ -76,7 +85,7 @@ export async function GET() {
 
     // Calculate 3-month average for baseline
     const threeMonthsAgo = new Date(year, month - 3, 1).toISOString().split('T')[0];
-    const historicalOrders = salesOrders.filter(s => s.created_at >= threeMonthsAgo && s.created_at < startDate);
+    const historicalOrders = salesOrders.filter(s => s.created_at >= threeMonthsAgo && s.created_at < finalStartDate);
     const avgHistoricalRevenue = historicalOrders.length > 0 
       ? historicalOrders.reduce((sum, s) => sum + (s.total_amount || 0), 0) / 3 
       : currentRevenue;

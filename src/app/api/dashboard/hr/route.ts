@@ -4,20 +4,28 @@ import { supabase } from '@/lib/supabasePool';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    // Get date range from query params or default to current month
+    const { searchParams } = new URL(request.url);
+    const startDate = searchParams.get('startDate');
+    const endDate = searchParams.get('endDate');
+
+    // If no dates provided, default to current month
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth();
+    const defaultStartDate = new Date(year, month, 1).toISOString().split('T')[0];
+    const defaultEndDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
 
-    // MTD date range
-    const startDate = new Date(year, month, 1).toISOString().split('T')[0];
-    const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
+    const finalStartDate = startDate || defaultStartDate;
+    const finalEndDate = endDate || defaultEndDate;
 
     // Start of week for attendance calculation (Monday)
-    const dayOfWeek = now.getDay();
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+    const dateRangeStart = new Date(finalStartDate);
+    const dayOfWeek = dateRangeStart.getDay();
+    const startOfWeek = new Date(dateRangeStart);
+    startOfWeek.setDate(dateRangeStart.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
     const weekStart = startOfWeek.toISOString().split('T')[0];
 
     // Fetch all required data in parallel
@@ -26,49 +34,59 @@ export async function GET() {
       payrollResult,
       attendanceResult,
       monthlyPayrollResult,
+      terminatedEmployeesResult,
     ] = await Promise.all([
       // Active employees
       supabase
         .from('employees')
-        .select('id, department, salary, created_at, performance_rating')
-        .eq('status', 'active'),
+        .select('id, department, salary, created_at')
+        .eq('employment_status', 'active'),
 
-      // MTD payroll
+      // Payroll for selected date range
       supabase
-        .from('payroll')
-        .select('amount, overtime_amount, created_at')
-        .gte('created_at', startDate)
-        .lte('created_at', endDate),
+        .from('payroll_records')
+        .select('net_salary, overtime_amount, created_at')
+        .gte('created_at', finalStartDate)
+        .lte('created_at', finalEndDate),
 
-      // Weekly attendance
+      // Attendance for selected week
       supabase
         .from('attendance_records')
         .select('employee_id, status, date')
         .gte('date', weekStart)
-        .lte('date', endDate),
+        .lte('date', finalEndDate),
 
-      // Last 7 months payroll for trend
+      // Last 7 months payroll for trend (relative to end date)
       supabase
-        .from('payroll')
-        .select('amount, overtime_amount, created_at')
-        .gte('created_at', new Date(year, month - 6, 1).toISOString().split('T')[0])
-        .lte('created_at', endDate),
+        .from('payroll_records')
+        .select('net_salary, overtime_amount, created_at')
+        .gte('created_at', new Date(new Date(finalEndDate).getFullYear(), new Date(finalEndDate).getMonth() - 6, 1).toISOString().split('T')[0])
+        .lte('created_at', finalEndDate),
+
+      // Terminated employees in last 12 months for turnover calculation
+      supabase
+        .from('employees')
+        .select('id')
+        .eq('employment_status', 'terminated')
+        .gte('updated_at', new Date(new Date(finalEndDate).getFullYear() - 1, new Date(finalEndDate).getMonth(), 1).toISOString().split('T')[0]),
     ]);
 
     if (employeesResult.error) throw employeesResult.error;
     if (payrollResult.error) throw payrollResult.error;
     if (attendanceResult.error) throw attendanceResult.error;
     if (monthlyPayrollResult.error) throw monthlyPayrollResult.error;
+    if (terminatedEmployeesResult.error) throw terminatedEmployeesResult.error;
 
     const employees = employeesResult.data || [];
     const payrolls = payrollResult.data || [];
     const attendance = attendanceResult.data || [];
     const monthlyPayrolls = monthlyPayrollResult.data || [];
+    const terminatedEmployees = terminatedEmployeesResult.data || [];
 
     // Calculate KPIs
     const employeeCount = employees.length;
 
-    const totalPayroll = payrolls.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const totalPayroll = payrolls.reduce((sum, p) => sum + (p.net_salary || 0), 0);
     const totalOvertime = payrolls.reduce((sum, p) => sum + (p.overtime_amount || 0), 0);
 
     // Attendance rate (% present out of total expected)
@@ -78,16 +96,15 @@ export async function GET() {
       ? ((presentCount / totalExpectedAttendance) * 100).toFixed(1)
       : '0.0';
 
-    // Productivity score (average performance rating)
-    const validRatings = employees.filter(e => e.performance_rating && e.performance_rating > 0);
-    const avgPerformance = validRatings.length > 0
-      ? validRatings.reduce((sum, e) => sum + (e.performance_rating || 0), 0) / validRatings.length
-      : 0;
-    const productivityScore = avgPerformance.toFixed(1);
+    // Productivity score (based on attendance rate as proxy)
+    // Since performance_rating doesn't exist, we'll use attendance as a productivity indicator
+    const productivityScore = attendanceRate;
 
-    // Employee turnover (calculate based on employees who left in last 12 months)
-    // For now using a placeholder calculation
-    const employeeTurnover = '8.5';
+    // Employee turnover (terminated employees in last 12 months / average total employees)
+    const avgEmployeeCount = employeeCount + terminatedEmployees.length;
+    const employeeTurnover = avgEmployeeCount > 0
+      ? ((terminatedEmployees.length / avgEmployeeCount) * 100).toFixed(1)
+      : '0.0';
 
     // Department headcount
     const departmentGroups: Record<string, number> = {};
@@ -109,7 +126,7 @@ export async function GET() {
       if (!payrollByMonth[monthKey]) {
         payrollByMonth[monthKey] = { base: 0, overtime: 0 };
       }
-      payrollByMonth[monthKey].base += p.amount || 0;
+      payrollByMonth[monthKey].base += p.net_salary || 0;
       payrollByMonth[monthKey].overtime += p.overtime_amount || 0;
     });
 
@@ -139,21 +156,21 @@ export async function GET() {
       ...attendanceByDay[day],
     }));
 
-    // Performance distribution
+    // Performance distribution - based on salary ranges since performance_rating doesn't exist
     const performanceRanges = [
-      { name: 'Outstanding (90+)', min: 90, max: 100, avgSalary: 0, employees: 0, color: '#22c55e' },
-      { name: 'Excellent (80-90)', min: 80, max: 90, avgSalary: 0, employees: 0, color: '#3b82f6' },
-      { name: 'Good (70-80)', min: 70, max: 80, avgSalary: 0, employees: 0, color: '#f59e0b' },
-      { name: 'Satisfactory (60-70)', min: 60, max: 70, avgSalary: 0, employees: 0, color: '#ef4444' },
-      { name: 'Needs Improvement (<60)', min: 0, max: 60, avgSalary: 0, employees: 0, color: '#991b1b' },
+      { name: 'Senior (50K+)', min: 50000, max: Infinity, avgSalary: 0, employees: 0, color: '#22c55e' },
+      { name: 'Mid-Level (30K-50K)', min: 30000, max: 50000, avgSalary: 0, employees: 0, color: '#3b82f6' },
+      { name: 'Junior (20K-30K)', min: 20000, max: 30000, avgSalary: 0, employees: 0, color: '#f59e0b' },
+      { name: 'Entry (10K-20K)', min: 10000, max: 20000, avgSalary: 0, employees: 0, color: '#ef4444' },
+      { name: 'Trainee (<10K)', min: 0, max: 10000, avgSalary: 0, employees: 0, color: '#991b1b' },
     ];
 
     employees.forEach(emp => {
-      const rating = emp.performance_rating || 0;
-      const range = performanceRanges.find(r => rating >= r.min && rating < r.max);
+      const salary = emp.salary || 0;
+      const range = performanceRanges.find(r => salary >= r.min && salary < r.max);
       if (range) {
         range.employees++;
-        range.avgSalary += emp.salary || 0;
+        range.avgSalary += salary;
       }
     });
 

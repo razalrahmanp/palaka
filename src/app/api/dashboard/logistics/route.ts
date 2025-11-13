@@ -4,15 +4,24 @@ import { supabase } from '@/lib/supabasePool';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    // Extract date range from query params
+    const { searchParams } = new URL(request.url);
+    const startDate = searchParams.get('startDate');
+    const endDate = searchParams.get('endDate');
+
+    // Default to current month if no dates provided
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth();
 
     // MTD date range
-    const startDate = new Date(year, month, 1).toISOString().split('T')[0];
-    const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
+    const defaultStartDate = new Date(year, month, 1).toISOString().split('T')[0];
+    const defaultEndDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
+
+    const finalStartDate = startDate || defaultStartDate;
+    const finalEndDate = endDate || defaultEndDate;
 
     // Fetch logistics data
     const [
@@ -23,15 +32,15 @@ export async function GET() {
       supabase
         .from('deliveries')
         .select('id, status, actual_delivery_time, estimated_delivery_time, delivery_fee, route_id, driver_id, created_at')
-        .gte('created_at', startDate)
-        .lte('created_at', endDate),
+        .gte('created_at', finalStartDate)
+        .lte('created_at', finalEndDate + 'T23:59:59.999Z'),
 
       // Sales orders for pending deliveries
       supabase
         .from('sales_orders')
         .select('id, status, delivery_date')
         .eq('status', 'pending')
-        .gte('delivery_date', startDate),
+        .gte('delivery_date', finalStartDate),
     ]);
 
     if (deliveriesResult.error) throw deliveriesResult.error;

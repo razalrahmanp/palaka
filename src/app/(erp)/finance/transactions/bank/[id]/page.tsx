@@ -5,7 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Building2, ArrowDownCircle, Download, CreditCard, Receipt, ChevronDown, ChevronUp } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ArrowLeft, Building2, ArrowDownCircle, Download, CreditCard, Receipt, ChevronDown, ChevronUp, Trash2, Loader2 } from 'lucide-react';
 import { useRouter, useParams } from 'next/navigation';
 
 interface BankTransaction {
@@ -49,6 +50,10 @@ export default function BankAccountTransactions() {
   const [currentMonthOffset, setCurrentMonthOffset] = useState(0);
   const [activeCategory, setActiveCategory] = useState<TransactionCategory>('all');
   const [isFilterExpanded, setIsFilterExpanded] = useState(true);
+  
+  // Delete dialog state
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; transaction: BankTransaction | null }>({ open: false, transaction: null });
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Calendar generation function
   const generateMonthsData = () => {
@@ -324,6 +329,43 @@ export default function BankAccountTransactions() {
     window.URL.revokeObjectURL(url);
   };
 
+  const handleDeleteTransaction = async (transaction: BankTransaction) => {
+    setDeleteDialog({ open: true, transaction });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteDialog.transaction) return;
+
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`/api/finance/bank-transactions/${deleteDialog.transaction.id}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        // Refresh transactions after successful delete
+        await fetchTransactions();
+        await fetchAccountDetails();
+        setDeleteDialog({ open: false, transaction: null });
+        
+        console.log('✅ Transaction deleted successfully');
+      } else {
+        const error = await response.json();
+        console.error('Failed to delete transaction:', error);
+        alert(`Failed to delete transaction: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error deleting transaction:', error);
+      alert('An error occurred while deleting the transaction');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const cancelDelete = () => {
+    setDeleteDialog({ open: false, transaction: null });
+  };
+
   if (!account) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -558,6 +600,9 @@ export default function BankAccountTransactions() {
                     <th className="px-3 py-2 text-right text-[10px] font-bold text-indigo-900 uppercase tracking-wider">
                       Balance (₹)
                     </th>
+                    <th className="px-3 py-2 text-center text-[10px] font-bold text-indigo-900 uppercase tracking-wider">
+                      Action
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -619,6 +664,18 @@ export default function BankAccountTransactions() {
                           {formatCurrency(transaction.running_balance || transaction.balance_after || 0)}
                         </span>
                       </td>
+                      
+                      <td className="px-3 py-2 text-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteTransaction(transaction)}
+                          className="h-7 w-7 p-0 hover:bg-red-50 hover:text-red-600"
+                          title="Delete transaction"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -645,6 +702,7 @@ export default function BankAccountTransactions() {
                         : account?.current_balance || 0
                       )}
                     </td>
+                    <td className="px-3 py-2"></td>
                   </tr>
                   <tr className="font-semibold bg-blue-50">
                     <td colSpan={2} className="px-4 py-3 text-sm text-gray-700">
@@ -660,6 +718,75 @@ export default function BankAccountTransactions() {
           )}
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialog.open} onOpenChange={(open) => !isDeleting && setDeleteDialog({ open, transaction: null })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Transaction</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this transaction? This action cannot be undone and will also delete all related records.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {deleteDialog.transaction && (
+            <div className="py-4 space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Date:</span>
+                <span className="font-medium">
+                  {new Date(deleteDialog.transaction.date).toLocaleDateString('en-IN', {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric'
+                  })}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Description:</span>
+                <span className="font-medium">{deleteDialog.transaction.description}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Amount:</span>
+                <span className={`font-medium ${deleteDialog.transaction.type === 'deposit' ? 'text-green-600' : 'text-red-600'}`}>
+                  {deleteDialog.transaction.type === 'deposit' ? '+' : '-'}
+                  {formatCurrency(deleteDialog.transaction.amount)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Type:</span>
+                <span className="font-medium capitalize">{deleteDialog.transaction.transaction_type.replace('_', ' ')}</span>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={cancelDelete}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete Transaction
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

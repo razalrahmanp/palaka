@@ -204,7 +204,9 @@ export async function POST(req: Request) {
           type: "withdrawal",
           amount,
           description: `Expense: ${category} - ${description} [${accountLabel}]`,
-          reference: receipt_number || `EXP-${exp.id.slice(-8)}`
+          reference: receipt_number || `EXP-${exp.id.slice(-8)}`,
+          transaction_type: 'expense',
+          source_record_id: exp.id
         }])
         .select()
         .single();
@@ -1161,5 +1163,222 @@ export async function PUT(req: Request) {
   } catch (error) {
     console.error('Error in PUT /api/finance/expenses:', error);
     return NextResponse.json({ error: "Failed to update expense" }, { status: 500 });
+  }
+}
+
+// ========== NEW ENHANCED DELETE ENDPOINT USING source_record_id ==========
+export async function DELETE_V2(req: Request) {
+  try {
+    const { expense_id } = await req.json();
+
+    if (!expense_id) {
+      return NextResponse.json({ error: "Expense ID is required" }, { status: 400 });
+    }
+
+    console.log(`🗑️ Starting DELETE_V2 for expense: ${expense_id}`);
+
+    // 1. Fetch the expense
+    const { data: expense, error: fetchError } = await supabase
+      .from('expenses')
+      .select('*')
+      .eq('id', expense_id)
+      .single();
+
+    if (fetchError || !expense) {
+      console.error('Expense not found:', fetchError);
+      return NextResponse.json({ error: "Expense not found" }, { status: 404 });
+    }
+
+    console.log('📋 Expense details:', {
+      id: expense.id,
+      amount: expense.amount,
+      entity_type: expense.entity_type,
+      entity_id: expense.entity_id,
+      payment_method: expense.payment_method,
+      bank_account_id: expense.bank_account_id
+    });
+
+    const deletedItems = {
+      expense: false,
+      bank_transactions: 0,
+      vehicle_expense_logs: 0,
+      vehicle_maintenance_logs: 0,
+      payroll_records: 0,
+      vendor_payment_history: 0,
+      journal_entries: 0,
+      cash_transactions: 0
+    };
+
+    // 2. Delete bank_transactions using source_record_id (NEW APPROACH!)
+    const { data: deletedBankTx, error: bankTxError } = await supabase
+      .from('bank_transactions')
+      .delete()
+      .eq('source_record_id', expense.id)
+      .eq('transaction_type', 'expense')
+      .select();
+
+    if (!bankTxError && deletedBankTx) {
+      deletedItems.bank_transactions = deletedBankTx.length;
+      console.log(`✅ Deleted ${deletedBankTx.length} bank_transaction(s) using source_record_id`);
+    }
+
+    // 3. Delete vehicle-related logs if truck expense
+    if (expense.entity_type === 'truck' && expense.entity_id) {
+      // Delete vehicle_expense_logs
+      const { data: deletedVehicleExpense, error: vehExpError } = await supabase
+        .from('vehicle_expense_logs')
+        .delete()
+        .eq('expense_id', expense.id)
+        .select();
+
+      if (!vehExpError && deletedVehicleExpense) {
+        deletedItems.vehicle_expense_logs = deletedVehicleExpense.length;
+        console.log(`✅ Deleted ${deletedVehicleExpense.length} vehicle_expense_log(s)`);
+      }
+
+      // Delete vehicle_maintenance_logs
+      const { data: deletedMaintenance, error: maintError } = await supabase
+        .from('vehicle_maintenance_logs')
+        .delete()
+        .eq('expense_id', expense.id)
+        .select();
+
+      if (!maintError && deletedMaintenance) {
+        deletedItems.vehicle_maintenance_logs = deletedMaintenance.length;
+        console.log(`✅ Deleted ${deletedMaintenance.length} vehicle_maintenance_log(s)`);
+      }
+    }
+
+    // 4. Delete payroll records if employee expense
+    if (expense.entity_type === 'employee' && expense.entity_reference_id) {
+      const { data: deletedPayroll, error: payrollError } = await supabase
+        .from('payroll_records')
+        .delete()
+        .eq('id', expense.entity_reference_id)
+        .select();
+
+      if (!payrollError && deletedPayroll) {
+        deletedItems.payroll_records = deletedPayroll.length;
+        console.log(`✅ Deleted ${deletedPayroll.length} payroll_record(s)`);
+      }
+    }
+
+    // 5. Delete vendor payment history if supplier expense
+    if (expense.entity_type === 'supplier' && expense.entity_reference_id) {
+      const { data: deletedVendorPayment, error: vendorPayError } = await supabase
+        .from('vendor_payment_history')
+        .delete()
+        .eq('id', expense.entity_reference_id)
+        .select();
+
+      if (!vendorPayError && deletedVendorPayment) {
+        deletedItems.vendor_payment_history = deletedVendorPayment.length;
+        console.log(`✅ Deleted ${deletedVendorPayment.length} vendor_payment_history record(s)`);
+
+        // Update vendor bill if linked
+        if (deletedVendorPayment[0]?.vendor_bill_id) {
+          const vendorPayment = deletedVendorPayment[0];
+          const { data: vendorBill } = await supabase
+            .from('vendor_bills')
+            .select('*')
+            .eq('id', vendorPayment.vendor_bill_id)
+            .single();
+
+          if (vendorBill) {
+            const newPaidAmount = Math.max(0, (vendorBill.paid_amount || 0) - vendorPayment.amount);
+            let newStatus = vendorBill.status;
+
+            if (newPaidAmount === 0) {
+              newStatus = 'pending';
+            } else if (newPaidAmount < vendorBill.total_amount) {
+              newStatus = 'partial';
+            }
+
+            await supabase
+              .from('vendor_bills')
+              .update({
+                paid_amount: newPaidAmount,
+                status: newStatus,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', vendorPayment.vendor_bill_id);
+
+            console.log(`✅ Updated vendor bill: paid_amount reduced by ${vendorPayment.amount}, status: ${newStatus}`);
+          }
+        }
+      }
+    }
+
+    // 6. Delete journal entries
+    const { data: deletedJournals, error: journalError } = await supabase
+      .from('journal_entries')
+      .delete()
+      .eq('source_type', 'expense')
+      .eq('source_id', expense.id)
+      .select();
+
+    if (!journalError && deletedJournals) {
+      deletedItems.journal_entries = deletedJournals.length;
+      console.log(`✅ Deleted ${deletedJournals.length} journal_entry(ies)`);
+    }
+
+    // 7. Delete cash transactions if cash payment
+    if (expense.payment_method === 'cash') {
+      const { data: deletedCashTx, error: cashTxError } = await supabase
+        .from('cash_transactions')
+        .delete()
+        .eq('source_type', 'expense')
+        .eq('source_id', expense.id)
+        .select();
+
+      if (!cashTxError && deletedCashTx) {
+        deletedItems.cash_transactions = deletedCashTx.length;
+        console.log(`✅ Deleted ${deletedCashTx.length} cash_transaction(s)`);
+        console.log(`✅ Bank balance will be auto-updated by trigger`);
+      }
+    }
+    
+    // Note: Bank account balances are automatically updated by database triggers
+    // when bank_transactions are deleted - no manual balance update needed
+
+    // 8. Update cashflow (remove from the month)
+    const month = new Date(expense.date);
+    month.setDate(1);
+    await supabase.rpc("upsert_cashflow_snapshot", {
+      mon: month.toISOString().slice(0, 10),
+      inflows: 0,
+      outflows: -expense.amount,
+    });
+    console.log(`✅ Updated cashflow for month ${month.toISOString().slice(0, 7)}`);
+
+    // 9. Finally, delete the expense itself
+    const { error: deleteExpenseError } = await supabase
+      .from('expenses')
+      .delete()
+      .eq('id', expense.id);
+
+    if (deleteExpenseError) {
+      console.error('Error deleting expense:', deleteExpenseError);
+      return NextResponse.json({ error: "Failed to delete expense" }, { status: 500 });
+    }
+
+    deletedItems.expense = true;
+    console.log('✅ Deleted expense record');
+
+    return NextResponse.json({
+      success: true,
+      message: "Expense and all related records deleted successfully",
+      deleted_items: deletedItems,
+      expense_details: {
+        id: expense.id,
+        amount: expense.amount,
+        entity_type: expense.entity_type,
+        payment_method: expense.payment_method
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in DELETE_V2 /api/finance/expenses:', error);
+    return NextResponse.json({ error: "Failed to delete expense" }, { status: 500 });
   }
 }

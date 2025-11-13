@@ -4,25 +4,33 @@ import { supabase } from '@/lib/supabaseClient';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    // Get date range from query params or default to current month
+    const { searchParams } = new URL(request.url);
+    const startDate = searchParams.get('startDate');
+    const endDate = searchParams.get('endDate');
+
+    // If no dates provided, default to current month
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth();
-    const startDate = new Date(year, month, 1).toISOString().split('T')[0];
-    const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
+    const defaultStartDate = new Date(year, month, 1).toISOString().split('T')[0];
+    const defaultEndDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
+
+    const finalStartDate = startDate || defaultStartDate;
+    const finalEndDate = endDate || defaultEndDate;
     
-    // For sales trend - last 7 days
-    const last7DaysStart = new Date();
-    last7DaysStart.setDate(last7DaysStart.getDate() - 6);
+    // For sales trend - last 7 days from end date
+    const endDateObj = new Date(finalEndDate);
+    const last7DaysStart = new Date(endDateObj);
+    last7DaysStart.setDate(endDateObj.getDate() - 6);
     const trendStartDate = last7DaysStart.toISOString().split('T')[0];
     
-    // For status breakdown - last 30 days to ensure we have data
-    const last30DaysStart = new Date();
-    last30DaysStart.setDate(last30DaysStart.getDate() - 30);
-    const statusStartDate = last30DaysStart.toISOString().split('T')[0];
+    // For status breakdown - use the full date range
+    const statusStartDate = finalStartDate;
 
-    console.log('📊 Fetching Sales Dashboard Data:', { startDate, endDate, trendStartDate, statusStartDate });
+    console.log('📊 Fetching Sales Dashboard Data:', { startDate: finalStartDate, endDate: finalEndDate, trendStartDate, statusStartDate });
 
     // Fetch all required data in parallel
     const [
@@ -35,24 +43,24 @@ export async function GET() {
       invoicesResult,
       paymentsResult
     ] = await Promise.all([
-      // Sales orders (MTD)
+      // Sales orders (date range)
       supabase
         .from('sales_orders')
         .select('id, final_price, status, created_at, customer_id, sales_representative_id')
-        .gte('created_at', startDate)
-        .lte('created_at', endDate + 'T23:59:59.999Z'),
+        .gte('created_at', finalStartDate)
+        .lte('created_at', finalEndDate + 'T23:59:59.999Z'),
 
       // Leads (All time for better conversion rate calculation)
       supabase
         .from('leads')
         .select('id, status, created_at'),
 
-      // Quotes
+      // Quotes (date range)
       supabase
         .from('quotes')
         .select('id, status, total_price, created_at')
-        .gte('created_at', startDate)
-        .lte('created_at', endDate + 'T23:59:59.999Z'),
+        .gte('created_at', finalStartDate)
+        .lte('created_at', finalEndDate + 'T23:59:59.999Z'),
 
       // Sales order items for product categories
       supabase
@@ -64,14 +72,14 @@ export async function GET() {
           products(name, category)
         `),
 
-      // Sales orders for trend (last 7 days)
+      // Sales orders for trend (last 7 days from end date)
       supabase
         .from('sales_orders')
         .select('id, final_price, created_at')
         .gte('created_at', trendStartDate)
-        .lte('created_at', new Date().toISOString()),
+        .lte('created_at', finalEndDate + 'T23:59:59.999Z'),
 
-      // Sales orders for status breakdown (all active orders)
+      // Sales orders for status breakdown
       supabase
         .from('sales_orders')
         .select('id, status, created_at, final_price')
@@ -145,7 +153,7 @@ export async function GET() {
       leadsCount,
       ordersCount,
       conversionRate,
-      dateRange: { startDate, endDate }
+      dateRange: { startDate: finalStartDate, endDate: finalEndDate }
     });
 
     // Active Customers (unique customers who placed orders)

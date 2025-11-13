@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import KPICard from './KPICard';
 import { Users, DollarSign, Calendar, TrendingUp, UserX, Activity, Award, BarChart3 } from 'lucide-react';
@@ -20,32 +20,74 @@ import {
   Pie,
 } from 'recharts';
 
-// Custom hook to fetch HR data
-const useHRData = () => {
+// Custom hook to fetch HR data with date range
+const useHRData = (dateRange: { startDate: string; endDate: string }) => {
   return useQuery({
-    queryKey: ['dashboard-hr'],
+    queryKey: ['dashboard-hr', dateRange.startDate, dateRange.endDate],
     queryFn: async () => {
-      const response = await fetch('/api/dashboard/hr');
+      const params = new URLSearchParams({
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate
+      });
+      const response = await fetch(`/api/dashboard/hr?${params}`);
       if (!response.ok) {
         throw new Error('Failed to fetch HR data');
       }
       return response.json();
     },
-    refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
+    refetchInterval: 5 * 60 * 1000,
+    enabled: !!dateRange.startDate && !!dateRange.endDate,
   });
 };
 
-export default function HRDashboard() {
-  const { data, isLoading, refetch } = useHRData();
+// Helper to get initial date range from sessionStorage or default to current month
+const getInitialDateRange = () => {
+  const stored = sessionStorage.getItem('dashboard-date-range');
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored);
+      if (parsed.startDate && parsed.endDate) {
+        return { startDate: parsed.startDate, endDate: parsed.endDate };
+      }
+    } catch (e) {
+      console.error('Failed to parse stored date range:', e);
+    }
+  }
 
-  // Listen for refresh events
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  return {
+    startDate: new Date(year, month, 1).toISOString().split('T')[0],
+    endDate: new Date(year, month + 1, 0).toISOString().split('T')[0]
+  };
+};
+
+export default function HRDashboard() {
+  const [dateRange, setDateRange] = useState(getInitialDateRange);
+
+  const { data, isLoading, refetch } = useHRData(dateRange);
+
+  // Listen for date filter changes and refresh events
   useEffect(() => {
+    const handleDateChange = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const { startDate, endDate } = customEvent.detail;
+      if (startDate && endDate) {
+        setDateRange({ startDate, endDate });
+      }
+    };
+
     const handleRefresh = () => {
       refetch();
     };
 
+    window.addEventListener('dashboard-date-change', handleDateChange);
     window.addEventListener('dashboard-refresh', handleRefresh);
-    return () => window.removeEventListener('dashboard-refresh', handleRefresh);
+    return () => {
+      window.removeEventListener('dashboard-date-change', handleDateChange);
+      window.removeEventListener('dashboard-refresh', handleRefresh);
+    };
   }, [refetch]);
 
   // Sample data for development

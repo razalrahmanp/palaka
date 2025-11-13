@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import KPICard from '@/components/dashboard/KPICard';
 import { 
@@ -28,23 +28,73 @@ import {
   Legend
 } from 'recharts';
 
-// Data fetching hook
-const useInventoryData = () => {
+// Data fetching hook with date range
+const useInventoryData = (dateRange: { startDate: string; endDate: string }) => {
   return useQuery({
-    queryKey: ['dashboard-inventory'],
+    queryKey: ['dashboard-inventory', dateRange.startDate, dateRange.endDate],
     queryFn: async () => {
-      const response = await fetch('/api/dashboard/inventory');
+      const params = new URLSearchParams({
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate
+      });
+      const response = await fetch(`/api/dashboard/inventory?${params}`);
       if (!response.ok) throw new Error('Failed to fetch inventory data');
       return response.json();
     },
     refetchInterval: 5 * 60 * 1000,
+    enabled: !!dateRange.startDate && !!dateRange.endDate,
   });
 };
 
 const COLORS = ['#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444'];
 
+// Helper to get initial date range from sessionStorage or default to current month
+const getInitialDateRange = () => {
+  const stored = sessionStorage.getItem('dashboard-date-range');
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored);
+      if (parsed.startDate && parsed.endDate) {
+        return { startDate: parsed.startDate, endDate: parsed.endDate };
+      }
+    } catch (e) {
+      console.error('Failed to parse stored date range:', e);
+    }
+  }
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  return {
+    startDate: new Date(year, month, 1).toISOString().split('T')[0],
+    endDate: new Date(year, month + 1, 0).toISOString().split('T')[0]
+  };
+};
+
 export default function InventoryDashboard() {
-  const { data, isLoading, refetch } = useInventoryData();
+  const [dateRange, setDateRange] = useState(getInitialDateRange);
+
+  const { data, isLoading, refetch } = useInventoryData(dateRange);
+
+  // Listen for date filter changes and refresh events
+  useEffect(() => {
+    const handleDateChange = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const { startDate, endDate } = customEvent.detail;
+      if (startDate && endDate) {
+        setDateRange({ startDate, endDate });
+      }
+    };
+
+    const handleRefresh = () => refetch();
+    
+    window.addEventListener('dashboard-date-change', handleDateChange);
+    window.addEventListener('dashboard-refresh', handleRefresh);
+    return () => {
+      window.removeEventListener('dashboard-date-change', handleDateChange);
+      window.removeEventListener('dashboard-refresh', handleRefresh);
+    };
+  }, [refetch]);
 
   // Debug: Log the data
   useEffect(() => {

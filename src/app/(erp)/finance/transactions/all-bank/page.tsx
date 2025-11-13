@@ -5,7 +5,8 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Download, Receipt, ChevronDown, ChevronUp } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ArrowLeft, Download, Receipt, ChevronDown, ChevronUp, Trash2, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 interface BankTransaction {
@@ -42,6 +43,10 @@ export default function AllBankTransactions() {
   const [currentMonthOffset, setCurrentMonthOffset] = useState(0);
   const [activeCategory, setActiveCategory] = useState<TransactionCategory>('all');
   const [isFilterExpanded, setIsFilterExpanded] = useState(true);
+  
+  // Delete dialog state
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; transaction: BankTransaction | null }>({ open: false, transaction: null });
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Calendar generation function
   const generateMonthsData = () => {
@@ -173,6 +178,42 @@ export default function AllBankTransactions() {
       month: 'short',
       year: 'numeric'
     });
+  };
+
+  const handleDeleteTransaction = async (transaction: BankTransaction) => {
+    setDeleteDialog({ open: true, transaction });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteDialog.transaction) return;
+
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`/api/finance/bank-transactions/${deleteDialog.transaction.id}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        // Refresh transactions after successful delete
+        await fetchTransactions();
+        setDeleteDialog({ open: false, transaction: null });
+        
+        console.log('✅ Transaction deleted successfully');
+      } else {
+        const error = await response.json();
+        console.error('Failed to delete transaction:', error);
+        alert(`Failed to delete transaction: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error deleting transaction:', error);
+      alert('An error occurred while deleting the transaction');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const cancelDelete = () => {
+    setDeleteDialog({ open: false, transaction: null });
   };
 
   const getTransactionTypeBadge = (transactionType: string, transaction: BankTransaction) => {
@@ -417,10 +458,11 @@ export default function AllBankTransactions() {
               {/* Table Header */}
               <div className="grid grid-cols-12 gap-3 px-3 py-2 bg-gray-50 rounded-t-lg font-semibold text-xs">
                 <div className="col-span-2">Date</div>
-                <div className="col-span-5">Particulars</div>
+                <div className="col-span-4">Particulars</div>
                 <div className="col-span-2 text-right">Debit (₹)</div>
                 <div className="col-span-2 text-right">Credit (₹)</div>
                 <div className="col-span-1 text-right">Balance (₹)</div>
+                <div className="col-span-1 text-center">Action</div>
               </div>
 
               {/* Transactions */}
@@ -437,7 +479,7 @@ export default function AllBankTransactions() {
                         <div className="col-span-2">
                           <p className="font-semibold text-[10px]">{formatDate(transaction.date)}</p>
                         </div>
-                        <div className="col-span-5">
+                        <div className="col-span-4">
                           <p className="font-medium mb-0.5 text-xs">{transaction.description}</p>
                           {transaction.reference && (
                             <p className="text-[10px] text-gray-600">Ref: {transaction.reference}</p>
@@ -461,6 +503,17 @@ export default function AllBankTransactions() {
                             {formatCurrency(transaction.calculated_balance)}
                           </p>
                         </div>
+                        <div className="col-span-1 text-center">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteTransaction(transaction)}
+                            className="h-7 w-7 p-0 hover:bg-red-50 hover:text-red-600"
+                            title="Delete transaction"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -470,16 +523,17 @@ export default function AllBankTransactions() {
               {/* Totals Row */}
               <div className="grid grid-cols-12 gap-3 px-3 py-2 bg-blue-50 rounded-b-lg font-bold border-t-2 border-blue-200 text-xs">
                 <div className="col-span-2">TOTALS</div>
-                <div className="col-span-5">({filteredTransactions.length} entries)</div>
+                <div className="col-span-4">({filteredTransactions.length} entries)</div>
                 <div className="col-span-2 text-right text-red-600">
                   {formatCurrency(totalWithdrawals)}
                 </div>
                 <div className="col-span-2 text-right text-green-600">
                   {formatCurrency(totalDeposits)}
                 </div>
-                <div className="col-span-1 text-right">
+                <div className="col-span-1 text-right text-blue-700">
                   {formatCurrency(totalDeposits - totalWithdrawals)}
                 </div>
+                <div className="col-span-1"></div>
               </div>
             </div>
           ) : (
@@ -490,6 +544,75 @@ export default function AllBankTransactions() {
           )}
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialog.open} onOpenChange={(open) => !isDeleting && setDeleteDialog({ open, transaction: null })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Transaction</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this transaction? This action cannot be undone and will also delete all related records.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {deleteDialog.transaction && (
+            <div className="py-4 space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Date:</span>
+                <span className="font-medium">{formatDate(deleteDialog.transaction.date)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Description:</span>
+                <span className="font-medium">{deleteDialog.transaction.description}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Amount:</span>
+                <span className={`font-medium ${deleteDialog.transaction.type === 'deposit' ? 'text-green-600' : 'text-red-600'}`}>
+                  {deleteDialog.transaction.type === 'deposit' ? '+' : '-'}
+                  {formatCurrency(deleteDialog.transaction.amount)}
+                </span>
+              </div>
+              {deleteDialog.transaction.bank_accounts && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Account:</span>
+                  <span className="font-medium">{deleteDialog.transaction.bank_accounts.name}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-gray-600">Type:</span>
+                {getTransactionTypeBadge(deleteDialog.transaction.transaction_type, deleteDialog.transaction)}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={cancelDelete}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete Transaction
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

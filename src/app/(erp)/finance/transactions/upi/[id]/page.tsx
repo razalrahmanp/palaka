@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Smartphone, ArrowUpCircle, ArrowDownCircle, Download, Filter, Link } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ArrowLeft, Smartphone, ArrowUpCircle, ArrowDownCircle, Download, Filter, Link, Trash2, Loader2 } from 'lucide-react';
 import { useRouter, useParams } from 'next/navigation';
 
 interface UpiTransaction {
@@ -45,6 +46,10 @@ export default function UpiAccountTransactions() {
   const [filterType, setFilterType] = useState('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  
+  // Delete dialog state
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; transaction: UpiTransaction | null }>({ open: false, transaction: null });
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchAccountDetails = useCallback(async () => {
     try {
@@ -178,6 +183,43 @@ export default function UpiAccountTransactions() {
     a.download = `${account?.name || 'upi-account'}-transactions-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
+  };
+
+  const handleDeleteTransaction = async (transaction: UpiTransaction) => {
+    setDeleteDialog({ open: true, transaction });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteDialog.transaction) return;
+
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`/api/finance/bank-transactions/${deleteDialog.transaction.id}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        // Refresh transactions after successful delete
+        await fetchTransactions();
+        await fetchAccountDetails();
+        setDeleteDialog({ open: false, transaction: null });
+        
+        console.log('✅ Transaction deleted successfully');
+      } else {
+        const error = await response.json();
+        console.error('Failed to delete transaction:', error);
+        alert(`Failed to delete transaction: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error deleting transaction:', error);
+      alert('An error occurred while deleting the transaction');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const cancelDelete = () => {
+    setDeleteDialog({ open: false, transaction: null });
   };
 
   if (!account) {
@@ -366,11 +408,12 @@ export default function UpiAccountTransactions() {
                 {/* Header */}
                 <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-gray-50 text-sm font-medium text-gray-700">
                   <div className="col-span-2">Date</div>
-                  <div className="col-span-3">Description</div>
+                  <div className="col-span-2">Description</div>
                   <div className="col-span-2">Customer</div>
                   <div className="col-span-2">Type</div>
                   <div className="col-span-2 text-right">Amount</div>
                   <div className="col-span-1 text-right">Invoice</div>
+                  <div className="col-span-1 text-center">Action</div>
                 </div>
                 
                 {/* Transactions */}
@@ -392,7 +435,7 @@ export default function UpiAccountTransactions() {
                       </div>
                     </div>
                     
-                    <div className="col-span-3">
+                    <div className="col-span-2">
                       <p className="font-medium text-gray-900">
                         {transaction.description || 'UPI Payment'}
                       </p>
@@ -431,6 +474,18 @@ export default function UpiAccountTransactions() {
                         </span>
                       )}
                     </div>
+                    
+                    <div className="col-span-1 text-center">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteTransaction(transaction)}
+                        className="h-7 w-7 p-0 hover:bg-red-50 hover:text-red-600"
+                        title="Delete transaction"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -438,6 +493,83 @@ export default function UpiAccountTransactions() {
           )}
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialog.open} onOpenChange={(open) => !isDeleting && setDeleteDialog({ open, transaction: null })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Transaction</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this transaction? This action cannot be undone and will also delete all related records.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {deleteDialog.transaction && (
+            <div className="py-4 space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Date:</span>
+                <span className="font-medium">
+                  {new Date(deleteDialog.transaction.payment_date || deleteDialog.transaction.date || '').toLocaleDateString('en-IN', {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric'
+                  })}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Description:</span>
+                <span className="font-medium">{deleteDialog.transaction.description || 'UPI Payment'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Amount:</span>
+                <span className={`font-medium ${deleteDialog.transaction.transaction_type === 'refund' ? 'text-red-600' : 'text-green-600'}`}>
+                  {deleteDialog.transaction.transaction_type === 'refund' ? '-' : '+'}
+                  {formatCurrency(Math.abs(deleteDialog.transaction.amount))}
+                </span>
+              </div>
+              {deleteDialog.transaction.customer_name && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Customer:</span>
+                  <span className="font-medium">{deleteDialog.transaction.customer_name}</span>
+                </div>
+              )}
+              {deleteDialog.transaction.transaction_type && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Type:</span>
+                  {getTransactionTypeBadge(deleteDialog.transaction.transaction_type)}
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={cancelDelete}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete Transaction
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

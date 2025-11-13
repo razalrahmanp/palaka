@@ -94,9 +94,6 @@ export async function POST(request: Request) {
 
     // ✅ Update bank balance for ALL account types (BANK, UPI, CASH)
     if (bank_account_id && bank_account_id.trim() !== '') {
-      // NOTE: We do NOT create a bank_transaction here to avoid double-entry
-      // The liability_payment record itself will be picked up by the bank-transactions API
-      
       // Get bank account details to determine account type
       const { data: bankAccount, error: bankError } = await supabase
         .from("bank_accounts")
@@ -105,6 +102,27 @@ export async function POST(request: Request) {
         .single();
       
       if (!bankError && bankAccount) {
+        // Create bank transaction record (withdrawal for liability payment)
+        const accountLabel = bankAccount.name || payment_method?.toUpperCase() || 'bank';
+        const { error: bankTransError } = await supabase
+          .from("bank_transactions")
+          .insert([{
+            bank_account_id,
+            date,
+            type: "withdrawal",
+            amount: total_amount,
+            description: `Liability Payment: ${description} [${accountLabel}]`,
+            reference: reference_number || `LP-${liabilityPayment.id.slice(-8)}`,
+            transaction_type: 'liability_payment',
+            source_record_id: liabilityPayment.id
+          }]);
+
+        if (bankTransError) {
+          console.error('❌ Error creating bank transaction:', bankTransError);
+        } else {
+          console.log('✅ Bank transaction created for liability payment');
+        }
+
         // Update bank account balance (decrease for payment) - works for ALL account types
         const newBalance = (bankAccount.current_balance || 0) - total_amount;
         await supabase

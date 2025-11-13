@@ -254,6 +254,8 @@ export async function POST(request: NextRequest) {
               type: "withdrawal",
               amount: withdrawalAmount,
               description: `Withdrawal to ${partner.name}: ${description} [${accountLabel}]`,
+              transaction_type: 'withdrawal',
+              source_record_id: withdrawal.id
             }]);
 
           if (bankTransactionError) {

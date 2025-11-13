@@ -277,6 +277,8 @@ interface CashflowTransaction {
   customer_name?: string;
   partner_name?: string;
   related_id?: string; // ID of the original record (payment, expense, etc.)
+  transaction_type: 'payment' | 'expense' | 'investment' | 'withdrawal' | 'liability_payment' | 'vendor_payment' | 'refund'; // Specific transaction type
+  source_record_id: string; // ID pointing to the specific table record (expense_id, investment_id, refund_id, etc.)
   bank_account?: string;
   created_at: string;
 }
@@ -668,6 +670,8 @@ export function SalesOrderInvoiceManager() {
             reference: investment.reference_number || investment.upi_reference,
             partner_name: investment.partner_name,
             related_id: investment.id,
+            transaction_type: 'investment',
+            source_record_id: investment.id,
             created_at: investment.created_at || new Date().toISOString()
           });
         });
@@ -698,6 +702,8 @@ export function SalesOrderInvoiceManager() {
             reference: withdrawal.reference_number || withdrawal.upi_reference,
             partner_name: withdrawal.partner_name,
             related_id: withdrawal.id,
+            transaction_type: 'withdrawal',
+            source_record_id: withdrawal.id,
             created_at: withdrawal.created_at || new Date().toISOString()
           });
         });
@@ -721,6 +727,8 @@ export function SalesOrderInvoiceManager() {
             payment_method: payment.payment_method || 'cash',
             reference: payment.reference_number || payment.upi_reference,
             related_id: payment.id,
+            transaction_type: 'liability_payment',
+            source_record_id: payment.id,
             created_at: payment.created_at || new Date().toISOString()
           });
         });
@@ -745,6 +753,8 @@ export function SalesOrderInvoiceManager() {
             reference: payment.reference_number,
             customer_name: payment.supplier_name || payment.vendor_name,
             related_id: payment.id,
+            transaction_type: 'vendor_payment',
+            source_record_id: payment.id,
             created_at: payment.created_at || new Date().toISOString()
           });
         });
@@ -790,6 +800,8 @@ export function SalesOrderInvoiceManager() {
         reference: payment.reference,
         customer_name: payment.customer_name,
         related_id: payment.id,
+        transaction_type: 'payment',
+        source_record_id: payment.id,
         created_at: payment.date
       });
     });
@@ -828,6 +840,8 @@ export function SalesOrderInvoiceManager() {
         amount: expense.amount,
         payment_method: expense.payment_method,
         related_id: expense.id,
+        transaction_type: 'expense',
+        source_record_id: expense.id,
         created_at: expense.created_at
       });
     });

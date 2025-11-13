@@ -185,6 +185,9 @@ export function PaymentTrackingDialog({
       });
 
       if (response.ok) {
+        const result = await response.json();
+        const paymentId = result.id; // Get the payment ID from the response
+        
         // If payment method involves a bank account, create bank transaction
         if (paymentData.bank_account_id && ['bank_transfer', 'check'].includes(paymentData.method)) {
           try {
@@ -193,11 +196,13 @@ export function PaymentTrackingDialog({
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 bank_account_id: paymentData.bank_account_id,
-                type: 'credit', // Payment received
+                type: 'deposit', // Changed from 'credit' to 'deposit' to match schema
                 amount: paymentData.amount,
                 description: `Payment received for Invoice ${invoice.id.slice(0, 8)} - ${paymentData.method}`,
                 reference: paymentData.reference || `INV-${invoice.id.slice(0, 8)}`,
-                transaction_date: paymentData.date
+                transaction_date: paymentData.date,
+                transaction_type: 'payment',
+                source_record_id: paymentId
               })
             });
           } catch (bankError) {
@@ -219,7 +224,9 @@ export function PaymentTrackingDialog({
                 amount: paymentData.amount,
                 description: `UPI Payment received for Invoice ${invoice.id.slice(0, 8)}`,
                 reference: paymentData.reference || `INV-${invoice.id.slice(0, 8)}`,
-                transaction_date: paymentData.date
+                transaction_date: paymentData.date,
+                transaction_type: 'payment',
+                source_record_id: paymentId
               })
             });
 
@@ -236,7 +243,9 @@ export function PaymentTrackingDialog({
                   amount: paymentData.amount,
                   description: `UPI Transfer from ${upiAccount.name} for Invoice ${invoice.id.slice(0, 8)}`,
                   reference: `UPI-${paymentData.reference || invoice.id.slice(0, 8)}`,
-                  transaction_date: paymentData.date
+                  transaction_date: paymentData.date,
+                  transaction_type: 'payment',
+                  source_record_id: paymentId
                 })
               });
             }

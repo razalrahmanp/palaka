@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { bank_account_id, date, type, amount, description, reference } = body;
+  const { bank_account_id, date, type, amount, description, reference, transaction_type, source_record_id } = body;
 
   if (!bank_account_id || !date || !type || !amount) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -112,8 +112,8 @@ export async function POST(request: NextRequest) {
       amount,
       description,
       reference,
-      source_type: 'manual',
-      payment_method: 'bank_transfer'
+      transaction_type: transaction_type || 'payment',
+      source_record_id: source_record_id || null
     },
   ]);
 

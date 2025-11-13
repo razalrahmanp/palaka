@@ -170,6 +170,9 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
         throw new Error(errorData.error || 'Failed to add payment');
       }
 
+      const result = await response.json();
+      const paymentId = result.id; // Extract payment ID from response
+
       // If payment method involves a bank account, create bank transaction
       if (formData.bank_account_id && (formData.method === 'bank_transfer' || formData.method === 'cheque' || formData.method === 'card')) {
         try {
@@ -182,7 +185,9 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
               amount: parseFloat(formData.amount),
               description: `Payment received for Order ${orderId}`,
               reference: formData.reference || `Order-${orderId}`,
-              transaction_date: formData.payment_date
+              transaction_date: formData.payment_date,
+              transaction_type: 'payment',
+              source_record_id: paymentId
             })
           });
         } catch (bankError) {
@@ -204,7 +209,9 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
               amount: parseFloat(formData.amount),
               description: `UPI Payment received for Order ${orderId}`,
               reference: formData.reference || `Order-${orderId}`,
-              transaction_date: formData.payment_date
+              transaction_date: formData.payment_date,
+              transaction_type: 'payment',
+              source_record_id: paymentId
             })
           });
 
@@ -221,7 +228,9 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
                 amount: parseFloat(formData.amount),
                 description: `UPI Transfer from ${upiAccount.name} for Order ${orderId}`,
                 reference: `UPI-${formData.reference || orderId}`,
-                transaction_date: formData.payment_date
+                transaction_date: formData.payment_date,
+                transaction_type: 'payment',
+                source_record_id: paymentId
               })
             });
           }
@@ -289,7 +298,9 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
                     amount: downPaymentAmount,
                     description: `Bajaj Finance Down Payment for Order ${orderId}`,
                     reference: `BAJAJ-DP-${formData.reference || orderId}`,
-                    transaction_date: formData.payment_date
+                    transaction_date: formData.payment_date,
+                    transaction_type: 'payment',
+                    source_record_id: paymentId
                   })
                 });
               }
@@ -307,7 +318,9 @@ export function SalesOrderPaymentTracker({ orderId, orderTotal, onPaymentAdded }
                 amount: balanceAmount,
                 description: `Bajaj Finance Credit for Order ${orderId}`,
                 reference: `BAJAJ-CREDIT-${formData.reference || orderId}`,
-                transaction_date: formData.payment_date
+                transaction_date: formData.payment_date,
+                transaction_type: 'payment',
+                source_record_id: paymentId
               })
             });
           }

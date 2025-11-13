@@ -94,6 +94,9 @@ export function EnhancedSalesOrderPaymentTracker({
         throw new Error(errorData.error || 'Failed to add payment');
       }
 
+      const result = await paymentResponse.json();
+      const paymentId = result.id; // Extract payment ID from response
+
       // If payment method involves a bank account, create bank transaction
       if (formData.bank_account_id && ['bank_transfer', 'cheque'].includes(formData.method)) {
         await fetch('/api/finance/bank_accounts/transactions', {
@@ -105,7 +108,9 @@ export function EnhancedSalesOrderPaymentTracker({
             type: 'deposit',
             amount: parseFloat(formData.amount),
             description: `Payment received for Order ${orderId}`,
-            reference: formData.reference || `Order-${orderId}`
+            reference: formData.reference || `Order-${orderId}`,
+            transaction_type: 'payment',
+            source_record_id: paymentId
           })
         });
       }

@@ -188,6 +188,136 @@ export async function DELETE(
           deletedItems.source_record = true;
           break;
 
+        case 'vendor_payment':
+          // Delete vendor payment and cascade to related records
+          console.log('🧾 Deleting vendor payment...');
+          try {
+            // First, get the vendor payment to check if it's a smart payment
+            const { data: vendorPayment } = await supabase
+              .from('vendor_payment_history')
+              .select('id, supplier_id, amount, vendor_bill_id')
+              .eq('id', transaction.source_record_id)
+              .single();
+
+            if (vendorPayment) {
+              console.log('📋 Vendor payment details:', vendorPayment);
+
+              // Check if this is a smart payment (has multiple allocations)
+              const { data: allocations } = await supabase
+                .from('vendor_payment_bill_allocations')
+                .select('vendor_bill_id, allocated_amount')
+                .eq('payment_id', vendorPayment.id);
+
+              if (allocations && allocations.length > 0) {
+                console.log(`💰 Smart payment detected with ${allocations.length} bill allocations`);
+                
+                // Revert each bill's paid_amount
+                for (const allocation of allocations) {
+                  const { data: bill } = await supabase
+                    .from('vendor_bills')
+                    .select('paid_amount, total_amount')
+                    .eq('id', allocation.vendor_bill_id)
+                    .single();
+
+                  if (bill) {
+                    const newPaidAmount = Math.max(0, (bill.paid_amount || 0) - allocation.allocated_amount);
+                    let newStatus = 'pending';
+                    
+                    if (newPaidAmount >= bill.total_amount) {
+                      newStatus = 'paid';
+                    } else if (newPaidAmount > 0) {
+                      newStatus = 'partial';
+                    }
+
+                    await supabase
+                      .from('vendor_bills')
+                      .update({
+                        paid_amount: newPaidAmount,
+                        status: newStatus,
+                        updated_at: new Date().toISOString()
+                      })
+                      .eq('id', allocation.vendor_bill_id);
+
+                    console.log(`✅ Reverted bill ${allocation.vendor_bill_id}: ${bill.paid_amount} → ${newPaidAmount}`);
+                  }
+                }
+
+                // Delete allocations
+                await supabase
+                  .from('vendor_payment_bill_allocations')
+                  .delete()
+                  .eq('payment_id', vendorPayment.id);
+
+                console.log('✅ Deleted bill allocations');
+                deletedItems.related_records += allocations.length;
+              } else if (vendorPayment.vendor_bill_id) {
+                // Single bill payment - revert the bill
+                console.log('📝 Single bill payment - reverting bill');
+                
+                const { data: bill } = await supabase
+                  .from('vendor_bills')
+                  .select('paid_amount, total_amount')
+                  .eq('id', vendorPayment.vendor_bill_id)
+                  .single();
+
+                if (bill) {
+                  const newPaidAmount = Math.max(0, (bill.paid_amount || 0) - vendorPayment.amount);
+                  let newStatus = 'pending';
+                  
+                  if (newPaidAmount >= bill.total_amount) {
+                    newStatus = 'paid';
+                  } else if (newPaidAmount > 0) {
+                    newStatus = 'partial';
+                  }
+
+                  await supabase
+                    .from('vendor_bills')
+                    .update({
+                      paid_amount: newPaidAmount,
+                      status: newStatus,
+                      updated_at: new Date().toISOString()
+                    })
+                    .eq('id', vendorPayment.vendor_bill_id);
+
+                  console.log(`✅ Reverted bill: ${bill.paid_amount} → ${newPaidAmount}`);
+                }
+              }
+
+              // Delete related expense record
+              const { data: expense } = await supabase
+                .from('expenses')
+                .delete()
+                .eq('entity_reference_id', vendorPayment.id)
+                .select();
+
+              if (expense && expense.length > 0) {
+                console.log('✅ Deleted related expense record');
+                deletedItems.related_records += 1;
+              }
+
+              // Delete journal entries
+              await supabase
+                .from('journal_entries')
+                .delete()
+                .eq('source_type', 'vendor_payment')
+                .eq('source_id', vendorPayment.id);
+
+              console.log('✅ Deleted journal entries');
+
+              // Delete the vendor payment record
+              await supabase
+                .from('vendor_payment_history')
+                .delete()
+                .eq('id', vendorPayment.id);
+
+              deletedItems.source_record = true;
+              console.log('✅ Vendor payment deleted successfully');
+            }
+          } catch (error) {
+            console.error('Error deleting vendor payment:', error);
+          }
+          break;
+
         default:
           console.log(`⚠️ Unknown transaction_type: ${transaction.transaction_type}`);
           // For unknown types, just delete the bank transaction

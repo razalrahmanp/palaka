@@ -79,8 +79,16 @@ export async function POST(
       vendor_bill_id,
       created_by,
       bank_account_id,
-      upi_account_id
+      upi_account_id,
+      bill_allocations,      // NEW: Array of {bill_id, bill_number, amount}
+      is_smart_payment       // NEW: Flag indicating smart payment
     } = body;
+
+    console.log('🔄 Processing payment:', {
+      amount,
+      is_smart_payment,
+      bill_allocations_count: bill_allocations?.length || 0
+    });
 
     // Insert into vendor_payment_history table
     const insertData = {
@@ -91,7 +99,8 @@ export async function POST(
       reference_number,
       notes,
       status: 'completed' as const,
-      ...(vendor_bill_id && { vendor_bill_id }),
+      // For smart payments, don't link to single bill
+      ...(!is_smart_payment && vendor_bill_id && { vendor_bill_id }),
       ...(purchase_order_id && { purchase_order_id }),
       ...(bank_account_id && bank_account_id !== 'no-accounts' && { bank_account_id })
     };
@@ -339,7 +348,9 @@ export async function POST(
             amount: parseFloat(amount),
             type: 'withdrawal',
             description: `Vendor payment (Cash) - ${notes || 'Smart settlement'}`,
-            reference: reference_number || `VP-${payment.id.slice(0, 8)}`
+            reference: reference_number || `VP-${payment.id.slice(0, 8)}`,
+            transaction_type: 'vendor_payment',
+            source_record_id: payment.id
           })
           .select()
           .single();
@@ -436,7 +447,9 @@ export async function POST(
             amount: parseFloat(amount),
             type: 'withdrawal',
             description: `Vendor payment - ${notes || 'Smart settlement'}`,
-            reference: reference_number || `VP-${payment.id.slice(0, 8)}`
+            reference: reference_number || `VP-${payment.id.slice(0, 8)}`,
+            transaction_type: 'vendor_payment',
+            source_record_id: payment.id
           })
           .select()
           .single();
@@ -489,8 +502,65 @@ export async function POST(
       }
     }
 
-    // Update vendor bill paid amount if bill is provided
-    if (vendor_bill_id) {
+    // Handle bill allocations for smart payments
+    if (is_smart_payment && bill_allocations && bill_allocations.length > 0) {
+      console.log(`💰 Processing smart payment with ${bill_allocations.length} bill allocations`);
+      
+      // 1. Create bill allocation records
+      const allocations = bill_allocations.map((alloc: { bill_id: string; amount: number }) => ({
+        payment_id: payment.id,
+        vendor_bill_id: alloc.bill_id,
+        allocated_amount: alloc.amount
+      }));
+      
+      const { error: allocError } = await supabase
+        .from('vendor_payment_bill_allocations')
+        .insert(allocations);
+
+      if (allocError) {
+        console.error('❌ Failed to create bill allocations:', allocError);
+      } else {
+        console.log(`✅ Created ${allocations.length} bill allocation records`);
+      }
+
+      // 2. Update each bill's paid_amount and status
+      for (const allocation of bill_allocations) {
+        const { data: currentBill } = await supabase
+          .from('vendor_bills')
+          .select('paid_amount, total_amount, bill_number')
+          .eq('id', allocation.bill_id)
+          .single();
+
+        if (currentBill) {
+          const newPaidAmount = (currentBill.paid_amount || 0) + allocation.amount;
+          
+          // Determine new status
+          let newStatus = 'pending';
+          if (newPaidAmount >= currentBill.total_amount) {
+            newStatus = 'paid';
+          } else if (newPaidAmount > 0) {
+            newStatus = 'partial';
+          }
+
+          const { error: updateError } = await supabase
+            .from('vendor_bills')
+            .update({ 
+              paid_amount: newPaidAmount,
+              status: newStatus,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', allocation.bill_id);
+
+          if (updateError) {
+            console.error(`❌ Error updating bill ${allocation.bill_id}:`, updateError);
+          } else {
+            console.log(`✅ Updated bill ${currentBill.bill_number}: paid ${newPaidAmount}/${currentBill.total_amount}, status: ${newStatus}`);
+          }
+        }
+      }
+    } 
+    // Handle single bill payment (non-smart payment)
+    else if (vendor_bill_id) {
       const { data: currentBill } = await supabase
         .from('vendor_bills')
         .select('paid_amount, total_amount')
@@ -498,7 +568,6 @@ export async function POST(
         .single();
 
       const newPaidAmount = (currentBill?.paid_amount || 0) + amount;
-      const remainingAmount = (currentBill?.total_amount || 0) - newPaidAmount;
       
       // Determine new status
       let newStatus = 'pending';
@@ -520,7 +589,7 @@ export async function POST(
       if (updateError) {
         console.error('Error updating vendor bill amounts:', updateError);
       } else {
-        console.log(`✅ Updated vendor bill ${vendor_bill_id}: paid ${newPaidAmount}, remaining ${remainingAmount}, status ${newStatus}`);
+        console.log(`✅ Updated vendor bill ${vendor_bill_id}: paid ${newPaidAmount}, status ${newStatus}`);
       }
     }
 
@@ -554,10 +623,16 @@ export async function POST(
 
     const vendorName = vendor?.name || 'Unknown Vendor';
     
-    // Create expense record
-    const expenseDescription = vendor_bill_id 
-      ? `Payment for vendor bill - ${vendorName}` 
-      : `Vendor payment - ${vendorName}`;
+    // Create expense record with appropriate description
+    let expenseDescription = '';
+    if (is_smart_payment && bill_allocations) {
+      const billNumbers = bill_allocations.map((b: { bill_number: string }) => b.bill_number).join(', ');
+      expenseDescription = `Smart payment for bills: ${billNumbers} - ${vendorName}`;
+    } else if (vendor_bill_id) {
+      expenseDescription = `Payment for vendor bill - ${vendorName}`;
+    } else {
+      expenseDescription = `Vendor payment - ${vendorName}`;
+    }
 
     const { data: expenseRecord, error: expenseError } = await supabase
       .from('expenses')

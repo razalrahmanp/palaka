@@ -2661,6 +2661,17 @@ CREATE TABLE public.vendor_bills (
   CONSTRAINT vendor_bills_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id),
   CONSTRAINT vendor_bills_purchase_order_id_fkey FOREIGN KEY (purchase_order_id) REFERENCES public.purchase_orders(id)
 );
+CREATE TABLE public.vendor_payment_bill_allocations (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  payment_id uuid NOT NULL,
+  vendor_bill_id uuid NOT NULL,
+  allocated_amount numeric NOT NULL CHECK (allocated_amount > 0::numeric),
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT vendor_payment_bill_allocations_pkey PRIMARY KEY (id),
+  CONSTRAINT vendor_payment_bill_allocations_payment_id_fkey FOREIGN KEY (payment_id) REFERENCES public.vendor_payment_history(id),
+  CONSTRAINT vendor_payment_bill_allocations_vendor_bill_id_fkey FOREIGN KEY (vendor_bill_id) REFERENCES public.vendor_bills(id)
+);
 CREATE TABLE public.vendor_payment_history (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   supplier_id uuid NOT NULL,

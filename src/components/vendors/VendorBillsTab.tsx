@@ -809,35 +809,36 @@ export function VendorBillsTab({
 
     setIsProcessingSmartPayment(true);
     try {
-      // Create individual payments for each bill that receives payment
-      const payments = paymentPreview.filter(p => p.paymentAmount > 0);
+      // Create bill allocations array for single payment
+      const billAllocations = paymentPreview
+        .filter(p => p.paymentAmount > 0)
+        .map(p => ({
+          bill_id: p.billId,
+          bill_number: p.billNumber,
+          amount: p.paymentAmount
+        }));
       
-      for (const payment of payments) {
-        // Format amount for display
-        const formattedAmount = new Intl.NumberFormat('en-IN', {
-          style: 'currency',
-          currency: 'INR',
-          minimumFractionDigits: 0,
-          maximumFractionDigits: 0
-        }).format(payment.paymentAmount);
-        
-        const response = await fetch(`/api/vendors/${vendorId}/payments`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            amount: payment.paymentAmount,
-            payment_date: smartPaymentForm.payment_date,
-            payment_method: smartPaymentForm.payment_method,
-            bank_account_id: smartPaymentForm.bank_account_id || '',
-            reference_number: `${smartPaymentForm.reference_number} - Smart Settlement`,
-            notes: `Smart payment settlement: ${formattedAmount} for Bill ${payment.billNumber}${smartPaymentForm.notes ? ' - ' + smartPaymentForm.notes : ''}`,
-            vendor_bill_id: payment.billId
-          })
-        });
+      // Create a single payment with bill allocations
+      const billsList = billAllocations.map(b => b.bill_number).join(', ');
+      
+      const response = await fetch(`/api/vendors/${vendorId}/payments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: parseFloat(smartPaymentForm.amount), // Total amount
+          payment_date: smartPaymentForm.payment_date,
+          payment_method: smartPaymentForm.payment_method,
+          bank_account_id: smartPaymentForm.bank_account_id || '',
+          reference_number: smartPaymentForm.reference_number || 'Smart Settlement',
+          notes: `Smart payment for bills: ${billsList}${smartPaymentForm.notes ? ' - ' + smartPaymentForm.notes : ''}`,
+          bill_allocations: billAllocations, // Array of bill allocations
+          is_smart_payment: true // Flag to indicate smart payment
+        })
+      });
 
-        if (!response.ok) {
-          throw new Error(`Failed to record payment for bill ${payment.billNumber}`);
-        }
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to process smart payment');
       }
 
       setSmartPaymentOpen(false);
@@ -853,7 +854,7 @@ export function VendorBillsTab({
       
       // Refresh bill data
       onBillUpdate();
-      alert(`Smart payment completed! Amount distributed across ${payments.length} bills.`);
+      alert(`Smart payment completed! ₹${smartPaymentForm.amount} distributed across ${billAllocations.length} bills.`);
     } catch (error) {
       console.error('Error processing smart payment:', error);
       alert(`Error processing payment: ${error instanceof Error ? error.message : 'Please try again.'}`);

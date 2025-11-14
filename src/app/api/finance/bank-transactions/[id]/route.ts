@@ -16,11 +16,14 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id: transactionId } = await params;
+    const { id: rawId } = await params;
 
-    if (!transactionId) {
+    if (!rawId) {
       return NextResponse.json({ error: 'Transaction ID is required' }, { status: 400 });
     }
+
+    // Remove "bank_" prefix if present (for backward compatibility)
+    const transactionId = rawId.startsWith('bank_') ? rawId.replace('bank_', '') : rawId;
 
     console.log(`🗑️ Starting DELETE for bank_transaction: ${transactionId}`);
 

@@ -58,25 +58,122 @@ export async function DELETE(
 
       switch (transaction.transaction_type) {
         case 'expense':
-          // Call the expense DELETE_V2 endpoint
-          console.log('🧾 Deleting expense via DELETE_V2...');
+          // Delete expense and all related records (payroll, vehicle logs, vendor payments, etc.)
+          console.log('🧾 Deleting expense and related records...');
           try {
-            const response = await fetch(`${request.nextUrl.origin}/api/finance/expenses`, {
-              method: 'DELETE',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ expense_id: transaction.source_record_id })
-            });
-            
-            if (response.ok) {
-              const result = await response.json();
-              deletedItems.source_record = true;
-              deletedItems.related_records = Object.values(result.deleted_items || {}).filter(v => v).length;
-              console.log('✅ Expense deleted successfully:', result);
+            // 1. Fetch the expense to determine entity_type
+            const { data: expense, error: fetchError } = await supabase
+              .from('expenses')
+              .select('*')
+              .eq('id', transaction.source_record_id)
+              .single();
+
+            if (!fetchError && expense) {
+              // 2. Delete payroll records if employee expense
+              if (expense.entity_type === 'employee' && expense.entity_reference_id) {
+                const { data: deletedPayroll } = await supabase
+                  .from('payroll_records')
+                  .delete()
+                  .eq('id', expense.entity_reference_id)
+                  .select();
+
+                if (deletedPayroll && deletedPayroll.length > 0) {
+                  deletedItems.related_records += deletedPayroll.length;
+                  console.log(`✅ Deleted ${deletedPayroll.length} payroll_record(s)`);
+                }
+              }
+
+              // 3. Delete vehicle logs if truck expense
+              if (expense.entity_type === 'truck' && expense.entity_id) {
+                const { data: deletedVehicleExpense } = await supabase
+                  .from('vehicle_expense_logs')
+                  .delete()
+                  .eq('expense_id', expense.id)
+                  .select();
+
+                const { data: deletedMaintenance } = await supabase
+                  .from('vehicle_maintenance_logs')
+                  .delete()
+                  .eq('expense_id', expense.id)
+                  .select();
+
+                const vehicleDeleted = (deletedVehicleExpense?.length || 0) + (deletedMaintenance?.length || 0);
+                if (vehicleDeleted > 0) {
+                  deletedItems.related_records += vehicleDeleted;
+                  console.log(`✅ Deleted ${vehicleDeleted} vehicle log(s)`);
+                }
+              }
+
+              // 4. Delete vendor payment history if supplier expense
+              if (expense.entity_type === 'supplier' && expense.entity_reference_id) {
+                const { data: deletedVendorPayment } = await supabase
+                  .from('vendor_payment_history')
+                  .delete()
+                  .eq('id', expense.entity_reference_id)
+                  .select();
+
+                if (deletedVendorPayment && deletedVendorPayment.length > 0) {
+                  deletedItems.related_records += deletedVendorPayment.length;
+                  console.log(`✅ Deleted ${deletedVendorPayment.length} vendor_payment_history record(s)`);
+
+                  // Update vendor bill paid_amount and status
+                  const vendorPayment = deletedVendorPayment[0];
+                  if (vendorPayment.vendor_bill_id) {
+                    const { data: vendorBill } = await supabase
+                      .from('vendor_bills')
+                      .select('*')
+                      .eq('id', vendorPayment.vendor_bill_id)
+                      .single();
+
+                    if (vendorBill) {
+                      const newPaidAmount = Math.max(0, (vendorBill.paid_amount || 0) - vendorPayment.amount);
+                      let newStatus = vendorBill.status;
+
+                      if (newPaidAmount === 0) {
+                        newStatus = 'pending';
+                      } else if (newPaidAmount < vendorBill.total_amount) {
+                        newStatus = 'partial';
+                      }
+
+                      await supabase
+                        .from('vendor_bills')
+                        .update({
+                          paid_amount: newPaidAmount,
+                          status: newStatus,
+                          updated_at: new Date().toISOString()
+                        })
+                        .eq('id', vendorPayment.vendor_bill_id);
+
+                      console.log(`✅ Updated vendor bill: paid_amount reduced by ${vendorPayment.amount}, status: ${newStatus}`);
+                    }
+                  }
+                }
+              }
+
+              // 5. Delete journal entries
+              await supabase
+                .from('journal_entries')
+                .delete()
+                .eq('source_type', 'expense')
+                .eq('source_id', expense.id);
+
+              // 6. Delete the expense itself
+              const { error: deleteExpenseError } = await supabase
+                .from('expenses')
+                .delete()
+                .eq('id', expense.id);
+
+              if (!deleteExpenseError) {
+                deletedItems.source_record = true;
+                console.log('✅ Expense and all related records deleted successfully');
+              } else {
+                console.error('❌ Failed to delete expense:', deleteExpenseError);
+              }
             } else {
-              console.error('❌ Failed to delete expense:', await response.text());
+              console.error('❌ Expense not found:', fetchError);
             }
           } catch (error) {
-            console.error('Error calling expense DELETE_V2:', error);
+            console.error('Error deleting expense and related records:', error);
           }
           break;
 

@@ -290,6 +290,39 @@ CREATE TABLE public.audit_trail (
   CONSTRAINT audit_trail_pkey PRIMARY KEY (id),
   CONSTRAINT audit_trail_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
+CREATE TABLE public.bajaj_charges (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  expected_deposit_id uuid,
+  charge_type text NOT NULL,
+  amount numeric NOT NULL,
+  description text,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT bajaj_charges_pkey PRIMARY KEY (id),
+  CONSTRAINT bajaj_charges_expected_deposit_id_fkey FOREIGN KEY (expected_deposit_id) REFERENCES public.bajaj_expected_deposits(id)
+);
+CREATE TABLE public.bajaj_expected_deposits (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  sales_order_id uuid,
+  customer_id uuid,
+  finance_company text DEFAULT 'bajaj'::text,
+  loan_account_number text,
+  order_total numeric NOT NULL,
+  finance_amount numeric NOT NULL,
+  expected_deposit numeric NOT NULL,
+  status text DEFAULT 'pending'::text,
+  received_amount numeric DEFAULT 0,
+  variance_amount numeric DEFAULT 0,
+  bank_transaction_id uuid,
+  reconciled_at timestamp without time zone,
+  expected_date date,
+  notes text,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT bajaj_expected_deposits_pkey PRIMARY KEY (id),
+  CONSTRAINT bajaj_expected_deposits_sales_order_id_fkey FOREIGN KEY (sales_order_id) REFERENCES public.sales_orders(id),
+  CONSTRAINT bajaj_expected_deposits_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id),
+  CONSTRAINT bajaj_expected_deposits_bank_transaction_id_fkey FOREIGN KEY (bank_transaction_id) REFERENCES public.bank_transactions(id)
+);
 CREATE TABLE public.bank_accounts (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -321,6 +354,22 @@ CREATE TABLE public.bank_reconciliations (
   CONSTRAINT bank_reconciliations_bank_account_id_fkey FOREIGN KEY (bank_account_id) REFERENCES public.bank_accounts(id),
   CONSTRAINT bank_reconciliations_reconciled_by_fkey FOREIGN KEY (reconciled_by) REFERENCES public.users(id)
 );
+CREATE TABLE public.bank_statement_imports (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  bank_account_id uuid,
+  statement_date date NOT NULL,
+  file_name text,
+  import_date timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  imported_by uuid,
+  total_transactions integer DEFAULT 0,
+  matched_transactions integer DEFAULT 0,
+  unmatched_transactions integer DEFAULT 0,
+  status text DEFAULT 'pending'::text,
+  notes text,
+  CONSTRAINT bank_statement_imports_pkey PRIMARY KEY (id),
+  CONSTRAINT bank_statement_imports_bank_account_id_fkey FOREIGN KEY (bank_account_id) REFERENCES public.bank_accounts(id),
+  CONSTRAINT bank_statement_imports_imported_by_fkey FOREIGN KEY (imported_by) REFERENCES public.users(id)
+);
 CREATE TABLE public.bank_transactions (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   bank_account_id uuid,
@@ -331,7 +380,7 @@ CREATE TABLE public.bank_transactions (
   reference text,
   balance numeric DEFAULT 0,
   transaction_type text CHECK (transaction_type = ANY (ARRAY['payment'::text, 'expense'::text, 'investment'::text, 'withdrawal'::text, 'liability_payment'::text, 'vendor_payment'::text, 'refund'::text, 'fund_transfer'::text, 'loan_disbursement'::text, 'salary_payment'::text, 'other'::text])),
-  source_record_id text,
+  source_record_id uuid,
   CONSTRAINT bank_transactions_pkey PRIMARY KEY (id),
   CONSTRAINT bank_transactions_bank_account_id_fkey FOREIGN KEY (bank_account_id) REFERENCES public.bank_accounts(id)
 );
@@ -358,8 +407,6 @@ CREATE TABLE public.boms (
   CONSTRAINT boms_pkey PRIMARY KEY (id),
   CONSTRAINT boms_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id)
 );
-
-
 CREATE TABLE public.cashflow_entries (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   date date,
@@ -1196,7 +1243,6 @@ CREATE TABLE public.investment_categories (
 );
 CREATE TABLE public.investments (
   id integer NOT NULL DEFAULT nextval('investments_id_seq'::regclass),
-  transaction_uuid uuid DEFAULT gen_random_uuid(),
   partner_id integer,
   category_id integer,
   amount numeric NOT NULL CHECK (amount > 0::numeric),
@@ -1211,6 +1257,7 @@ CREATE TABLE public.investments (
   created_by character varying,
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  transaction_uuid uuid DEFAULT gen_random_uuid(),
   CONSTRAINT investments_pkey PRIMARY KEY (id),
   CONSTRAINT investments_partner_id_fkey FOREIGN KEY (partner_id) REFERENCES public.partners(id),
   CONSTRAINT investments_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.investment_categories(id)
@@ -2494,6 +2541,26 @@ CREATE TABLE public.trucks (
   CONSTRAINT trucks_pkey PRIMARY KEY (id),
   CONSTRAINT trucks_current_driver_id_fkey FOREIGN KEY (current_driver_id) REFERENCES public.users(id)
 );
+CREATE TABLE public.unmatched_bank_deposits (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  statement_import_id uuid,
+  bank_account_id uuid,
+  transaction_date date NOT NULL,
+  description text,
+  reference_number text,
+  amount numeric NOT NULL,
+  matched boolean DEFAULT false,
+  matched_to_id uuid,
+  matched_type text,
+  matched_at timestamp without time zone,
+  assigned_to uuid,
+  resolution_notes text,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT unmatched_bank_deposits_pkey PRIMARY KEY (id),
+  CONSTRAINT unmatched_bank_deposits_statement_import_id_fkey FOREIGN KEY (statement_import_id) REFERENCES public.bank_statement_imports(id),
+  CONSTRAINT unmatched_bank_deposits_bank_account_id_fkey FOREIGN KEY (bank_account_id) REFERENCES public.bank_accounts(id),
+  CONSTRAINT unmatched_bank_deposits_assigned_to_fkey FOREIGN KEY (assigned_to) REFERENCES public.users(id)
+);
 CREATE TABLE public.user_notification_settings (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL UNIQUE,
@@ -2711,7 +2778,6 @@ CREATE TABLE public.withdrawal_subcategories (
 );
 CREATE TABLE public.withdrawals (
   id integer NOT NULL DEFAULT nextval('withdrawals_id_seq'::regclass),
-  transaction_uuid uuid DEFAULT gen_random_uuid(),
   partner_id integer,
   category_id integer,
   subcategory_id integer,
@@ -2728,6 +2794,7 @@ CREATE TABLE public.withdrawals (
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   withdrawal_type character varying DEFAULT 'capital_withdrawal'::character varying CHECK (withdrawal_type::text = ANY (ARRAY['capital_withdrawal'::character varying, 'interest_payment'::character varying, 'profit_distribution'::character varying]::text[])),
+  transaction_uuid uuid DEFAULT gen_random_uuid(),
   CONSTRAINT withdrawals_pkey PRIMARY KEY (id),
   CONSTRAINT withdrawals_partner_id_fkey FOREIGN KEY (partner_id) REFERENCES public.partners(id),
   CONSTRAINT withdrawals_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.withdrawal_categories(id),

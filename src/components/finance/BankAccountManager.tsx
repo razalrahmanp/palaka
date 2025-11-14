@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Image from 'next/image';
@@ -27,7 +28,12 @@ import {
   Banknote,
   IndianRupee,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Upload,
+  FileSpreadsheet,
+  CheckCircle,
+  AlertCircle,
+  Clock
 } from 'lucide-react';
 
 interface BankAccount {
@@ -85,6 +91,50 @@ interface CashAccount {
   created_at: string;
 }
 
+interface BajajExpectedDeposit {
+  id: string;
+  sales_order_id: string;
+  order_number?: string;
+  customer_name?: string;
+  expected_deposit: number;
+  actual_deposit?: number;
+  variance?: number;
+  order_total: number;
+  finance_amount: number;
+  expected_date: string;
+  status: 'pending' | 'deposited' | 'partial' | 'variance';
+  bank_transaction_id?: string;
+  bank_statement_import_id?: string;
+  notes?: string;
+  created_at: string;
+  matched_at?: string;
+}
+
+interface UnmatchedDeposit {
+  id: string;
+  bank_statement_import_id: string;
+  transaction_date: string;
+  amount: number;
+  reference_number?: string;
+  description?: string;
+  bank_account_id: string;
+  matched_expected_deposit_id?: string;
+  is_matched: boolean;
+  created_at: string;
+}
+
+interface BankStatementImport {
+  id: string;
+  file_name: string;
+  import_date: string;
+  bank_account_id: string;
+  total_transactions: number;
+  matched_count: number;
+  unmatched_count: number;
+  imported_by: string;
+  status: 'processing' | 'completed' | 'failed';
+}
+
 
 
 export function BankAccountManager() {
@@ -92,9 +142,16 @@ export function BankAccountManager() {
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [upiAccounts, setUpiAccounts] = useState<UpiAccount[]>([]);
   const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([]);
+  
+  // Bajaj Reconciliation State
+  const [expectedDeposits, setExpectedDeposits] = useState<BajajExpectedDeposit[]>([]);
+  const [unmatchedDeposits, setUnmatchedDeposits] = useState<UnmatchedDeposit[]>([]);
+  const [activeTab, setActiveTab] = useState('accounts'); // 'accounts' or 'bajaj-reconciliation'
 
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [showFundTransfer, setShowFundTransfer] = useState(false);
+  const [showManualDeposit, setShowManualDeposit] = useState(false);
+  const [showBankStatementUpload, setShowBankStatementUpload] = useState(false);
   const [fabExpanded, setFabExpanded] = useState(false);
 
   const [loading, setLoading] = useState(true);
@@ -125,6 +182,15 @@ export function BankAccountManager() {
     isContraEntry: false
   });
 
+  const [manualDeposit, setManualDeposit] = useState({
+    transaction_date: new Date().toISOString().split('T')[0],
+    amount: '',
+    reference_number: '',
+    bank_account_id: '',
+    description: '',
+    notes: ''
+  });
+
 
 
 
@@ -133,7 +199,11 @@ export function BankAccountManager() {
     fetchBankAccounts();
     fetchUpiAccounts();
     fetchCashAccounts();
-  }, []);
+    if (activeTab === 'bajaj-reconciliation') {
+      fetchExpectedDeposits();
+      fetchUnmatchedDeposits();
+    }
+  }, [activeTab]);
 
   const fetchBankAccounts = async () => {
     try {
@@ -185,6 +255,30 @@ export function BankAccountManager() {
       }
     } catch (error) {
       console.error('Error fetching cash accounts:', error);
+    }
+  };
+
+  const fetchExpectedDeposits = async () => {
+    try {
+      const response = await fetch('/api/finance/bajaj/expected-deposits');
+      if (response.ok) {
+        const result = await response.json();
+        setExpectedDeposits(result.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching expected deposits:', error);
+    }
+  };
+
+  const fetchUnmatchedDeposits = async () => {
+    try {
+      const response = await fetch('/api/finance/bajaj/unmatched-deposits');
+      if (response.ok) {
+        const result = await response.json();
+        setUnmatchedDeposits(result.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching unmatched deposits:', error);
     }
   };
 
@@ -395,6 +489,54 @@ export function BankAccountManager() {
     router.push('/finance/transactions');
   };
 
+  const handleManualDeposit = async () => {
+    try {
+      // Validate inputs
+      if (!manualDeposit.bank_account_id || !manualDeposit.amount || !manualDeposit.transaction_date) {
+        alert('Please fill in all required fields (Bank Account, Amount, Date)');
+        return;
+      }
+
+      const response = await fetch('/api/finance/bajaj/unmatched-deposits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bank_account_id: manualDeposit.bank_account_id,
+          transaction_date: manualDeposit.transaction_date,
+          amount: parseFloat(manualDeposit.amount),
+          reference_number: manualDeposit.reference_number || null,
+          description: manualDeposit.description || null,
+          notes: manualDeposit.notes || null
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        alert('Manual deposit entry created successfully! It will now appear in unmatched deposits.');
+        
+        // Reset form
+        setManualDeposit({
+          transaction_date: new Date().toISOString().split('T')[0],
+          amount: '',
+          reference_number: '',
+          bank_account_id: '',
+          description: '',
+          notes: ''
+        });
+        setShowManualDeposit(false);
+        
+        // Refresh unmatched deposits
+        fetchUnmatchedDeposits();
+      } else {
+        alert('Error: ' + (result.error || 'Failed to create deposit entry'));
+      }
+    } catch (error) {
+      console.error('Error creating manual deposit:', error);
+      alert('An error occurred while creating the deposit entry');
+    }
+  };
+
   const handleAccountClick = (account: BankAccount | UpiAccount | CashAccount, accountType: 'BANK' | 'UPI' | 'CASH') => {
     // Navigate to account-specific transactions page
     router.push(`/finance/transactions/${accountType.toLowerCase()}/${account.id}`);
@@ -571,7 +713,15 @@ export function BankAccountManager() {
         </div>
       </div>
 
-      {/* Bank Account Management */}
+      {/* Tabs for Bank Accounts and Bajaj Reconciliation */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="accounts">Bank Accounts</TabsTrigger>
+          <TabsTrigger value="bajaj-reconciliation">Bajaj Reconciliation</TabsTrigger>
+        </TabsList>
+
+        {/* Bank Accounts Tab Content */}
+        <TabsContent value="accounts" className="space-y-4 mt-6">{/* Bank Account Management */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">
         <div className="flex justify-between items-center mb-6">
           <div>
@@ -1035,6 +1185,480 @@ export function BankAccountManager() {
               {fundTransfer.isContraEntry ? 'Deposit Cash' : 'Transfer Funds'}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+        </TabsContent>
+
+        {/* Bajaj Reconciliation Tab Content */}
+        <TabsContent value="bajaj-reconciliation" className="space-y-4 mt-6">
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800">Bajaj Finance Reconciliation</h3>
+                <p className="text-gray-600 text-sm">Track expected deposits, import bank statements, and reconcile Bajaj Finance payments</p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    console.log('Manual Entry clicked');
+                    setShowManualDeposit(true);
+                  }}
+                  className="flex items-center gap-2"
+                  type="button"
+                >
+                  <Plus className="h-4 w-4" />
+                  Manual Entry
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    console.log('Import Statement clicked');
+                    setShowBankStatementUpload(true);
+                  }}
+                  className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-blue-600"
+                  type="button"
+                >
+                  <Upload className="h-4 w-4" />
+                  Import Statement
+                </Button>
+              </div>
+            </div>
+
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <Card className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-yellow-200">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-yellow-600">Pending</p>
+                      <p className="text-xl font-bold text-yellow-900">
+                        {expectedDeposits.filter(d => d.status === 'pending').length}
+                      </p>
+                      <p className="text-xs text-yellow-700 mt-1">
+                        {formatCurrency(expectedDeposits.filter(d => d.status === 'pending').reduce((sum, d) => sum + d.expected_deposit, 0))}
+                      </p>
+                    </div>
+                    <Clock className="h-8 w-8 text-yellow-600" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-green-600">Deposited</p>
+                      <p className="text-xl font-bold text-green-900">
+                        {expectedDeposits.filter(d => d.status === 'deposited').length}
+                      </p>
+                      <p className="text-xs text-green-700 mt-1">
+                        {formatCurrency(expectedDeposits.filter(d => d.status === 'deposited').reduce((sum, d) => sum + (d.actual_deposit || 0), 0))}
+                      </p>
+                    </div>
+                    <CheckCircle className="h-8 w-8 text-green-600" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-orange-600">With Variance</p>
+                      <p className="text-xl font-bold text-orange-900">
+                        {expectedDeposits.filter(d => d.status === 'variance').length}
+                      </p>
+                      <p className="text-xs text-orange-700 mt-1">
+                        {formatCurrency(expectedDeposits.filter(d => d.status === 'variance').reduce((sum, d) => sum + Math.abs(d.variance || 0), 0))}
+                      </p>
+                    </div>
+                    <AlertCircle className="h-8 w-8 text-orange-600" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-red-600">Unmatched</p>
+                      <p className="text-xl font-bold text-red-900">
+                        {unmatchedDeposits.filter(d => !d.is_matched).length}
+                      </p>
+                      <p className="text-xs text-red-700 mt-1">
+                        {formatCurrency(unmatchedDeposits.filter(d => !d.is_matched).reduce((sum, d) => sum + d.amount, 0))}
+                      </p>
+                    </div>
+                    <FileSpreadsheet className="h-8 w-8 text-red-600" />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Expected Deposits Table */}
+            <div className="mb-6">
+              <h4 className="font-semibold text-gray-800 mb-3">Expected Deposits</h4>
+              <div className="border rounded-lg overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Order #</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expected Date</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Expected Amount</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actual Amount</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Variance</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {expectedDeposits.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
+                            No expected deposits found
+                          </td>
+                        </tr>
+                      ) : (
+                        expectedDeposits.map((deposit) => (
+                          <tr key={deposit.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                              {deposit.order_number || deposit.sales_order_id.slice(-8)}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700">
+                              {deposit.customer_name || 'N/A'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700">
+                              {new Date(deposit.expected_date).toLocaleDateString('en-IN')}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right font-medium text-gray-900">
+                              {formatCurrency(deposit.expected_deposit)}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right font-medium text-gray-900">
+                              {deposit.actual_deposit ? formatCurrency(deposit.actual_deposit) : '-'}
+                            </td>
+                            <td className={`px-4 py-3 text-sm text-right font-medium ${
+                              deposit.variance && deposit.variance < 0 ? 'text-red-600' : 
+                              deposit.variance && deposit.variance > 0 ? 'text-green-600' : 'text-gray-400'
+                            }`}>
+                              {deposit.variance ? formatCurrency(deposit.variance) : '-'}
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              <Badge className={
+                                deposit.status === 'deposited' ? 'bg-green-100 text-green-800' :
+                                deposit.status === 'variance' ? 'bg-orange-100 text-orange-800' :
+                                deposit.status === 'partial' ? 'bg-blue-100 text-blue-800' :
+                                'bg-yellow-100 text-yellow-800'
+                              }>
+                                {deposit.status.charAt(0).toUpperCase() + deposit.status.slice(1)}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              {deposit.status === 'pending' && (
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  className="text-xs"
+                                >
+                                  Match
+                                </Button>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            {/* Unmatched Deposits Table */}
+            {unmatchedDeposits.filter(d => !d.is_matched).length > 0 && (
+              <div>
+                <h4 className="font-semibold text-gray-800 mb-3">Unmatched Bank Deposits</h4>
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reference</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {unmatchedDeposits.filter(d => !d.is_matched).map((deposit) => (
+                          <tr key={deposit.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm text-gray-700">
+                              {new Date(deposit.transaction_date).toLocaleDateString('en-IN')}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700">
+                              {deposit.reference_number || 'N/A'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700">
+                              {deposit.description || 'N/A'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right font-medium text-gray-900">
+                              {formatCurrency(deposit.amount)}
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                className="text-xs"
+                              >
+                                Match
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      {/* Manual Deposit Entry Dialog */}
+      <Dialog open={showManualDeposit} onOpenChange={setShowManualDeposit}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5" />
+              Manual Deposit Entry
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="deposit-date">Transaction Date</Label>
+              <Input 
+                id="deposit-date" 
+                type="date" 
+                value={manualDeposit.transaction_date}
+                onChange={(e) => setManualDeposit({ ...manualDeposit, transaction_date: e.target.value })}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="deposit-amount">Amount *</Label>
+              <Input 
+                id="deposit-amount" 
+                type="number" 
+                placeholder="Enter amount"
+                value={manualDeposit.amount}
+                onChange={(e) => setManualDeposit({ ...manualDeposit, amount: e.target.value })}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="deposit-reference">Reference Number</Label>
+              <Input 
+                id="deposit-reference" 
+                placeholder="Bank reference number"
+                value={manualDeposit.reference_number}
+                onChange={(e) => setManualDeposit({ ...manualDeposit, reference_number: e.target.value })}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="deposit-bank">Bank Account *</Label>
+              <Select 
+                value={manualDeposit.bank_account_id}
+                onValueChange={(value) => setManualDeposit({ ...manualDeposit, bank_account_id: value })}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select bank account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {bankAccounts.map(account => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.name} - {account.account_number}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="deposit-description">Description</Label>
+              <Input 
+                id="deposit-description" 
+                placeholder="Transaction description"
+                value={manualDeposit.description}
+                onChange={(e) => setManualDeposit({ ...manualDeposit, description: e.target.value })}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="deposit-notes">Notes (Optional)</Label>
+              <Input 
+                id="deposit-notes" 
+                placeholder="Additional notes"
+                value={manualDeposit.notes}
+                onChange={(e) => setManualDeposit({ ...manualDeposit, notes: e.target.value })}
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowManualDeposit(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleManualDeposit}>
+              Add Deposit
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bank Statement Upload Dialog */}
+      <Dialog open={showBankStatementUpload} onOpenChange={setShowBankStatementUpload}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5" />
+              Import Bank Statement
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6">
+            {/* Step 1: File Upload */}
+            <div>
+              <h4 className="font-medium mb-2">Step 1: Upload File</h4>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+                <FileSpreadsheet className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                <p className="text-sm text-gray-600 mb-2">
+                  Drop your CSV or Excel file here, or click to browse
+                </p>
+                <Input 
+                  type="file" 
+                  accept=".csv,.xlsx,.xls"
+                  className="mt-2"
+                />
+              </div>
+            </div>
+
+            {/* Step 2: Bank Account Selection */}
+            <div>
+              <h4 className="font-medium mb-2">Step 2: Select Bank Account</h4>
+              <Select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select bank account for this statement" />
+                </SelectTrigger>
+                <SelectContent>
+                  {bankAccounts.map(account => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.name} - {account.account_number}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Step 3: Column Mapping */}
+            <div>
+              <h4 className="font-medium mb-2">Step 3: Map Columns</h4>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Date Column</Label>
+                    <Select>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Select date column" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="col1">Column 1</SelectItem>
+                        <SelectItem value="col2">Column 2</SelectItem>
+                        <SelectItem value="col3">Column 3</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Amount Column</Label>
+                    <Select>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Select amount column" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="col1">Column 1</SelectItem>
+                        <SelectItem value="col2">Column 2</SelectItem>
+                        <SelectItem value="col3">Column 3</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Reference Column (Optional)</Label>
+                    <Select>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Select reference column" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        <SelectItem value="col1">Column 1</SelectItem>
+                        <SelectItem value="col2">Column 2</SelectItem>
+                        <SelectItem value="col3">Column 3</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Description Column (Optional)</Label>
+                    <Select>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Select description column" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        <SelectItem value="col1">Column 1</SelectItem>
+                        <SelectItem value="col2">Column 2</SelectItem>
+                        <SelectItem value="col3">Column 3</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Preview */}
+            <div>
+              <h4 className="font-medium mb-2">Preview (First 5 rows)</h4>
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Date</th>
+                      <th className="px-3 py-2 text-left">Reference</th>
+                      <th className="px-3 py-2 text-left">Description</th>
+                      <th className="px-3 py-2 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td colSpan={4} className="px-3 py-4 text-center text-gray-500">
+                        Upload a file to see preview
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBankStatementUpload(false)}>
+              Cancel
+            </Button>
+            <Button>
+              Import & Match
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

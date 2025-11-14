@@ -167,18 +167,56 @@ export async function DELETE(
           break;
 
         case 'payment':
-          // For payments, just delete the payment transaction record
-          console.log('💵 Deleting payment transaction...');
+          // For sales order payments, delete the payment record and update invoice status
+          console.log('💵 Deleting sales order payment...');
           try {
-            await supabase
-              .from('payment_transactions')
-              .delete()
-              .eq('id', transaction.source_record_id);
+            // Get the payment details first
+            const { data: payment } = await supabase
+              .from('payments')
+              .select('id, invoice_id, amount')
+              .eq('id', transaction.source_record_id)
+              .single();
 
-            deletedItems.source_record = true;
-            console.log('✅ Payment transaction deleted successfully');
+            if (payment) {
+              // Delete the payment
+              await supabase
+                .from('payments')
+                .delete()
+                .eq('id', transaction.source_record_id);
+
+              // Update invoice paid_amount and status
+              const { data: invoice } = await supabase
+                .from('invoices')
+                .select('id, total, paid_amount')
+                .eq('id', payment.invoice_id)
+                .single();
+
+              if (invoice) {
+                const newPaidAmount = Math.max(0, (invoice.paid_amount || 0) - payment.amount);
+                let newStatus = 'unpaid';
+                
+                if (newPaidAmount >= invoice.total) {
+                  newStatus = 'paid';
+                } else if (newPaidAmount > 0) {
+                  newStatus = 'partially_paid';
+                }
+
+                await supabase
+                  .from('invoices')
+                  .update({
+                    paid_amount: newPaidAmount,
+                    status: newStatus
+                  })
+                  .eq('id', payment.invoice_id);
+
+                console.log(`✅ Updated invoice ${payment.invoice_id}: paid_amount ${invoice.paid_amount} → ${newPaidAmount}, status → ${newStatus}`);
+              }
+
+              deletedItems.source_record = true;
+              console.log('✅ Payment deleted successfully');
+            }
           } catch (error) {
-            console.error('Error deleting payment transaction:', error);
+            console.error('Error deleting payment:', error);
           }
           break;
 

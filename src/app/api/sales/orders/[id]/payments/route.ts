@@ -325,7 +325,9 @@ export async function GET(
               amount: parseFloat(amount),
               description: transactionDescription,
               date: payment_date || new Date().toISOString().split('T')[0],
-              reference: transactionReference
+              reference: transactionReference,
+              transaction_type: 'payment',
+              source_record_id: payment.id
             });
 
           if (transactionError) {

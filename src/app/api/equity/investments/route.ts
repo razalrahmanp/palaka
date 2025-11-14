@@ -51,12 +51,23 @@ export async function DELETE(req: Request) {
 
     console.log(`🗑️ Starting DELETE for investment: ${investment_id}`);
 
-    // 1. Fetch the investment
-    const { data: investment, error: fetchError } = await supabase
+    // Check if investment_id is a UUID or integer
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(investment_id);
+    
+    // 1. Fetch the investment using either transaction_uuid or id
+    let query = supabase
       .from('investments')
-      .select('*')
-      .eq('id', investment_id)
-      .single();
+      .select('*');
+    
+    if (isUUID) {
+      console.log('🔍 Searching by transaction_uuid (UUID)');
+      query = query.eq('transaction_uuid', investment_id);
+    } else {
+      console.log('🔍 Searching by id (integer)');
+      query = query.eq('id', investment_id);
+    }
+    
+    const { data: investment, error: fetchError } = await query.single();
 
     if (fetchError || !investment) {
       console.error('Investment not found:', fetchError);
@@ -65,6 +76,7 @@ export async function DELETE(req: Request) {
 
     console.log('📋 Investment details:', {
       id: investment.id,
+      transaction_uuid: investment.transaction_uuid,
       amount: investment.amount,
       partner_id: investment.partner_id,
       bank_account_id: investment.bank_account_id
@@ -76,17 +88,17 @@ export async function DELETE(req: Request) {
       journal_entries: 0
     };
 
-    // 2. Delete bank_transactions using source_record_id
+    // 2. Delete bank_transactions using transaction_uuid as source_record_id
     const { data: deletedBankTx, error: bankTxError } = await supabase
       .from('bank_transactions')
       .delete()
-      .eq('source_record_id', investment.id)
+      .eq('source_record_id', investment.transaction_uuid)
       .eq('transaction_type', 'investment')
       .select();
 
     if (!bankTxError && deletedBankTx) {
       deletedItems.bank_transactions = deletedBankTx.length;
-      console.log(`✅ Deleted ${deletedBankTx.length} bank_transaction(s) using source_record_id`);
+      console.log(`✅ Deleted ${deletedBankTx.length} bank_transaction(s) using transaction_uuid`);
       console.log(`✅ Bank balance will be auto-updated by trigger`);
     }
 
@@ -190,6 +202,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { 
       partner_id, 
+      category_id = null,
       amount, 
       investment_date = new Date().toISOString().split('T')[0],
       description = '', 
@@ -221,17 +234,6 @@ export async function POST(request: NextRequest) {
     });
 
     const investmentAmount = parseFloat(amount);
-
-    // Validate bank_account_id if provided
-    if (bank_account_id && bank_account_id.trim() !== '') {
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-      if (!uuidRegex.test(bank_account_id)) {
-        console.error('❌ Invalid bank_account_id format:', bank_account_id);
-        return NextResponse.json({ 
-          error: `Invalid bank account selected. Please select a valid bank account from the dropdown.` 
-        }, { status: 400 });
-      }
-    }
 
     // Validate partner exists
     const { data: partner } = await supabase
@@ -300,6 +302,7 @@ export async function POST(request: NextRequest) {
       .from('investments')
       .insert({
         partner_id: partner_id,
+        category_id: category_id,
         amount: investmentAmount,
         investment_date: investment_date,
         description: description?.trim() || '',
@@ -312,7 +315,7 @@ export async function POST(request: NextRequest) {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
-      .select()
+      .select('*, transaction_uuid')
       .single();
 
     if (investmentError) {
@@ -320,50 +323,47 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: investmentError.message }, { status: 500 });
     }
 
-    // ✅ Create bank transaction and update bank balance for ALL account types (BANK, UPI, CASH)
+    // ✅ Create bank transaction for ALL account types (BANK, UPI, CASH)
     if (bank_account_id && bank_account_id.trim() !== '') {
-      // Validate that bank_account_id is a valid UUID format
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-      if (!uuidRegex.test(bank_account_id)) {
-        console.error('❌ Invalid bank_account_id format (not a UUID):', bank_account_id);
-        console.error('⚠️ This indicates corrupt data in bank_accounts table. Investment will be created without bank transaction.');
+      console.log('🏦 Creating bank transaction for account:', bank_account_id);
+      
+      // Get bank account details
+      const { data: bankAccount, error: bankError } = await supabase
+        .from("bank_accounts")
+        .select("current_balance, account_type, name")
+        .eq("id", bank_account_id)
+        .single();
+      
+      if (bankError) {
+        console.error('❌ Error fetching bank account:', bankError);
+        console.error('❌ Bank account not found with ID:', bank_account_id);
+        console.error('⚠️ DATABASE ISSUE: Invalid or corrupted bank_account_id in database');
+        console.error('⚠️ Investment created but bank_transaction skipped');
+      } else if (bankAccount) {
+        const accountLabel = bankAccount.name || payment_method?.toUpperCase() || 'bank';
         
-        // Don't fail the investment creation, just skip bank transaction
-        // Log this for database cleanup
-        console.warn(`⚠️ DATABASE CLEANUP NEEDED: bank_accounts table has record with id="${bank_account_id}" which is not a valid UUID`);
-      } else {
-        // Get bank account details to determine account type
-        const { data: bankAccount, error: bankError } = await supabase
-          .from("bank_accounts")
-          .select("current_balance, account_type, name")
-          .eq("id", bank_account_id)
-          .single();
+        console.log('✅ Bank account found:', { id: bank_account_id, name: bankAccount.name, type: bankAccount.account_type });
         
-        if (bankError) {
-          console.error('❌ Error fetching bank account:', bankError);
-          console.warn(`⚠️ Bank account ${bank_account_id} not found. Investment will be created without bank transaction.`);
-        } else if (bankAccount) {
-          const accountLabel = bankAccount.name || payment_method?.toUpperCase() || 'bank';
-          
-          // Create bank transaction (deposit) - balance updated separately based on transactions
-          const { error: transactionError } = await supabase
-            .from("bank_transactions")
-            .insert([{
-              bank_account_id,
-              date: investment_date,
-              type: "deposit",
-              amount: investmentAmount,
-              description: `Investment from ${partner.name}: ${description} [${accountLabel}]`,
-              transaction_type: 'investment',
-              source_record_id: investment.id
-            }]);
+        // Create bank transaction (deposit) with transaction_type and source_record_id
+        const { error: transactionError } = await supabase
+          .from("bank_transactions")
+          .insert([{
+            bank_account_id,
+            date: investment_date,
+            type: "deposit",
+            amount: investmentAmount,
+            description: `Investment from ${partner.name}: ${description} [${accountLabel}]`,
+            transaction_type: 'investment',
+            source_record_id: investment.transaction_uuid || investment.id.toString()
+          }]);
 
-          if (transactionError) {
-            console.error('❌ Error creating bank transaction:', transactionError);
-          } else {
-            console.log(`✅ Bank transaction created successfully for ${bankAccount.account_type || 'BANK'} account: ${bankAccount.name}`);
-          }
+        if (transactionError) {
+          console.error('❌ Error creating bank transaction:', transactionError);
+        } else {
+          console.log(`✅ Bank transaction created successfully for ${bankAccount.account_type || 'BANK'} account: ${bankAccount.name}`);
         }
+      } else {
+        console.error('❌ Bank account returned null for ID:', bank_account_id);
       }
     }
 

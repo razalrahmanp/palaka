@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
-      .select()
+      .select('*, transaction_uuid')
       .single();
 
     if (withdrawalError) {
@@ -255,7 +255,7 @@ export async function POST(request: NextRequest) {
               amount: withdrawalAmount,
               description: `Withdrawal to ${partner.name}: ${description} [${accountLabel}]`,
               transaction_type: 'withdrawal',
-              source_record_id: withdrawal.id
+              source_record_id: withdrawal.transaction_uuid || withdrawal.id.toString()
             }]);
 
           if (bankTransactionError) {

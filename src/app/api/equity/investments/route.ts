@@ -210,7 +210,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Amount is required and must be a positive number' }, { status: 400 });
     }
 
+    // Debug logging for bank_account_id
+    console.log('💰 Investment creation request:', {
+      partner_id,
+      amount,
+      payment_method,
+      bank_account_id,
+      bank_account_id_type: typeof bank_account_id,
+      bank_account_id_value: bank_account_id
+    });
+
     const investmentAmount = parseFloat(amount);
+
+    // Validate bank_account_id if provided
+    if (bank_account_id && bank_account_id.trim() !== '') {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(bank_account_id)) {
+        console.error('❌ Invalid bank_account_id format:', bank_account_id);
+        return NextResponse.json({ 
+          error: `Invalid bank account selected. Please select a valid bank account from the dropdown.` 
+        }, { status: 400 });
+      }
+    }
 
     // Validate partner exists
     const { data: partner } = await supabase
@@ -301,33 +322,47 @@ export async function POST(request: NextRequest) {
 
     // ✅ Create bank transaction and update bank balance for ALL account types (BANK, UPI, CASH)
     if (bank_account_id && bank_account_id.trim() !== '') {
-      // Get bank account details to determine account type
-      const { data: bankAccount, error: bankError } = await supabase
-        .from("bank_accounts")
-        .select("current_balance, account_type, name")
-        .eq("id", bank_account_id)
-        .single();
-      
-      if (!bankError && bankAccount) {
-        const accountLabel = bankAccount.name || payment_method?.toUpperCase() || 'bank';
+      // Validate that bank_account_id is a valid UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(bank_account_id)) {
+        console.error('❌ Invalid bank_account_id format (not a UUID):', bank_account_id);
+        console.error('⚠️ This indicates corrupt data in bank_accounts table. Investment will be created without bank transaction.');
         
-        // Create bank transaction (deposit) - balance updated separately based on transactions
-        const { error: transactionError } = await supabase
-          .from("bank_transactions")
-          .insert([{
-            bank_account_id,
-            date: investment_date,
-            type: "deposit",
-            amount: investmentAmount,
-            description: `Investment from ${partner.name}: ${description} [${accountLabel}]`,
-            transaction_type: 'investment',
-            source_record_id: investment.id
-          }]);
+        // Don't fail the investment creation, just skip bank transaction
+        // Log this for database cleanup
+        console.warn(`⚠️ DATABASE CLEANUP NEEDED: bank_accounts table has record with id="${bank_account_id}" which is not a valid UUID`);
+      } else {
+        // Get bank account details to determine account type
+        const { data: bankAccount, error: bankError } = await supabase
+          .from("bank_accounts")
+          .select("current_balance, account_type, name")
+          .eq("id", bank_account_id)
+          .single();
+        
+        if (bankError) {
+          console.error('❌ Error fetching bank account:', bankError);
+          console.warn(`⚠️ Bank account ${bank_account_id} not found. Investment will be created without bank transaction.`);
+        } else if (bankAccount) {
+          const accountLabel = bankAccount.name || payment_method?.toUpperCase() || 'bank';
+          
+          // Create bank transaction (deposit) - balance updated separately based on transactions
+          const { error: transactionError } = await supabase
+            .from("bank_transactions")
+            .insert([{
+              bank_account_id,
+              date: investment_date,
+              type: "deposit",
+              amount: investmentAmount,
+              description: `Investment from ${partner.name}: ${description} [${accountLabel}]`,
+              transaction_type: 'investment',
+              source_record_id: investment.id
+            }]);
 
-        if (transactionError) {
-          console.error('❌ Error creating bank transaction:', transactionError);
-        } else {
-          console.log(`✅ Bank transaction created successfully for ${bankAccount.account_type || 'BANK'} account: ${bankAccount.name}`);
+          if (transactionError) {
+            console.error('❌ Error creating bank transaction:', transactionError);
+          } else {
+            console.log(`✅ Bank transaction created successfully for ${bankAccount.account_type || 'BANK'} account: ${bankAccount.name}`);
+          }
         }
       }
     }

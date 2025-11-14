@@ -314,7 +314,7 @@ export async function GET(
           const customerName = customerData?.name || 'Customer';
           
           // Create bank transaction (deposit - money coming in)
-          const transactionDescription = `Payment received for Sales Order #${orderId} via ${method} - ${customerName}`;
+          const transactionDescription = `${customerName} - Payment received via ${method} (Order #${orderId})`;
           const transactionReference = reference || `Order-${orderId}`;
 
           const { error: transactionError } = await supabase
@@ -358,7 +358,7 @@ export async function GET(
                       bank_account_id: account.linked_bank_account_id,
                       type: 'deposit',
                       amount: parseFloat(amount),
-                      description: `UPI Transfer from ${account.name} for Order #${orderId} - ${customerName}`,
+                      description: `${customerName} - UPI Transfer from ${account.name} (Order #${orderId})`,
                       date: payment_date || new Date().toISOString().split('T')[0],
                       reference: `UPI-${transactionReference}`
                     });
@@ -405,29 +405,8 @@ export async function GET(
         const cashAccount = cashAccounts[0];
         console.log('✅ Found default cash account:', cashAccount.id, cashAccount.name);
 
-        // 2. Create bank_transaction record for cash payment (for transaction screens)
-        const { data: bankTransaction, error: bankTxnError } = await supabase
-          .from('bank_transactions')
-          .insert({
-            bank_account_id: cashAccount.id,
-            date: payment_date || new Date().toISOString().split('T')[0],
-            amount: parseFloat(amount),
-            type: 'deposit',
-            description: `Cash payment received for Order ${orderId}`,
-            reference: reference || `ORD-${orderId}`,
-            transaction_type: 'payment',
-            source_record_id: payment.id
-          })
-          .select()
-          .single();
-
-        if (bankTxnError) {
-          console.error('❌ Failed to create bank transaction for cash:', bankTxnError);
-        } else {
-          console.log('✅ Created bank transaction for cash payment:', bankTransaction.id);
-        }
-
-        // 3. Create cash transaction record (CREDIT for incoming payment)
+        // 2. Create cash transaction record (CREDIT for incoming payment)
+        // Note: bank_transaction is already created above at line 318-327 with customer name
         const { data: cashTransaction, error: cashTransactionError } = await supabase
           .from('cash_transactions')
           .insert({
@@ -448,7 +427,7 @@ export async function GET(
         } else {
           console.log('✅ Created cash transaction:', cashTransaction.id);
 
-          // 4. Update cash balance
+          // 3. Update cash balance
           const { data: currentBalance } = await supabase
             .from('cash_balances')
             .select('current_balance')

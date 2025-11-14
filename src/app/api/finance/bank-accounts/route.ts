@@ -47,9 +47,24 @@ export async function GET(request: NextRequest) {
       }, { status: 500 });
     }
 
+    // ✅ Filter out invalid records with non-UUID IDs (data corruption)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const validData = (data || []).filter(account => {
+      const isValidUuid = uuidRegex.test(account.id);
+      if (!isValidUuid) {
+        console.warn(`⚠️ Filtering out bank_account with invalid UUID: id="${account.id}", name="${account.name}"`);
+        console.warn(`⚠️ DATABASE CLEANUP NEEDED: Remove or fix this record in bank_accounts table`);
+      }
+      return isValidUuid;
+    });
+
+    if (validData.length < (data || []).length) {
+      console.error(`❌ Found ${(data || []).length - validData.length} bank_accounts with invalid UUIDs. These have been filtered out.`);
+    }
+
     // Enhance each account with payment statistics
     const enhancedData = await Promise.all(
-      (data || []).map(async (account) => {
+      validData.map(async (account) => {
         // Get payment count and methods from payments table
         const { data: payments, error: paymentsError } = await supabase
           .from("payments")

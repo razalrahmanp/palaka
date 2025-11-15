@@ -98,12 +98,10 @@ CREATE INDEX IF NOT EXISTS idx_unmatched_deposits_date ON unmatched_bank_deposit
 CREATE OR REPLACE FUNCTION create_bajaj_expected_deposit()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- Check if order has Bajaj finance
-  IF NEW.payment_method = 'bajaj_finance' OR NEW.finance_company = 'bajaj' THEN
+  -- Check if order has Bajaj finance (bajaj_finance_amount > 0)
+  IF NEW.bajaj_finance_amount > 0 THEN
     INSERT INTO bajaj_expected_deposits (
       sales_order_id,
-      customer_id,
-      finance_company,
       order_total,
       finance_amount,
       expected_deposit,
@@ -111,11 +109,9 @@ BEGIN
       status
     ) VALUES (
       NEW.id,
-      NEW.customer_id,
-      COALESCE(NEW.finance_company, 'bajaj'),
       NEW.final_price,
-      NEW.financed_amount,
-      NEW.financed_amount, -- Initially expect full amount
+      NEW.bajaj_finance_amount,
+      NEW.bajaj_merchant_receivable, -- Amount expected from Bajaj (after their fees)
       NEW.created_at::DATE + INTERVAL '7 days', -- Expect within 7 days
       'pending'
     );

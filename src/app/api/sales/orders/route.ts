@@ -1106,7 +1106,26 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: deletePartialDeliveryError.message }, { status: 500 });
     }
 
-    // 4. Delete deliveries
+    // 4. Delete delivery status updates (must be before deliveries)
+    const { data: deliveries } = await supabase
+      .from("deliveries")
+      .select("id")
+      .eq("sales_order_id", id);
+
+    if (deliveries && deliveries.length > 0) {
+      const deliveryIds = deliveries.map(d => d.id);
+      const { error: deleteStatusUpdatesError } = await supabase
+        .from("delivery_status_updates")
+        .delete()
+        .in("delivery_id", deliveryIds);
+
+      if (deleteStatusUpdatesError) {
+        console.error("Error deleting delivery status updates:", deleteStatusUpdatesError);
+        return NextResponse.json({ error: deleteStatusUpdatesError.message }, { status: 500 });
+      }
+    }
+
+    // 5. Delete deliveries
     const { error: deleteDeliveriesError } = await supabase
       .from("deliveries")
       .delete()
@@ -1117,7 +1136,7 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: deleteDeliveriesError.message }, { status: 500 });
     }
 
-    // 5. Delete order modifications
+    // 6. Delete order modifications
     const { error: deleteModificationsError } = await supabase
       .from("order_modifications")
       .delete()

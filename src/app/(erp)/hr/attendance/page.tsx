@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Calendar, Clock, Users, UserCheck, UserX, Search, Plus, Eye, Edit, ChevronLeft, ChevronRight, X, MessageSquare, Save, AlertTriangle, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths } from 'date-fns';
+import { useAutoSync } from '@/hooks/useAutoSync';
+import { SyncStatusModal } from '@/components/ui/SyncStatusModal';
 
 // Attendance Calendar Component
 interface AttendanceCalendarProps {
@@ -208,6 +210,9 @@ function AttendancePageContent() {
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [isFabExpanded, setIsFabExpanded] = useState(false);
   
+  // Auto-sync hook with real-time status modal
+  const { syncStatus, startSync, closeModal } = useAutoSync(true); // Auto-trigger on mount
+  
   // Employee punch logs state
   const [expandedEmployeeRows, setExpandedEmployeeRows] = useState<Set<string>>(new Set());
   const [employeePunchLogs, setEmployeePunchLogs] = useState<Record<string, PunchLog[]>>({});
@@ -323,22 +328,10 @@ function AttendancePageContent() {
     if (hasAutoProcessed) return; // Only run once
     
     try {
-      setIsSyncing(true);
+      // Step 1: Sync handled by useAutoSync hook with real-time status modal
+      // Wait for sync to complete (monitored by hook)
       
-      // Step 1: Sync from ESSL devices (all devices)
-      console.log('Auto-syncing attendance from devices...');
-      const syncResponse = await fetch('/api/essl/sync-attendance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}) // Empty body to sync all devices
-      });
-      
-      if (syncResponse.ok) {
-        const syncData = await syncResponse.json();
-        console.log('Sync completed:', syncData);
-      }
-      
-      // Step 2: Process all unprocessed attendance
+      // Step 2: Process all unprocessed attendance after sync
       console.log('Auto-processing attendance...');
       setIsProcessing(true);
       const processResponse = await fetch('/api/hr/attendance/process', {
@@ -364,6 +357,13 @@ function AttendancePageContent() {
       setIsProcessing(false);
     }
   }, [hasAutoProcessed, fetchAttendanceRecords]);
+
+  // Trigger auto-processing when sync completes
+  useEffect(() => {
+    if (syncStatus.status === 'completed' && !hasAutoProcessed) {
+      autoSyncAndProcess();
+    }
+  }, [syncStatus.status, hasAutoProcessed, autoSyncAndProcess]);
 
   const fetchEmployees = useCallback(async () => {
     try {
@@ -615,19 +615,12 @@ function AttendancePageContent() {
       setIsSyncing(true);
       setIsProcessing(true);
       
-      // Step 1: Sync from ESSL devices first
-      console.log('Syncing attendance from devices...');
-      const syncResponse = await fetch('/api/essl/sync-attendance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}) // Send empty object
-      });
+      // Step 1: Trigger manual sync using the bridge (will show modal)
+      console.log('Manually syncing attendance from devices...');
+      await startSync();
       
-      if (syncResponse.ok) {
-        const syncData = await syncResponse.json();
-        console.log('Sync completed:', syncData);
-        toast.success(`Synced ${syncData.totalRecords || 0} punch logs`);
-      }
+      // Wait for sync to complete (monitored by useAutoSync hook)
+      // The modal will show real-time status
       
       setIsSyncing(false);
       
@@ -708,6 +701,9 @@ function AttendancePageContent() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
+      {/* Real-time Sync Status Modal */}
+      <SyncStatusModal syncStatus={syncStatus} onClose={closeModal} />
+
       {/* Compact Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-3">
         <div>

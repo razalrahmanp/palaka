@@ -210,8 +210,8 @@ function AttendancePageContent() {
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [isFabExpanded, setIsFabExpanded] = useState(false);
   
-  // Auto-sync hook with real-time status modal
-  const { syncStatus, startSync, closeModal } = useAutoSync(true); // Auto-trigger on mount
+  // Auto-sync hook with auto-trigger enabled
+  const { syncStatus, startSync, closeModal } = useAutoSync(true);
   
   // Employee punch logs state
   const [expandedEmployeeRows, setExpandedEmployeeRows] = useState<Set<string>>(new Set());

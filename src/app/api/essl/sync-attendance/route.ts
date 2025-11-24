@@ -6,10 +6,33 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createESSLConnector, mapPunchType, mapVerificationMethod } from '@/lib/essl/connector';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+// Helper to get current user session
+async function getCurrentUser() {
+  try {
+    const cookieStore = await cookies();
+    const supabaseAuth = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll: () => cookieStore.getAll(),
+          setAll: () => {},
+        },
+      }
+    );
+    const { data: { user } } = await supabaseAuth.auth.getUser();
+    return user?.id || null;
+  } catch {
+    return null;
+  }
+}
 
 export async function POST(request: Request) {
   try {
@@ -111,6 +134,9 @@ export async function POST(request: Request) {
 async function syncSingleDevice(deviceId: string, clearAfterSync: boolean = false) {
   try {
     console.log(`Starting attendance sync for device: ${deviceId}`);
+
+    // Get current user for tracking
+    const userId = await getCurrentUser();
 
     // Get device details from database
     const { data: device, error: deviceError } = await supabase
@@ -280,6 +306,18 @@ async function syncSingleDevice(deviceId: string, clearAfterSync: boolean = fals
         })
         .eq('id', syncLog?.id);
 
+      // Record sync status for distributed tracking
+      await supabase
+        .from('essl_sync_status')
+        .insert({
+          device_id: deviceId,
+          last_sync_time: new Date().toISOString(),
+          sync_status: 'success',
+          records_synced: syncedCount,
+          synced_by_user_id: userId,
+          sync_duration_ms: Date.now() - startTime,
+        });
+
       return NextResponse.json({
         success: true,
         message: 'Attendance sync completed',
@@ -311,7 +349,65 @@ async function syncSingleDevice(deviceId: string, clearAfterSync: boolean = fals
           .eq('id', syncLog.id);
       }
 
-      // Return error details instead of throwing
+      // Record failed sync status
+      await supabase
+        .from('essl_sync_status')
+        .insert({
+          device_id: deviceId,
+          last_sync_time: new Date().toISOString(),
+          sync_status: 'failed',
+          records_synced: 0,
+          error_message: errorMessage,
+          synced_by_user_id: userId,
+          sync_duration_ms: Date.now() - startTime,
+        });
+
+      // Check if connection error (device unreachable)
+      const isConnectionError = errorMessage.toLowerCase().includes('connect') || 
+                                errorMessage.toLowerCase().includes('timeout') ||
+                                errorMessage.toLowerCase().includes('econnrefused');
+
+      if (isConnectionError) {
+        // Get last successful sync info
+        const { data: lastSync } = await supabase
+          .from('essl_sync_status')
+          .select('last_sync_time, records_synced')
+          .eq('device_id', deviceId)
+          .eq('sync_status', 'success')
+          .order('last_sync_time', { ascending: false })
+          .limit(1)
+          .single();
+
+        // Get count of cached records in database
+        const { count: cachedRecords } = await supabase
+          .from('attendance_punch_logs')
+          .select('*', { count: 'exact', head: true })
+          .eq('device_id', deviceId);
+
+        return NextResponse.json({
+          success: false,
+          deviceUnreachable: true,
+          error: errorMessage,
+          cachedData: {
+            available: cachedRecords && cachedRecords > 0,
+            recordCount: cachedRecords || 0,
+            lastSyncTime: lastSync?.last_sync_time || null,
+            lastSyncRecords: lastSync?.records_synced || 0,
+          },
+          deviceInfo: {
+            id: device.id,
+            name: device.device_name,
+            ip: device.ip_address,
+            port: device.port || 4370
+          },
+          message: 'Device unreachable. Using cached attendance data.',
+          stats: {
+            duration: `${duration}s`
+          }
+        }, { status: 200 }); // Return 200 instead of 500 for graceful degradation
+      }
+
+      // Return error details for non-connection errors
       return NextResponse.json({
         success: false,
         error: errorMessage,

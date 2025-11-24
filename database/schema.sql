@@ -1105,6 +1105,21 @@ CREATE TABLE public.essl_devices (
   updated_at timestamp without time zone DEFAULT now(),
   CONSTRAINT essl_devices_pkey PRIMARY KEY (id)
 );
+CREATE TABLE public.essl_sync_status (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  device_id uuid NOT NULL,
+  last_sync_time timestamp with time zone NOT NULL DEFAULT now(),
+  sync_status text NOT NULL CHECK (sync_status = ANY (ARRAY['success'::text, 'failed'::text, 'in_progress'::text])),
+  records_synced integer DEFAULT 0,
+  error_message text,
+  synced_by_user_id uuid,
+  sync_duration_ms integer,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT essl_sync_status_pkey PRIMARY KEY (id),
+  CONSTRAINT essl_sync_status_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.essl_devices(id),
+  CONSTRAINT essl_sync_status_synced_by_user_id_fkey FOREIGN KEY (synced_by_user_id) REFERENCES auth.users(id)
+);
 CREATE TABLE public.expenses (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   date date NOT NULL,
@@ -1124,6 +1139,25 @@ CREATE TABLE public.expenses (
   CONSTRAINT expenses_pkey PRIMARY KEY (id),
   CONSTRAINT expenses_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
   CONSTRAINT expenses_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.assets(id)
+);
+CREATE TABLE public.expenses_salary_nov2025_backup (
+  id uuid,
+  date date,
+  category text,
+  description text,
+  amount numeric,
+  payment_method text,
+  created_by uuid,
+  type text,
+  subcategory text,
+  entity_type text,
+  entity_id uuid,
+  entity_reference_id uuid,
+  updated_at timestamp without time zone,
+  created_at timestamp without time zone,
+  asset_id uuid,
+  backup_timestamp timestamp with time zone,
+  backup_reason text
 );
 CREATE TABLE public.fund_transfers (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -1791,6 +1825,57 @@ CREATE TABLE public.payroll_records (
   CONSTRAINT payroll_records_salary_structure_id_fkey FOREIGN KEY (salary_structure_id) REFERENCES public.salary_structures(id),
   CONSTRAINT payroll_records_processed_by_fkey FOREIGN KEY (processed_by) REFERENCES public.users(id),
   CONSTRAINT payroll_records_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id)
+);
+CREATE TABLE public.payroll_records_duplicates_backup (
+  id uuid,
+  employee_id uuid,
+  salary_structure_id uuid,
+  pay_period_start date,
+  pay_period_end date,
+  basic_salary numeric,
+  total_allowances numeric,
+  total_deductions numeric,
+  gross_salary numeric,
+  net_salary numeric,
+  working_days integer,
+  present_days integer,
+  leave_days integer,
+  overtime_hours numeric,
+  overtime_amount numeric,
+  bonus numeric,
+  status text,
+  processed_by uuid,
+  processed_at timestamp without time zone,
+  created_at timestamp without time zone,
+  payment_type character varying,
+  rn bigint,
+  backup_timestamp timestamp with time zone,
+  backup_reason text
+);
+CREATE TABLE public.payroll_records_nov2025_backup (
+  id uuid,
+  employee_id uuid,
+  salary_structure_id uuid,
+  pay_period_start date,
+  pay_period_end date,
+  basic_salary numeric,
+  total_allowances numeric,
+  total_deductions numeric,
+  gross_salary numeric,
+  net_salary numeric,
+  working_days integer,
+  present_days integer,
+  leave_days integer,
+  overtime_hours numeric,
+  overtime_amount numeric,
+  bonus numeric,
+  status text,
+  processed_by uuid,
+  processed_at timestamp without time zone,
+  created_at timestamp without time zone,
+  payment_type character varying,
+  backup_timestamp timestamp with time zone,
+  backup_reason text
 );
 CREATE TABLE public.performance_goals (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -2726,6 +2811,23 @@ CREATE TABLE public.vendor_payment_history (
   CONSTRAINT vendor_payment_history_purchase_order_id_fkey FOREIGN KEY (purchase_order_id) REFERENCES public.purchase_orders(id),
   CONSTRAINT vendor_payment_history_bank_account_id_fkey FOREIGN KEY (bank_account_id) REFERENCES public.bank_accounts(id),
   CONSTRAINT vendor_payment_history_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
+);
+CREATE TABLE public.vendor_payment_history_nov2025_backup (
+  id uuid,
+  supplier_id uuid,
+  vendor_bill_id uuid,
+  purchase_order_id uuid,
+  amount numeric,
+  payment_date date,
+  payment_method text,
+  reference_number text,
+  bank_account_id uuid,
+  notes text,
+  status text,
+  created_by uuid,
+  created_at timestamp without time zone,
+  backup_timestamp timestamp with time zone,
+  backup_reason text
 );
 CREATE TABLE public.vendor_payment_terms (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

@@ -6,36 +6,20 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createESSLConnector, mapPunchType, mapVerificationMethod } from '@/lib/essl/connector';
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-// Helper to get current user session
-async function getCurrentUser() {
-  try {
-    const cookieStore = await cookies();
-    const supabaseAuth = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll: () => cookieStore.getAll(),
-          setAll: () => {},
-        },
-      }
-    );
-    const { data: { user } } = await supabaseAuth.auth.getUser();
-    return user?.id || null;
-  } catch {
-    return null;
-  }
-}
-
 export async function POST(request: Request) {
   try {
+    // Capture network information
+    const clientIp = request.headers.get('x-forwarded-for') || 
+                     request.headers.get('x-real-ip') || 
+                     'unknown';
+    const userAgent = request.headers.get('user-agent') || 'unknown';
+    const proxyChain = request.headers.get('x-forwarded-for')?.split(',').map(ip => ip.trim()) || [];
+
     let body = {};
     const contentType = request.headers.get('content-type');
     
@@ -115,7 +99,12 @@ export async function POST(request: Request) {
     }
 
     // Sync single device
-    const result = await syncSingleDevice(deviceId, clearAfterSync);
+    const result = await syncSingleDevice(deviceId, clearAfterSync, {
+      clientIp,
+      proxyIps: proxyChain,
+      userAgent,
+      timestamp: new Date().toISOString(),
+    });
     return result;
 
   } catch (error) {
@@ -131,12 +120,15 @@ export async function POST(request: Request) {
   }
 }
 
-async function syncSingleDevice(deviceId: string, clearAfterSync: boolean = false) {
+async function syncSingleDevice(
+  deviceId: string, 
+  clearAfterSync: boolean = false,
+  networkInfo?: { clientIp: string; proxyIps: string[]; userAgent: string; timestamp: string }
+) {
   try {
     console.log(`Starting attendance sync for device: ${deviceId}`);
 
-    // Get current user for tracking
-    const userId = await getCurrentUser();
+    const { clientIp = 'unknown', proxyIps: proxyChain = [], userAgent = 'unknown' } = networkInfo || {};
 
     // Get device details from database
     const { data: device, error: deviceError } = await supabase
@@ -314,7 +306,6 @@ async function syncSingleDevice(deviceId: string, clearAfterSync: boolean = fals
           last_sync_time: new Date().toISOString(),
           sync_status: 'success',
           records_synced: syncedCount,
-          synced_by_user_id: userId,
           sync_duration_ms: Date.now() - startTime,
         });
 
@@ -328,6 +319,12 @@ async function syncSingleDevice(deviceId: string, clearAfterSync: boolean = fals
           unmappedUserIds: Array.from(missingUserIds),
           errors: errors.length,
           duration: `${duration}s`,
+        },
+        networkInfo: {
+          clientIp,
+          proxyIps: proxyChain,
+          userAgent,
+          timestamp: new Date().toISOString(),
         },
         errors: errors.length > 0 ? errors : undefined,
       });
@@ -358,7 +355,6 @@ async function syncSingleDevice(deviceId: string, clearAfterSync: boolean = fals
           sync_status: 'failed',
           records_synced: 0,
           error_message: errorMessage,
-          synced_by_user_id: userId,
           sync_duration_ms: Date.now() - startTime,
         });
 
@@ -399,6 +395,12 @@ async function syncSingleDevice(deviceId: string, clearAfterSync: boolean = fals
             name: device.device_name,
             ip: device.ip_address,
             port: device.port || 4370
+          },
+          networkInfo: {
+            clientIp,
+            proxyIps: proxyChain,
+            userAgent,
+            timestamp: new Date().toISOString(),
           },
           message: 'Device unreachable. Using cached attendance data.',
           stats: {

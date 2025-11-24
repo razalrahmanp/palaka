@@ -8,6 +8,20 @@ interface CachedData {
   minutesSinceSync?: number | null;
 }
 
+interface NetworkInfo {
+  clientIp: string;
+  proxyIps: string[];
+  userAgent: string;
+  timestamp: string;
+}
+
+interface DeviceInfo {
+  id: string;
+  name: string;
+  ip: string;
+  port: number;
+}
+
 interface SyncStatus {
   status: 'idle' | 'checking' | 'syncing' | 'completed' | 'cached' | 'error';
   message: string;
@@ -16,6 +30,9 @@ interface SyncStatus {
   isOpen: boolean;
   deviceUnreachable?: boolean;
   cachedData?: CachedData;
+  networkInfo?: NetworkInfo;
+  deviceInfo?: DeviceInfo;
+  recordsSynced?: number;
 }
 
 interface UseAutoSyncReturn {
@@ -71,10 +88,13 @@ export function useAutoSync(autoTriggerOnMount: boolean = true): UseAutoSyncRetu
         if (data.success) {
           setSyncStatus({
             status: 'completed',
-            message: `Successfully synced ${data.totalRecords || 0} records`,
+            message: `Successfully synced ${data.totalRecords || data.stats?.synced || 0} records`,
             progress: 100,
             error: null,
             isOpen: true,
+            networkInfo: data.networkInfo,
+            deviceInfo: data.deviceInfo,
+            recordsSynced: data.totalRecords || data.stats?.synced || 0,
           });
 
           // Auto-close modal after 2 seconds on success
@@ -97,6 +117,8 @@ export function useAutoSync(autoTriggerOnMount: boolean = true): UseAutoSyncRetu
             isOpen: true,
             deviceUnreachable: true,
             cachedData: data.cachedData,
+            networkInfo: data.networkInfo,
+            deviceInfo: data.deviceInfo,
           });
 
           // Keep modal open longer for cached data warning

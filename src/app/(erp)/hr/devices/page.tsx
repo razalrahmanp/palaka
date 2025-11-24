@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { NetworkDebugModal } from '@/components/ui/NetworkDebugModal';
 
 interface ESSLDevice {
   id: string;
@@ -74,6 +75,26 @@ interface SyncLog {
   };
 }
 
+interface NetworkDebugResult {
+  success: boolean;
+  syncSuccess: boolean;
+  deviceInfo?: {
+    id: string;
+    name: string;
+    ip: string;
+    port: number;
+    reachable: boolean;
+  };
+  networkInfo?: {
+    clientIp: string;
+    proxyIps: string[];
+    userAgent: string;
+    timestamp: string;
+  };
+  recordsSynced: number;
+  errorMessage?: string;
+}
+
 export default function ESSLDevicesPage() {
   const [activeTab, setActiveTab] = useState('devices');
   const [devices, setDevices] = useState<ESSLDevice[]>([]);
@@ -89,6 +110,10 @@ export default function ESSLDevicesPage() {
   const [selectedDevice, setSelectedDevice] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [pendingMappings, setPendingMappings] = useState<Record<string, string>>({});
+  
+  // Network debug modal state
+  const [showNetworkDebug, setShowNetworkDebug] = useState(false);
+  const [lastSyncResult, setLastSyncResult] = useState<NetworkDebugResult | null>(null);
 
   // New device form
   const [deviceForm, setDeviceForm] = useState({
@@ -366,14 +391,85 @@ export default function ESSLDevicesPage() {
 
       const data = await response.json();
 
-      if (response.ok) {
+      // Check actual success from data, not just HTTP status
+      if (response.ok && data.success) {
+        // Find the device info
+        const device = devices.find(d => d.id === deviceId);
+        
+        // Prepare sync result for network debug modal
+        setLastSyncResult({
+          success: true,
+          syncSuccess: true,
+          deviceInfo: device ? {
+            id: device.id,
+            name: device.device_name,
+            ip: device.ip_address,
+            port: device.port,
+            reachable: true, // Device was reachable since sync succeeded
+          } : undefined,
+          networkInfo: data.networkInfo,
+          recordsSynced: data.stats?.synced || data.synced || 0,
+          errorMessage: undefined,
+        });
+        
         toast.success(
-          `Sync completed! ${data.synced} records synced, ${data.skipped} skipped in ${(data.duration / 1000).toFixed(1)}s`
+          `Sync completed! ${data.stats?.synced || data.synced || 0} records synced`
         );
+        
+        // Show network debug modal
+        setShowNetworkDebug(true);
+        
+        fetchSyncLogs();
+        fetchDevices();
+      } else if (data.deviceUnreachable) {
+        // Device unreachable but API returned gracefully with cached data
+        const device = devices.find(d => d.id === deviceId);
+        
+        setLastSyncResult({
+          success: false,
+          syncSuccess: false,
+          deviceInfo: device ? {
+            id: device.id,
+            name: device.device_name,
+            ip: device.ip_address,
+            port: device.port,
+            reachable: false,
+          } : undefined,
+          networkInfo: data.networkInfo,
+          recordsSynced: 0,
+          errorMessage: data.error || 'Device unreachable',
+        });
+        
+        toast.warning(`Device unreachable. ${data.message || 'Using cached data.'}`);
+        
+        // Show network debug modal
+        setShowNetworkDebug(true);
+        
         fetchSyncLogs();
         fetchDevices();
       } else {
+        // Other failure
+        const device = devices.find(d => d.id === deviceId);
+        
+        setLastSyncResult({
+          success: false,
+          syncSuccess: false,
+          deviceInfo: device ? {
+            id: device.id,
+            name: device.device_name,
+            ip: device.ip_address,
+            port: device.port,
+            reachable: false,
+          } : undefined,
+          networkInfo: data.networkInfo,
+          recordsSynced: 0,
+          errorMessage: data.error || 'Sync failed',
+        });
+        
         toast.error(data.error || 'Sync failed');
+        
+        // Show network debug modal
+        setShowNetworkDebug(true);
       }
     } catch (error) {
       console.error('Error:', error);
@@ -1078,6 +1174,19 @@ export default function ESSLDevicesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Network Debug Modal */}
+      {lastSyncResult && (
+        <NetworkDebugModal
+          isOpen={showNetworkDebug}
+          onClose={() => setShowNetworkDebug(false)}
+          syncSuccess={lastSyncResult.syncSuccess}
+          deviceInfo={lastSyncResult.deviceInfo}
+          networkInfo={lastSyncResult.networkInfo}
+          errorMessage={lastSyncResult.errorMessage}
+          recordsSynced={lastSyncResult.recordsSynced}
+        />
+      )}
     </div>
   );
 }

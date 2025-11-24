@@ -27,12 +27,8 @@ export async function POST(request: Request) {
     }
 
     try {
-      // Quick connection test with 3-second timeout
-      const connector = createESSLConnector(device.ip_address, device.port || 4370, {
-        timeout: 3000,
-        maxRetries: 1,
-        retryDelay: 1000
-      });
+      // Quick connection test with short timeout
+      const connector = createESSLConnector(device.ip_address, device.port || 4370);
 
       await connector.connect();
       await connector.disconnect();
@@ -83,11 +79,7 @@ export async function GET() {
     const results = await Promise.all(
       devices.map(async (device) => {
         try {
-          const connector = createESSLConnector(device.ip_address, device.port || 4370, {
-            timeout: 3000,
-            maxRetries: 1,
-            retryDelay: 1000
-          });
+          const connector = createESSLConnector(device.ip_address, device.port || 4370);
 
           await connector.connect();
           await connector.disconnect();

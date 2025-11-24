@@ -15,6 +15,21 @@ CREATE TABLE public.accounting_periods (
   CONSTRAINT accounting_periods_pkey PRIMARY KEY (id),
   CONSTRAINT accounting_periods_closed_by_fkey FOREIGN KEY (closed_by) REFERENCES public.users(id)
 );
+CREATE TABLE public.active_app_instances (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  session_id text NOT NULL UNIQUE,
+  client_ip text NOT NULL,
+  user_agent text,
+  user_id uuid,
+  last_seen timestamp with time zone DEFAULT now(),
+  first_seen timestamp with time zone DEFAULT now(),
+  is_active boolean DEFAULT true,
+  location_hint text,
+  device_info jsonb,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT active_app_instances_pkey PRIMARY KEY (id),
+  CONSTRAINT active_app_instances_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.employees(id)
+);
 CREATE TABLE public.alerts (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   type text NOT NULL,

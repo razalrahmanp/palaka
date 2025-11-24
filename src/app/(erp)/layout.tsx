@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import { Header } from '@/components/Header';
 import { Sidebar } from '@/components/Sidebar';
+import { SessionTracker } from '@/components/SessionTracker';
 
 export default function ErpLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -19,6 +20,9 @@ export default function ErpLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen bg-gray-100 font-sans">
+      {/* Session tracking for active instances */}
+      <SessionTracker />
+      
       {/* Sidebar - Always visible, expands on hover */}
       <Sidebar />
 

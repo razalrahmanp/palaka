@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -7,7 +7,20 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, CheckCircle, XCircle, Network, Server, Wifi, WifiOff, Copy, Check } from 'lucide-react';
+import { AlertCircle, CheckCircle, XCircle, Network, Server, Wifi, WifiOff, Copy, Check, Monitor, RefreshCw } from 'lucide-react';
+
+interface ActiveInstance {
+  id: string;
+  session_id: string;
+  client_ip: string;
+  user_agent?: string;
+  device_info?: {
+    browser?: string;
+    os?: string;
+  };
+  last_seen: string;
+  first_seen: string;
+}
 
 interface NetworkInfo {
   clientIp?: string;
@@ -45,6 +58,31 @@ export function NetworkDebugModal({
   recordsSynced = 0,
 }: NetworkDebugModalProps) {
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [activeInstances, setActiveInstances] = useState<ActiveInstance[]>([]);
+  const [isLoadingInstances, setIsLoadingInstances] = useState(false);
+  const [showAllInstances, setShowAllInstances] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && !syncSuccess) {
+      // Only fetch active instances when modal opens and sync failed
+      fetchActiveInstances();
+    }
+  }, [isOpen, syncSuccess]);
+
+  const fetchActiveInstances = async () => {
+    setIsLoadingInstances(true);
+    try {
+      const response = await fetch('/api/sessions/active');
+      const data = await response.json();
+      if (data.instances) {
+        setActiveInstances(data.instances);
+      }
+    } catch (error) {
+      console.error('Failed to fetch active instances:', error);
+    } finally {
+      setIsLoadingInstances(false);
+    }
+  };
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -267,6 +305,97 @@ export function NetworkDebugModal({
               </div>
             </div>
           </div>
+
+          {/* Active Application Instances */}
+          {!syncSuccess && activeInstances.length > 0 && (
+            <div className="border rounded-lg p-4 bg-purple-50 border-purple-200">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Monitor className="h-5 w-5 text-purple-600" />
+                  <h3 className="font-semibold text-gray-900">
+                    Active App Instances ({activeInstances.length})
+                  </h3>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={fetchActiveInstances}
+                  disabled={isLoadingInstances}
+                  className="h-7 gap-1"
+                >
+                  <RefreshCw className={`h-3 w-3 ${isLoadingInstances ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              </div>
+              
+              <p className="text-xs text-gray-600 mb-3">
+                Users currently accessing the application from different computers/networks. 
+                Someone on the same network as the device ({deviceInfo?.ip}) can sync.
+              </p>
+
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {activeInstances.slice(0, showAllInstances ? undefined : 5).map((instance, index) => (
+                  <div 
+                    key={instance.id} 
+                    className="bg-white rounded border border-purple-200 p-2 text-sm"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-semibold text-purple-700">Instance {index + 1}</span>
+                          <div className="flex items-center gap-1">
+                            <code className="text-xs font-mono bg-purple-100 px-1.5 py-0.5 rounded">
+                              {instance.client_ip}
+                            </code>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-5 w-5 p-0"
+                              onClick={() => copyToClipboard(instance.client_ip, `instance-${instance.id}`)}
+                            >
+                              {copiedField === `instance-${instance.id}` ? (
+                                <Check className="h-2.5 w-2.5 text-green-600" />
+                              ) : (
+                                <Copy className="h-2.5 w-2.5" />
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-gray-600">
+                          {instance.device_info?.browser && (
+                            <span>🌐 {instance.device_info.browser}</span>
+                          )}
+                          {instance.device_info?.os && (
+                            <span>💻 {instance.device_info.os}</span>
+                          )}
+                          <span className="text-gray-400">
+                            • Last seen {Math.round((new Date().getTime() - new Date(instance.last_seen).getTime()) / 1000 / 60)}m ago
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {activeInstances.length > 5 && (
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="w-full mt-2 text-purple-600"
+                  onClick={() => setShowAllInstances(!showAllInstances)}
+                >
+                  {showAllInstances ? 'Show Less' : `Show All ${activeInstances.length} Instances`}
+                </Button>
+              )}
+
+              <div className="mt-3 pt-3 border-t border-purple-200">
+                <p className="text-xs text-purple-700 font-medium">
+                  💡 Tip: Ask a user on IP range 192.168.1.x to perform the sync
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Close Button */}
           <div className="flex justify-end gap-2 pt-2">

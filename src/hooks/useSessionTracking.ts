@@ -16,7 +16,7 @@ export function useSessionTracking() {
     const detectLocalIp = async () => {
       try {
         const pc = new RTCPeerConnection({
-          iceServers: []
+          iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] // Add STUN server to help discovery
         });
 
         pc.createDataChannel('');
@@ -24,26 +24,80 @@ export function useSessionTracking() {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
 
+        let detectionTimeout: NodeJS.Timeout;
+        
         pc.onicecandidate = (ice) => {
-          if (!ice || !ice.candidate || !ice.candidate.candidate) return;
+          if (!ice || !ice.candidate || !ice.candidate.candidate) {
+            // ICE gathering complete
+            if (ice === null || !ice.candidate) {
+              clearTimeout(detectionTimeout);
+              pc.close();
+            }
+            return;
+          }
 
           const candidateStr = ice.candidate.candidate;
-          const ipRegex = /([0-9]{1,3}\.){3}[0-9]{1,3}/;
-          const match = candidateStr.match(ipRegex);
+          console.log('🔍 ICE candidate:', candidateStr);
+          
+          const ipRegex = /([0-9]{1,3}\.){3}[0-9]{1,3}/g;
+          const matches = candidateStr.match(ipRegex);
 
-          if (match && match[0]) {
-            const detectedIp = match[0];
-            // Only set if it's a local IP (not public)
-            if (detectedIp.startsWith('192.168.') || 
-                detectedIp.startsWith('10.') || 
-                detectedIp.startsWith('172.')) {
-              setLocalIp(detectedIp);
-              pc.close();
+          if (matches) {
+            for (const detectedIp of matches) {
+              console.log('📡 Detected IP:', detectedIp);
+              
+              // Prioritize 192.168.1.x network (device network)
+              if (detectedIp.startsWith('192.168.1.')) {
+                console.log('✅ Found device network IP:', detectedIp);
+                setLocalIp(detectedIp);
+                clearTimeout(detectionTimeout);
+                pc.close();
+                return;
+              }
+              
+              // Accept any private IP as fallback
+              if (detectedIp.startsWith('192.168.') || 
+                  detectedIp.startsWith('10.') || 
+                  detectedIp.startsWith('172.16.') ||
+                  detectedIp.startsWith('172.17.') ||
+                  detectedIp.startsWith('172.18.') ||
+                  detectedIp.startsWith('172.19.') ||
+                  detectedIp.startsWith('172.20.') ||
+                  detectedIp.startsWith('172.21.') ||
+                  detectedIp.startsWith('172.22.') ||
+                  detectedIp.startsWith('172.23.') ||
+                  detectedIp.startsWith('172.24.') ||
+                  detectedIp.startsWith('172.25.') ||
+                  detectedIp.startsWith('172.26.') ||
+                  detectedIp.startsWith('172.27.') ||
+                  detectedIp.startsWith('172.28.') ||
+                  detectedIp.startsWith('172.29.') ||
+                  detectedIp.startsWith('172.30.') ||
+                  detectedIp.startsWith('172.31.')) {
+                console.log('✅ Found private IP:', detectedIp);
+                setLocalIp(detectedIp);
+                // Don't close yet, might find 192.168.1.x
+              }
             }
           }
         };
+
+        pc.onicegatheringstatechange = () => {
+          console.log('🔄 ICE gathering state:', pc.iceGatheringState);
+          if (pc.iceGatheringState === 'complete') {
+            clearTimeout(detectionTimeout);
+            pc.close();
+          }
+        };
+
+        // Timeout after 5 seconds
+        detectionTimeout = setTimeout(() => {
+          console.log('⏱️ Local IP detection timeout');
+          pc.close();
+        }, 5000);
+
       } catch (error) {
-        console.log('Could not detect local IP:', error);
+        console.error('❌ Could not detect local IP:', error);
       }
     };
 

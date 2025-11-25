@@ -17,7 +17,9 @@ interface ActiveInstance {
   device_info?: {
     browser?: string;
     os?: string;
+    localIp?: string;
   };
+  location_hint?: string;
   last_seen: string;
   first_seen: string;
 }

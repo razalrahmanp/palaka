@@ -28,11 +28,13 @@ interface SyncStatusModalProps {
     cachedData?: CachedData;
   };
   onClose: () => void;
+  onRetry?: () => void;
 }
 
 export function SyncStatusModal({
   syncStatus,
   onClose,
+  onRetry,
 }: SyncStatusModalProps) {
   if (!syncStatus.isOpen) return null;
 
@@ -109,8 +111,19 @@ export function SyncStatusModal({
                 </div>
               )}
               
+              <div className="mt-4 p-3 bg-blue-50 rounded-md border border-blue-200 w-full">
+                <p className="text-xs font-medium text-blue-900 mb-2">🔍 Troubleshooting:</p>
+                <ul className="text-xs text-blue-800 space-y-1 list-disc list-inside">
+                  <li>Ensure device is powered ON</li>
+                  <li>Check device network cable connection</li>
+                  <li>Verify you&apos;re on the same network (192.168.1.x)</li>
+                  <li>Device IP: 192.168.1.71, Port: 4370</li>
+                  <li>Try pinging: <code className="bg-blue-100 px-1 rounded">ping 192.168.1.71</code></li>
+                </ul>
+              </div>
+              
               <p className="text-xs text-amber-700 mt-3 text-center px-4">
-                💡 Tip: Connect to the office network to sync fresh data
+                💡 Tip: Connect to the office network (DIR-615-C4A9 or Alrams WiFi) to sync fresh data
               </p>
             </div>
           )}
@@ -130,7 +143,18 @@ export function SyncStatusModal({
           {(syncStatus.status === 'completed' || 
             syncStatus.status === 'cached' || 
             syncStatus.status === 'error') && (
-            <div className="flex justify-center pt-4">
+            <div className="flex justify-center gap-3 pt-4">
+              {(syncStatus.status === 'cached' || syncStatus.status === 'error') && onRetry && (
+                <Button 
+                  onClick={() => {
+                    onRetry();
+                  }} 
+                  variant="default"
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  🔄 Retry Sync
+                </Button>
+              )}
               <Button onClick={onClose} variant="outline">
                 Close
               </Button>

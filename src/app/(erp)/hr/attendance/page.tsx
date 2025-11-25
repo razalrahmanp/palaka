@@ -702,7 +702,7 @@ function AttendancePageContent() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
       {/* Real-time Sync Status Modal */}
-      <SyncStatusModal syncStatus={syncStatus} onClose={closeModal} />
+      <SyncStatusModal syncStatus={syncStatus} onClose={closeModal} onRetry={startSync} />
 
       {/* Compact Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-3">

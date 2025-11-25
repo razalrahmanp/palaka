@@ -321,12 +321,61 @@ export function NetworkDebugModal({
                   variant="ghost"
                   onClick={fetchActiveInstances}
                   disabled={isLoadingInstances}
-                  className="h-7 gap-1"
                 >
-                  <RefreshCw className={`h-3 w-3 ${isLoadingInstances ? 'animate-spin' : ''}`} />
-                  Refresh
+                  {isLoadingInstances ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
                 </Button>
               </div>
+              
+              {/* Sync Agent Banner */}
+              {(() => {
+                const syncAgents = activeInstances.filter(
+                  inst => (inst.device_info?.localIp || inst.location_hint)?.startsWith('192.168.1.')
+                );
+                
+                if (syncAgents.length > 0) {
+                  return (
+                    <div className="mb-3 p-3 bg-green-50 border border-green-300 rounded-lg">
+                      <div className="flex items-start gap-2">
+                        <div className="flex-shrink-0 mt-0.5">
+                          <div className="h-6 w-6 bg-green-500 rounded-full flex items-center justify-center">
+                            <span className="text-white text-xs font-bold">{syncAgents.length}</span>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-green-900 mb-1">
+                            ✅ {syncAgents.length} Sync Agent{syncAgents.length > 1 ? 's' : ''} Available
+                          </p>
+                          <p className="text-xs text-green-800">
+                            {syncAgents.length === 1 ? 'This user is' : 'These users are'} on the device network (192.168.1.x) 
+                            and can sync attendance data directly from the ESSL device.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div className="mb-3 p-3 bg-amber-50 border border-amber-300 rounded-lg">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-semibold text-amber-900 mb-1">
+                            ⚠️ No Sync Agents Available
+                          </p>
+                          <p className="text-xs text-amber-800">
+                            No users are currently on the device network (192.168.1.x). 
+                            To sync, someone needs to connect to the office WiFi (DIR-615-C4A9 or Alrams).
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+              })()}
               
               <p className="text-xs text-gray-600 mb-3">
                 Users currently accessing the application from different computers/networks. 
@@ -352,8 +401,12 @@ export function NetworkDebugModal({
                           <div className="flex items-center gap-2 mb-1">
                             <span className={`font-semibold ${isOnDeviceNetwork ? 'text-green-700' : 'text-purple-700'}`}>
                               Instance {index + 1}
-                              {isOnDeviceNetwork && ' ✓ Same Network'}
                             </span>
+                            {isOnDeviceNetwork && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-300">
+                                ✓ Can Sync
+                              </span>
+                            )}
                           </div>
                           
                           {/* Public IP */}

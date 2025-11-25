@@ -271,6 +271,59 @@ export function NetworkDebugModal({
             </div>
           )}
 
+          {/* Local IP Detection Diagnostic */}
+          <div className="border rounded-lg p-4 bg-indigo-50 border-indigo-200">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertCircle className="h-5 w-5 text-indigo-600" />
+              <h3 className="font-semibold text-gray-900">Local Network Detection</h3>
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm text-gray-600">
+                To sync with the ESSL device, we need to detect if you&apos;re on the same network (192.168.1.x).
+              </p>
+              <div className="flex flex-col gap-2 mt-3">
+                <div className="text-sm">
+                  <strong>Status:</strong>{' '}
+                  {activeInstances.some(inst => inst.device_info?.localIp?.startsWith('192.168.1.')) ? (
+                    <span className="text-green-600">✓ Sync agents detected</span>
+                  ) : (
+                    <span className="text-amber-600">⚠ No local network detection</span>
+                  )}
+                </div>
+                <div className="bg-white p-3 rounded border text-xs font-mono">
+                  <div>1. Open browser console (F12)</div>
+                  <div>2. Look for &quot;🚀 Starting local IP detection...&quot;</div>
+                  <div>3. Check if you see &quot;🔍 ICE candidate&quot; messages</div>
+                  <div>4. If no messages appear, WebRTC may be blocked</div>
+                </div>
+                <details className="mt-2">
+                  <summary className="text-sm text-indigo-600 cursor-pointer hover:text-indigo-800">
+                    Possible Issues & Solutions
+                  </summary>
+                  <ul className="text-xs text-gray-600 mt-2 space-y-1 ml-4">
+                    <li>• <strong>Browser Privacy Settings:</strong> Some browsers block WebRTC to prevent IP leaks</li>
+                    <li>• <strong>Browser Extension:</strong> Privacy extensions may block WebRTC (try in incognito mode)</li>
+                    <li>• <strong>Corporate Network:</strong> IT policies may block STUN servers</li>
+                    <li>• <strong>Firewall:</strong> Blocking UDP traffic to stun.l.google.com:19302</li>
+                    <li>• <strong>VPN/Proxy:</strong> May interfere with local IP detection</li>
+                  </ul>
+                </details>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-2"
+                  onClick={() => {
+                    window.open('about:blank');
+                    alert('Open Developer Console (F12) in the main window to see detection logs');
+                  }}
+                >
+                  <Network className="h-4 w-4 mr-2" />
+                  Show Console Instructions
+                </Button>
+              </div>
+            </div>
+          </div>
+
           {/* Troubleshooting Tips */}
           <div className="border rounded-lg p-4 bg-amber-50 border-amber-200">
             <div className="flex items-start gap-2">

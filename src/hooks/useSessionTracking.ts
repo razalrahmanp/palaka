@@ -13,8 +13,11 @@ export function useSessionTracking() {
 
   // Detect local IP using WebRTC
   useEffect(() => {
+    console.log('🚀 Starting local IP detection...');
+    
     const detectLocalIp = async () => {
       try {
+        console.log('🌐 Attempting WebRTC detection...');
         const pc = new RTCPeerConnection({
           iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] // Add STUN server to help discovery
         });
@@ -23,21 +26,25 @@ export function useSessionTracking() {
         
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
+        console.log('📞 WebRTC offer created, waiting for ICE candidates...');
 
         let detectionTimeout: NodeJS.Timeout;
+        let candidatesReceived = 0;
         
         pc.onicecandidate = (ice) => {
           if (!ice || !ice.candidate || !ice.candidate.candidate) {
             // ICE gathering complete
             if (ice === null || !ice.candidate) {
+              console.log('🏁 ICE candidate gathering finished');
               clearTimeout(detectionTimeout);
               pc.close();
             }
             return;
           }
 
+          candidatesReceived++;
           const candidateStr = ice.candidate.candidate;
-          console.log('🔍 ICE candidate:', candidateStr);
+          console.log(`🔍 ICE candidate #${candidatesReceived}:`, candidateStr);
           
           const ipRegex = /([0-9]{1,3}\.){3}[0-9]{1,3}/g;
           const matches = candidateStr.match(ipRegex);
@@ -85,6 +92,7 @@ export function useSessionTracking() {
         pc.onicegatheringstatechange = () => {
           console.log('🔄 ICE gathering state:', pc.iceGatheringState);
           if (pc.iceGatheringState === 'complete') {
+            console.log('✔️ ICE gathering complete');
             clearTimeout(detectionTimeout);
             pc.close();
           }
@@ -92,7 +100,10 @@ export function useSessionTracking() {
 
         // Timeout after 5 seconds
         detectionTimeout = setTimeout(() => {
-          console.log('⏱️ Local IP detection timeout');
+          console.log('⏱️ Local IP detection timeout - received', candidatesReceived, 'candidates');
+          if (candidatesReceived === 0) {
+            console.warn('⚠️ No ICE candidates received - WebRTC may be blocked');
+          }
           pc.close();
         }, 5000);
 

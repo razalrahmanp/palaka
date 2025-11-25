@@ -334,48 +334,90 @@ export function NetworkDebugModal({
               </p>
 
               <div className="space-y-2 max-h-60 overflow-y-auto">
-                {activeInstances.slice(0, showAllInstances ? undefined : 5).map((instance, index) => (
-                  <div 
-                    key={instance.id} 
-                    className="bg-white rounded border border-purple-200 p-2 text-sm"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-semibold text-purple-700">Instance {index + 1}</span>
-                          <div className="flex items-center gap-1">
-                            <code className="text-xs font-mono bg-purple-100 px-1.5 py-0.5 rounded">
+                {activeInstances.slice(0, showAllInstances ? undefined : 5).map((instance, index) => {
+                  const localIp = instance.device_info?.localIp || instance.location_hint;
+                  const isOnDeviceNetwork = localIp?.startsWith('192.168.1.');
+                  
+                  return (
+                    <div 
+                      key={instance.id} 
+                      className={`rounded border p-2 text-sm ${
+                        isOnDeviceNetwork 
+                          ? 'bg-green-50 border-green-300' 
+                          : 'bg-white border-purple-200'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`font-semibold ${isOnDeviceNetwork ? 'text-green-700' : 'text-purple-700'}`}>
+                              Instance {index + 1}
+                              {isOnDeviceNetwork && ' ✓ Same Network'}
+                            </span>
+                          </div>
+                          
+                          {/* Public IP */}
+                          <div className="flex items-center gap-1 mb-1">
+                            <span className="text-xs text-gray-500">Public IP:</span>
+                            <code className="text-xs font-mono bg-gray-100 px-1.5 py-0.5 rounded">
                               {instance.client_ip}
                             </code>
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="h-5 w-5 p-0"
-                              onClick={() => copyToClipboard(instance.client_ip, `instance-${instance.id}`)}
+                              className="h-4 w-4 p-0"
+                              onClick={() => copyToClipboard(instance.client_ip, `instance-public-${instance.id}`)}
                             >
-                              {copiedField === `instance-${instance.id}` ? (
+                              {copiedField === `instance-public-${instance.id}` ? (
                                 <Check className="h-2.5 w-2.5 text-green-600" />
                               ) : (
                                 <Copy className="h-2.5 w-2.5" />
                               )}
                             </Button>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-gray-600">
-                          {instance.device_info?.browser && (
-                            <span>🌐 {instance.device_info.browser}</span>
+
+                          {/* Local IP */}
+                          {localIp && (
+                            <div className="flex items-center gap-1 mb-1">
+                              <span className="text-xs text-gray-500">Local IP:</span>
+                              <code className={`text-xs font-mono px-1.5 py-0.5 rounded ${
+                                isOnDeviceNetwork 
+                                  ? 'bg-green-200 text-green-800 font-semibold' 
+                                  : 'bg-gray-100'
+                              }`}>
+                                {localIp}
+                              </code>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-4 w-4 p-0"
+                                onClick={() => copyToClipboard(localIp, `instance-local-${instance.id}`)}
+                              >
+                                {copiedField === `instance-local-${instance.id}` ? (
+                                  <Check className="h-2.5 w-2.5 text-green-600" />
+                                ) : (
+                                  <Copy className="h-2.5 w-2.5" />
+                                )}
+                              </Button>
+                            </div>
                           )}
-                          {instance.device_info?.os && (
-                            <span>💻 {instance.device_info.os}</span>
-                          )}
-                          <span className="text-gray-400">
-                            • Last seen {Math.round((new Date().getTime() - new Date(instance.last_seen).getTime()) / 1000 / 60)}m ago
-                          </span>
+
+                          <div className="flex items-center gap-2 text-xs text-gray-600">
+                            {instance.device_info?.browser && (
+                              <span>🌐 {instance.device_info.browser}</span>
+                            )}
+                            {instance.device_info?.os && (
+                              <span>💻 {instance.device_info.os}</span>
+                            )}
+                            <span className="text-gray-400">
+                              • Last seen {Math.round((new Date().getTime() - new Date(instance.last_seen).getTime()) / 1000 / 60)}m ago
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {activeInstances.length > 5 && (
@@ -390,9 +432,15 @@ export function NetworkDebugModal({
               )}
 
               <div className="mt-3 pt-3 border-t border-purple-200">
-                <p className="text-xs text-purple-700 font-medium">
-                  💡 Tip: Ask a user on IP range 192.168.1.x to perform the sync
-                </p>
+                {activeInstances.some(i => (i.device_info?.localIp || i.location_hint)?.startsWith('192.168.1.')) ? (
+                  <p className="text-xs text-green-700 font-medium">
+                    ✅ Found {activeInstances.filter(i => (i.device_info?.localIp || i.location_hint)?.startsWith('192.168.1.')).length} user(s) on the device network (192.168.1.x). They can sync!
+                  </p>
+                ) : (
+                  <p className="text-xs text-purple-700 font-medium">
+                    💡 Tip: Ask a user on IP range 192.168.1.x to perform the sync
+                  </p>
+                )}
               </div>
             </div>
           )}

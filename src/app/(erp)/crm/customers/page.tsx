@@ -21,13 +21,12 @@ import {
   Users, PlusCircle, Edit, Trash2, MessageSquare, Calendar,
   DollarSign, Package, FileText,
   ChevronRight, ChevronDown, ArrowUp, ArrowDown, ArrowUpDown,
-  TrendingUp, BarChart3, PhoneCall, Target, Activity, Search, MoreVertical, Filter
+  TrendingUp, BarChart3, PhoneCall, Target, Activity, Search, MoreVertical, Filter, CalendarDays
 } from 'lucide-react';
 import { CustomerForm } from '@/components/crm/CustomerForm';
 import { InteractionLogForm } from '@/components/crm/InteractionLogForm';
 import { CustomerVisitDialog } from '@/components/crm/CustomerVisitDialog';
-import { CustomerFilters } from '@/components/crm/CustomerFilter';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth, startOfDay, endOfDay } from 'date-fns';
 import {
   Dialog,
   DialogContent,
@@ -85,9 +84,20 @@ export default function SalesCRMPage() {
   const [activeTab, setActiveTab] = useState<'customers' | 'interactions' | 'sales' | 'analytics'>('customers');
   const [fabOpen, setFabOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | Customer['status']>('all');
-  const [filterSource, setFilterSource] = useState<'all' | Customer['source']>('all');
   const [interactionTypeFilter, setInteractionTypeFilter] = useState<'all' | 'visit' | 'Call' | 'Email' | 'Meeting' | 'review_request' | 'review_given'>('all');
+  
+  // Date range filter states
+  const [timeRange, setTimeRange] = useState<string>('today');
+  const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
+  const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
+  const [tempStartDate, setTempStartDate] = useState<Date | null>(null);
+  const [tempEndDate, setTempEndDate] = useState<Date | null>(null);
+  const [showTimeSelector, setShowTimeSelector] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+  const [calendarView, setCalendarView] = useState<'start' | 'end'>('start');
+  const [dateFilterType, setDateFilterType] = useState<'visit' | 'created'>('visit');
   const [filterExpanded, setFilterExpanded] = useState(false);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [sortField, setSortField] = useState<string>('created_at');
@@ -234,17 +244,72 @@ export default function SalesCRMPage() {
 
   const filteredCustomers = useMemo(() => {
     const q = searchQuery.toLowerCase();
+    
+    // Calculate date range based on selection
+    let startDate: Date | null = null;
+    let endDate: Date | null = null;
+
+    if (customStartDate) {
+      // Custom date range
+      startDate = startOfDay(customStartDate);
+      endDate = customEndDate ? endOfDay(customEndDate) : endOfDay(customStartDate);
+    } else {
+      const now = new Date();
+      switch (timeRange) {
+        case 'today':
+          startDate = startOfDay(now);
+          endDate = endOfDay(now);
+          break;
+        case 'week1':
+        case 'week2':
+        case 'week3':
+        case 'week4':
+          // Week-based selection
+          const weekNum = parseInt(timeRange.replace('week', ''));
+          const monthStart = startOfMonth(now);
+          const weekStart = new Date(monthStart);
+          weekStart.setDate(1 + (weekNum - 1) * 7);
+          const weekEnd = new Date(weekStart);
+          weekEnd.setDate(weekStart.getDate() + 6);
+          startDate = startOfDay(weekStart);
+          endDate = endOfDay(weekEnd > endOfMonth(now) ? endOfMonth(now) : weekEnd);
+          break;
+        default:
+          // Month-based selection (e.g., 'month-0' for current month, 'month-1' for last month)
+          if (timeRange.startsWith('month-')) {
+            const monthOffset = parseInt(timeRange.replace('month-', ''));
+            const targetDate = new Date(now);
+            targetDate.setMonth(now.getMonth() - monthOffset);
+            startDate = startOfMonth(targetDate);
+            endDate = endOfMonth(targetDate);
+          }
+      }
+    }
+
     return customers.filter(c => {
-      const matchesStatus = filterStatus === 'all' || c.status === filterStatus;
-      const matchesSource = filterSource === 'all' || c.source === filterSource;
       const matchesSearch =
         c.name.toLowerCase().includes(q) ||
         c.email?.toLowerCase().includes(q) ||
         c.phone?.toLowerCase().includes(q);
       
-      return matchesStatus && matchesSource && matchesSearch;
+      // Date range filter
+      let matchesDateRange = true;
+      if (startDate && endDate) {
+        const dateToCheck = dateFilterType === 'visit' 
+          ? (c.customer_visit_date ? new Date(c.customer_visit_date) : null)
+          : new Date(c.created_at);
+        
+        if (dateToCheck) {
+          matchesDateRange = dateToCheck >= startDate && dateToCheck <= endDate;
+        } else if (dateFilterType === 'visit') {
+          // If filtering by visit date and customer has no visit date, exclude them
+          matchesDateRange = false;
+        }
+      }
+      
+      return matchesSearch && matchesDateRange;
     });
-  }, [customers, filterStatus, filterSource, searchQuery]);
+  }, [customers, searchQuery, timeRange, customStartDate, customEndDate, dateFilterType]);
 
   const handleSort = (field: string) => {
     if (sortField === field) {
@@ -325,7 +390,7 @@ export default function SalesCRMPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterStatus, filterSource, searchQuery]);
+  }, [searchQuery]);
 
   if (!currentUser) return null;
 
@@ -521,7 +586,7 @@ export default function SalesCRMPage() {
           <CardContent className="p-6">
             {/* CUSTOMERS TAB */}
             <TabsContent value="customers" className="mt-0 space-y-4">
-              {/* Search and Filters */}
+              {/* Search and Date Filter */}
               <div className="flex flex-col sm:flex-row gap-3 items-center">
                 <div className="flex-1 w-full">
                   <div className="relative">
@@ -534,13 +599,369 @@ export default function SalesCRMPage() {
                     />
                   </div>
                 </div>
-                <CustomerFilters
-                  filterStatus={filterStatus}
-                  onFilterStatusChange={setFilterStatus}
-                  filterSource={filterSource}
-                  onFilterSourceChange={setFilterSource}
-                />
+
+                {/* Date Filter Type Toggle */}
+                <div className="flex gap-2">
+                  <Button
+                    variant={dateFilterType === 'visit' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setDateFilterType('visit')}
+                    className="text-xs"
+                  >
+                    Visit Date
+                  </Button>
+                  <Button
+                    variant={dateFilterType === 'created' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setDateFilterType('created')}
+                    className="text-xs"
+                  >
+                    Created Date
+                  </Button>
+                </div>
+
+                {/* Date Range Selector Button */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowTimeSelector(!showTimeSelector)}
+                  className="flex items-center gap-2 whitespace-nowrap"
+                >
+                  <CalendarDays className="h-4 w-4" />
+                  {customStartDate 
+                    ? customEndDate
+                      ? `${format(customStartDate, 'MMM d')} - ${format(customEndDate, 'MMM d')}`
+                      : format(customStartDate, 'MMM d, yyyy')
+                    : timeRange === 'today'
+                    ? `Today (${format(new Date(), 'MMM d')})`
+                    : timeRange.startsWith('week')
+                    ? `Week ${timeRange.replace('week', '')}`
+                    : timeRange.startsWith('month-')
+                    ? format(new Date(new Date().setMonth(new Date().getMonth() - parseInt(timeRange.replace('month-', '')))), 'MMM yyyy')
+                    : 'Select Date'}
+                </Button>
               </div>
+
+              {/* Floating Date Range Selector */}
+              {showTimeSelector && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20" onClick={() => setShowTimeSelector(false)}>
+                  <div className="bg-white rounded-3xl shadow-2xl border border-gray-200 w-80 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                    {!showCalendar ? (
+                      <div className="p-4">
+                        {/* Today */}
+                        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 px-2">Today</h3>
+                        <button
+                          onClick={() => { setTimeRange('today'); setShowTimeSelector(false); setCustomStartDate(null); setCustomEndDate(null); }}
+                          className={`w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all mb-3 ${
+                            timeRange === 'today' && !customStartDate
+                              ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg' 
+                              : 'hover:bg-gray-100 text-gray-700'
+                          }`}
+                        >
+                          Today ({format(new Date(), 'MMM d')})
+                        </button>
+
+                        {/* Current Month Weeks */}
+                        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 px-2">This Month Weeks</h3>
+                        <div className="flex flex-col gap-2 mb-3">
+                          {(() => {
+                            const now = new Date();
+                            const monthStart = startOfMonth(now);
+                            const monthEnd = endOfMonth(now);
+                            const weeks = [];
+                            
+                            for (let weekNum = 1; weekNum <= 4; weekNum++) {
+                              const weekStart = new Date(monthStart);
+                              weekStart.setDate(1 + (weekNum - 1) * 7);
+                              const weekEnd = new Date(weekStart);
+                              weekEnd.setDate(weekStart.getDate() + 6);
+                              
+                              // Don't show weeks that haven't started yet
+                              if (weekStart > now) break;
+                              
+                              weeks.push(
+                                <button
+                                  key={weekNum}
+                                  onClick={() => { setTimeRange(`week${weekNum}`); setShowTimeSelector(false); setCustomStartDate(null); setCustomEndDate(null); }}
+                                  className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                                    timeRange === `week${weekNum}` && !customStartDate
+                                      ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg' 
+                                      : 'hover:bg-gray-100 text-gray-700'
+                                  }`}
+                                >
+                                  Week {weekNum} ({format(weekStart, 'MMM d')} - {format(weekEnd > monthEnd ? monthEnd : weekEnd, 'MMM d')})
+                                </button>
+                              );
+                            }
+                            return weeks;
+                          })()}
+                        </div>
+
+                        {/* Months */}
+                        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 px-2">Months</h3>
+                        <div className="flex flex-col gap-2 mb-3">
+                          {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((monthName, idx) => {
+                            const now = new Date();
+                            const currentMonth = now.getMonth();
+                            const currentYear = now.getFullYear();
+                            
+                            // Calculate which year this month belongs to
+                            const targetYear = idx > currentMonth ? currentYear - 1 : currentYear;
+                            const targetDate = new Date(targetYear, idx, 1);
+                            
+                            // Only show past months and current month
+                            if (targetDate > now) return null;
+                            
+                            const monthOffset = (currentYear - targetYear) * 12 + (currentMonth - idx);
+                            
+                            return (
+                              <button
+                                key={idx}
+                                onClick={() => { setTimeRange(`month-${monthOffset}`); setShowTimeSelector(false); setCustomStartDate(null); setCustomEndDate(null); }}
+                                className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                                  timeRange === `month-${monthOffset}` && !customStartDate
+                                    ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg' 
+                                    : 'hover:bg-gray-100 text-gray-700'
+                                }`}
+                              >
+                                {monthName} {targetYear}
+                              </button>
+                            );
+                          }).filter(Boolean)}
+                        </div>
+
+                        {/* Custom Range */}
+                        <div className="border-t border-gray-200 pt-3">
+                          <button
+                            onClick={() => {
+                              setTempStartDate(customStartDate);
+                              setTempEndDate(customEndDate);
+                              setShowCalendar(true);
+                            }}
+                            className={`w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                              customStartDate
+                                ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg' 
+                                : 'hover:bg-gray-100 text-gray-700'
+                            }`}
+                          >
+                            {customStartDate 
+                              ? customEndDate
+                                ? `${format(customStartDate, 'MMM d')} - ${format(customEndDate, 'MMM d, yyyy')}`
+                                : format(customStartDate, 'MMM d, yyyy')
+                              : 'Custom Range'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-4">
+                        <div className="flex items-center justify-between mb-4">
+                          <button
+                            onClick={() => {
+                              setShowCalendar(false);
+                              setCalendarView('start');
+                            }}
+                            className="text-xs text-gray-500 hover:text-gray-700"
+                          >
+                            ← Back
+                          </button>
+                          <h3 className="text-sm font-semibold text-gray-700">
+                            {calendarView === 'start' ? 'Select Start Date' : 'Select End Date (Optional)'}
+                          </h3>
+                          {calendarView === 'end' && tempStartDate && (
+                            <button
+                              onClick={() => {
+                                setTempEndDate(null);
+                              }}
+                              className="text-xs text-purple-600 hover:text-purple-700 font-medium"
+                            >
+                              Skip →
+                            </button>
+                          )}
+                          {calendarView === 'start' && <div className="w-12"></div>}
+                        </div>
+
+                        {/* Year & Month Selector */}
+                        <div className="flex items-center justify-between mb-4">
+                          <button
+                            onClick={() => {
+                              const newDate = new Date(currentMonth);
+                              newDate.setMonth(newDate.getMonth() - 1);
+                              setCurrentMonth(newDate);
+                            }}
+                            className="p-1 hover:bg-gray-100 rounded"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            </svg>
+                          </button>
+                          <div className="flex gap-2">
+                            <select
+                              value={currentMonth.getMonth()}
+                              onChange={(e) => {
+                                const newDate = new Date(currentMonth);
+                                newDate.setMonth(parseInt(e.target.value));
+                                setCurrentMonth(newDate);
+                              }}
+                              title="Select Month"
+                              className="px-3 py-1 text-sm font-medium border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            >
+                              {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, idx) => (
+                                <option key={idx} value={idx}>{month}</option>
+                              ))}
+                            </select>
+                            <select
+                              value={currentYear}
+                              onChange={(e) => {
+                                setCurrentYear(parseInt(e.target.value));
+                                const newDate = new Date(currentMonth);
+                                newDate.setFullYear(parseInt(e.target.value));
+                                setCurrentMonth(newDate);
+                              }}
+                              title="Select Year"
+                              className="px-3 py-1 text-sm font-medium border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            >
+                              {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - 5 + i).map(year => (
+                                <option key={year} value={year}>{year}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <button
+                            onClick={() => {
+                              const newDate = new Date(currentMonth);
+                              newDate.setMonth(newDate.getMonth() + 1);
+                              setCurrentMonth(newDate);
+                            }}
+                            className="p-1 hover:bg-gray-100 rounded"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </button>
+                        </div>
+
+                        {/* Calendar Grid */}
+                        <div className="grid grid-cols-7 gap-1 mb-3">
+                          {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
+                            <div key={day} className="text-center text-xs font-medium text-gray-500 py-2">
+                              {day}
+                            </div>
+                          ))}
+                          {(() => {
+                            const year = currentMonth.getFullYear();
+                            const month = currentMonth.getMonth();
+                            const firstDay = new Date(year, month, 1).getDay();
+                            const daysInMonth = new Date(year, month + 1, 0).getDate();
+                            const days = [];
+
+                            // Empty cells for days before month starts
+                            for (let i = 0; i < firstDay; i++) {
+                              days.push(<div key={`empty-${i}`} className="aspect-square"></div>);
+                            }
+
+                            // Days of the month
+                            for (let day = 1; day <= daysInMonth; day++) {
+                              const currentDate = new Date(year, month, day);
+                              const isSelected = 
+                                (calendarView === 'start' && tempStartDate && 
+                                  format(currentDate, 'yyyy-MM-dd') === format(tempStartDate, 'yyyy-MM-dd')) ||
+                                (calendarView === 'end' && tempEndDate && 
+                                  format(currentDate, 'yyyy-MM-dd') === format(tempEndDate, 'yyyy-MM-dd'));
+                              
+                              const isInRange = tempStartDate && tempEndDate && 
+                                currentDate >= tempStartDate && currentDate <= tempEndDate;
+
+                              const isToday = format(currentDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
+
+                              days.push(
+                                <button
+                                  key={day}
+                                  onClick={() => {
+                                    if (calendarView === 'start') {
+                                      setTempStartDate(currentDate);
+                                      setTempEndDate(null);
+                                      setCalendarView('end');
+                                    } else {
+                                      if (tempStartDate && currentDate < tempStartDate) {
+                                        setTempEndDate(tempStartDate);
+                                        setTempStartDate(currentDate);
+                                      } else {
+                                        setTempEndDate(currentDate);
+                                      }
+                                    }
+                                  }}
+                                  className={`aspect-square flex items-center justify-center text-sm rounded-lg transition-all ${
+                                    isSelected
+                                      ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold shadow-md'
+                                      : isInRange
+                                      ? 'bg-purple-100 text-purple-700'
+                                      : isToday
+                                      ? 'bg-blue-50 text-blue-600 font-medium'
+                                      : 'hover:bg-gray-100 text-gray-700'
+                                  }`}
+                                >
+                                  {day}
+                                </button>
+                              );
+                            }
+
+                            return days;
+                          })()}
+                        </div>
+
+                        {/* Selected Range Info */}
+                        <div className="text-xs text-center text-gray-600 py-2 bg-gray-50 rounded-lg mb-3">
+                          {!tempStartDate ? (
+                            'Please select a start date'
+                          ) : calendarView === 'end' && !tempEndDate ? (
+                            <>
+                              <div>From: {format(tempStartDate, 'MMM d, yyyy')}</div>
+                              <div className="text-purple-600 mt-1">Select end date or skip for single day</div>
+                            </>
+                          ) : tempEndDate ? (
+                            `${format(tempStartDate, 'MMM d, yyyy')} - ${format(tempEndDate, 'MMM d, yyyy')}`
+                          ) : (
+                            format(tempStartDate, 'MMM d, yyyy')
+                          )}
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              setShowCalendar(false);
+                              setCalendarView('start');
+                              setTempStartDate(null);
+                              setTempEndDate(null);
+                            }}
+                            className="flex-1 px-4 py-2 rounded-xl text-sm font-medium border border-gray-300 hover:bg-gray-50 text-gray-700 transition-all"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (tempStartDate) {
+                                setCustomStartDate(tempStartDate);
+                                setCustomEndDate(tempEndDate);
+                                setShowCalendar(false);
+                                setShowTimeSelector(false);
+                                setCalendarView('start');
+                              }
+                            }}
+                            disabled={!tempStartDate}
+                            className={`flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                              tempStartDate
+                                ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg hover:shadow-xl'
+                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                            }`}
+                          >
+                            Apply
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Customer Table */}
               <div className="rounded-lg border border-gray-200 overflow-hidden bg-white shadow-sm">

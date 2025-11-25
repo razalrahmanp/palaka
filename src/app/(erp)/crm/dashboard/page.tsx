@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Users, TrendingUp, DollarSign, ShoppingBag, 
-  Activity, ArrowUpRight, ArrowDownRight, 
+  ArrowUpRight, ArrowDownRight, 
   Phone, Mail, Star, TrendingDown, CalendarDays, UserCheck
 } from 'lucide-react';
 import { format, subDays, startOfMonth, endOfMonth, startOfDay, endOfDay } from 'date-fns';
@@ -281,12 +281,13 @@ export default function CRMDashboard() {
   }, [fetchDashboardData]);
 
   const fetchCustomerGrowth = async (startDate: Date, endDate: Date) => {
+    // Get customers by visit date (not created date) to match Daily Visits chart
     const { data: customers } = await supabase
       .from('customers')
-      .select('created_at')
-      .gte('created_at', startDate.toISOString())
-      .lte('created_at', endDate.toISOString())
-      .order('created_at');
+      .select('customer_visit_date, created_at')
+      .gte('customer_visit_date', startDate.toISOString().split('T')[0])
+      .lte('customer_visit_date', endDate.toISOString().split('T')[0])
+      .order('customer_visit_date');
 
     const { data: orders } = await supabase
       .from('sales_orders')
@@ -298,7 +299,8 @@ export default function CRMDashboard() {
     const growthMap = new Map<string, { customers: number; revenue: number }>();
     
     customers?.forEach(c => {
-      const date = format(new Date(c.created_at), 'MMM dd');
+      if (!c.customer_visit_date) return;
+      const date = format(new Date(c.customer_visit_date), 'MMM dd');
       const existing = growthMap.get(date) || { customers: 0, revenue: 0 };
       growthMap.set(date, { ...existing, customers: existing.customers + 1 });
     });
@@ -450,26 +452,28 @@ export default function CRMDashboard() {
   };
 
   const fetchRetentionData = async (startDate: Date, endDate: Date) => {
-    // Get all customers and their orders
+    // Get all customers with visit dates in the period
     const { data: customers } = await supabase
       .from('customers')
       .select(`
         id,
         created_at,
+        customer_visit_date,
         sales_orders (
           id,
           created_at
         )
       `)
-      .gte('created_at', startDate.toISOString())
-      .lte('created_at', endDate.toISOString())
-      .order('created_at');
+      .gte('customer_visit_date', startDate.toISOString().split('T')[0])
+      .lte('customer_visit_date', endDate.toISOString().split('T')[0])
+      .order('customer_visit_date');
 
     // Group customers by month and calculate retention
     const monthlyData = new Map<string, { new: Set<string>, returning: Set<string> }>();
 
-    customers?.forEach((customer: { id: string; created_at: string; sales_orders: { id: string; created_at: string }[] }) => {
-      const customerMonth = format(new Date(customer.created_at), 'MMM yyyy');
+    customers?.forEach((customer: { id: string; created_at: string; customer_visit_date?: string; sales_orders: { id: string; created_at: string }[] }) => {
+      const visitDate = customer.customer_visit_date || customer.created_at;
+      const customerMonth = format(new Date(visitDate), 'MMM yyyy');
       
       if (!monthlyData.has(customerMonth)) {
         monthlyData.set(customerMonth, { new: new Set(), returning: new Set() });
@@ -1048,20 +1052,20 @@ export default function CRMDashboard() {
             </CardContent>
           </Card>
 
-          {/* Active Customers */}
+          {/* Customers Who Purchased */}
           <Card className="relative overflow-hidden group hover:shadow-lg transition-all duration-300 border-0 bg-gradient-to-br from-blue-500 to-blue-600">
             <div className="absolute inset-0 bg-gradient-to-br from-blue-400/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
             <CardContent className="p-4 relative">
               <div className="flex items-start justify-between">
                 <div className="space-y-1">
-                  <p className="text-blue-100 text-xs font-medium">Active</p>
+                  <p className="text-blue-100 text-xs font-medium">Purchased</p>
                   <p className="text-2xl font-bold text-white">{metrics.activeCustomers}</p>
                   <div className="flex items-center gap-1 text-white/90 text-xs">
-                    <span>{metrics.conversionRate.toFixed(1)}%</span>
+                    <span>in period</span>
                   </div>
                 </div>
                 <div className="h-10 w-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                  <Activity className="h-5 w-5 text-white" />
+                  <ShoppingBag className="h-5 w-5 text-white" />
                 </div>
               </div>
             </CardContent>

@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = createSupabaseClient(supabaseUrl, supabaseKey);
     const body = await request.json();
-    const { sessionId } = body;
+    const { sessionId, localIp } = body;
 
     // Get client IP and user agent
     const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 
@@ -21,6 +21,7 @@ export async function POST(request: NextRequest) {
       userAgent,
       browser: parseBrowser(userAgent),
       os: parseOS(userAgent),
+      localIp: localIp || null, // Store local IP in device_info
     };
 
     // Upsert session (insert or update last_seen)
@@ -31,6 +32,7 @@ export async function POST(request: NextRequest) {
         client_ip: clientIp,
         user_agent: userAgent,
         device_info: deviceInfo,
+        location_hint: localIp || null, // Store local IP in location_hint column
         last_seen: new Date().toISOString(),
         is_active: true,
       }, {

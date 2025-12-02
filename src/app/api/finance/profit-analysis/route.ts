@@ -107,11 +107,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch all sales data' }, { status: 500 });
     }
 
-    // Get expense data (exclude vendor payment entries to avoid double counting)
+    // Get expense data (exclude vendor payment entries and Manufacturing category to avoid double counting)
     const { data: expenseData, error: expenseError } = await supabase
       .from('expenses')
       .select('amount, created_at, category, entity_type, description, date')
       .neq('entity_type', 'supplier')
+      .neq('category', 'Manufacturing') // Exclude Manufacturing category (vendor payments)
       .gte('date', startDate.toISOString().split('T')[0])
       .lte('date', endDate.toISOString().split('T')[0]);
 

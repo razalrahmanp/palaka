@@ -219,12 +219,14 @@ export async function GET(request: Request) {
     ] = await Promise.all([
       // Regular expenses (EXCLUDE vendor payment entries to avoid double counting)
       // Use 'date' field instead of 'created_at' for accurate MTD calculation
+      // Also exclude 'Manufacturing' category as it represents vendor payments
       supabase
         .from('expenses')
-        .select('amount, description, entity_type, date')
+        .select('amount, description, entity_type, category, date')
         .gte('date', dateFilter.startDate)
         .lte('date', dateFilter.endDate)
-        .neq('entity_type', 'supplier'), // Exclude vendor/supplier payment entries
+        .neq('entity_type', 'supplier') // Exclude vendor/supplier payment entries
+        .neq('category', 'Manufacturing'), // Exclude Manufacturing category (vendor payments)
 
       // Liability payment expenses (using date field for consistency)
       supabase
@@ -270,7 +272,7 @@ export async function GET(request: Request) {
     // Debug: Count excluded vendor payment entries from expenses (using date field for consistency)
     const allExpensesResult = await supabase
       .from('expenses')
-      .select('amount, description, entity_type, date')
+      .select('amount, description, entity_type, category, date')
       .gte('date', dateFilter.startDate)
       .lte('date', dateFilter.endDate);
     
@@ -278,7 +280,15 @@ export async function GET(request: Request) {
       expense.entity_type === 'supplier'
     ) || [];
     
+    const manufacturingCategoryExpenses = allExpensesResult.data?.filter(expense => 
+      expense.category === 'Manufacturing'
+    ) || [];
+    
     const vendorPaymentAmountInExpenses = vendorPaymentEntriesInExpenses.reduce(
+      (sum, expense) => sum + (expense.amount || 0), 0
+    );
+    
+    const manufacturingAmountInExpenses = manufacturingCategoryExpenses.reduce(
       (sum, expense) => sum + (expense.amount || 0), 0
     );
 
@@ -286,8 +296,10 @@ export async function GET(request: Request) {
       vendorPaymentsFromHistory: `₹${vendorPayments.toLocaleString()}`,
       vendorPaymentEntriesInExpenses: vendorPaymentEntriesInExpenses.length,
       vendorPaymentAmountInExpenses: `₹${vendorPaymentAmountInExpenses.toLocaleString()}`,
+      manufacturingCategoryExpenses: manufacturingCategoryExpenses.length,
+      manufacturingAmountExcluded: `₹${manufacturingAmountInExpenses.toLocaleString()}`,
       regularExpensesAfterFilter: `₹${regularExpenses.toLocaleString()}`,
-      note: 'Excluded vendor payment entries from expenses to avoid double counting'
+      note: 'Excluded vendor payment entries (entity_type=supplier) AND Manufacturing category from expenses'
     });
 
     // Calculate payment collection data

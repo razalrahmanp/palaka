@@ -100,6 +100,28 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
       const data = await response.json()
       const allProducts: ProductWithInventory[] = data.products || data || []
 
+      // Fetch sold data for stock out products
+      const stockOutProductIds = allProducts
+        .filter(item => item.quantity === 0)
+        .map(item => item.product_id)
+
+      // Fetch sales data for stock out products
+      let salesData: Record<string, { soldQty: number; soldValue: number }> = {}
+      if (stockOutProductIds.length > 0) {
+        try {
+          const salesResponse = await fetch('/api/inventory/sold-summary', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ productIds: stockOutProductIds })
+          })
+          if (salesResponse.ok) {
+            salesData = await salesResponse.json()
+          }
+        } catch (err) {
+          console.error('Error fetching sales data:', err)
+        }
+      }
+
       // Sheet 1: In-Stock Products (quantity > 0)
       const inStockProducts = allProducts
         .filter(item => item.quantity > 0)
@@ -151,21 +173,44 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
         'Reorder Point': 0
       } as typeof inStockProducts[0])
 
-      // Sheet 2: Stock Out Products (quantity = 0)
+      // Sheet 2: Stock Out Products (quantity = 0) with sold data
       const stockOutProducts = allProducts
         .filter(item => item.quantity === 0)
-        .map(item => ({
-          'Product Name': item.product_name || '',
-          'SKU': item.sku || '',
-          'Category': item.category || '',
-          'Subcategory': item.subcategory || '',
-          'Material': item.material || '',
-          'Supplier': item.supplier_name || '',
-          'Location': item.location || '',
-          'Cost (₹)': Number(item.cost || 0).toFixed(2),
-          'MRP (₹)': Number(item.price || 0).toFixed(2),
-          'Reorder Point': item.reorder_point
-        }))
+        .map(item => {
+          const sold = salesData[item.product_id] || { soldQty: 0, soldValue: 0 }
+          return {
+            'Product Name': item.product_name || '',
+            'SKU': item.sku || '',
+            'Category': item.category || '',
+            'Subcategory': item.subcategory || '',
+            'Material': item.material || '',
+            'Supplier': item.supplier_name || '',
+            'Cost (₹)': Number(item.cost || 0).toFixed(2),
+            'MRP (₹)': Number(item.price || 0).toFixed(2),
+            'Sold Qty': sold.soldQty,
+            'Sold Value (₹)': sold.soldValue.toFixed(2),
+            'Reorder Point': item.reorder_point
+          }
+        })
+
+      // Calculate totals for stock out
+      const stockOutTotalSoldQty = stockOutProducts.reduce((sum, item) => sum + (Number(item['Sold Qty']) || 0), 0)
+      const stockOutTotalSoldValue = stockOutProducts.reduce((sum, item) => sum + (Number(item['Sold Value (₹)']) || 0), 0)
+
+      // Add totals row to stock out
+      stockOutProducts.push({
+        'Product Name': 'TOTAL',
+        'SKU': '',
+        'Category': '',
+        'Subcategory': '',
+        'Material': '',
+        'Supplier': '',
+        'Cost (₹)': '',
+        'MRP (₹)': '',
+        'Sold Qty': stockOutTotalSoldQty,
+        'Sold Value (₹)': stockOutTotalSoldValue.toFixed(2),
+        'Reorder Point': 0
+      } as typeof stockOutProducts[0])
 
       // Create workbook with two sheets
       const wb = XLSX.utils.book_new()
@@ -264,8 +309,8 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
       // Sheet 2: Stock Out Products
       const ws2 = XLSX.utils.json_to_sheet(stockOutProducts)
       
-      // Apply header styles (row 1)
-      const headerCols2 = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
+      // Apply header styles (row 1) - 11 columns now (A-K)
+      const headerCols2 = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K']
       headerCols2.forEach(col => {
         const cellRef = col + '1'
         if (ws2[cellRef]) {
@@ -273,9 +318,17 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
         }
       })
 
-      // Apply data styles
-      const dataRows2 = stockOutProducts.length
-      for (let row = 2; row <= dataRows2 + 1; row++) {
+      // Apply total row styles (last row)
+      const totalRowNum2 = stockOutProducts.length + 1
+      headerCols2.forEach(col => {
+        const cellRef = col + totalRowNum2
+        if (ws2[cellRef]) {
+          ws2[cellRef].s = totalStyle
+        }
+      })
+
+      // Apply data styles to all other rows
+      for (let row = 2; row < totalRowNum2; row++) {
         headerCols2.forEach(col => {
           const cellRef = col + row
           if (ws2[cellRef]) {
@@ -291,9 +344,10 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
         { wch: 15 }, // Subcategory
         { wch: 12 }, // Material
         { wch: 20 }, // Supplier
-        { wch: 12 }, // Location
         { wch: 12 }, // Cost
         { wch: 12 }, // MRP
+        { wch: 12 }, // Sold Qty
+        { wch: 15 }, // Sold Value
         { wch: 12 }, // Reorder Point
       ]
       

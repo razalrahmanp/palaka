@@ -95,20 +95,34 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
   // Export inventory to Excel with two sheets
   const exportToExcel = async () => {
     try {
-      // Fetch ALL inventory items (without pagination)
-      const response = await fetch('/api/inventory/products?limit=10000&_t=' + Date.now())
-      const data = await response.json()
-      const allProducts: ProductWithInventory[] = data.products || data || []
+      // Fetch ALL inventory items using pagination
+      let allProducts: ProductWithInventory[] = []
+      let currentPage = 1
+      const pageSize = 500
+      let hasMore = true
+
+      console.log('Fetching all products with pagination...')
+
+      while (hasMore) {
+        const response = await fetch(`/api/inventory/products?page=${currentPage}&limit=${pageSize}&_t=${Date.now()}`)
+        const data = await response.json()
+        const products = data.products || []
+        
+        allProducts = [...allProducts, ...products]
+        
+        hasMore = data.pagination?.hasNext || false
+        currentPage++
+        
+        console.log(`Fetched page ${currentPage - 1}: ${products.length} items, total: ${allProducts.length}`)
+      }
 
       console.log('Total products fetched:', allProducts.length)
-      console.log('Sample product:', allProducts[0])
 
       // Fetch sold data for stock out products
       const stockOutItems = allProducts.filter(item => item.quantity === 0)
       const stockOutProductIds = stockOutItems.map(item => item.product_id)
 
       console.log('Stock out products count:', stockOutItems.length)
-      console.log('Sample stock out product_id:', stockOutProductIds[0])
 
       // Fetch sales data for stock out products
       let salesData: Record<string, { soldQty: number; soldValue: number }> = {}
@@ -121,7 +135,7 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
           })
           if (salesResponse.ok) {
             salesData = await salesResponse.json()
-            console.log('Sales data received:', salesData)
+            console.log('Sales data received:', Object.keys(salesData).length, 'products with sales')
           }
         } catch (err) {
           console.error('Error fetching sales data:', err)

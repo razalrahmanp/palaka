@@ -7,47 +7,53 @@ export async function POST(request: NextRequest) {
   try {
     const { productIds } = await request.json()
 
+    console.log('Sold summary request for product IDs:', productIds?.length)
+
     if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
       return NextResponse.json({})
     }
 
-    // Fetch sold quantities and values from sales_order_items
-    // Only count confirmed, shipped, delivered orders (not draft)
-    const { data: salesData, error } = await supabase
-      .from('sales_order_items')
-      .select(`
-        product_id,
-        quantity,
-        unit_price,
-        final_price,
-        sales_orders!inner(status)
-      `)
-      .in('product_id', productIds)
-      .in('sales_orders.status', ['confirmed', 'shipped', 'delivered', 'ready_for_delivery', 'partial_delivery_ready'])
-
-    if (error) {
-      console.error('Error fetching sales data:', error)
-      return NextResponse.json({})
+    // Batch the requests to avoid URL length limits (50 IDs per batch)
+    const BATCH_SIZE = 50
+    const batches: string[][] = []
+    for (let i = 0; i < productIds.length; i += BATCH_SIZE) {
+      batches.push(productIds.slice(i, i + BATCH_SIZE))
     }
+
+    console.log('Processing in', batches.length, 'batches')
 
     // Aggregate sold data by product
     const soldSummary: Record<string, { soldQty: number; soldValue: number }> = {}
 
-    salesData?.forEach((item) => {
-      const productId = item.product_id
-      if (!productId) return
+    // Process each batch
+    for (const batch of batches) {
+      const { data: salesData, error } = await supabase
+        .from('sales_order_items')
+        .select('product_id, quantity, final_price')
+        .in('product_id', batch)
 
-      if (!soldSummary[productId]) {
-        soldSummary[productId] = { soldQty: 0, soldValue: 0 }
+      if (error) {
+        console.error('Error fetching sales data for batch:', error)
+        continue
       }
 
-      const qty = Number(item.quantity) || 0
-      // Use final_price if available, otherwise fall back to unit_price
-      const price = Number(item.final_price) || Number(item.unit_price) || 0
+      salesData?.forEach((item) => {
+        const productId = item.product_id
+        if (!productId) return
 
-      soldSummary[productId].soldQty += qty
-      soldSummary[productId].soldValue += price * qty
-    })
+        if (!soldSummary[productId]) {
+          soldSummary[productId] = { soldQty: 0, soldValue: 0 }
+        }
+
+        const qty = Number(item.quantity) || 0
+        const price = Number(item.final_price) || 0
+
+        soldSummary[productId].soldQty += qty
+        soldSummary[productId].soldValue += price
+      })
+    }
+
+    console.log('Sold summary result:', Object.keys(soldSummary).length, 'products with sales')
 
     return NextResponse.json(soldSummary)
 

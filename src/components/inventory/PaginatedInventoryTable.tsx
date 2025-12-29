@@ -100,10 +100,15 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
       const data = await response.json()
       const allProducts: ProductWithInventory[] = data.products || data || []
 
+      console.log('Total products fetched:', allProducts.length)
+      console.log('Sample product:', allProducts[0])
+
       // Fetch sold data for stock out products
-      const stockOutProductIds = allProducts
-        .filter(item => item.quantity === 0)
-        .map(item => item.product_id)
+      const stockOutItems = allProducts.filter(item => item.quantity === 0)
+      const stockOutProductIds = stockOutItems.map(item => item.product_id)
+
+      console.log('Stock out products count:', stockOutItems.length)
+      console.log('Sample stock out product_id:', stockOutProductIds[0])
 
       // Fetch sales data for stock out products
       let salesData: Record<string, { soldQty: number; soldValue: number }> = {}
@@ -116,6 +121,7 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
           })
           if (salesResponse.ok) {
             salesData = await salesResponse.json()
+            console.log('Sales data received:', salesData)
           }
         } catch (err) {
           console.error('Error fetching sales data:', err)

@@ -8,8 +8,9 @@ import {
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { SlidersHorizontal, AlertCircle, Settings, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
+import { SlidersHorizontal, AlertCircle, Settings, ChevronLeft, ChevronRight, RefreshCw, Download } from 'lucide-react'
 import { ProductWithInventory } from '@/types'
+import XLSX from 'xlsx-js-style'
 
 interface PaginationData {
   page: number;
@@ -91,6 +92,225 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
     fetchData()
   }
 
+  // Export inventory to Excel with two sheets
+  const exportToExcel = async () => {
+    try {
+      // Fetch ALL inventory items (without pagination)
+      const response = await fetch('/api/inventory/products?limit=10000&_t=' + Date.now())
+      const data = await response.json()
+      const allProducts: ProductWithInventory[] = data.products || data || []
+
+      // Sheet 1: In-Stock Products (quantity > 0)
+      const inStockProducts = allProducts
+        .filter(item => item.quantity > 0)
+        .map(item => ({
+          'Product Name': item.product_name || '',
+          'SKU': item.sku || '',
+          'Category': item.category || '',
+          'Subcategory': item.subcategory || '',
+          'Material': item.material || '',
+          'Supplier': item.supplier_name || '',
+          'Location': item.location || '',
+          'Quantity': item.quantity,
+          'Cost (₹)': Number(item.cost || 0).toFixed(2),
+          'MRP (₹)': Number(item.price || 0).toFixed(2),
+          'Total Cost (₹)': (item.quantity * Number(item.cost || 0)).toFixed(2),
+          'Total MRP (₹)': (item.quantity * Number(item.price || 0)).toFixed(2),
+          'Margin %': item.cost && item.price && Number(item.cost) > 0 
+            ? (((Number(item.price) - Number(item.cost)) / Number(item.cost)) * 100).toFixed(1)
+            : '0',
+          'Reorder Point': item.reorder_point
+        }))
+
+      // Calculate totals for in-stock
+      const inStockTotalCost = allProducts
+        .filter(item => item.quantity > 0)
+        .reduce((sum, item) => sum + (item.quantity * Number(item.cost || 0)), 0)
+      const inStockTotalMRP = allProducts
+        .filter(item => item.quantity > 0)
+        .reduce((sum, item) => sum + (item.quantity * Number(item.price || 0)), 0)
+      const inStockTotalQty = allProducts
+        .filter(item => item.quantity > 0)
+        .reduce((sum, item) => sum + item.quantity, 0)
+
+      // Add totals row to in-stock
+      inStockProducts.push({
+        'Product Name': 'TOTAL',
+        'SKU': '',
+        'Category': '',
+        'Subcategory': '',
+        'Material': '',
+        'Supplier': '',
+        'Location': '',
+        'Quantity': inStockTotalQty,
+        'Cost (₹)': '',
+        'MRP (₹)': '',
+        'Total Cost (₹)': inStockTotalCost.toFixed(2),
+        'Total MRP (₹)': inStockTotalMRP.toFixed(2),
+        'Margin %': '',
+        'Reorder Point': 0
+      } as typeof inStockProducts[0])
+
+      // Sheet 2: Stock Out Products (quantity = 0)
+      const stockOutProducts = allProducts
+        .filter(item => item.quantity === 0)
+        .map(item => ({
+          'Product Name': item.product_name || '',
+          'SKU': item.sku || '',
+          'Category': item.category || '',
+          'Subcategory': item.subcategory || '',
+          'Material': item.material || '',
+          'Supplier': item.supplier_name || '',
+          'Location': item.location || '',
+          'Cost (₹)': Number(item.cost || 0).toFixed(2),
+          'MRP (₹)': Number(item.price || 0).toFixed(2),
+          'Reorder Point': item.reorder_point
+        }))
+
+      // Create workbook with two sheets
+      const wb = XLSX.utils.book_new()
+
+      // Header style - Blue background with white text
+      const headerStyle = {
+        fill: { fgColor: { rgb: "4472C4" } },
+        font: { bold: true, color: { rgb: "FFFFFF" }, sz: 12 },
+        alignment: { horizontal: "center", vertical: "center" },
+        border: {
+          top: { style: "thin", color: { rgb: "000000" } },
+          bottom: { style: "thin", color: { rgb: "000000" } },
+          left: { style: "thin", color: { rgb: "000000" } },
+          right: { style: "thin", color: { rgb: "000000" } }
+        }
+      }
+
+      // Total row style - Green background with white text
+      const totalStyle = {
+        fill: { fgColor: { rgb: "70AD47" } },
+        font: { bold: true, color: { rgb: "FFFFFF" }, sz: 11 },
+        alignment: { horizontal: "center", vertical: "center" },
+        border: {
+          top: { style: "medium", color: { rgb: "000000" } },
+          bottom: { style: "medium", color: { rgb: "000000" } },
+          left: { style: "thin", color: { rgb: "000000" } },
+          right: { style: "thin", color: { rgb: "000000" } }
+        }
+      }
+
+      // Data cell style
+      const dataStyle = {
+        border: {
+          top: { style: "thin", color: { rgb: "D3D3D3" } },
+          bottom: { style: "thin", color: { rgb: "D3D3D3" } },
+          left: { style: "thin", color: { rgb: "D3D3D3" } },
+          right: { style: "thin", color: { rgb: "D3D3D3" } }
+        },
+        alignment: { vertical: "center" }
+      }
+
+      // Sheet 1: In-Stock Products
+      const ws1 = XLSX.utils.json_to_sheet(inStockProducts)
+      
+      // Apply header styles (row 1)
+      const headerCols1 = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N']
+      headerCols1.forEach(col => {
+        const cellRef = col + '1'
+        if (ws1[cellRef]) {
+          ws1[cellRef].s = headerStyle
+        }
+      })
+
+      // Apply total row styles (last row)
+      const totalRowNum1 = inStockProducts.length + 1
+      headerCols1.forEach(col => {
+        const cellRef = col + totalRowNum1
+        if (ws1[cellRef]) {
+          ws1[cellRef].s = totalStyle
+        }
+      })
+
+      // Apply data styles to all other rows
+      for (let row = 2; row < totalRowNum1; row++) {
+        headerCols1.forEach(col => {
+          const cellRef = col + row
+          if (ws1[cellRef]) {
+            ws1[cellRef].s = dataStyle
+          }
+        })
+      }
+
+      // Set column widths
+      ws1['!cols'] = [
+        { wch: 35 }, // Product Name
+        { wch: 20 }, // SKU
+        { wch: 15 }, // Category
+        { wch: 15 }, // Subcategory
+        { wch: 12 }, // Material
+        { wch: 20 }, // Supplier
+        { wch: 12 }, // Location
+        { wch: 10 }, // Quantity
+        { wch: 12 }, // Cost
+        { wch: 12 }, // MRP
+        { wch: 15 }, // Total Cost
+        { wch: 15 }, // Total MRP
+        { wch: 10 }, // Margin
+        { wch: 12 }, // Reorder Point
+      ]
+      
+      // Set row heights
+      ws1['!rows'] = [{ hpt: 25 }] // Header row height
+      
+      XLSX.utils.book_append_sheet(wb, ws1, 'In-Stock Products')
+
+      // Sheet 2: Stock Out Products
+      const ws2 = XLSX.utils.json_to_sheet(stockOutProducts)
+      
+      // Apply header styles (row 1)
+      const headerCols2 = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
+      headerCols2.forEach(col => {
+        const cellRef = col + '1'
+        if (ws2[cellRef]) {
+          ws2[cellRef].s = headerStyle
+        }
+      })
+
+      // Apply data styles
+      const dataRows2 = stockOutProducts.length
+      for (let row = 2; row <= dataRows2 + 1; row++) {
+        headerCols2.forEach(col => {
+          const cellRef = col + row
+          if (ws2[cellRef]) {
+            ws2[cellRef].s = dataStyle
+          }
+        })
+      }
+
+      ws2['!cols'] = [
+        { wch: 35 }, // Product Name
+        { wch: 20 }, // SKU
+        { wch: 15 }, // Category
+        { wch: 15 }, // Subcategory
+        { wch: 12 }, // Material
+        { wch: 20 }, // Supplier
+        { wch: 12 }, // Location
+        { wch: 12 }, // Cost
+        { wch: 12 }, // MRP
+        { wch: 12 }, // Reorder Point
+      ]
+      
+      ws2['!rows'] = [{ hpt: 25 }] // Header row height
+      
+      XLSX.utils.book_append_sheet(wb, ws2, 'Stock Out Products')
+
+      // Generate filename with date
+      const today = new Date().toISOString().split('T')[0]
+      XLSX.writeFile(wb, `Inventory_Report_${today}.xlsx`)
+
+    } catch (error) {
+      console.error('Error exporting to Excel:', error)
+      alert('Failed to export inventory. Please try again.')
+    }
+  }
+
   return (
     <Card>
       <CardHeader className="flex flex-row justify-between items-center">
@@ -100,7 +320,11 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
             Manage stock levels and costs for all products. Prices (MRP) are calculated automatically.
           </CardDescription>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" onClick={exportToExcel} className="bg-green-50 hover:bg-green-100 border-green-200 text-green-700">
+            <Download className="mr-2 h-4 w-4" />
+            Export Excel
+          </Button>
           <Button variant="outline" onClick={handleRefresh} disabled={loading}>
             <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             Refresh

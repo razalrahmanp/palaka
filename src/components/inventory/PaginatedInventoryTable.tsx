@@ -386,28 +386,34 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
           <Button variant="outline" onClick={onManageMargins}>
             <Settings className="mr-2 h-4 w-4" /> Manage Margins
           </Button>
-          <Button onClick={onAddItem}>Add New Item</Button>
-          <Button onClick={onAddSupplier}>
-            Add Supplier
-          </Button>
         </div>
       </CardHeader>
       
       <CardContent className="space-y-4">
         {/* Table */}
-        <div className="relative">
+        <div className="relative overflow-x-auto">
           {loading && (
             <div className="absolute inset-0 bg-white/50 flex items-center justify-center z-10">
               <RefreshCw className="h-6 w-6 animate-spin" />
             </div>
           )}
           
-          <Table>
+          <Table className="w-full table-fixed">
             <TableHeader>
               <TableRow>
-                {['Product', 'SKU', 'Supplier', 'Category', 'Subcat', 'Material', 'Location', 'Cost', 'MRP', 'Margin', 'Stock', 'Reorder', 'Actions'].map(h => (
-                  <TableHead key={h}>{h}</TableHead>
-                ))}
+                <TableHead className="w-[18%]">Product</TableHead>
+                <TableHead className="w-[10%]">SKU</TableHead>
+                <TableHead className="w-[10%]">Supplier</TableHead>
+                <TableHead className="w-[8%]">Category</TableHead>
+                <TableHead className="w-[7%]">Subcat</TableHead>
+                <TableHead className="w-[6%]">Material</TableHead>
+                <TableHead className="w-[6%]">Location</TableHead>
+                <TableHead className="w-[6%]">Cost</TableHead>
+                <TableHead className="w-[6%]">MRP</TableHead>
+                <TableHead className="w-[5%]">Margin</TableHead>
+                <TableHead className="w-[5%]">Stock</TableHead>
+                <TableHead className="w-[5%]">Reorder</TableHead>
+                <TableHead className="w-[8%]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -420,38 +426,38 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
               ) : (
                 items.map(i => (
                   <TableRow key={i.inventory_id}>
-                    <TableCell className="font-medium">{i.product_name}</TableCell>
-                    <TableCell className="font-mono text-sm">{i.sku}</TableCell>
-                    <TableCell>{i.supplier_name}</TableCell>
-                    <TableCell>{i.category}</TableCell>
-                    <TableCell>{i.subcategory}</TableCell>
-                    <TableCell>{i.material}</TableCell>
-                    <TableCell>{i.location}</TableCell>
-                    <TableCell>₹{Number(i.cost).toFixed(2)}</TableCell>
-                    <TableCell className="font-bold">₹{Number(i.price).toFixed(2)}</TableCell>
+                    <TableCell className="font-medium truncate" title={i.product_name}>{i.product_name}</TableCell>
+                    <TableCell className="font-mono text-xs truncate" title={i.sku || ''}>{i.sku}</TableCell>
+                    <TableCell className="truncate text-sm" title={i.supplier_name || ''}>{i.supplier_name}</TableCell>
+                    <TableCell className="truncate text-sm" title={i.category || ''}>{i.category}</TableCell>
+                    <TableCell className="truncate text-sm" title={i.subcategory || ''}>{i.subcategory}</TableCell>
+                    <TableCell className="truncate text-sm" title={i.material || ''}>{i.material}</TableCell>
+                    <TableCell className="truncate text-sm" title={i.location || ''}>{i.location}</TableCell>
+                    <TableCell className="text-sm">₹{Number(i.cost).toFixed(0)}</TableCell>
+                    <TableCell className="font-bold text-sm">₹{Number(i.price).toFixed(0)}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">
+                      <Badge variant="outline" className="text-xs px-1">
                         {i.cost && i.price && Number(i.cost) > 0 
-                          ? (((Number(i.price) - Number(i.cost)) / Number(i.cost)) * 100).toFixed(1)
+                          ? (((Number(i.price) - Number(i.cost)) / Number(i.cost)) * 100).toFixed(0)
                           : i.applied_margin || 0
                         }%
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={i.quantity > i.reorder_point ? 'default' : 'destructive'}>
-                        {i.quantity <= i.reorder_point && <AlertCircle className="mr-1 h-3 w-3" />}
+                      <Badge variant={i.quantity > i.reorder_point ? 'default' : 'destructive'} className="text-xs px-1">
+                        {i.quantity <= i.reorder_point && <AlertCircle className="mr-0.5 h-3 w-3" />}
                         {i.quantity}
                       </Badge>
                     </TableCell>
-                    <TableCell>{i.reorder_point}</TableCell>
+                    <TableCell className="text-sm">{i.reorder_point}</TableCell>
                     <TableCell>
                       <Button
                         variant="outline"
                         size="sm"
+                        className="h-7 px-2 text-xs"
                         onClick={() => onAdjustClick(i)}
                       >
-                        <SlidersHorizontal className="mr-1 h-4 w-4" />
-                        Adjust
+                        <SlidersHorizontal className="h-3 w-3" />
                       </Button>
                     </TableCell>
                   </TableRow>

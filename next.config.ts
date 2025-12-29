@@ -9,6 +9,9 @@ const nextConfig: NextConfig = {
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
   },
   
+  // Add empty turbopack config to silence the warning
+  turbopack: {},
+  
   // Image optimization
   images: {
     remotePatterns: [
@@ -21,43 +24,6 @@ const nextConfig: NextConfig = {
     formats: ['image/webp', 'image/avif'],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
-  },
-  
-  // Bundle optimization
-  webpack: (config, { dev, isServer }) => {
-    if (!dev && !isServer) {
-      // Split vendor chunks for better caching
-      config.optimization.splitChunks = {
-        chunks: 'all',
-        cacheGroups: {
-          default: false,
-          vendors: false,
-          // Create a chunk for React/Next.js
-          framework: {
-            chunks: 'all',
-            name: 'framework',
-            test: /(?:react|react-dom)$/,
-            priority: 40,
-            enforce: true,
-          },
-          // Create a chunk for UI libraries
-          lib: {
-            test: /[\\/]node_modules[\\/](@radix-ui|lucide-react)[\\/]/,
-            name: 'lib',
-            priority: 30,
-            chunks: 'all',
-          },
-          // Commons chunk for shared modules
-          commons: {
-            name: 'commons',
-            minChunks: 2,
-            priority: 20,
-            chunks: 'all',
-          },
-        },
-      };
-    }
-    return config;
   },
   
   eslint: {

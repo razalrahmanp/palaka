@@ -153,7 +153,7 @@ export default function InventoryPage() {
   const allProductsForLabels = items
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 p-6 space-y-8 relative">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 relative">
       {/* Floating Add Supplier Button */}
       <Button
         onClick={() => setAddSupplierOpen(true)}
@@ -164,9 +164,9 @@ export default function InventoryPage() {
       </Button>
 
       {/* Main Content */}
-      <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-xl overflow-hidden">
+      <div className="bg-white/80 backdrop-blur-sm border-b border-white/20 shadow-xl overflow-hidden">
         <Tabs defaultValue="list" className="w-full">
-          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 px-6 py-4 border-b border-indigo-100/50">
+          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 px-4 py-3 border-b border-indigo-100/50">
             <TabsList className="bg-white/60 backdrop-blur-sm border border-white/20 rounded-xl p-1">
               <TabsTrigger 
                 value="list" 
@@ -189,7 +189,7 @@ export default function InventoryPage() {
             </TabsList>
           </div>
 
-          <TabsContent value="list" className="p-6">
+          <TabsContent value="list" className="p-4 pt-2">
             <PaginatedInventoryTable
               onAdjustClick={handleAdjustClick}
               onAddItem={() => setAddItemOpen(true)}
@@ -198,7 +198,7 @@ export default function InventoryPage() {
             />
           </TabsContent>
 
-          <TabsContent value="labels" className="p-6">
+          <TabsContent value="labels" className="p-4">
             <div className="mb-6">
               <h2 className="text-2xl font-bold text-gray-900">Product Labels</h2>
               <p className="text-gray-600">Generate and print product labels</p>
@@ -206,7 +206,7 @@ export default function InventoryPage() {
             <ProductLabels products={allProductsForLabels} />
           </TabsContent>
 
-          <TabsContent value="summary" className="p-6">
+          <TabsContent value="summary" className="p-4">
             <div className="mb-6">
               <h2 className="text-2xl font-bold text-gray-900">Product Summary</h2>
               <p className="text-gray-600">Detailed product analytics and sales tracking</p>

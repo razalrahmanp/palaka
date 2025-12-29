@@ -366,8 +366,8 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row justify-between items-center">
+    <Card className="border-0 shadow-none">
+      <CardHeader className="flex flex-row justify-between items-center px-0 pt-0 pb-2">
         <div>
           <CardTitle>Inventory ({pagination.total} items)</CardTitle>
           <CardDescription>
@@ -389,7 +389,7 @@ export const PaginatedInventoryTable: React.FC<Props> = ({
         </div>
       </CardHeader>
       
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 px-0 pb-0">
         {/* Table */}
         <div className="relative overflow-x-auto">
           {loading && (

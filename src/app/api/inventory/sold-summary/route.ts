@@ -12,17 +12,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch sold quantities and values from sales_order_items
-    // Only count delivered/completed orders
+    // Only count confirmed, shipped, delivered orders (not draft)
     const { data: salesData, error } = await supabase
       .from('sales_order_items')
       .select(`
         product_id,
         quantity,
+        unit_price,
         final_price,
         sales_orders!inner(status)
       `)
       .in('product_id', productIds)
-      .in('sales_orders.status', ['delivered', 'Delivered', 'completed', 'Completed'])
+      .in('sales_orders.status', ['confirmed', 'shipped', 'delivered', 'ready_for_delivery', 'partial_delivery_ready'])
 
     if (error) {
       console.error('Error fetching sales data:', error)
@@ -41,10 +42,11 @@ export async function POST(request: NextRequest) {
       }
 
       const qty = Number(item.quantity) || 0
-      const price = Number(item.final_price) || 0
+      // Use final_price if available, otherwise fall back to unit_price
+      const price = Number(item.final_price) || Number(item.unit_price) || 0
 
       soldSummary[productId].soldQty += qty
-      soldSummary[productId].soldValue += qty * price
+      soldSummary[productId].soldValue += price * qty
     })
 
     return NextResponse.json(soldSummary)
